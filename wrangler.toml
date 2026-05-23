@@ -112,9 +112,17 @@ local_protocol = "https"
 
 [vars]
 PUBLIC_BASE_URL = "https://localhost:8787"
-ALLOWED_GOOGLE_HD = ""           # e.g. "acme.com"; empty disables Google sign-in
-ALLOWED_GITHUB_ORG = ""          # e.g. "acme-inc"; empty disables GitHub sign-in
-ADMIN_EMAILS = ""                # comma-separated bootstrap admins
+# Google sign-in is enabled if EITHER allowlist is set. A user passes
+# the allowlist when their id_token.hd matches ALLOWED_GOOGLE_HD OR
+# their email is in ALLOWED_GOOGLE_EMAILS. Both empty disables Google.
+ALLOWED_GOOGLE_HD = ""               # e.g. "acme.com" (Workspace hosted domain)
+ALLOWED_GOOGLE_EMAILS = ""           # comma-separated emails for solo / personal accounts
+# GitHub sign-in is enabled if EITHER allowlist is set. A user passes
+# when they're a member of ALLOWED_GITHUB_ORG OR their login is in
+# ALLOWED_GITHUB_USERS. Both empty disables GitHub.
+ALLOWED_GITHUB_ORG = ""              # e.g. "acme-inc" (org slug)
+ALLOWED_GITHUB_USERS = ""            # comma-separated GitHub logins for personal accounts
+ADMIN_EMAILS = ""                    # comma-separated bootstrap admins
 DAYTONA_API_URL = "https://app.daytona.io/api"
 DAYTONA_DEFAULT_IDLE_SECONDS = "600"
 MAX_SANDBOXES_PER_USER = "5"

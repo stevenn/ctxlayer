@@ -7,6 +7,18 @@ GOOGLE_CLIENT_SECRET=
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 
+# Per-deployment allowlists. wrangler.toml [vars] holds the committed
+# defaults (empty); override here for local dev or sensitive prod values.
+# Either allowlist enables the corresponding IdP.
+#   - ALLOWED_GOOGLE_HD: Workspace hosted-domain (e.g. "acme.com")
+#   - ALLOWED_GOOGLE_EMAILS: comma-separated emails for solo accounts
+#   - ALLOWED_GITHUB_ORG: GitHub org slug (e.g. "acme-inc")
+#   - ALLOWED_GITHUB_USERS: comma-separated GitHub logins
+# ALLOWED_GOOGLE_HD=
+# ALLOWED_GOOGLE_EMAILS=
+# ALLOWED_GITHUB_ORG=
+# ALLOWED_GITHUB_USERS=
+
 # 32 random bytes base64 — used by crypto/aead.ts (AES-GCM at rest for user_credentials)
 # Generate: openssl rand -base64 32
 ENCRYPTION_KEY=

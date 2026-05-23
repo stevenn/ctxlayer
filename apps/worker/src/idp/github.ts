@@ -116,9 +116,13 @@ githubIdpRoute.get('/callback', async (c) => {
   const primary = emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified)
   if (!primary) return signInErrorRedirect(c.env, 'profile_fetch_failed')
 
-  // 3. Allowlist (org membership).
+  // 3. Allowlist (org membership OR username).
   try {
-    await enforceGithubAllowlist(token.access_token, c.env)
+    await enforceGithubAllowlist({
+      accessToken: token.access_token,
+      login: profile.login,
+      env: c.env
+    })
   } catch (err) {
     if (err instanceof AllowlistError) return signInErrorRedirect(c.env, err.reason)
     throw err

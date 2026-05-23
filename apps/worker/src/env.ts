@@ -6,7 +6,9 @@ export interface Env {
   // Static vars (wrangler.toml [vars])
   PUBLIC_BASE_URL: string
   ALLOWED_GOOGLE_HD: string
+  ALLOWED_GOOGLE_EMAILS: string
   ALLOWED_GITHUB_ORG: string
+  ALLOWED_GITHUB_USERS: string
   ADMIN_EMAILS: string
   DAYTONA_API_URL: string
   DAYTONA_DEFAULT_IDLE_SECONDS: string

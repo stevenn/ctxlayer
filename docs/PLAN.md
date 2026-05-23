@@ -490,22 +490,28 @@ The SPA needs its own session — it doesn't hold an MCP OAuth token; that's for
 
 ### A4. Allowlist enforcement (centralised)
 
-Single helper `util/allowlist.ts`:
-```ts
-async function enforceAllowlist(idp, profile, env): Promise<void> {
-  if (idp === 'google') {
-    if (!env.ALLOWED_GOOGLE_HD) throw forbidden('google_disabled')
-    if (profile.hd !== env.ALLOWED_GOOGLE_HD) throw forbidden('wrong_domain')
-  } else if (idp === 'github') {
-    if (!env.ALLOWED_GITHUB_ORG) throw forbidden('github_disabled')
-    const orgs = await fetch('https://api.github.com/user/orgs', {
-      headers: { Authorization: `Bearer ${profile.access_token}` }
-    }).then(r => r.json() as Promise<{login: string}[]>)
-    if (!orgs.some(o => o.login === env.ALLOWED_GITHUB_ORG)) throw forbidden('not_in_org')
-  }
-}
-```
-The thrown `forbidden(reason)` redirects to a `/sign-in?error=<reason>` page that explains the rejection without leaking config details.
+Each IdP has two parallel allowlists; the user passes when EITHER matches:
+
+| IdP | Domain/org allowlist | Per-user allowlist | Both empty |
+|---|---|---|---|
+| Google | `ALLOWED_GOOGLE_HD` (Workspace `hd` claim) | `ALLOWED_GOOGLE_EMAILS` (comma-separated emails) | IdP disabled |
+| GitHub | `ALLOWED_GITHUB_ORG` (org slug, requires `read:org`) | `ALLOWED_GITHUB_USERS` (comma-separated logins) | IdP disabled |
+
+The per-user allowlist is cheap (no API call) and is checked first; the
+org/domain check falls through only if the user isn't on it. The per-
+user form supports solo developers, founders, demo accounts, and local
+dev for contributors who don't want to put their corp org slug into
+the committed `wrangler.toml`.
+
+Implementation lives in `apps/worker/src/util/allowlist.ts`:
+- `enforceGoogleAllowlist(profile, env)` — sync, checks `hd` ∨ email.
+- `enforceGithubAllowlist({accessToken, login, env})` — async, login
+  match wins; org membership check is the fallback that costs one
+  `GET /user/orgs` request.
+
+Failures throw `AllowlistError(reason)`; callers redirect to
+`/sign-in?error=<reason>` with a friendly message. Reasons:
+`google_disabled`, `github_disabled`, `wrong_domain`, `not_in_org`.
 
 ### A5. Outbound — `user_bearer` flow
 
