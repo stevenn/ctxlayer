@@ -53,8 +53,24 @@ The full plan lives at **`docs/PLAN.md`**. Read it first.
   folder.
 - Don't write new docs/README files unless asked. Update `docs/PLAN.md`.
 
+## Org information architecture
+
+Each install serves one org. Inside the org we model **teams** (who people
+belong to) and **products** (what the org delivers). Defaults are "spread
+context, gate execution":
+
+- Docs are open-read by everyone signed in. Tags on docs (team / product /
+  topic) shape what `search_docs` returns by default — they do not gate
+  read access.
+- MCP upstreams are invisible until an admin grants visibility to a team
+  or product. `list_upstreams` only returns what the user can use.
+
+Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
+`docs/PLAN.md` Section F.
+
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
 **M1 skeleton scaffolded, no auth wired yet.** Next work to do is M1's
-sign-in leg (Google + GitHub IdP + allowlist + `/api/me`).
+sign-in leg (Google + GitHub IdP + allowlist + `/api/me`) and the empty
+admin pages for teams/products described in Section F.
