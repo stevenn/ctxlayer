@@ -101,12 +101,14 @@ crons = ["0 3 * * *"]  # nightly: prune usage_events, refresh upstream_tools
 # `scripts/setup-dev-tls.mjs` runs as the `predev` hook on both worker and
 # web. HTTPS is required because the `__Host-` session cookie prefix mandates
 # Secure, which browsers only honour over HTTPS.
+#
+# The cert paths must be passed via CLI flags (`--https-key-path` /
+# `--https-cert-path`) — wrangler 4 doesn't read them from this TOML block.
+# See apps/worker/package.json's `dev` script.
 [dev]
 ip = "localhost"
 port = 8787
 local_protocol = "https"
-https_key_path = ".dev-tls/localhost-key.pem"
-https_cert_path = ".dev-tls/localhost.pem"
 
 [vars]
 PUBLIC_BASE_URL = "https://localhost:8787"

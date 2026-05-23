@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "predev": "bun ../../scripts/setup-dev-tls.mjs && bun ../../scripts/ensure-dist.mjs",
-    "dev": "wrangler dev",
+    "dev": "wrangler dev --https-key-path ../../.dev-tls/localhost-key.pem --https-cert-path ../../.dev-tls/localhost.pem",
     "prebuild": "bun ../../scripts/ensure-dist.mjs",
     "build": "wrangler deploy --dry-run --outdir dist",
     "predeploy": "bun ../../scripts/ensure-dist.mjs",
