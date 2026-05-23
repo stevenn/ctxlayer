@@ -1,15 +1,15 @@
 # Working in this repo as an agent
 
 Optimised for Claude-on-the-web and mobile sessions. Keep replies terse,
-operate via slash commands and `pnpm` scripts, and prefer one-shot verifies
-over interactive flows.
+operate via slash commands and `bun run` scripts, and prefer one-shot
+verifies over interactive flows.
 
 ## Golden path for any change
 
-1. `pnpm verify` — typecheck + unit/integration tests + smoke.
+1. `bun run verify` — typecheck + unit/integration tests + smoke.
 2. Commit with a present-tense, "why" focused message.
 3. `git push -u origin <branch>` and open a PR with `gh pr create`.
-4. CI runs the same `pnpm verify` plus a preview deploy.
+4. CI runs the same `bun run verify` plus a preview deploy.
 
 ## Where things live
 

@@ -6,9 +6,9 @@ Run a full smoke pass and report back as a compact text table — no
 screenshots, mobile-friendly.
 
 Steps:
-1. `pnpm build` — abort and report if this fails.
-2. `pnpm -F worker deploy:preview` — capture the preview URL.
-3. `node scripts/smoke.mjs <preview-url>` — runs:
+1. `bun run build` — abort and report if this fails.
+2. `bun --filter='@ctxlayer/worker' run deploy:preview` — capture the preview URL.
+3. `bun scripts/smoke.mjs <preview-url>` — runs:
    - `GET /api/health`
    - `GET /api/version`
    - `GET /.well-known/oauth-authorization-server`

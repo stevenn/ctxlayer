@@ -33,14 +33,14 @@ The full plan lives at **`docs/PLAN.md`**. Read it first.
 ## How a Claude session should work in this repo
 
 1. The SessionStart hook in `.claude/settings.json` runs
-   `pnpm install --frozen-lockfile`.
+   `bun install --frozen-lockfile`.
 2. Use the slash commands in `.claude/commands/`:
    - `/smoke` — deploy a preview + hit smoke endpoints + print a status table.
    - `/migrate` — apply pending D1 migrations.
    - `/seed` — load fixture upstreams + docs into local D1.
    - `/snapshot <slug>` — rebuild a single Daytona snapshot (M4+).
    - `/deploy:preview` — deploy a versioned preview and print the URL.
-3. Before pushing: `pnpm verify` (typecheck + tests + smoke).
+3. Before pushing: `bun run verify` (typecheck + tests + smoke).
 
 ## Conventions
 

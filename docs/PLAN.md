@@ -66,12 +66,12 @@ The repo is currently empty (only `README.md` + initial commit). This is greenfi
 
 ## Directory layout
 
-`pnpm` workspace, single deployable Worker, SPA shipped via Workers Assets.
+Bun workspace, single deployable Worker, SPA shipped via Workers Assets.
 
 ```
 ctxlayer/
   wrangler.toml
-  package.json  pnpm-workspace.yaml  tsconfig.base.json
+  package.json  bunfig.toml  tsconfig.base.json
   apps/
     worker/
       src/
@@ -339,7 +339,7 @@ Vars: `DAYTONA_API_URL` (default Daytona Cloud endpoint), `DAYTONA_DEFAULT_IDLE_
 
 Each milestone is independently deployable and demoable.
 
-- **M1 — Skeleton (1 wk)**: pnpm workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001+0002, Google/GitHub sign-in with allowlist, `/api/me`. *Demo*: sign in, see your email.
+- **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001+0002, Google/GitHub sign-in with allowlist, `/api/me`. *Demo*: sign in, see your email.
 - **M2 — Docs + RAG (1.5 wk)**: BlockNote editor with REST save (no collab yet), R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`, doc resources. *Demo*: Claude Desktop searches internal docs via MCP.
 - **M3 — Realtime collab (1 wk)**: `DocRoomDO` with Yjs + WS hibernation, BlockNote switched from REST to Yjs over `/collab/:id`, snapshot/revision/reindex chain. *Demo*: two browser tabs edit live; MCP search reflects changes within seconds.
 - **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)**: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk` (`getOrReadySandbox`, `refreshActivity`, `destroy`), one pre-baked Daytona snapshot for a reference stdio MCP server (e.g. `@modelcontextprotocol/server-github` + `supergateway`), env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy (works for both HTTP and stdio_daytona transports). *Demo*: (a) Notion HTTP MCP added, user pastes token, agent calls `notion__search_pages`; (b) GitHub stdio MCP added (Daytona snapshot), user pastes PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle.
@@ -365,7 +365,7 @@ Each milestone is independently deployable and demoable.
 - **Daytona cost scaling**: per-user × per-stdio-upstream active sandboxes. 100 users × 3 stdio upstreams ≈ up to 300 concurrent sandboxes at peak. Mitigations: aggressive `idleTimeoutSeconds`, `MAX_SANDBOXES_PER_USER` quota enforced at provision time, admin UI showing live sandbox count + cost-per-day projection. Re-evaluate at M6 with real usage data.
 - **Daytona vendor lock-in**: `apps/worker/src/upstream/daytona.ts` is a single file; keep the interface narrow (`getOrReadySandbox`, `refreshActivity`, `destroy`, `list`) so swapping to E2B / Northflank / self-hosted Daytona later is a one-file change.
 - **Daytona availability dependence**: if Daytona Cloud is down, stdio upstreams are down. HTTP upstreams remain unaffected. Surface this in the admin UI status panel and add a circuit breaker that fast-fails stdio tool calls after N consecutive sandbox-create failures.
-- **Sandbox snapshot drift**: stdio MCP servers update frequently; snapshots go stale. Build a `pnpm rebuild-snapshot:<slug>` script that rebuilds + uploads new snapshots, and surface the snapshot's pinned package version in the admin UI.
+- **Sandbox snapshot drift**: stdio MCP servers update frequently; snapshots go stale. Build a `bun run rebuild-snapshot:<slug>` script that rebuilds + uploads new snapshots, and surface the snapshot's pinned package version in the admin UI.
 - **Credential exposure inside the sandbox**: tokens flow as env vars into the container. Anyone with sandbox shell access (via Daytona's exec API or web preview) could `printenv` them. Mitigations: disable interactive shells on production snapshots, restrict `DAYTONA_API_KEY` scope to "execute + lifecycle, no exec/preview", per-user sandboxes so a leak is bounded to that user's creds.
 - **MCP spec churn**: pin `@modelcontextprotocol/sdk` and `agents`; support both Streamable HTTP and SSE today; revisit when SSE fully deprecates.
 - **OAuth UX from inside the agent**: handled by doing all `user_oauth` connection in the SPA before the agent session — flag this prominently in `/mcp-setup`.
@@ -995,8 +995,8 @@ The repo is built to be operated **primarily from cloud Claude sessions (includi
 ### E1. Cloud-native session bootstrap
 
 - **`.claude/settings.json`** at the repo root with:
-  - `permissions.allow` allowlist tailored for this project's common commands (`pnpm *`, `wrangler d1 *`, `wrangler tail`, `git status|log|diff|add|commit|push`, `gh pr *`).
-  - A **SessionStart hook** that runs `pnpm install --frozen-lockfile` and `pnpm run env:check` so every new web/mobile session is ready to run/test in ≤30s.
+  - `permissions.allow` allowlist tailored for this project's common commands (`bun *`, `bunx *`, `wrangler d1 *`, `wrangler tail`, `git status|log|diff|add|commit|push`, `gh pr *`).
+  - A **SessionStart hook** that runs `bun install --frozen-lockfile` and `bun run env:check` so every new web/mobile session is ready to run/test in ≤30s.
   - Environment variables setting `WRANGLER_DEV_REGISTRY` and `WRANGLER_LOG=warn` to keep output mobile-readable.
 - **`CLAUDE.md`** at root: 1-page architecture briefing + pointers to key files. Future Claude sessions land here first.
 - **`.claude/commands/*`** custom slash commands tuned for this project:
@@ -1008,16 +1008,16 @@ The repo is built to be operated **primarily from cloud Claude sessions (includi
 
 ### E2. Local dev DX (for when someone *is* at a desktop)
 
-- `pnpm dev` starts:
+- `bun run dev` starts:
   - Vite dev server for the SPA on `:5173`.
   - `wrangler dev --persist-to .wrangler/state` for the Worker on `:8787` with **Miniflare** local emulation: D1 (sqlite file), KV (sqlite), R2 (filesystem), Queues (in-memory), Durable Objects.
   - A small `mock-daytona` process on `:9000` (Node) implementing the subset of Daytona's API we use, backed by `docker run` locally. Toggled by env `DAYTONA_API_URL=http://localhost:9000`.
-- `pnpm dev:no-daytona` — same but with the Daytona client stubbed to "stdio upstreams disabled" (useful when Docker isn't around, e.g. cloud sessions without privileged containers).
-- `.dev.vars.example` checked in with placeholders; `.dev.vars` gitignored. `pnpm setup` copies the example and prompts for the secrets you need (or accepts a `--non-interactive` flag for cloud sessions to use sensible test defaults).
+- `bun run dev:no-daytona` — same but with the Daytona client stubbed to "stdio upstreams disabled" (useful when Docker isn't around, e.g. cloud sessions without privileged containers).
+- `.dev.vars.example` checked in with placeholders; `.dev.vars` gitignored. `bun run setup` copies the example and prompts for the secrets you need (or accepts a `--non-interactive` flag for cloud sessions to use sensible test defaults).
 
 ### E3. Test harness (cloud + local parity)
 
-Three layers, all runnable as `pnpm test`, `pnpm test:int`, `pnpm test:e2e`:
+Three layers, all runnable as `bun run test`, `bun run test:int`, `bun run test:e2e`:
 
 | Layer | Runner | Scope | When |
 |---|---|---|---|
@@ -1047,9 +1047,9 @@ Optimisations specifically for typing into Claude on a phone:
   1. Deploys a preview.
   2. Hits a hard-coded set of endpoints (`/api/health`, `/api/me` with a baked-in test token, `/mcp` `initialize` + `tools/list`).
   3. Returns a compact text status table — no screenshots required.
-- **Verbose-by-default `pnpm` scripts**: every script prints what it's about to do and a single-line summary on completion. No spinners (mobile transcripts hate them).
-- **`pnpm verify`** — composite command: typecheck + unit + integration + smoke. Returns a final pass/fail table. Designed to fit on one phone screen.
-- **`wrangler tail` aliases** — `pnpm logs` (errors only), `pnpm logs:all`, `pnpm logs:mcp` (filtered to /mcp routes). All print as plain text.
+- **Verbose-by-default scripts**: every `bun run` script prints what it's about to do and a single-line summary on completion. No spinners (mobile transcripts hate them).
+- **`bun run verify`** — composite command: typecheck + unit + integration + smoke. Returns a final pass/fail table. Designed to fit on one phone screen.
+- **`wrangler tail` aliases** — `bun run logs` (errors only), `bun run logs:all`, `bun run logs:mcp` (filtered to /mcp routes). All print as plain text.
 - **Curl-bot test tokens** — a long-lived non-prod OAuth client whose secret is in CI secret env vars, used by smoke scripts. Scoped to a "test" user that doesn't appear in real usage rollups.
 - **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the strict module-size cap (~200 lines), the test-first cadence. Reduces token cost of every future session.
 - **Repository-level `.claude/output-style.json`** sets terse, mobile-friendly defaults for AI replies in this repo.
@@ -1082,7 +1082,7 @@ Added by Section E:
 1. Sign in to claude.ai/code, open the ctxlayer repo as a web session.
 2. Run `/smoke` to confirm the preview deploy works.
 3. Read `CLAUDE.md` (5min).
-4. Run `pnpm verify` locally OR in the cloud session.
+4. Run `bun run verify` locally OR in the cloud session.
 5. Pick a "good first issue" labelled task — every milestone backlog item is sized to fit one PR ≤ 400 LoC.
 
 ---

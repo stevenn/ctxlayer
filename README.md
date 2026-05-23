@@ -16,10 +16,10 @@ agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
 ## Quickstart
 
 ```bash
-pnpm install
+bun install
 cp .dev.vars.example .dev.vars   # fill in secrets
-pnpm dev                          # runs Vite (5173) + wrangler dev (8787)
-pnpm verify                       # typecheck + tests + smoke
+bun run dev                       # runs Vite (5173) + wrangler dev (8787)
+bun run verify                    # typecheck + tests + smoke
 ```
 
 Cloud resources have to be created once before deploy:
@@ -32,7 +32,7 @@ wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine
 ```
 
 Then replace the `<TODO>` IDs in `wrangler.toml` with the values printed by
-those commands and run `pnpm migrate:remote`.
+those commands and run `bun run migrate:remote`.
 
 ## Current state
 

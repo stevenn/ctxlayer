@@ -1,0 +1,3 @@
+# Bun config. Use the text lockfile (bun.lock) so PR diffs are reviewable.
+[install]
+saveTextLockfile = true

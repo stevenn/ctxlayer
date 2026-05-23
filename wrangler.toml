@@ -4,7 +4,7 @@ compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
 
 # SPA shipped from this Worker. The `dist` directory is produced by
-# `pnpm build:web`. API/MCP routes are evaluated before the Asset
+# `bun run build:web`. API/MCP routes are evaluated before the Asset
 # resolver so they don't get shadowed by the SPA index.html.
 [assets]
 directory = "./apps/web/dist"

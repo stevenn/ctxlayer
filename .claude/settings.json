@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(pnpm:*)",
+      "Bash(bun:*)",
+      "Bash(bunx:*)",
       "Bash(npx:*)",
       "Bash(wrangler:*)",
       "Bash(node:*)",
@@ -34,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "pnpm install --frozen-lockfile 2>&1 | tail -5 || true"
+            "command": "bun install --frozen-lockfile 2>&1 | tail -5 || true"
           }
         ]
       }
