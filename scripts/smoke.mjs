@@ -5,6 +5,14 @@
 const base = (process.argv[2] ?? process.env.CTXLAYER_URL ?? 'http://localhost:8787')
   .replace(/\/$/, '')
 
+// Accept the mkcert-issued cert when hitting localhost. Bun/Node fetch
+// doesn't pick up the macOS keychain CA store by default, so
+// `https://localhost:8787` otherwise fails with "self signed
+// certificate". Restricted to localhost so smoke against a real host
+// still verifies TLS.
+const isLocalHttps = /^https:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(base)
+const tlsExtra = isLocalHttps ? { tls: { rejectUnauthorized: false } } : {}
+
 const checks = [
   { name: 'health',     method: 'GET',  path: '/api/health',   expect: [200, 503] },
   { name: 'version',    method: 'GET',  path: '/api/version',  expect: [200] },
@@ -48,7 +56,12 @@ for (const c of checks) {
   const url = base + c.path
   const start = Date.now()
   try {
-    const res = await fetch(url, { method: c.method, headers: c.headers, body: c.body })
+    const res = await fetch(url, {
+      method: c.method,
+      headers: c.headers,
+      body: c.body,
+      ...tlsExtra
+    })
     const ms = Date.now() - start
     const ok = c.expect.includes(res.status)
     rows.push({ name: c.name, ok, status: res.status, ms })
