@@ -22,6 +22,16 @@ export const DocSlug = z
   .max(96)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase, digits and dashes only')
 
+// Compact user shape for "created by" / "last edited by" attributions.
+// `null` when the underlying user row was deleted out from under the
+// doc (FK is informational in D1; rows may dangle).
+export const UserSummary = z.object({
+  id: z.string(),
+  email: z.string(),
+  name: z.string().nullish()
+})
+export type UserSummary = z.infer<typeof UserSummary>
+
 export const DocSummary = z.object({
   id: z.string(),
   title: z.string(),
@@ -29,7 +39,12 @@ export const DocSummary = z.object({
   kind: DocKind,
   createdAt: z.number(),
   updatedAt: z.number(),
-  createdBy: z.string().nullish()
+  // The original author (documents.created_by joined to users).
+  createdBy: UserSummary.nullish(),
+  // The author of the most recent revision (documents.current_rev_id
+  // → doc_revisions.author_id → users). Null for freshly-created docs
+  // that have no revisions yet.
+  updatedBy: UserSummary.nullish()
 })
 export type DocSummary = z.infer<typeof DocSummary>
 

@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { SignIn } from './routes/sign-in'
-import { Docs } from './routes/docs'
+import { DocsList } from './routes/docs-list'
+import { DocsEditor } from './routes/docs-editor'
 import { Upstreams } from './routes/upstreams'
 import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
@@ -20,7 +21,8 @@ export function App() {
       <Route path="/sign-in" element={<SignIn />} />
       <Route path="/app" element={<Shell />}>
         <Route index element={<Navigate to="/app/docs" replace />} />
-        <Route path="docs/*" element={<Docs />} />
+        <Route path="docs" element={<DocsList />} />
+        <Route path="docs/:id" element={<DocsEditor />} />
         <Route path="upstreams" element={<Upstreams />} />
         <Route path="mcp-setup" element={<McpSetup />} />
         <Route path="usage" element={<Usage />} />

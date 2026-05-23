@@ -35,7 +35,7 @@ import {
   patchDoc,
   recordRevision,
   softDeleteDoc,
-  type DocumentRow,
+  type DocumentWithUsersRow,
   type RevisionRow
 } from '../db/queries/docs'
 import {
@@ -177,7 +177,7 @@ docsRoute.post('/:id/restore', async (c) => {
 
 // ----- shapers ------------------------------------------------------------
 
-function toSummary(row: DocumentRow): DocSummary {
+function toSummary(row: DocumentWithUsersRow): DocSummary {
   return {
     id: row.id,
     title: row.title,
@@ -186,6 +186,15 @@ function toSummary(row: DocumentRow): DocSummary {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     createdBy: row.created_by
+      ? { id: row.created_by, email: row.created_by_email ?? '', name: row.created_by_name }
+      : null,
+    // updatedBy is null until the doc has at least one revision. We
+    // do NOT fall back to createdBy here so the SPA can decide how to
+    // render the "never edited" case (and so a non-creator save shows
+    // up unambiguously).
+    updatedBy: row.updated_by_id
+      ? { id: row.updated_by_id, email: row.updated_by_email ?? '', name: row.updated_by_name }
+      : null
   }
 }
 

@@ -20,6 +20,34 @@ export interface DocumentRow {
   deleted_at: number | null
 }
 
+/**
+ * `DocumentRow` joined with `users` twice: once for the original author
+ * (created_by), once for the author of the latest revision (resolved
+ * via current_rev_id → doc_revisions.author_id). Both nullable: a
+ * freshly-created doc has no revisions yet; an author whose user row
+ * was deleted produces NULL on either join.
+ */
+export interface DocumentWithUsersRow extends DocumentRow {
+  created_by_email: string | null
+  created_by_name: string | null
+  updated_by_id: string | null
+  updated_by_email: string | null
+  updated_by_name: string | null
+}
+
+const SELECT_DOC_WITH_USERS = `
+  SELECT d.id, d.title, d.slug, d.kind, d.current_rev_id, d.r2_snapshot,
+         d.created_by, d.created_at, d.updated_at, d.deleted_at,
+         cu.email AS created_by_email,
+         cu.name  AS created_by_name,
+         ru.id    AS updated_by_id,
+         ru.email AS updated_by_email,
+         ru.name  AS updated_by_name
+  FROM documents d
+  LEFT JOIN users cu ON cu.id = d.created_by
+  LEFT JOIN doc_revisions r ON r.id = d.current_rev_id
+  LEFT JOIN users ru ON ru.id = r.author_id`
+
 export interface RevisionRow {
   id: string
   doc_id: string
@@ -30,23 +58,22 @@ export interface RevisionRow {
   created_at: number
 }
 
-export async function listDocs(env: Env): Promise<DocumentRow[]> {
+export async function listDocs(env: Env): Promise<DocumentWithUsersRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, title, slug, kind, current_rev_id, r2_snapshot, created_by, created_at, updated_at, deleted_at
-     FROM documents
-     WHERE deleted_at IS NULL
-     ORDER BY updated_at DESC`
-  ).all<DocumentRow>()
+    `${SELECT_DOC_WITH_USERS}
+     WHERE d.deleted_at IS NULL
+     ORDER BY d.updated_at DESC`
+  ).all<DocumentWithUsersRow>()
   return res.results ?? []
 }
 
-export async function getDocById(env: Env, id: string): Promise<DocumentRow | null> {
+export async function getDocById(env: Env, id: string): Promise<DocumentWithUsersRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, title, slug, kind, current_rev_id, r2_snapshot, created_by, created_at, updated_at, deleted_at
-     FROM documents WHERE id = ?1 AND deleted_at IS NULL`
+    `${SELECT_DOC_WITH_USERS}
+     WHERE d.id = ?1 AND d.deleted_at IS NULL`
   )
     .bind(id)
-    .first<DocumentRow>()
+    .first<DocumentWithUsersRow>()
   return row ?? null
 }
 
