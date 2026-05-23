@@ -14,10 +14,15 @@ agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
 **[`AGENTS.md`](AGENTS.md)**. Architectural conventions and gotchas baked
 into the M1 scaffold live in `docs/PLAN.md` **Section G**.
 
-## Quickstart
+## Quickstart (contributors hacking on ctxlayer)
+
+These steps are for **local development of this codebase** — running
+`bun run dev` on your own machine. End users of a deployed ctxlayer and
+operators deploying it to Cloudflare don't need any of this; see
+[Deploying ctxlayer](#deploying-ctxlayer) below.
 
 ```bash
-brew install mkcert nss           # macOS; see PLAN.md G11 for Linux/Windows
+brew install mkcert nss           # macOS contributors only; see PLAN.md G11 for Linux/Windows
 bun install
 cp .dev.vars.example .dev.vars    # fill in IdP secrets, ENCRYPTION_KEY, SESSION_COOKIE_SECRET
 bun run dev                       # vite https://localhost:5173 + wrangler https://localhost:8787
@@ -26,9 +31,16 @@ bun run verify                    # typecheck + tests + smoke
 
 The first `bun run dev` calls `scripts/setup-dev-tls.mjs` via the `predev`
 hook and generates a locally-trusted cert in `.dev-tls/`. Both Vite and
-Wrangler then serve HTTPS — required for the `__Host-` session cookie.
+Wrangler then serve HTTPS on localhost — required for the `__Host-`
+session cookie to work in dev. The cert never leaves your machine.
 
-Cloud resources have to be created once before deploy:
+## Deploying ctxlayer
+
+If you're standing up an instance of ctxlayer for your org (no source
+edits), you don't need `bun run dev` or `mkcert`. Cloudflare's edge
+provides real HTTPS for the public hostname automatically.
+
+Cloud resources have to be created once before the first deploy:
 
 ```bash
 wrangler d1 create ctxlayer
@@ -38,7 +50,9 @@ wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine
 ```
 
 Then replace the `<TODO>` IDs in `wrangler.toml` with the values printed by
-those commands and run `bun run migrate:remote`.
+those commands, configure your IdP secrets via `wrangler secret put`, set
+`PUBLIC_BASE_URL` to your real domain in `wrangler.toml [vars]`, and run
+`bun run migrate:remote` followed by `bun run deploy`.
 
 ## Useful scripts
 

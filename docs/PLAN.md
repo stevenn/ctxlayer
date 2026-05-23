@@ -1447,6 +1447,10 @@ Section F9. Wire them in as the admin UI gets built.
 
 ### G11. Local HTTPS for dev (mkcert)
 
+**Audience**: contributors hacking on this repo. Operators deploying
+ctxlayer and end users of a deployed instance don't need mkcert —
+Cloudflare's edge handles TLS for the public hostname.
+
 The `__Host-` session cookie prefix requires `Secure`, which the
 browser only honours over HTTPS. `wrangler dev` and `vite` both serve
 HTTPS in dev, sharing a `mkcert`-generated cert in `.dev-tls/`
