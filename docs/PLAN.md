@@ -339,7 +339,7 @@ Vars: `DAYTONA_API_URL` (default Daytona Cloud endpoint), `DAYTONA_DEFAULT_IDLE_
 
 Each milestone is independently deployable and demoable.
 
-- **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001–0004, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. *Demo*: sign in, see your email. **Current state: scaffold landed with conventions in Section G; sign-in leg is the remaining M1 work.**
+- **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001–0004, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. *Demo*: sign in, see your email. **Status: complete. Scaffold + sign-in leg landed; local HTTPS via mkcert (see Section G11).**
 - **M2 — Docs + RAG (1.5 wk)**: BlockNote editor with REST save (no collab yet), R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`, doc resources. *Demo*: Claude Desktop searches internal docs via MCP.
 - **M3 — Realtime collab (1 wk)**: `DocRoomDO` with Yjs + WS hibernation, BlockNote switched from REST to Yjs over `/collab/:id`, snapshot/revision/reindex chain. *Demo*: two browser tabs edit live; MCP search reflects changes within seconds.
 - **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)**: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk` (`getOrReadySandbox`, `refreshActivity`, `destroy`), one pre-baked Daytona snapshot for a reference stdio MCP server (e.g. `@modelcontextprotocol/server-github` + `supergateway`), env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy (works for both HTTP and stdio_daytona transports). *Demo*: (a) Notion HTTP MCP added, user pastes token, agent calls `notion__search_pages`; (b) GitHub stdio MCP added (Daytona snapshot), user pastes PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle.
@@ -1444,3 +1444,39 @@ gotchas the rest of the build should respect.
 The full set of admin onboarding guardrails (visibility blast-radius
 counter, "tags ≠ ACL" hint, first-time-setup banner) lives in
 Section F9. Wire them in as the admin UI gets built.
+
+### G11. Local HTTPS for dev (mkcert)
+
+The `__Host-` session cookie prefix requires `Secure`, which the
+browser only honours over HTTPS. `wrangler dev` and `vite` both serve
+HTTPS in dev, sharing a `mkcert`-generated cert in `.dev-tls/`
+(gitignored).
+
+- `scripts/setup-dev-tls.mjs` (idempotent, runs as `predev` on both
+  worker and web). Checks `mkcert` is on PATH and prints install
+  instructions if missing.
+- `wrangler.toml` `[dev]` block: `local_protocol = "https"`,
+  `https_key_path`/`https_cert_path` pointing into `.dev-tls/`.
+- `apps/web/vite.config.ts`: reads the same cert + key into
+  `server.https`; proxies use `target: 'https://localhost:8787'` with
+  `secure: false` to trust the local CA.
+- IdP redirect URIs in dev: `https://localhost:8787/idp/<idp>/callback`.
+  Both Google and GitHub accept `localhost` as a valid redirect host.
+- Prerequisite for new contributors: `brew install mkcert nss` (macOS)
+  or the platform equivalent.
+
+### G12. SPA session cookie shape
+
+- Name: `__Host-ctx_session`. Attributes: `HttpOnly`, `Secure`,
+  `SameSite=Lax`, `Path=/`, `Max-Age=2592000` (30d).
+- Body: `<base64url(payload-json)>.<base64url(hmac-sha256)>`. Payload
+  is `{ userId, role, iat, exp }` signed with
+  `SESSION_COOKIE_SECRET` via WebCrypto.
+- Verification is constant-time (`crypto.subtle.verify`).
+- The OAuth redirect dance uses a sibling cookie
+  `__Host-ctx_oauth_state` (TTL 10 min) carrying `{state, codeVerifier,
+  returnTo, iat, exp}` so the callback can match state and exchange
+  PKCE without server-side state storage.
+- The MCP-client OAuth issuer (M2) will produce its own tokens via
+  `workers-oauth-provider` — those tokens are independent of the SPA
+  session cookie (separate lifecycles, separate signing keys).

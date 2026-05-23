@@ -4,6 +4,9 @@ import { healthRoute } from './api/health'
 import { meRoute } from './api/me'
 import { versionRoute } from './api/version'
 import { configRoute } from './api/config'
+import { authRoute } from './api/auth'
+import { googleIdpRoute } from './idp/google'
+import { githubIdpRoute } from './idp/github'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 
@@ -16,6 +19,13 @@ app.route('/api/health', healthRoute)
 app.route('/api/version', versionRoute)
 app.route('/api/me', meRoute)
 app.route('/api/config', configRoute)
+app.route('/api/auth', authRoute)
+
+// IdP sign-in (M1). The SPA hits these from /sign-in; both providers
+// redirect back to /app/docs (or the `return_to` param) after issuing
+// the session cookie.
+app.route('/idp/google', googleIdpRoute)
+app.route('/idp/github', githubIdpRoute)
 
 // Placeholders for routes wired up in later milestones. Both the bare path
 // and any subpath need to be matched so MCP clients hitting `/mcp/<session>`
@@ -30,7 +40,6 @@ app.all('/oauth/*', (c) => c.text('OAuth provider coming in M2', 501))
 app.all('/.well-known/oauth-authorization-server', (c) =>
   c.text('OAuth metadata coming in M2', 501)
 )
-app.all('/idp/*', (c) => c.text('IdP sign-in coming in M1', 501))
 app.all('/collab/*', (c) => c.text('Realtime collab coming in M3', 501))
 
 // notFound fires only for paths in `run_worker_first` that no Hono route

@@ -97,8 +97,19 @@ max_batch_timeout = 30
 [triggers]
 crons = ["0 3 * * *"]  # nightly: prune usage_events, refresh upstream_tools
 
+# Local HTTPS for dev. mkcert-generated cert lives in .dev-tls/ (gitignored);
+# `scripts/setup-dev-tls.mjs` runs as the `predev` hook on both worker and
+# web. HTTPS is required because the `__Host-` session cookie prefix mandates
+# Secure, which browsers only honour over HTTPS.
+[dev]
+ip = "localhost"
+port = 8787
+local_protocol = "https"
+https_key_path = ".dev-tls/localhost-key.pem"
+https_cert_path = ".dev-tls/localhost.pem"
+
 [vars]
-PUBLIC_BASE_URL = "http://localhost:8787"
+PUBLIC_BASE_URL = "https://localhost:8787"
 ALLOWED_GOOGLE_HD = ""           # e.g. "acme.com"; empty disables Google sign-in
 ALLOWED_GITHUB_ORG = ""          # e.g. "acme-inc"; empty disables GitHub sign-in
 ADMIN_EMAILS = ""                # comma-separated bootstrap admins

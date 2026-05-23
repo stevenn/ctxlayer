@@ -17,11 +17,16 @@ into the M1 scaffold live in `docs/PLAN.md` **Section G**.
 ## Quickstart
 
 ```bash
+brew install mkcert nss           # macOS; see PLAN.md G11 for Linux/Windows
 bun install
-cp .dev.vars.example .dev.vars   # fill in secrets
-bun run dev                       # vite (5173) + wrangler dev (8787)
+cp .dev.vars.example .dev.vars    # fill in IdP secrets, ENCRYPTION_KEY, SESSION_COOKIE_SECRET
+bun run dev                       # vite https://localhost:5173 + wrangler https://localhost:8787
 bun run verify                    # typecheck + tests + smoke
 ```
+
+The first `bun run dev` calls `scripts/setup-dev-tls.mjs` via the `predev`
+hook and generates a locally-trusted cert in `.dev-tls/`. Both Vite and
+Wrangler then serve HTTPS — required for the `__Host-` session cookie.
 
 Cloud resources have to be created once before deploy:
 
@@ -39,7 +44,7 @@ those commands and run `bun run migrate:remote`.
 
 | Command | What it does |
 |---|---|
-| `bun run dev` | Vite (5173) + wrangler dev (8787) concurrently |
+| `bun run dev` | Vite (https://localhost:5173) + wrangler dev (https://localhost:8787) concurrently |
 | `bun run build` | Web (Vite) + worker (wrangler dry-run) |
 | `bun run typecheck` | TypeScript across all workspaces |
 | `bun run smoke` | Hit `/api/health`, `/api/version`, `/api/config`, `/api/me`, `/.well-known/oauth-authorization-server`, `POST /mcp`, `/sign-in`. Pass `SMOKE_ME_OK=1` if your CI sends a session cookie. |
@@ -49,27 +54,24 @@ those commands and run `bun run migrate:remote`.
 
 ## Current state
 
-**M1 scaffold landed + code-reviewed.** Two finder passes (5 angles + a
-gap sweep) surfaced ~30 candidates; the actionable ones were patched in
-place (see commit `9e62c26`). What's wired:
+**M1 complete.** Skeleton + Google/GitHub sign-in + real `/api/me` are in.
+What's wired:
 
 - Bun workspace, Vite SPA, `wrangler.toml` with every binding declared
-  (placeholder IDs for D1/KV/R2/Vectorize);
+  (placeholder IDs for D1/KV/R2/Vectorize); local HTTPS via mkcert.
 - D1 migrations `0001`–`0004` (users / upstreams / docs / usage rollups
-  / org IA — teams, products, upstream visibility, doc tags);
+  / org IA — teams, products, upstream visibility, doc tags).
 - Worker entry with `/api/health`, `/api/version`, `/api/config`,
-  `/api/me` (returns 401 until sign-in lands), 501 placeholders for
-  `/mcp(/*)`, `/sse(/*)`, `/oauth/*`, `/idp/*`, `/collab/*`,
-  `/.well-known/*`;
+  `/api/me` (real, behind `__Host-ctx_session`), `/api/auth/signout`,
+  `/idp/google/{start,callback}`, `/idp/github/{start,callback}` with
+  domain + org allowlist enforcement; 501 placeholders for `/mcp(/*)`,
+  `/sse(/*)`, `/oauth/*`, `/.well-known/*`, `/collab/*`.
 - React SPA shell with Docs / Upstreams / MCP-setup / Usage routes for
-  users and stubbed admin routes for M5;
-- `scripts/ensure-dist.mjs` (pre-deploy placeholder for Workers Assets),
-  `scripts/seed.mjs` (safe `--local` default), `scripts/smoke.mjs`
-  (env-toggled expectations);
-- `CLAUDE.md` / `AGENTS.md` / `.claude/settings.json` (SessionStart hook
-  that refuses to install without `bun.lock`) / `.claude/commands/*`
-  slash commands.
+  users, stubbed admin routes for M5, sign-in page that renders friendly
+  errors from the IdP redirect dance.
+- Per-user encrypted-at-rest credential helpers + queue scaffolding
+  ready for M2.
 
-Next: M1's IdP sign-in leg (Google + GitHub callbacks, allowlist
-enforcement) and a real `/api/me`. See `docs/PLAN.md` milestone
-breakdown.
+Next: **M2** — `McpAgent` mounted at `/mcp` + `/sse`, `workers-oauth-provider`
+wired, BlockNote editor with REST save, Vectorize-backed RAG, built-in
+tools `search_docs` / `get_doc`. See `docs/PLAN.md` milestone breakdown.

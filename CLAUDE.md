@@ -106,6 +106,13 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 skeleton scaffolded + code-reviewed.** Next work is M1's sign-in
-leg (Google + GitHub IdP + allowlist + a real `/api/me`); the org IA
-admin pages (Section F) and the rest of M1's REST surface follow.
+**M1 complete.** Skeleton + Google/GitHub sign-in + `/api/me` are wired.
+Next work is **M2** — `McpAgent` at `/mcp`+`/sse`,
+`workers-oauth-provider`, BlockNote editor with REST save, Vectorize
+RAG, built-in MCP tools.
+
+Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
+`.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
+`{userId, role, iat, exp}` body keyed by `SESSION_COOKIE_SECRET`; the
+sibling `__Host-ctx_oauth_state` cookie carries the redirect-dance
+state. See Section G11–G12 in `docs/PLAN.md` for full rationale.
