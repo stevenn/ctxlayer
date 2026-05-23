@@ -4,14 +4,24 @@ compatibility_date = "2026-04-01"
 compatibility_flags = ["nodejs_compat"]
 
 # SPA shipped from this Worker. The `dist` directory is produced by
-# `bun run build:web`. API/MCP routes are evaluated before the Asset
-# resolver so they don't get shadowed by the SPA index.html.
+# `bun run build:web`; `scripts/ensure-dist.mjs` lays down a placeholder
+# index.html on cold checkouts so `wrangler dev` and `wrangler deploy`
+# don't fail before the first real build.
+#
+# `not_found_handling = "single-page-application"` tells Workers Assets
+# to serve `index.html` for unknown SPA paths, replacing the old
+# hand-rolled fallback in apps/worker/src/index.ts. API/MCP/oauth routes
+# are listed in `run_worker_first` so the Worker handles them before
+# the asset resolver gets a chance.
 [assets]
 directory = "./apps/web/dist"
 binding = "ASSETS"
+not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
+  "/mcp",
   "/mcp/*",
+  "/sse",
   "/sse/*",
   "/oauth/*",
   "/idp/*",
@@ -56,9 +66,15 @@ class_name = "McpSessionDO"
 name = "DOC_ROOM_DO"
 class_name = "DocRoomDO"
 
+# Durable Object class migrations. We use `new_classes` (not
+# `new_sqlite_classes`) for the M1 stubs because the classes don't use
+# `ctx.storage.sql` yet — choosing SQLite storage at class creation locks
+# the backend permanently. When M2/M3 wire SQL-backed state, a new
+# migration tag with `new_sqlite_classes` (for fresh classes) or a
+# rename migration is appropriate.
 [[migrations]]
 tag = "v1"
-new_sqlite_classes = ["McpSessionDO", "DocRoomDO"]
+new_classes = ["McpSessionDO", "DocRoomDO"]
 
 [[queues.producers]]
 binding = "USAGE_QUEUE"

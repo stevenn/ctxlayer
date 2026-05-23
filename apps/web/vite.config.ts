@@ -1,20 +1,23 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
-// Vite dev server runs on 5173 and proxies API/MCP traffic to the local
-// Worker (`wrangler dev`) on 8787. In production the Worker serves both.
+// Vite dev server (5173) proxies API / MCP / OAuth / collab WS traffic to
+// the local Worker (`wrangler dev` on 8787). `target` must be http(s)://
+// even for WS upgrades; http-proxy handles the upgrade via `ws: true`.
+// `changeOrigin: true` rewrites the Host header so the Worker sees its
+// own origin and signed cookies round-trip.
 export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
     proxy: {
-      '/api': 'http://localhost:8787',
-      '/oauth': 'http://localhost:8787',
-      '/idp': 'http://localhost:8787',
-      '/mcp': 'http://localhost:8787',
-      '/sse': 'http://localhost:8787',
-      '/collab': { target: 'ws://localhost:8787', ws: true },
-      '/.well-known': 'http://localhost:8787'
+      '/api': { target: 'http://localhost:8787', changeOrigin: true },
+      '/oauth': { target: 'http://localhost:8787', changeOrigin: true },
+      '/idp': { target: 'http://localhost:8787', changeOrigin: true },
+      '/mcp': { target: 'http://localhost:8787', changeOrigin: true },
+      '/sse': { target: 'http://localhost:8787', changeOrigin: true },
+      '/collab': { target: 'http://localhost:8787', changeOrigin: true, ws: true },
+      '/.well-known': { target: 'http://localhost:8787', changeOrigin: true }
     }
   },
   build: {

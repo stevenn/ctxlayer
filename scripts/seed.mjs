@@ -1,11 +1,17 @@
-#!/usr/bin/env node
-// Seed fixtures via `wrangler d1 execute`. Real seed payloads land with M2/M4
-// — this is the entry point so the slash command works today.
+#!/usr/bin/env bun
+// Load fixture upstreams + docs into D1. Defaults to --local; --remote
+// must be explicit so a stray invocation can't touch production.
 
 import { spawnSync } from 'node:child_process'
 
-const local = process.argv.includes('--local')
-const target = local ? '--local' : '--remote'
+const args = process.argv.slice(2)
+const remote = args.includes('--remote')
+const target = remote ? '--remote' : '--local'
+
+if (remote) {
+  console.log('⚠  Seeding REMOTE D1 (production). Ctrl-C within 3s to abort.')
+  await new Promise((r) => setTimeout(r, 3000))
+}
 
 console.log(`Seeding D1 (${target})... (no fixtures yet; placeholder)`)
 

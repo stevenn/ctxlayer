@@ -1,9 +1,16 @@
 import { z } from 'zod'
 
+// Known roles; we keep the enum closed because role drives admin gating.
+// Adding a role is a deliberate schema migration.
 export const Role = z.enum(['user', 'admin'])
 export type Role = z.infer<typeof Role>
 
-export const Idp = z.enum(['google', 'github'])
+// Identity providers. Known IdPs are validated strictly; unknown values
+// fall through as `z.string()` so adding an OIDC provider in M5 doesn't
+// break existing clients that haven't redeployed.
+export const KnownIdp = z.enum(['google', 'github'])
+export type KnownIdp = z.infer<typeof KnownIdp>
+export const Idp = z.union([KnownIdp, z.string()])
 export type Idp = z.infer<typeof Idp>
 
 export const HealthResponse = z.object({
@@ -21,14 +28,21 @@ export const HealthResponse = z.object({
 })
 export type HealthResponse = z.infer<typeof HealthResponse>
 
+// `.nullish()` so that the Worker can either send `null` or omit the
+// field entirely (JSON.stringify drops undefined). The previous
+// `.nullable()` rejected payloads that omitted the key and caused the
+// SPA to bounce to /sign-in on any user without a display name.
 export const MeResponse = z.object({
   id: z.string(),
-  email: z.string().email(),
-  name: z.string().nullable(),
-  avatarUrl: z.string().url().nullable(),
+  // GitHub allows users with no public email; accept any non-empty
+  // string. The actual email-shape validation happens server-side at
+  // sign-in time.
+  email: z.string().min(1),
+  name: z.string().nullish(),
+  avatarUrl: z.string().nullish(),
   role: Role,
   idp: Idp,
-  lastSeenAt: z.number().nullable()
+  lastSeenAt: z.number().nullish()
 })
 export type MeResponse = z.infer<typeof MeResponse>
 
@@ -37,3 +51,10 @@ export const VersionResponse = z.object({
   builtAt: z.string()
 })
 export type VersionResponse = z.infer<typeof VersionResponse>
+
+// `/api/config` — public, drives SPA sign-in UI.
+export const ConfigResponse = z.object({
+  idps: z.array(KnownIdp),
+  publicBaseUrl: z.string()
+})
+export type ConfigResponse = z.infer<typeof ConfigResponse>

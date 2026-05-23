@@ -24,7 +24,15 @@ export const TeamMembership = TeamRef.extend({
 })
 export type TeamMembership = z.infer<typeof TeamMembership>
 
-// `list_my_context()` result + GET /api/me/context body.
+/**
+ * `list_my_context()` result + GET /api/me/context body.
+ *
+ * - `accessibleUpstreams`: slugs (not ids) — agents reference upstreams
+ *   by slug everywhere else (tool namespacing, `list_upstreams()` output).
+ * - `defaultScope.teams` / `defaultScope.products`: ids (not slugs). The
+ *   server resolves these against doc_tags.tag_value which stores ids.
+ *   Slugs would force the server to denormalise.
+ */
 export const MyContext = z.object({
   teams: z.array(TeamMembership),
   products: z.array(ProductRef),

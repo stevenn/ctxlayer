@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "description": "Agent context layer — MCP service on Cloudflare with curated docs, upstream proxy, and usage analytics.",
   "type": "module",
+  "packageManager": "bun@1.3.11",
   "engines": {
     "bun": ">=1.3",
     "node": ">=22"
@@ -25,7 +26,8 @@
     "smoke": "bun ./scripts/smoke.mjs",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
-    "seed:local": "bun ./scripts/seed.mjs --local",
+    "seed:local": "bun ./scripts/seed.mjs",
+    "seed:remote": "bun ./scripts/seed.mjs --remote",
     "logs": "wrangler tail --format pretty --status error",
     "logs:all": "wrangler tail --format pretty",
     "logs:mcp": "wrangler tail --format pretty --search /mcp"

@@ -6,6 +6,10 @@
       "Bash(npx:*)",
       "Bash(wrangler:*)",
       "Bash(node:*)",
+      "Bash(gh pr:*)",
+      "Bash(gh issue:*)",
+      "Bash(gh run:*)",
+      "Bash(gh api:*)",
       "Bash(git status)",
       "Bash(git status:*)",
       "Bash(git diff)",
@@ -35,7 +39,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bun install --frozen-lockfile 2>&1 | tail -5 || true"
+            "command": "test -f bun.lock || { echo 'ctxlayer: bun.lock missing — refusing to install with unpinned versions. Commit or fetch the lockfile.' >&2; exit 1; }; bun install --frozen-lockfile 2>&1 | tail -5"
           }
         ]
       }

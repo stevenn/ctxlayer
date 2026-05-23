@@ -25,7 +25,7 @@ CREATE TABLE products (
 CREATE TABLE team_members (
   team_id    TEXT NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
   user_id    TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role       TEXT NOT NULL DEFAULT 'member',  -- 'member' | 'lead'
+  role       TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'lead')),
   created_at INTEGER NOT NULL,
   PRIMARY KEY (team_id, user_id)
 );
@@ -40,21 +40,26 @@ CREATE INDEX idx_team_products_product ON team_products(product_id);
 
 -- Visibility scope for upstream MCP servers. Additive: a user has access
 -- if ANY row matches. New upstreams have zero rows -> invisible until an
--- admin grants. scope_id is NULL when scope_kind='everyone'.
+-- admin grants. scope_id is '' when scope_kind='everyone' (SQLite forbids
+-- COALESCE in PK; empty-string sentinel keeps the PK column NOT NULL and
+-- the partial unique index below pins "at most one 'everyone' per upstream").
 CREATE TABLE upstream_visibility (
   upstream_id TEXT NOT NULL REFERENCES upstream_servers(id) ON DELETE CASCADE,
-  scope_kind  TEXT NOT NULL,                  -- 'everyone' | 'team' | 'product'
-  scope_id    TEXT,
-  PRIMARY KEY (upstream_id, scope_kind, COALESCE(scope_id, ''))
+  scope_kind  TEXT NOT NULL CHECK (scope_kind IN ('everyone', 'team', 'product')),
+  scope_id    TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (upstream_id, scope_kind, scope_id)
 );
+CREATE UNIQUE INDEX idx_uvis_everyone
+  ON upstream_visibility(upstream_id)
+  WHERE scope_kind = 'everyone';
 
 -- Tags on documents. Used for filtering / shaping default agent context.
 -- Does NOT gate read access -- every signed-in user can read every
 -- non-deleted document.
 CREATE TABLE doc_tags (
   doc_id    TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  tag_kind  TEXT NOT NULL,                    -- 'team' | 'product' | 'topic'
-  tag_value TEXT NOT NULL,                    -- team_id | product_id | free-form topic slug
+  tag_kind  TEXT NOT NULL CHECK (tag_kind IN ('team', 'product', 'topic')),
+  tag_value TEXT NOT NULL,
   PRIMARY KEY (doc_id, tag_kind, tag_value)
 );
 CREATE INDEX idx_doc_tags_lookup ON doc_tags(tag_kind, tag_value);

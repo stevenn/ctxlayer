@@ -1,27 +1,54 @@
 import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { fetchMe } from '../lib/api'
+import { ApiError, ApiSchemaError, fetchMe } from '../lib/api'
 import type { MeResponse } from '@ctxlayer/shared'
+
+type Status =
+  | { kind: 'loading' }
+  | { kind: 'ready'; me: MeResponse }
+  | { kind: 'error'; message: string }
 
 export function Shell() {
   const nav = useNavigate()
-  const [me, setMe] = useState<MeResponse | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [status, setStatus] = useState<Status>({ kind: 'loading' })
 
   useEffect(() => {
-    fetchMe().then(
-      (m) => {
-        setMe(m)
-        setLoading(false)
+    const ctrl = new AbortController()
+    fetchMe(ctrl.signal).then(
+      (me) => {
+        if (!ctrl.signal.aborted) setStatus({ kind: 'ready', me })
       },
-      () => {
-        nav('/sign-in', { replace: true })
+      (err) => {
+        if (ctrl.signal.aborted) return
+        if (err instanceof ApiError && err.status === 401) {
+          nav('/sign-in', { replace: true })
+          return
+        }
+        // Schema mismatch / network / 5xx: surface the error rather than
+        // bouncing to /sign-in, which would loop indefinitely.
+        const message =
+          err instanceof ApiSchemaError
+            ? 'The server returned an unexpected response shape.'
+            : err instanceof ApiError
+              ? `Sign-in check failed (HTTP ${err.status}).`
+              : 'Could not reach the server.'
+        setStatus({ kind: 'error', message })
       }
     )
+    return () => ctrl.abort()
   }, [nav])
 
-  if (loading) return <div style={{ padding: 32 }}>Loading…</div>
-  if (!me) return null
+  if (status.kind === 'loading') return <div style={{ padding: 32 }}>Loading…</div>
+  if (status.kind === 'error') {
+    return (
+      <div style={{ padding: 32, maxWidth: 480 }}>
+        <h2 style={{ marginTop: 0 }}>Something went wrong</h2>
+        <p style={{ color: 'var(--muted)' }}>{status.message}</p>
+        <button onClick={() => location.reload()}>Retry</button>
+      </div>
+    )
+  }
+  const { me } = status
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: '100%' }}>
@@ -46,6 +73,8 @@ export function Shell() {
             <div style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>Admin</div>
             <NavItem to="/app/admin/upstreams">Upstreams</NavItem>
             <NavItem to="/app/admin/users">Users</NavItem>
+            <NavItem to="/app/admin/teams">Teams</NavItem>
+            <NavItem to="/app/admin/products">Products</NavItem>
             <NavItem to="/app/admin/usage">Usage</NavItem>
             <NavItem to="/app/admin/audit">Audit</NavItem>
           </>

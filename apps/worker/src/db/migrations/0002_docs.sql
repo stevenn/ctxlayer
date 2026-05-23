@@ -4,7 +4,7 @@ CREATE TABLE documents (
   id             TEXT PRIMARY KEY,
   title          TEXT NOT NULL,
   slug           TEXT NOT NULL UNIQUE,
-  kind           TEXT NOT NULL DEFAULT 'doc',
+  kind           TEXT NOT NULL DEFAULT 'doc' CHECK (kind IN ('doc', 'prompt')),
   current_rev_id TEXT,
   r2_snapshot    TEXT,
   created_by     TEXT REFERENCES users(id),
