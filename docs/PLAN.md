@@ -339,7 +339,7 @@ Vars: `DAYTONA_API_URL` (default Daytona Cloud endpoint), `DAYTONA_DEFAULT_IDLE_
 
 Each milestone is independently deployable and demoable.
 
-- **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001+0002, Google/GitHub sign-in with allowlist, `/api/me`. *Demo*: sign in, see your email.
+- **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001–0004, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. *Demo*: sign in, see your email. **Current state: scaffold landed with conventions in Section G; sign-in leg is the remaining M1 work.**
 - **M2 — Docs + RAG (1.5 wk)**: BlockNote editor with REST save (no collab yet), R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`, doc resources. *Demo*: Claude Desktop searches internal docs via MCP.
 - **M3 — Realtime collab (1 wk)**: `DocRoomDO` with Yjs + WS hibernation, BlockNote switched from REST to Yjs over `/collab/:id`, snapshot/revision/reindex chain. *Demo*: two browser tabs edit live; MCP search reflects changes within seconds.
 - **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)**: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk` (`getOrReadySandbox`, `refreshActivity`, `destroy`), one pre-baked Daytona snapshot for a reference stdio MCP server (e.g. `@modelcontextprotocol/server-github` + `supergateway`), env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy (works for both HTTP and stdio_daytona transports). *Demo*: (a) Notion HTTP MCP added, user pastes token, agent calls `notion__search_pages`; (b) GitHub stdio MCP added (Daytona snapshot), user pastes PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle.
@@ -1316,3 +1316,131 @@ When we enable it later:
 - **Admin onboarding gap** — fresh install has no teams/products and no
   upstream visibility, so no user sees any proxied tools until setup is
   done. The admin dashboard shows a top-banner first-time-setup checklist.
+
+---
+
+## G. Conventions captured by the M1 scaffold
+
+Findings from the M1 scaffold pass + multi-angle code review (~30
+candidates surfaced, ~25 fixed in place). These are the load-bearing
+gotchas the rest of the build should respect.
+
+### G1. SQLite / D1
+
+- **No expressions in `PRIMARY KEY`**. SQLite rejects
+  `PRIMARY KEY (a, COALESCE(b, ''))`. When the conceptual key has a
+  nullable "self" column, use an empty-string sentinel on `NOT NULL`
+  columns and a partial `UNIQUE INDEX … WHERE col = 'sentinel'` to
+  enforce uniqueness. See `usage_rollups_daily.upstream_id` (`''` =
+  built-in / self) and `upstream_visibility.scope_id` (`''` =
+  `scope_kind='everyone'`).
+- **CHECK every enum-shaped column**. Every column whose Zod schema
+  is an `enum(...)` has a matching `CHECK (col IN (...))` in SQL.
+  Examples: `users.role`, `users.idp`, `upstream_servers.transport`,
+  `upstream_servers.auth_strategy`, `documents.kind`,
+  `usage_events.status`, `team_members.role`, `doc_tags.tag_kind`,
+  `upstream_visibility.scope_kind`. Keeps ad-hoc `wrangler d1 execute`
+  edits from inserting values the SPA can't render.
+
+### G2. Cloudflare Workers Assets
+
+- **SPA fallback belongs to Assets, not Hono.** Set
+  `not_found_handling = "single-page-application"` in `[assets]` and
+  let the asset resolver serve `/index.html` for unknown non-API paths.
+  A hand-rolled `app.notFound` that re-fetches `ASSETS` is fragile
+  (Request body re-use, POST→/index.html→405, etc.) and unnecessary.
+- **`run_worker_first` requires both bare + glob paths.** Routes like
+  `/mcp` and `/mcp/*` must both appear, because the Worker may handle
+  both the session-initiation request and per-session subpaths.
+- **`apps/web/dist` must exist before `wrangler dev`/`deploy`.** A
+  cold checkout has no dist directory. `scripts/ensure-dist.mjs` lays
+  a placeholder `index.html`; `predev`/`prebuild`/`predeploy` hooks in
+  `apps/worker/package.json` run it automatically.
+
+### G3. Durable Objects
+
+- **Storage backend is sticky.** Choosing `new_sqlite_classes` at first
+  migration is irreversible — the class is permanently SQLite-backed.
+  For stubs that don't use `ctx.storage.sql`, declare them under
+  `new_classes`. Promote to SQLite in a later migration tag when SQL
+  state actually lands.
+
+### G4. Hono / Workers entry
+
+- Type the entry as `ExportedHandler<Env>` so `queue` receives a typed
+  `ctx: ExecutionContext` and `scheduled` receives a
+  `ScheduledController` (not the legacy `ScheduledEvent`). Without
+  `ctx`, queue consumers can't `waitUntil` post-ack work.
+- **Queue dispatcher must handle unknown queue names.** Silently
+  returning `undefined` drops the batch. Log + `msg.retry()` instead.
+- **Consumers wrap each message in try/catch.** A poison message that
+  throws before `ack()` stalls the whole batch. Until a dead-letter
+  queue is configured, per-message `retry()` is the safety valve.
+
+### G5. Bun
+
+- **`packageManager` is pinned.** `bun@1.3.x` minimum. `engines.bun >=1.3`
+  is advisory; the `packageManager` field is the hard gate.
+- **`bun install --frozen-lockfile` does NOT fail on missing lockfile.**
+  The SessionStart hook explicitly tests for `bun.lock` first and
+  refuses to install otherwise.
+- **`bun --filter='*' run <script>` silently skips workspaces missing
+  the script.** Every workspace must declare stubs for `typecheck`,
+  `lint`, `test` (even `echo 'no tests yet'`) so cross-cuts catch
+  workspaces, not just whichever happened to have a real script.
+
+### G6. Schemas and API boundaries
+
+- **`.nullish()` for optional response fields.** `JSON.stringify` drops
+  `undefined`, so a server that omits a nullable field would otherwise
+  fail strict `.nullable()` parsing in the SPA. Use `.nullish()` (=
+  `.nullable().optional()`).
+- **Known-enum + open-string union for forward-compatible enums.**
+  `KnownIdp = z.enum(['google','github'])` + `Idp = KnownIdp |
+  z.string()` lets an OIDC provider land in M5 without breaking
+  existing clients. Same pattern when adding values is plausible.
+- **Distinguish HTTP failure from schema failure in fetch helpers.**
+  `ApiError(status)` vs `ApiSchemaError(path, cause)`. Treating any
+  failure as "not signed in" caused a redirect loop on schema drift;
+  the SPA now surfaces parse errors as visible UI and only redirects
+  on 401.
+
+### G7. Wrangler CLI
+
+- `wrangler versions upload` is the preview/staging command in wrangler
+  4. The old `wrangler versions deploy --x-versions` flag was retired.
+- D1/KV/Vectorize/R2 IDs in `wrangler.toml` are placeholder UUIDs
+  (`00000000-…`). They're documented `<TODO>`s; runtime endpoints that
+  touch the bindings return 503 (e.g. `/api/health`) until real IDs
+  are populated.
+
+### G8. SPA conventions
+
+- **Sign-in buttons are gated on configured IdPs.** `/api/config`
+  returns the list of providers whose env vars are set
+  (`ALLOWED_GOOGLE_HD`, `ALLOWED_GITHUB_ORG`); the SPA renders only
+  those buttons, with a clear "no IdPs configured" message when both
+  are empty.
+- **No anchors wrapping buttons.** Use `<button onClick={...}>` for
+  actions; reserve `<a>` for in-app navigation.
+- **All effects use `AbortController`.** Cleanup aborts in-flight
+  fetches so StrictMode double-invokes and unmount races don't leak
+  state.
+- **Admin nav items have matching routes from M1.** Even M5 admin
+  pages render a "coming in M5" stub Route so clicks don't silently
+  bounce to `/app/docs`.
+
+### G9. Smoke and seed scripts
+
+- `scripts/seed.mjs` defaults to `--local`; `--remote` requires the
+  explicit flag plus a 3-second abort window.
+- `scripts/smoke.mjs` env-toggles expectations (`SMOKE_ME_OK=1` widens
+  `/api/me` to `[200, 401]` for sessioned CI). New checks must declare
+  realistic expected status sets — not `[200, 404]` "to be safe", which
+  masks broken SPA dists.
+
+### G10. Admin/UX guardrails to remember in M5
+
+The full set of admin onboarding guardrails (visibility blast-radius
+counter, "tags ≠ ACL" hint, first-time-setup banner) lives in
+Section F9. Wire them in as the admin UI gets built.

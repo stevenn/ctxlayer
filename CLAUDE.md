@@ -51,7 +51,42 @@ The full plan lives at **`docs/PLAN.md`**. Read it first.
   SQL-free.
 - Hono routes are tiny; logic lives in helpers under the sibling concern
   folder.
+- Every workspace declares stubs for `typecheck` / `lint` / `test` even if
+  they just `echo`. `bun --filter='*' run X` silently skips workspaces
+  missing the script, so the stubs are the only thing keeping cross-cuts
+  honest.
 - Don't write new docs/README files unless asked. Update `docs/PLAN.md`.
+
+## Architectural gotchas baked into M1
+
+These all bit us during the scaffold review; do NOT re-introduce them.
+Full rationale in `docs/PLAN.md` Section G.
+
+- **SQLite/D1**: no expressions allowed in `PRIMARY KEY`. Use a `''`
+  sentinel on `NOT NULL` columns and a partial `UNIQUE INDEX` for
+  "at most one nullable-value row" invariants. Every enum-shaped column
+  has a matching `CHECK (col IN (...))`.
+- **Workers Assets SPA fallback**: lives in `[assets]
+  not_found_handling = "single-page-application"`, NOT in a hand-rolled
+  `app.notFound`. `run_worker_first` lists both bare and glob forms
+  (`/mcp` + `/mcp/*`).
+- **Durable Objects**: stubs use `new_classes`, not
+  `new_sqlite_classes` (storage backend is sticky once chosen).
+- **Worker entry**: typed as `ExportedHandler<Env>` so `queue` and
+  `scheduled` get the right `ctx` / controller types. Queue dispatcher
+  retries on unknown queue names instead of silently dropping.
+- **SPA auth flow**: distinguish `ApiError(401)` from `ApiSchemaError`
+  in `apps/web/src/lib/api.ts`. Treating schema failures as auth
+  failures causes redirect loops.
+- **Bun lockfile**: `bun install --frozen-lockfile` silently installs
+  without a lockfile. SessionStart hook tests for `bun.lock` first.
+- **Wrangler preview**: `wrangler versions upload` (the
+  `--x-versions` flag was retired in wrangler 4).
+- **`apps/web/dist`**: must exist for `wrangler dev`/`deploy`.
+  `scripts/ensure-dist.mjs` lays a placeholder via `predev`/`prebuild`/
+  `predeploy` hooks in `apps/worker/package.json`.
+- **`seed:remote`** is a separate command from `seed:local` — never let
+  `seed.mjs` default to remote.
 
 ## Org information architecture
 
@@ -71,6 +106,6 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 skeleton scaffolded, no auth wired yet.** Next work to do is M1's
-sign-in leg (Google + GitHub IdP + allowlist + `/api/me`) and the empty
-admin pages for teams/products described in Section F.
+**M1 skeleton scaffolded + code-reviewed.** Next work is M1's sign-in
+leg (Google + GitHub IdP + allowlist + a real `/api/me`); the org IA
+admin pages (Section F) and the rest of M1's REST surface follow.
