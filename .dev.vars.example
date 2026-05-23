@@ -1,0 +1,25 @@
+# Copy to .dev.vars and fill in. .dev.vars is gitignored.
+# These are picked up by `wrangler dev` as the Worker's secrets in local mode.
+
+# Outbound IdP credentials (M1 wiring)
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+
+# 32 random bytes base64 — used by crypto/aead.ts (AES-GCM at rest for user_credentials)
+# Generate: openssl rand -base64 32
+ENCRYPTION_KEY=
+
+# HMAC key for the SPA session cookie. 32 random bytes base64.
+SESSION_COOKIE_SECRET=
+
+# Daytona Cloud (M4)
+DAYTONA_API_KEY=
+
+# CI smoke harness only — leave blank for normal dev
+CI_SMOKE_OAUTH_CLIENT_ID=
+CI_SMOKE_OAUTH_CLIENT_SECRET=
+
+# Observability (optional; leave blank to disable)
+SENTRY_DSN_WORKER=

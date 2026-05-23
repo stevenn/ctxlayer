@@ -1,0 +1,37 @@
+{
+  "name": "ctxlayer",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Agent context layer — MCP service on Cloudflare with curated docs, upstream proxy, and usage analytics.",
+  "type": "module",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "concurrently -n worker,web -c blue,green \"pnpm -F worker dev\" \"pnpm -F web dev\"",
+    "build": "pnpm -F web build && pnpm -F worker build",
+    "build:web": "pnpm -F web build",
+    "build:worker": "pnpm -F worker build",
+    "deploy": "pnpm build && pnpm -F worker deploy",
+    "deploy:preview": "pnpm build && pnpm -F worker deploy:preview",
+    "typecheck": "pnpm -r typecheck",
+    "lint": "pnpm -r lint",
+    "test": "pnpm -r test",
+    "test:int": "pnpm -F worker test:int",
+    "test:e2e": "pnpm -F web test:e2e",
+    "verify": "pnpm typecheck && pnpm test && pnpm smoke",
+    "smoke": "node ./scripts/smoke.mjs",
+    "migrate:local": "wrangler d1 migrations apply DB --local",
+    "migrate:remote": "wrangler d1 migrations apply DB --remote",
+    "seed:local": "node ./scripts/seed.mjs --local",
+    "logs": "wrangler tail --format pretty --status error",
+    "logs:all": "wrangler tail --format pretty",
+    "logs:mcp": "wrangler tail --format pretty --search /mcp"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "typescript": "^5.6.3",
+    "wrangler": "^4.0.0"
+  }
+}
