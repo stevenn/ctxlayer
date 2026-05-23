@@ -12,6 +12,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env'
 import { signSession, sessionSetCookie } from '../auth/session'
+import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
 import { upsertUser } from '../db/queries/users'
 import { AllowlistError, enforceGoogleAllowlist } from '../util/allowlist'
 import { b64urlDecode } from '../auth/session'
@@ -129,6 +130,7 @@ googleIdpRoute.get('/callback', async (c) => {
   const res = appRedirect(c.env, stateRow.returnTo)
   const headers = new Headers(res.headers)
   headers.append('Set-Cookie', sessionSetCookie(session))
+  headers.append('Set-Cookie', csrfSetCookie(newCsrfToken()))
   headers.append('Set-Cookie', clearStateCookie())
   return new Response(null, { status: res.status, headers })
 })

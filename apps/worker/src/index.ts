@@ -5,6 +5,9 @@ import { meRoute } from './api/me'
 import { versionRoute } from './api/version'
 import { configRoute } from './api/config'
 import { authRoute } from './api/auth'
+import { docsRoute } from './api/docs'
+import { docSharingRoute } from './api/doc-sharing'
+import { usersRoute } from './api/users'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
 import { usageConsumer } from './queues/usage-consumer'
@@ -20,6 +23,12 @@ app.route('/api/version', versionRoute)
 app.route('/api/me', meRoute)
 app.route('/api/config', configRoute)
 app.route('/api/auth', authRoute)
+app.route('/api/users', usersRoute)
+// Docs CRUD and per-doc ACL share the same /api/docs prefix; the
+// sharing router only matches /:id/editors* paths so the order of
+// mounts does not matter.
+app.route('/api/docs', docsRoute)
+app.route('/api/docs', docSharingRoute)
 
 // IdP sign-in (M1). The SPA hits these from /sign-in; both providers
 // redirect back to /app/docs (or the `return_to` param) after issuing

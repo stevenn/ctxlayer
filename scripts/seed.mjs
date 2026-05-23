@@ -13,6 +13,10 @@ if (remote) {
   await new Promise((r) => setTimeout(r, 3000))
 }
 
+// M2a: doc fixtures are created through the UI (sign in → "+ New doc")
+// because every doc needs a real created_by user, and we don't want
+// the seed script to bypass the IdP allowlist by inserting a fake
+// user row. M4 will add upstream fixtures here (no auth dependency).
 console.log(`Seeding D1 (${target})... (no fixtures yet; placeholder)`)
 
 const result = spawnSync(

@@ -47,7 +47,11 @@ const checks = [
   // SPA shell. With `not_found_handling = "single-page-application"` and
   // a populated dist/index.html, an unknown SPA path MUST return 200
   // HTML. 404 means the dist is missing.
-  { name: 'spa-shell', method: 'GET', path: '/sign-in', expect: [200] }
+  { name: 'spa-shell', method: 'GET', path: '/sign-in', expect: [200] },
+  // M2a: docs API requires a session. Anonymous read MUST be 401, never
+  // 200 (would mean the requireUser middleware regressed) and never 501
+  // (would mean the route didn't mount).
+  { name: 'docs-anon', method: 'GET', path: '/api/docs', expect: [401] }
 ]
 
 let failed = 0

@@ -172,6 +172,20 @@ CREATE TABLE doc_revisions (
   created_at INTEGER NOT NULL
 );
 
+-- 0005_doc_acl.sql (M2a) — per-document write ACL.
+-- Reads remain open to every signed-in user; this table only governs
+-- writes. Edit access = admin OR documents.created_by OR explicit user
+-- grant OR 'everyone' grant. See `apps/worker/src/db/queries/docs.ts`
+-- :canEditDoc for the predicate.
+CREATE TABLE doc_editors (
+  doc_id     TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+  scope_kind TEXT NOT NULL,                       -- 'user' | 'everyone'
+  scope_id   TEXT NOT NULL DEFAULT '',            -- user_id; '' for 'everyone'
+  granted_by TEXT REFERENCES users(id),
+  created_at INTEGER NOT NULL,
+  PRIMARY KEY (doc_id, scope_kind, scope_id)
+);
+
 -- 0003_usage.sql
 CREATE TABLE usage_events (
   id TEXT PRIMARY KEY, ts INTEGER NOT NULL,
@@ -340,7 +354,7 @@ Vars: `DAYTONA_API_URL` (default Daytona Cloud endpoint), `DAYTONA_DEFAULT_IDLE_
 Each milestone is independently deployable and demoable.
 
 - **M1 — Skeleton (1 wk)**: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations 0001–0004, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. *Demo*: sign in, see your email. **Status: complete. Scaffold + sign-in leg landed; local HTTPS via mkcert (see Section G11).**
-- **M2 — Docs + RAG (1.5 wk)**: BlockNote editor with REST save (no collab yet), R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`, doc resources. *Demo*: Claude Desktop searches internal docs via MCP.
+- **M2 — Docs + RAG (1.5 wk)**: BlockNote editor with REST save (no collab yet), R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`, doc resources. *Demo*: Claude Desktop searches internal docs via MCP. **Sliced into M2a (docs CRUD + REST-save editor + per-doc ACL + CSRF cookie), M2b (reindex pipeline → Vectorize), M2c (MCP at /mcp+/sse + built-in tools). M2a backend (PR1) complete: `0005_doc_acl.sql`, `__Host-ctx_csrf` cookie + `requireCsrf` middleware, `/api/docs` CRUD, `/api/docs/:id/content` REST save, `/api/docs/:id/editors` ACL, `/api/users?email=` directory lookup.**
 - **M3 — Realtime collab (1 wk)**: `DocRoomDO` with Yjs + WS hibernation, BlockNote switched from REST to Yjs over `/collab/:id`, snapshot/revision/reindex chain. *Demo*: two browser tabs edit live; MCP search reflects changes within seconds.
 - **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)**: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk` (`getOrReadySandbox`, `refreshActivity`, `destroy`), one pre-baked Daytona snapshot for a reference stdio MCP server (e.g. `@modelcontextprotocol/server-github` + `supergateway`), env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy (works for both HTTP and stdio_daytona transports). *Demo*: (a) Notion HTTP MCP added, user pastes token, agent calls `notion__search_pages`; (b) GitHub stdio MCP added (Daytona snapshot), user pastes PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle.
 - **M5 — OAuth upstreams + Admin UI (2 wk)**: `user_oauth` start/callback/refresh, admin UI (upstreams CRUD including snapshot/start-command editor for stdio_daytona, users, oauth-clients, audit log, **sandboxes view** showing live/idle/archived sandboxes per user with force-destroy), role promotion. *Demo*: Linear added via OAuth; admin manages everything from UI including killing a runaway sandbox.
@@ -397,7 +411,7 @@ After each milestone:
 - `apps/worker/src/queues/usage-consumer.ts` — tiktoken + rollups
 - `apps/worker/src/queues/reindex-consumer.ts` — chunk + embed + Vectorize upsert
 - `apps/worker/src/crypto/aead.ts` — AES-GCM wrapper
-- `apps/worker/src/db/migrations/0001_init.sql`, `0002_docs.sql`, `0003_usage.sql`
+- `apps/worker/src/db/migrations/0001_init.sql`, `0002_docs.sql`, `0003_usage.sql`, `0004_org_ia.sql`, `0005_doc_acl.sql`
 - `apps/web/src/routes/docs/editor.tsx` — BlockNote + Yjs binding
 - `apps/web/src/routes/upstreams.tsx` — connect wizard (PAT + OAuth popup)
 - `apps/web/src/routes/admin/*.tsx` — admin pages
