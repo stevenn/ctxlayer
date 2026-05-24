@@ -1,33 +1,382 @@
-:root {
-  font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  color-scheme: light dark;
-  --bg: #fafafa;
-  --fg: #0a0a0a;
-  --muted: #6b7280;
-  --border: #e5e7eb;
+/*
+ * Theme tokens follow the roadmapper surface system: a dark navy stack
+ * with a sibling light variant, and a single blue accent. Mantine sets
+ * `data-mantine-color-scheme` on <html>; our vars switch on that so the
+ * editor / inline-styled bits track the toggle automatically.
+ *
+ * Shape scale and surface naming mirror roadmapper/frontend/app.css so
+ * future components copy across cleanly.
+ */
+
+:root,
+:root[data-mantine-color-scheme='dark'] {
+  color-scheme: dark;
+  --bg: #0f1117;
+  --bg-surface: #1a1d27;
+  --bg-elevated: #242836;
+  --border: #353b50;
+
+  --fg: #f8fafc;
+  --text: #f8fafc;
+  --text-muted: #c8d2e0;
+  --muted: #c8d2e0;
+  --text-dim: #94a3b8;
+
+  --accent: #3b82f6;        /* blue-500, brighter in dark mode */
+  --accent-hover: #60a5fa;  /* blue-400 */
+  --accent-strong: #2563eb; /* blue-600 — primary CTA shade */
+
+  --danger: #f87171;
+  --success: #34d399;
+
+  --sidebar-w: 220px;
+  --header-h: 56px;
+  --radius: 6px;
+  --radius-sm: 4px;
+}
+
+:root[data-mantine-color-scheme='light'] {
+  color-scheme: light;
+  --bg: #f1f5f9;
+  --bg-surface: #ffffff;
+  --bg-elevated: #f8fafc;
+  --border: #cbd5e1;
+
+  --fg: #0f172a;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --muted: #475569;
+  --text-dim: #64748b;
+
   --accent: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-strong: #2563eb;
+
+  --danger: #dc2626;
+  --success: #16a34a;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0a0a0a;
-    --fg: #fafafa;
-    --muted: #9ca3af;
-    --border: #1f2937;
-    --accent: #60a5fa;
-  }
+
+* {
+  box-sizing: border-box;
 }
-* { box-sizing: border-box; }
-html, body, #root { height: 100%; margin: 0; }
-body { background: var(--bg); color: var(--fg); }
-a { color: var(--accent); text-decoration: none; }
-a:hover { text-decoration: underline; }
-button {
-  font: inherit;
-  padding: 0.5rem 0.875rem;
-  border: 1px solid var(--border);
-  border-radius: 6px;
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+*::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+*::-webkit-scrollbar-track {
   background: transparent;
-  color: inherit;
-  cursor: pointer;
 }
-button.primary { background: var(--accent); color: white; border-color: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+/* ── Shell layout ──────────────────────────────────────────── */
+.shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  min-height: 100%;
+}
+
+.sidebar {
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 16px 12px;
+  gap: 4px;
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 12px;
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: var(--text);
+  text-decoration: none;
+}
+.sidebar-brand:hover {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.sidebar-group-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  padding: 16px 10px 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  text-decoration: none;
+  transition: background-color 0.12s ease, color 0.12s ease;
+}
+.nav-item:hover {
+  background: var(--bg-elevated);
+  color: var(--text);
+  text-decoration: none;
+}
+.nav-item.active {
+  background: var(--accent);
+  color: white;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.user-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  font-size: 12px;
+}
+.user-chip-email {
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.user-chip-role {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.main-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.main-header {
+  height: var(--header-h);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+}
+
+.main-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.main-content {
+  flex: 1;
+  padding: 24px;
+  overflow: auto;
+}
+
+/* ── Auth screen ───────────────────────────────────────────── */
+.auth-shell {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+/* ── Data table ────────────────────────────────────────────── */
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.data-table th {
+  text-align: left;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  padding: 10px 14px;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.data-table td {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 13px;
+  color: var(--text);
+  vertical-align: top;
+}
+.data-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.data-table tbody tr {
+  cursor: pointer;
+  transition: background-color 0.1s ease;
+}
+.data-table tbody tr:hover {
+  background: var(--bg-elevated);
+}
+
+.text-muted {
+  color: var(--text-muted);
+}
+.text-dim {
+  color: var(--text-dim);
+}
+
+/* ── BlockNote side-menu (add + drag handle) ───────────────── */
+/* Defaults are oversized for a quiet doc tool. Bring them down,
+   tuck them tighter together, push the pair a little further from
+   the block they belong to, and dim them until hovered. */
+.bn-side-menu {
+  display: inline-flex;
+  align-items: center;
+  gap: 0;                 /* + and handle sit flush */
+  margin-right: 6px;      /* push pair away from the block content */
+  opacity: 0.65;
+  transition: opacity 0.15s ease;
+}
+:root[data-mantine-color-scheme='dark'] .bn-side-menu {
+  opacity: 0.45;
+}
+.bn-side-menu:hover,
+.bn-block-content:hover ~ .bn-side-menu,
+[data-node-type='blockOuter']:hover .bn-side-menu {
+  opacity: 1;
+}
+.bn-side-menu button,
+.bn-side-menu .mantine-ActionIcon-root,
+.bn-side-menu [role='button'] {
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  min-height: 20px !important;
+  padding: 2px !important;
+  border-radius: 6px !important;  /* softer than the default 4 */
+}
+.bn-side-menu svg {
+  width: 14px !important;
+  height: 14px !important;
+  stroke-width: 1.5 !important;
+}
+
+/* ── BlockNote table row/column reorder handles ────────────── */
+.bn-table-handle,
+.bn-table-cell-handle {
+  border-radius: 6px !important;
+  opacity: 0.65;
+  transition: opacity 0.15s ease;
+}
+:root[data-mantine-color-scheme='dark'] .bn-table-handle,
+:root[data-mantine-color-scheme='dark'] .bn-table-cell-handle {
+  opacity: 0.45;
+}
+.bn-table-handle:hover,
+.bn-table-cell-handle:hover,
+table:hover .bn-table-handle,
+table:hover .bn-table-cell-handle {
+  opacity: 1;
+}
+.bn-table-handle,
+.bn-table-cell-handle,
+.bn-table-handle button,
+.bn-table-cell-handle button {
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px !important;
+  min-height: 18px !important;
+  padding: 1px !important;
+}
+.bn-table-handle svg,
+.bn-table-cell-handle svg {
+  width: 13px !important;
+  height: 13px !important;
+  stroke-width: 1.5 !important;
+}
+
+/* ── Editor canvas — breathe at the top ────────────────────── */
+.bn-editor {
+  padding-top: 32px !important;
+}
+
+/* Compact "kv" style info widget — used by the editor's
+   created/last-edited strip. */
+.info-strip {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 12px;
+  row-gap: 2px;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.info-strip dt {
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.info-strip dd {
+  margin: 0;
+}

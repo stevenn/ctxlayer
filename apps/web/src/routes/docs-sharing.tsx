@@ -1,4 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  Stack,
+  Text,
+  TextInput
+} from '@mantine/core'
 import type { DocEditorsResponse, UserSearchResult } from '@ctxlayer/shared'
 import {
   addDocEditor,
@@ -19,15 +30,18 @@ export function SharingDialog({ docId, onClose }: Props) {
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserSearchResult>([])
 
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const data = await fetchDocEditors(docId, signal)
-      if (!signal?.aborted) setEditors(data)
-    } catch (err) {
-      if (signal?.aborted) return
-      setError(`Could not load sharing: ${err instanceof Error ? err.message : String(err)}`)
-    }
-  }, [docId])
+  const reload = useCallback(
+    async (signal?: AbortSignal) => {
+      try {
+        const data = await fetchDocEditors(docId, signal)
+        if (!signal?.aborted) setEditors(data)
+      } catch (err) {
+        if (signal?.aborted) return
+        setError(`Could not load sharing: ${err instanceof Error ? err.message : String(err)}`)
+      }
+    },
+    [docId]
+  )
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -35,7 +49,7 @@ export function SharingDialog({ docId, onClose }: Props) {
     return () => ctrl.abort()
   }, [reload])
 
-  // Debounced search. The server returns [] for prefixes <2 chars; we
+  // Debounced search. Server returns [] for prefixes < 2 chars; we
   // still call so cleared queries reset the dropdown.
   const debouncer = useRef<ReturnType<typeof setTimeout> | null>(null)
   useEffect(() => {
@@ -62,10 +76,9 @@ export function SharingDialog({ docId, onClose }: Props) {
     try {
       await action()
     } catch (err) {
-      // Surfacing failures (404 from a misrouted DELETE, 403 from a
-      // missed canShare check, network) so the user sees why the
-      // checkbox or list didn't move. Without this the UI silently
-      // reverts and looks broken.
+      // Surface failures so the user sees why the checkbox or list
+      // didn't move. Without this the UI silently reverts and looks
+      // broken.
       setError(`${label} failed: ${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setBusy(false)
@@ -89,136 +102,110 @@ export function SharingDialog({ docId, onClose }: Props) {
   }
 
   async function toggleEveryone(next: boolean) {
-    await withBusy(async () => {
-      if (next) await addDocEditor(docId, { kind: 'everyone' })
-      else await removeDocEditor(docId, 'everyone', '')
-      await reload()
-    }, next ? 'Grant everyone' : 'Revoke everyone')
+    await withBusy(
+      async () => {
+        if (next) await addDocEditor(docId, { kind: 'everyone' })
+        else await removeDocEditor(docId, 'everyone', '')
+        await reload()
+      },
+      next ? 'Grant everyone' : 'Revoke everyone'
+    )
   }
 
   return (
-    <div
-      role="dialog"
-      aria-modal
-      onClick={onClose}
-      style={{
-        position: 'fixed',
-        inset: 0,
-        background: 'rgba(0,0,0,0.4)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        zIndex: 100
-      }}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          width: 420,
-          maxWidth: 'calc(100vw - 32px)',
-          background: 'var(--bg)',
-          color: 'var(--fg)',
-          border: '1px solid var(--border)',
-          borderRadius: 8,
-          padding: 20,
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 12
-        }}
-      >
-        <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <h3 style={{ margin: 0 }}>Sharing</h3>
-          <button onClick={onClose}>Close</button>
-        </header>
+    <Modal opened onClose={onClose} title="Sharing" centered size="md">
+      <Stack gap="md">
+        {error && (
+          <Alert color="red" variant="light" radius="sm">
+            {error}
+          </Alert>
+        )}
 
-        {error && <p style={{ color: 'crimson', fontSize: 13 }}>{error}</p>}
+        <Checkbox
+          label="Anyone in the org can edit"
+          checked={editors?.everyone ?? false}
+          disabled={!editors || busy}
+          onChange={(e) => toggleEveryone(e.currentTarget.checked)}
+        />
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-          <input
-            type="checkbox"
-            checked={editors?.everyone ?? false}
-            disabled={!editors || busy}
-            onChange={(e) => toggleEveryone(e.target.checked)}
-          />
-          Anyone in the org can edit
-        </label>
-
-        <div>
-          <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--muted)' }}>Add by email</p>
-          <input
+        <Stack gap={6}>
+          <Text fz="sm" c="dimmed">
+            Add by email
+          </Text>
+          <TextInput
             type="email"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => setQuery(e.currentTarget.value)}
             placeholder="user@…"
-            style={{
-              width: '100%',
-              padding: '6px 8px',
-              borderRadius: 6,
-              border: '1px solid var(--border)',
-              background: 'transparent',
-              color: 'inherit'
-            }}
+            autoComplete="off"
           />
           {results.length > 0 && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: '6px 0 0' }}>
+            <Stack gap={4}>
               {results.map((u) => (
-                <li
+                <Group
                   key={u.id}
+                  justify="space-between"
+                  px="sm"
+                  py={6}
                   style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '6px 8px',
-                    borderRadius: 6,
                     border: '1px solid var(--border)',
-                    marginBottom: 4
+                    borderRadius: 'var(--radius-sm)'
                   }}
                 >
-                  <span style={{ fontSize: 13 }}>
+                  <Text fz="sm">
                     {u.email}
                     {u.name ? ` · ${u.name}` : ''}
-                  </span>
-                  <button disabled={busy} onClick={() => grantUser(u.id)}>
+                  </Text>
+                  <Button size="xs" variant="default" disabled={busy} onClick={() => grantUser(u.id)}>
                     Add
-                  </button>
-                </li>
+                  </Button>
+                </Group>
               ))}
-            </ul>
+            </Stack>
           )}
-        </div>
+        </Stack>
 
-        <div>
-          <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--muted)' }}>Editors</p>
-          {!editors && <p style={{ color: 'var(--muted)' }}>Loading…</p>}
+        <Stack gap={6}>
+          <Text fz="sm" c="dimmed">
+            Editors
+          </Text>
+          {!editors && <Text c="dimmed">Loading…</Text>}
           {editors && editors.users.length === 0 && (
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              {editors.everyone ? 'Anyone in the org can edit this doc.' : 'No editors granted yet.'}
-            </p>
+            <Text c="dimmed" fz="sm">
+              {editors.everyone
+                ? 'Anyone in the org can edit this doc.'
+                : 'No editors granted yet.'}
+            </Text>
           )}
           {editors && editors.users.length > 0 && (
-            <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+            <Stack gap={0} style={{ borderTop: '1px solid var(--border)' }}>
               {editors.users.map((u) => (
-                <li
+                <Group
                   key={u.userId}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    padding: '6px 8px',
-                    borderTop: '1px solid var(--border)'
-                  }}
+                  justify="space-between"
+                  px="sm"
+                  py={8}
+                  style={{ borderBottom: '1px solid var(--border)' }}
                 >
-                  <span style={{ fontSize: 13 }}>
+                  <Text fz="sm">
                     {u.email}
                     {u.name ? ` · ${u.name}` : ''}
-                  </span>
-                  <button disabled={busy} onClick={() => revokeUser(u.userId)}>
-                    Remove
-                  </button>
-                </li>
+                  </Text>
+                  <ActionIcon
+                    variant="subtle"
+                    color="red"
+                    disabled={busy}
+                    onClick={() => revokeUser(u.userId)}
+                    aria-label={`Remove ${u.email}`}
+                  >
+                    ×
+                  </ActionIcon>
+                </Group>
               ))}
-            </ul>
+            </Stack>
           )}
-        </div>
-      </div>
-    </div>
+        </Stack>
+      </Stack>
+    </Modal>
   )
 }

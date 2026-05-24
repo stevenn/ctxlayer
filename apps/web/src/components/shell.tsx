@@ -1,15 +1,55 @@
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { ApiError, ApiSchemaError, fetchMe } from '../lib/api'
+import { Button, Group, Stack, Text } from '@mantine/core'
+import { ApiError, ApiSchemaError, fetchMe, signOut } from '../lib/api'
 import type { MeResponse } from '@ctxlayer/shared'
+import { ThemeToggle } from './theme-toggle'
 
 type Status =
   | { kind: 'loading' }
   | { kind: 'ready'; me: MeResponse }
   | { kind: 'error'; message: string }
 
+interface NavSpec {
+  to: string
+  label: string
+  // True only when the current path is THIS link (so nested routes
+  // like /app/docs/:id still light the Docs nav).
+  matches?: (pathname: string) => boolean
+}
+
+const PRIMARY_NAV: NavSpec[] = [
+  { to: '/app/docs', label: 'Docs', matches: (p) => p.startsWith('/app/docs') },
+  { to: '/app/upstreams', label: 'Upstreams' },
+  { to: '/app/mcp-setup', label: 'MCP setup' },
+  { to: '/app/usage', label: 'Usage' }
+]
+
+const ADMIN_NAV: NavSpec[] = [
+  { to: '/app/admin/upstreams', label: 'Upstreams' },
+  { to: '/app/admin/users', label: 'Users' },
+  { to: '/app/admin/teams', label: 'Teams' },
+  { to: '/app/admin/products', label: 'Products' },
+  { to: '/app/admin/usage', label: 'Usage' },
+  { to: '/app/admin/audit', label: 'Audit' }
+]
+
+const TITLES: Record<string, string> = {
+  '/app/docs': 'Docs library',
+  '/app/upstreams': 'Upstreams',
+  '/app/mcp-setup': 'MCP setup',
+  '/app/usage': 'Usage',
+  '/app/admin/upstreams': 'Admin · Upstreams',
+  '/app/admin/users': 'Admin · Users',
+  '/app/admin/teams': 'Admin · Teams',
+  '/app/admin/products': 'Admin · Products',
+  '/app/admin/usage': 'Admin · Usage',
+  '/app/admin/audit': 'Admin · Audit'
+}
+
 export function Shell() {
   const nav = useNavigate()
+  const location = useLocation()
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
 
   useEffect(() => {
@@ -24,8 +64,6 @@ export function Shell() {
           nav('/sign-in', { replace: true })
           return
         }
-        // Schema mismatch / network / 5xx: surface the error rather than
-        // bouncing to /sign-in, which would loop indefinitely.
         const message =
           err instanceof ApiSchemaError
             ? 'The server returned an unexpected response shape.'
@@ -38,70 +76,103 @@ export function Shell() {
     return () => ctrl.abort()
   }, [nav])
 
-  if (status.kind === 'loading') return <div style={{ padding: 32 }}>Loading…</div>
-  if (status.kind === 'error') {
+  if (status.kind === 'loading') {
     return (
-      <div style={{ padding: 32, maxWidth: 480 }}>
-        <h2 style={{ marginTop: 0 }}>Something went wrong</h2>
-        <p style={{ color: 'var(--muted)' }}>{status.message}</p>
-        <button onClick={() => location.reload()}>Retry</button>
+      <div className="auth-shell">
+        <Text c="dimmed">Loading…</Text>
       </div>
     )
   }
+  if (status.kind === 'error') {
+    return (
+      <div className="auth-shell">
+        <Stack gap="md" maw={420}>
+          <Text fw={600} fz="lg">
+            Something went wrong
+          </Text>
+          <Text c="dimmed">{status.message}</Text>
+          <Button onClick={() => window.location.reload()}>Retry</Button>
+        </Stack>
+      </div>
+    )
+  }
+
   const { me } = status
+  const title = matchTitle(location.pathname)
+
+  async function onSignOut() {
+    try {
+      await signOut()
+    } catch (err) {
+      // Even if the server call fails (e.g. CSRF cookie missing), the
+      // user clearly wants out — bounce them to /sign-in.
+      console.warn('signout call failed', err)
+    } finally {
+      nav('/sign-in', { replace: true })
+    }
+  }
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '220px 1fr', minHeight: '100%' }}>
-      <aside
-        style={{
-          borderRight: '1px solid var(--border)',
-          padding: '20px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 8
-        }}
-      >
-        <Link to="/app/docs" style={{ fontWeight: 700, fontSize: 18, marginBottom: 12 }}>
+    <div className="shell">
+      <aside className="sidebar">
+        <Link to="/app/docs" className="sidebar-brand">
           ctxlayer
         </Link>
-        <NavItem to="/app/docs">Docs</NavItem>
-        <NavItem to="/app/upstreams">Upstreams</NavItem>
-        <NavItem to="/app/mcp-setup">MCP setup</NavItem>
-        <NavItem to="/app/usage">Usage</NavItem>
-        {me.role === 'admin' ? (
+
+        {PRIMARY_NAV.map((item) => (
+          <NavItem key={item.to} item={item} pathname={location.pathname} />
+        ))}
+
+        {me.role === 'admin' && (
           <>
-            <div style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)' }}>Admin</div>
-            <NavItem to="/app/admin/upstreams">Upstreams</NavItem>
-            <NavItem to="/app/admin/users">Users</NavItem>
-            <NavItem to="/app/admin/teams">Teams</NavItem>
-            <NavItem to="/app/admin/products">Products</NavItem>
-            <NavItem to="/app/admin/usage">Usage</NavItem>
-            <NavItem to="/app/admin/audit">Audit</NavItem>
+            <div className="sidebar-group-label">Admin</div>
+            {ADMIN_NAV.map((item) => (
+              <NavItem key={item.to} item={item} pathname={location.pathname} />
+            ))}
           </>
-        ) : null}
-        <div style={{ marginTop: 'auto', fontSize: 12, color: 'var(--muted)' }}>
-          Signed in as {me.email}
+        )}
+
+        <div className="sidebar-footer">
+          <div className="user-chip">
+            <span className="user-chip-email">{me.email}</span>
+            <span className="user-chip-role">{me.role}</span>
+          </div>
         </div>
       </aside>
-      <main style={{ padding: 24 }}>
-        <Outlet />
-      </main>
+
+      <div className="main-area">
+        <header className="main-header">
+          <span className="main-title">{title}</span>
+          <Group gap="xs">
+            <ThemeToggle />
+            <Button variant="default" size="xs" onClick={onSignOut}>
+              Sign out
+            </Button>
+          </Group>
+        </header>
+        <main className="main-content">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }
 
-function NavItem({ to, children }: { to: string; children: React.ReactNode }) {
+function NavItem({ item, pathname }: { item: NavSpec; pathname: string }) {
+  const active = item.matches ? item.matches(pathname) : pathname === item.to
   return (
-    <NavLink
-      to={to}
-      style={({ isActive }) => ({
-        padding: '6px 8px',
-        borderRadius: 4,
-        background: isActive ? 'var(--border)' : 'transparent',
-        color: 'var(--fg)'
-      })}
-    >
-      {children}
+    <NavLink to={item.to} className={`nav-item${active ? ' active' : ''}`}>
+      {item.label}
     </NavLink>
   )
+}
+
+function matchTitle(pathname: string): string {
+  // Direct match first, then prefix match for nested routes like
+  // /app/docs/:id which should still show "Docs library".
+  if (TITLES[pathname]) return TITLES[pathname]
+  for (const [prefix, label] of Object.entries(TITLES)) {
+    if (pathname.startsWith(prefix + '/')) return label
+  }
+  return 'ctxlayer'
 }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
+import { Alert, Button, Stack, Text, Title } from '@mantine/core'
 import { fetchConfig } from '../lib/api'
 import type { KnownIdp } from '@ctxlayer/shared'
 
@@ -26,9 +27,7 @@ export function SignIn() {
 
   const urlErrorCode = params.get('error')
   const urlError =
-    urlErrorCode != null
-      ? ERROR_MESSAGE[urlErrorCode] ?? 'Sign-in failed.'
-      : null
+    urlErrorCode != null ? ERROR_MESSAGE[urlErrorCode] ?? 'Sign-in failed.' : null
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -46,69 +45,59 @@ export function SignIn() {
   }, [])
 
   return (
-    <div
-      style={{
-        minHeight: '100%',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24
-      }}
-    >
-      <div style={{ maxWidth: 360, width: '100%' }}>
-        <h1 style={{ margin: 0, fontSize: 24 }}>ctxlayer</h1>
-        <p style={{ color: 'var(--muted)', marginTop: 8 }}>The agent context layer.</p>
-        {urlError ? (
-          <div
-            role="alert"
-            style={{
-              marginTop: 16,
-              padding: '10px 12px',
-              border: '1px solid color-mix(in srgb, crimson 50%, transparent)',
-              borderRadius: 6,
-              background: 'color-mix(in srgb, crimson 8%, transparent)',
-              color: 'crimson',
-              fontSize: 13
-            }}
-          >
-            {urlError}
+    <div className="auth-shell">
+      <div className="auth-card">
+        <Stack gap="lg">
+          <div>
+            <Title order={2} fz={22} fw={700} mb={4}>
+              ctxlayer
+            </Title>
+            <Text c="dimmed" fz="sm">
+              The agent context layer for your org.
+            </Text>
           </div>
-        ) : null}
-        <div style={{ display: 'grid', gap: 8, marginTop: 24 }}>
-          {idps === null && !configError ? (
-            <p style={{ color: 'var(--muted)' }}>Loading…</p>
-          ) : null}
-          {idps?.map((idp) => (
-            <ProviderButton key={idp} idp={idp} />
-          ))}
-          {idps?.length === 0 ? (
-            <p style={{ color: 'var(--muted)', fontSize: 13 }}>
-              No identity providers are configured for this deployment. Ask an admin to set{' '}
-              <code>ALLOWED_GOOGLE_HD</code> or <code>ALLOWED_GITHUB_ORG</code>.
-            </p>
-          ) : null}
-          {configError ? <p style={{ color: 'crimson', fontSize: 13 }}>{configError}</p> : null}
-        </div>
-        <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 24 }}>
-          Only members of the configured Google domain or GitHub organisation can sign in.
-        </p>
+
+          {urlError && (
+            <Alert color="red" variant="light" radius="sm">
+              {urlError}
+            </Alert>
+          )}
+
+          <Stack gap="xs">
+            {idps === null && !configError && <Text c="dimmed">Loading…</Text>}
+            {idps?.map((idp) => (
+              <ProviderButton key={idp} idp={idp} />
+            ))}
+            {idps?.length === 0 && (
+              <Text c="dimmed" fz="sm">
+                No identity providers are configured for this deployment. Ask an admin to
+                set <code>ALLOWED_GOOGLE_HD</code> or <code>ALLOWED_GITHUB_ORG</code>.
+              </Text>
+            )}
+            {configError && (
+              <Text c="red" fz="sm">
+                {configError}
+              </Text>
+            )}
+          </Stack>
+
+          <Text c="dimmed" fz="xs">
+            Only members of the configured Google domain or GitHub organisation can sign in.
+          </Text>
+        </Stack>
       </div>
     </div>
   )
 }
 
 function ProviderButton({ idp }: { idp: KnownIdp }) {
-  const onClick = () => {
-    location.assign(`/idp/${idp}/start`)
-  }
   return (
-    <button
-      type="button"
-      className={idp === 'google' ? 'primary' : undefined}
-      onClick={onClick}
-      style={{ width: '100%' }}
+    <Button
+      fullWidth
+      variant={idp === 'google' ? 'filled' : 'default'}
+      onClick={() => location.assign(`/idp/${idp}/start`)}
     >
       {PROVIDER_LABEL[idp]}
-    </button>
+    </Button>
   )
 }

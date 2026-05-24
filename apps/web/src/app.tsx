@@ -1,4 +1,4 @@
-import { Navigate, Route, Routes } from 'react-router-dom'
+import { Navigate, Route } from 'react-router-dom'
 import { SignIn } from './routes/sign-in'
 import { DocsList } from './routes/docs-list'
 import { DocsEditor } from './routes/docs-editor'
@@ -15,9 +15,15 @@ import {
 } from './routes/admin'
 import { Shell } from './components/shell'
 
-export function App() {
+/**
+ * Returns the route tree as a fragment of `<Route>` elements. Consumed
+ * by `createRoutesFromElements` in `main.tsx`, which feeds a data
+ * router (createBrowserRouter). Data router is required so the editor
+ * can use `useBlocker` for the unsaved-changes confirm dialog.
+ */
+export function appRoutes() {
   return (
-    <Routes>
+    <>
       <Route path="/sign-in" element={<SignIn />} />
       <Route path="/app" element={<Shell />}>
         <Route index element={<Navigate to="/app/docs" replace />} />
@@ -34,6 +40,6 @@ export function App() {
         <Route path="admin/audit" element={<AdminAudit />} />
       </Route>
       <Route path="*" element={<Navigate to="/app/docs" replace />} />
-    </Routes>
+    </>
   )
 }
