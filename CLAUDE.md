@@ -135,10 +135,19 @@ SDK (SQLite-backed v2 migration); registers `whoami`,
 with `chunk_count` tracking (migration 0006) so orphans get deleted
 when revisions shrink.
 
-Before this can demo end-to-end, **one external step**: run
-`wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine`
-and paste the index name into wrangler.toml. Same goes for the D1
-and KV namespace IDs (currently placeholder UUIDs).
+Before this can demo end-to-end, run **`bun run bootstrap`** —
+provisions the real D1, KV, R2, and Vectorize resources and
+patches `wrangler.toml` with their IDs in place. Idempotent;
+re-running it skips any binding that already has a real id.
+Requires `wrangler login` (or `CLOUDFLARE_API_TOKEN`).
+
+Done-done checklist for M2 lives in `docs/PLAN.md` under the M2
+verification entry — twelve steps from `wrangler login` to a
+Claude-Desktop `search_docs` round-trip.
+
+Next work after M2 closes: **M3 (Yjs realtime collab)** then **M4
+(upstream proxy + Daytona)** then **M5 (admin UI)** then **M6
+(usage + dashboards)**.
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed

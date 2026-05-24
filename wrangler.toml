@@ -1,7 +1,12 @@
 name = "ctxlayer"
 main = "apps/worker/src/index.ts"
 compatibility_date = "2026-04-01"
-compatibility_flags = ["nodejs_compat"]
+# nodejs_compat: stdlib shims (`crypto`, `buffer`, etc.) we rely on
+#   in the agents SDK + workers-oauth-provider.
+# global_fetch_strictly_public: enables CIMD (Client ID Metadata
+#   Document) lookups in workers-oauth-provider so it can validate
+#   DCR-registered clients without re-fetching from internal IPs.
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # SPA shipped from this Worker. The `dist` directory is produced by
 # `bun run build:web`; `scripts/ensure-dist.mjs` lays down a placeholder
@@ -54,6 +59,11 @@ bucket_name = "ctxlayer-docs"
 [[vectorize]]
 binding = "DOCS_INDEX"
 index_name = "ctxlayer-docs"
+# Vectorize has no local emulator, so `wrangler dev` proxies the
+# binding to the real index. `remote = true` makes that explicit
+# and silences the dev-warning. Requires `wrangler login` (or
+# CLOUDFLARE_API_TOKEN env). Doesn't change deploy behaviour.
+remote = true
 
 [ai]
 binding = "AI"

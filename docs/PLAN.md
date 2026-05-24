@@ -393,6 +393,19 @@ Each milestone is independently deployable and demoable.
 After each milestone:
 - **M1**: `wrangler deploy`, open URL, sign in with both Google and GitHub, confirm allowlist rejection works for outside-domain users.
 - **M2**: Add ctxlayer to Claude Desktop as remote MCP server; run `search_docs` and `get_doc`; verify reindex queue depth via `wrangler queues consumer`.
+  - **Done-done checklist (run in order)**:
+    1. `wrangler login` (or set `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`).
+    2. `bun run bootstrap` — provisions the real D1/KV/R2/Vectorize resources and patches `wrangler.toml` with their IDs.
+    3. `bun run migrate:remote` (or `:local`) — applies migrations 0001-0006.
+    4. `bun run seed:local` — seeds 3 teams + 2 products so the tag pane isn't empty.
+    5. `bun run dev` — boots worker + SPA over HTTPS.
+    6. Sign in via the SPA (`/sign-in`). Confirm `/api/me` returns 200 and `__Host-ctx_session` + `__Host-ctx_csrf` cookies are set.
+    7. Create a doc, type real content, save. Tag it with at least one team.
+    8. Tail logs (`bun run logs:all`). Saving a doc enqueues `{docId, revisionId}` → consumer renders → embeds via Workers AI → upserts to Vectorize.
+    9. Sanity: `wrangler vectorize get-by-ids ctxlayer-docs <docId>:0` returns the chunk.
+    10. Add ctxlayer to Claude Desktop: `{"mcpServers": {"ctxlayer": {"url": "https://localhost:8787/mcp"}}}` (or your deployed URL). Restart Claude Desktop. It opens `/oauth/authorize`; pick an IdP; you're back.
+    11. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data.
+    12. Delete the doc — confirm via `wrangler vectorize get-by-ids` that the vectors are gone (or scheduled for cleanup on next reindex).
 - **M3**: Two browser tabs editing concurrently; kill DO via `wrangler tail`, confirm WS reconnect + snapshot reload; verify revisions in D1.
 - **M4**: (a) Add Notion HTTP upstream via D1 insert; paste PAT in SPA; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). (b) Pre-build a Daytona snapshot containing `@modelcontextprotocol/server-github` + `supergateway`; register as `stdio_daytona` upstream; from Claude call `github_stdio__create_issue`; observe sandbox in Daytona dashboard; wait 10min; confirm auto-stop; call again, confirm wake works.
 - **M5**: Walk OAuth flow end-to-end for Linear; force token expiry by editing `expires_at`, confirm auto-refresh; admin UI smoke-test all CRUD operations.

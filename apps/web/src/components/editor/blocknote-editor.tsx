@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
 import {
   FormattingToolbar,
   FormattingToolbarController,
@@ -83,6 +84,30 @@ export function BlockNoteEditor(props: BlockNoteEditorProps) {
     host.addEventListener('keydown', onKeyDown)
     return () => host.removeEventListener('keydown', onKeyDown)
   }, [editor])
+
+  // Intercept clicks on internal SPA links (e.g. /app/docs/<id>) so
+  // they navigate via React Router instead of triggering a full page
+  // load. Modifier keys + non-primary buttons fall through to the
+  // browser so "open in new tab" still works.
+  const nav = useNavigate()
+  useEffect(() => {
+    const host = hostRef.current
+    if (!host) return
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return
+      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+      const anchor = (e.target as HTMLElement | null)?.closest('a')
+      if (!anchor) return
+      const href = anchor.getAttribute('href')
+      if (!href || !href.startsWith('/app/')) return
+      // Respect target="_blank" / explicit download even on internal links.
+      if (anchor.target && anchor.target !== '' && anchor.target !== '_self') return
+      e.preventDefault()
+      nav(href)
+    }
+    host.addEventListener('click', onClick)
+    return () => host.removeEventListener('click', onClick)
+  }, [nav])
 
   const { colorScheme } = useMantineColorScheme()
   const resolved: 'light' | 'dark' =

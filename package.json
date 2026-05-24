@@ -24,6 +24,7 @@
     "test:e2e": "bun --filter='@ctxlayer/web' run test:e2e",
     "verify": "bun run typecheck && bun run test && bun run smoke",
     "smoke": "bun ./scripts/smoke.mjs",
+    "bootstrap": "bun ./scripts/bootstrap-resources.mjs",
     "migrate:local": "wrangler d1 migrations apply DB --local",
     "migrate:remote": "wrangler d1 migrations apply DB --remote",
     "seed:local": "bun ./scripts/seed.mjs",
