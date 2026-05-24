@@ -26,6 +26,10 @@ export function DocsList() {
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  // Client-side filter over the list. Title / slug / creator / kind
+  // are all matched case-insensitively. RAG search lives behind MCP
+  // (`search_docs`) — this bar is for "find a doc I know exists".
+  const [query, setQuery] = useState('')
 
   const reload = useCallback((signal?: AbortSignal) => {
     setStatus({ kind: 'loading' })
@@ -48,10 +52,18 @@ export function DocsList() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
+      <Group justify="space-between" align="center" mb="md" gap="md" wrap="nowrap">
+        <Title order={2} fz={20} fw={600} style={{ whiteSpace: 'nowrap' }}>
           Docs library
         </Title>
+        <TextInput
+          placeholder="Filter by title, slug, creator…"
+          value={query}
+          onChange={(e) => setQuery(e.currentTarget.value)}
+          size="sm"
+          style={{ flex: 1, maxWidth: 360 }}
+          aria-label="Filter docs"
+        />
         <Menu shadow="md" position="bottom-end" withinPortal>
           <Menu.Target>
             <Button>+ New doc</Button>
@@ -82,38 +94,60 @@ export function DocsList() {
         </Text>
       )}
 
-      {status.kind === 'ready' && status.docs.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Created by</th>
-              <th>Last edited by</th>
-              <th style={{ textAlign: 'right' }}>Updated</th>
-            </tr>
-          </thead>
-          <tbody>
-            {status.docs.map((d) => (
-              <tr key={d.id} onClick={() => nav(`/app/docs/${d.id}`)}>
-                <td>
-                  <div style={{ fontWeight: 500 }}>{d.title}</div>
-                  <div className="text-dim" style={{ fontSize: 12, marginTop: 2 }}>
-                    {d.slug} · {d.kind}
-                  </div>
-                </td>
-                <td className="text-muted">{personLabel(d.createdBy)}</td>
-                <td className="text-muted">
-                  {/* never-edited fallback: implicit "creator" attribution */}
-                  {personLabel(d.updatedBy ?? d.createdBy)}
-                </td>
-                <td className="text-muted" style={{ textAlign: 'right' }}>
-                  {formatRelative(d.updatedAt)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      {status.kind === 'ready' &&
+        status.docs.length > 0 &&
+        (() => {
+          const filtered = filterDocs(status.docs, query)
+          if (filtered.length === 0) {
+            return (
+              <Text c="dimmed">
+                No docs match <code>{query}</code>.{' '}
+                <Text component="span" size="sm" c="dimmed">
+                  ({status.docs.length} in library)
+                </Text>
+              </Text>
+            )
+          }
+          return (
+            <>
+              {query && (
+                <Text c="dimmed" fz="xs" mb="xs">
+                  Showing {filtered.length} of {status.docs.length}
+                </Text>
+              )}
+              <table className="data-table">
+                <thead>
+                  <tr>
+                    <th>Title</th>
+                    <th>Created by</th>
+                    <th>Last edited by</th>
+                    <th style={{ textAlign: 'right' }}>Updated</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((d) => (
+                    <tr key={d.id} onClick={() => nav(`/app/docs/${d.id}`)}>
+                      <td>
+                        <div style={{ fontWeight: 500 }}>{d.title}</div>
+                        <div className="text-dim" style={{ fontSize: 12, marginTop: 2 }}>
+                          {d.slug} · {d.kind}
+                        </div>
+                      </td>
+                      <td className="text-muted">{personLabel(d.createdBy)}</td>
+                      <td className="text-muted">
+                        {/* never-edited fallback: implicit "creator" attribution */}
+                        {personLabel(d.updatedBy ?? d.createdBy)}
+                      </td>
+                      <td className="text-muted" style={{ textAlign: 'right' }}>
+                        {formatRelative(d.updatedAt)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )
+        })()}
 
       <BlankDocModal opened={createOpen} onClose={() => setCreateOpen(false)} />
       <ImportDocModal opened={importOpen} onClose={() => setImportOpen(false)} />
@@ -299,6 +333,21 @@ export function personLabel(u: UserSummary | null | undefined): string {
   if (u.name && u.name.length > 0) return u.name
   const at = u.email.indexOf('@')
   return at > 0 ? u.email.slice(0, at) : u.email
+}
+
+function filterDocs(docs: DocSummary[], query: string): DocSummary[] {
+  const q = query.trim().toLowerCase()
+  if (!q) return docs
+  return docs.filter((d) => {
+    if (d.title.toLowerCase().includes(q)) return true
+    if (d.slug.toLowerCase().includes(q)) return true
+    if (d.kind.toLowerCase().includes(q)) return true
+    const creator = personLabel(d.createdBy).toLowerCase()
+    if (creator.includes(q)) return true
+    const editor = personLabel(d.updatedBy ?? d.createdBy).toLowerCase()
+    if (editor.includes(q)) return true
+    return false
+  })
 }
 
 function explain(err: unknown): string {

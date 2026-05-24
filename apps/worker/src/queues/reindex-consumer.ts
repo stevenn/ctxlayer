@@ -47,10 +47,29 @@ export async function reindexConsumer(
       await handle(env, parsed.data.docId, parsed.data.revisionId)
       msg.ack()
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err)
+      // wrangler dev quirk: `remote = true` on the Vectorize / AI
+      // bindings works for the fetch handler but not for queue
+      // consumers (they run in a separate context that doesn't get
+      // the remote proxy). The error message is distinctive. In dev
+      // we ack the message instead of retrying-then-dropping so doc
+      // saves keep flowing; search_docs won't find anything until
+      // you run the worker remote (`wrangler dev --remote`) or
+      // deploy. In production this branch is never hit — both
+      // bindings resolve normally.
+      if (/needs to be run remotely/i.test(message)) {
+        console.warn('reindex-consumer: skipping in dev (binding not remote)', {
+          id: msg.id,
+          body: parsed.data,
+          err: message
+        })
+        msg.ack()
+        continue
+      }
       console.error('reindex-consumer: pipeline error; retrying', {
         id: msg.id,
         body: parsed.data,
-        err: err instanceof Error ? err.message : String(err)
+        err: message
       })
       msg.retry()
     }

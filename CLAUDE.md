@@ -135,15 +135,26 @@ SDK (SQLite-backed v2 migration); registers `whoami`,
 with `chunk_count` tracking (migration 0006) so orphans get deleted
 when revisions shrink.
 
-Before this can demo end-to-end, run **`bun run bootstrap`** —
-provisions the real D1, KV, R2, and Vectorize resources and
-patches `wrangler.toml` with their IDs in place. Idempotent;
-re-running it skips any binding that already has a real id.
-Requires `wrangler login` (or `CLOUDFLARE_API_TOKEN`).
+**Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
+`bun run dev` from a fresh checkout. The reindex consumer
+soft-skips Vectorize in dev so saves don't drop after retries;
+`search_docs` returns nothing locally because no vectors land —
+that's expected.
 
-Done-done checklist for M2 lives in `docs/PLAN.md` under the M2
-verification entry — twelve steps from `wrangler login` to a
-Claude-Desktop `search_docs` round-trip.
+**End-to-end RAG validation** (search_docs hitting real Vectorize):
+either `wrangler dev --remote` (proxies all bindings to CF; bills
+against the logged-in account) or a real deploy. For a real deploy:
+
+1. `wrangler login`
+2. `bun run bootstrap` — provisions D1/KV/R2/Vectorize, patches wrangler.toml
+3. `bun run migrate:remote`
+4. `wrangler secret put` for each: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY`, `SESSION_COOKIE_SECRET`
+5. `bun run seed:remote`
+6. `bun run deploy`
+
+The full done-done checklist (14 steps to Claude-Desktop
+`search_docs` round-trip) lives in `docs/PLAN.md` under the M2
+verification entry.
 
 Next work after M2 closes: **M3 (Yjs realtime collab)** then **M4
 (upstream proxy + Daytona)** then **M5 (admin UI)** then **M6

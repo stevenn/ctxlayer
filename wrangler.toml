@@ -59,14 +59,22 @@ bucket_name = "ctxlayer-docs"
 [[vectorize]]
 binding = "DOCS_INDEX"
 index_name = "ctxlayer-docs"
-# Vectorize has no local emulator, so `wrangler dev` proxies the
-# binding to the real index. `remote = true` makes that explicit
-# and silences the dev-warning. Requires `wrangler login` (or
-# CLOUDFLARE_API_TOKEN env). Doesn't change deploy behaviour.
-remote = true
+# Note: `remote = true` would silence the "no local emulator"
+# warning by attaching the binding to the deployed worker's edge
+# preview — but that requires the script to have been deployed
+# first (chicken-and-egg on a fresh checkout). Left off so
+# `bun run dev` works straight through; the reindex consumer
+# soft-skips the resulting "needs to be run remotely" error in
+# dev (see queues/reindex-consumer.ts). For RAG validation use
+# `wrangler dev --remote` or deploy.
 
 [ai]
 binding = "AI"
+# Workers AI runs on Cloudflare's infrastructure; there is no local
+# model server. The dev-warning is cosmetic — calls still proxy to
+# the real account from `wrangler dev`. `remote = true` would
+# silence the warning but requires a previously-deployed worker
+# script, which we don't want to require for local iteration.
 
 [[durable_objects.bindings]]
 name = "MCP_SESSION_DO"
