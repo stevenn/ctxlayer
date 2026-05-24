@@ -68,7 +68,22 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
     return
   }
 
-  const markdown = renderBlocksToMarkdown(content.blocks)
+  let markdown: string
+  try {
+    markdown = renderBlocksToMarkdown(content.blocks)
+  } catch (err) {
+    // We've now defended renderInline + renderTable, but if a future
+    // BlockNote schema change still trips us, log a sample of the
+    // payload so the offending block is identifiable from the queue
+    // log instead of just `items.map is not a function`.
+    console.error('reindex-consumer: markdown render failed', {
+      docId,
+      revisionId,
+      blockCount: Array.isArray(content.blocks) ? content.blocks.length : 'not-an-array',
+      sample: safeSample(content.blocks)
+    })
+    throw err
+  }
   if (!markdown) {
     // Empty body — nothing to embed. M2c's delete-by-docId-prefix will
     // still want to run so search results don't reference an empty
@@ -87,4 +102,12 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
     vectors
     // tags omitted in M2b/1 → upsertChunks treats as is_global=true
   })
+}
+
+function safeSample(blocks: unknown): string {
+  try {
+    return JSON.stringify(blocks).slice(0, 500)
+  } catch {
+    return '<unstringifiable>'
+  }
 }

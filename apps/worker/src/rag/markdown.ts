@@ -43,9 +43,19 @@ interface LinkLeaf {
 }
 type Inline = TextLeaf | LinkLeaf
 
+// BlockNote 0.51 emits one of two shapes for table cells:
+//   InlineContent[][]                       (legacy / unwrapped)
+//   { type: 'tableCell', content: ... }[]   (new wrapper)
+// We accept both — see normaliseCell().
+interface TableCell {
+  type: 'tableCell'
+  props?: Record<string, unknown>
+  content?: Inline[]
+}
+type CellAny = Inline[] | TableCell
 interface TableContent {
   type: 'tableContent'
-  rows: Array<{ cells: Inline[][] }>
+  rows: Array<{ cells: CellAny[] }>
 }
 
 interface Block {
@@ -188,8 +198,14 @@ function strProp(props: Block['props'], key: string): string {
   return typeof v === 'string' ? v : ''
 }
 
-function renderInline(items: Inline[]): string {
-  return items
+function renderInline(items: unknown): string {
+  // Defensive: a non-array reaching here means we mis-typed an upstream
+  // BlockNote shape. Return '' instead of throwing — the queue
+  // consumer would otherwise retry-then-drop the whole reindex,
+  // which is far worse than skipping one block's text. The walker's
+  // top-level catch logs the original payload for debugging.
+  if (!Array.isArray(items)) return ''
+  return (items as Inline[])
     .map((node) => {
       if (node.type === 'link') {
         const inner = renderInline(node.content)
@@ -211,17 +227,25 @@ function renderInline(items: Inline[]): string {
 }
 
 function renderTable(t: TableContent | undefined): string {
-  if (!t || !t.rows || t.rows.length === 0) return ''
+  if (!t || !Array.isArray(t.rows) || t.rows.length === 0) return ''
   const [header, ...body] = t.rows
-  if (!header) return ''
-  const headerCells = header.cells.map((c) => renderInline(c))
+  if (!header || !Array.isArray(header.cells)) return ''
+  const headerCells = header.cells.map((c) => renderInline(normaliseCell(c)))
   const separator = headerCells.map(() => '---')
-  const bodyRows = body.map((r) => `| ${r.cells.map((c) => renderInline(c)).join(' | ')} |`)
-  return [
-    `| ${headerCells.join(' | ')} |`,
-    `| ${separator.join(' | ')} |`,
-    ...bodyRows
-  ].join('\n')
+  const bodyRows = body.map(
+    (r) =>
+      `| ${(Array.isArray(r.cells) ? r.cells : [])
+        .map((c) => renderInline(normaliseCell(c)))
+        .join(' | ')} |`
+  )
+  return [`| ${headerCells.join(' | ')} |`, `| ${separator.join(' | ')} |`, ...bodyRows].join('\n')
+}
+
+/** Collapse the two BlockNote cell shapes into a flat InlineContent[]. */
+function normaliseCell(c: CellAny): Inline[] {
+  if (Array.isArray(c)) return c
+  if (c && typeof c === 'object' && Array.isArray(c.content)) return c.content
+  return []
 }
 
 function asInline(content: Block['content']): Inline[] {

@@ -106,7 +106,7 @@ describe('renderBlocksToMarkdown', () => {
     ).toBe('> line1\n> line2')
   })
 
-  it('renders a table with header separator', () => {
+  it('renders a table with header separator (legacy InlineContent[][] cells)', () => {
     const cell = (t: string) => [{ type: 'text', text: t, styles: {} }]
     const out = renderBlocksToMarkdown([
       {
@@ -118,6 +118,40 @@ describe('renderBlocksToMarkdown', () => {
       }
     ])
     expect(out).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |')
+  })
+
+  it('renders a table whose cells are TableCell-wrapped (BlockNote 0.51 new shape)', () => {
+    // Regression: this shape used to throw `items.map is not a function`
+    // because the cell was an object, not an inline array.
+    const tcell = (t: string) => ({
+      type: 'tableCell',
+      props: {},
+      content: [{ type: 'text', text: t, styles: {} }]
+    })
+    const out = renderBlocksToMarkdown([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: [tcell('a'), tcell('b')] }, { cells: [tcell('1'), tcell('2')] }]
+        }
+      }
+    ])
+    expect(out).toBe('| a | b |\n| --- | --- |\n| 1 | 2 |')
+  })
+
+  it('handles a malformed cell (object that is neither array nor TableCell) by emitting an empty cell', () => {
+    const out = renderBlocksToMarkdown([
+      {
+        type: 'table',
+        content: {
+          type: 'tableContent',
+          rows: [{ cells: [{ weird: true } as never, [{ type: 'text', text: 'ok', styles: {} }]] }]
+        }
+      }
+    ])
+    // Header row: empty first cell, "ok" in the second. No body rows.
+    expect(out).toBe('|  | ok |\n| --- | --- |')
   })
 
   it('degrades unknown blocks to their text content', () => {
