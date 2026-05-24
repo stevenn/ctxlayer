@@ -71,3 +71,69 @@ export const SearchScope = z.union([
   })
 ])
 export type SearchScope = z.infer<typeof SearchScope>
+
+// ---- Admin CRUD request shapes ------------------------------------------
+// Slug rules mirror docs-types.ts DocSlug: lowercase, digits, dashes;
+// 1..96 chars; no leading/trailing dashes. Teams + products live in
+// the same URL/tag namespace so they share the same shape.
+export const OrgSlug = z
+  .string()
+  .min(1)
+  .max(96)
+  .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase, digits and dashes only')
+
+export const CreateTeamRequest = z.object({
+  slug: OrgSlug,
+  displayName: z.string().min(1).max(200),
+  description: z.string().max(2000).nullish(),
+  idpGroup: z.string().max(200).nullish()
+})
+export type CreateTeamRequest = z.infer<typeof CreateTeamRequest>
+
+export const UpdateTeamRequest = z.object({
+  slug: OrgSlug.optional(),
+  displayName: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).nullish(),
+  idpGroup: z.string().max(200).nullish()
+})
+export type UpdateTeamRequest = z.infer<typeof UpdateTeamRequest>
+
+export const CreateProductRequest = z.object({
+  slug: OrgSlug,
+  displayName: z.string().min(1).max(200),
+  description: z.string().max(2000).nullish()
+})
+export type CreateProductRequest = z.infer<typeof CreateProductRequest>
+
+export const UpdateProductRequest = z.object({
+  slug: OrgSlug.optional(),
+  displayName: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).nullish()
+})
+export type UpdateProductRequest = z.infer<typeof UpdateProductRequest>
+
+export const AddTeamMemberRequest = z.object({
+  userId: z.string().min(1),
+  role: TeamMemberRole.optional()
+})
+export type AddTeamMemberRequest = z.infer<typeof AddTeamMemberRequest>
+
+export const TeamMemberRow = z.object({
+  userId: z.string(),
+  email: z.string(),
+  name: z.string().nullish(),
+  role: TeamMemberRole,
+  createdAt: z.number()
+})
+export type TeamMemberRow = z.infer<typeof TeamMemberRow>
+
+// teams ↔ products matrix — replace entire set in one PUT.
+export const TeamProductsAssignment = z.object({
+  teamId: z.string(),
+  productId: z.string()
+})
+export type TeamProductsAssignment = z.infer<typeof TeamProductsAssignment>
+export const TeamProductsPayload = z.object({
+  rules: z.array(TeamProductsAssignment)
+})
+export type TeamProductsPayload = z.infer<typeof TeamProductsPayload>

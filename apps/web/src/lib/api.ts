@@ -1,31 +1,52 @@
 import {
   AddEditorRequest,
+  AddTeamMemberRequest,
   ConfigResponse,
   CreateDocRequest,
+  CreateProductRequest,
+  CreateTeamRequest,
   DocContent,
   DocDetail,
   DocEditorsResponse,
   DocSummary,
+  DocTags,
   HealthResponse,
   MeResponse,
+  ProductRef,
   RevisionSummary,
   RestoreRequest,
+  TeamMemberRow,
+  TeamProductsAssignment,
+  TeamProductsPayload,
+  TeamRef,
   UpdateDocRequest,
+  UpdateProductRequest,
+  UpdateTeamRequest,
   UserSearchResult
 } from '@ctxlayer/shared'
 import type {
   AddEditorRequest as AddEditorRequestT,
+  AddTeamMemberRequest as AddTeamMemberRequestT,
   ConfigResponse as ConfigResponseT,
   CreateDocRequest as CreateDocRequestT,
+  CreateProductRequest as CreateProductRequestT,
+  CreateTeamRequest as CreateTeamRequestT,
   DocContent as DocContentT,
   DocDetail as DocDetailT,
   DocEditorsResponse as DocEditorsResponseT,
   DocSummary as DocSummaryT,
+  DocTags as DocTagsT,
   HealthResponse as HealthResponseT,
   MeResponse as MeResponseT,
+  ProductRef as ProductRefT,
   RevisionSummary as RevisionSummaryT,
   RestoreRequest as RestoreRequestT,
+  TeamMemberRow as TeamMemberRowT,
+  TeamProductsAssignment as TeamProductsAssignmentT,
+  TeamRef as TeamRefT,
   UpdateDocRequest as UpdateDocRequestT,
+  UpdateProductRequest as UpdateProductRequestT,
+  UpdateTeamRequest as UpdateTeamRequestT,
   UserSearchResult as UserSearchResultT
 } from '@ctxlayer/shared'
 import { readCsrfToken } from './csrf'
@@ -209,6 +230,107 @@ export function searchUsers(
 ): Promise<UserSearchResultT> {
   const qs = new URLSearchParams({ email: emailPrefix })
   return request(`/api/users?${qs}`, (b) => UserSearchResult.parse(b), { signal })
+}
+
+// ----- doc tags -----------------------------------------------------------
+
+export function fetchDocTags(id: string, signal?: AbortSignal): Promise<DocTagsT> {
+  return request(`/api/docs/${encodeURIComponent(id)}/tags`, (b) => DocTags.parse(b), { signal })
+}
+
+export function putDocTags(id: string, tags: DocTagsT): Promise<void> {
+  return request(`/api/docs/${encodeURIComponent(id)}/tags`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(DocTags.parse(tags))
+  })
+}
+
+// ----- teams + products (public-read) ------------------------------------
+
+const TeamList = z.array(TeamRef)
+const ProductList = z.array(ProductRef)
+const TeamMemberList = z.array(TeamMemberRow)
+const TeamProductsList = z.array(TeamProductsAssignment)
+
+export function fetchTeams(signal?: AbortSignal): Promise<TeamRefT[]> {
+  return request('/api/teams', (b) => TeamList.parse(b), { signal })
+}
+
+export function fetchProducts(signal?: AbortSignal): Promise<ProductRefT[]> {
+  return request('/api/products', (b) => ProductList.parse(b), { signal })
+}
+
+// ----- admin teams --------------------------------------------------------
+
+export function adminCreateTeam(input: CreateTeamRequestT): Promise<TeamRefT> {
+  return request('/api/admin/teams', (b) => TeamRef.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateTeamRequest.parse(input))
+  })
+}
+
+export function adminPatchTeam(id: string, patch: UpdateTeamRequestT): Promise<void> {
+  return request(`/api/admin/teams/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateTeamRequest.parse(patch))
+  })
+}
+
+export function adminDeleteTeam(id: string): Promise<void> {
+  return request(`/api/admin/teams/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' })
+}
+
+export function fetchTeamMembers(id: string, signal?: AbortSignal): Promise<TeamMemberRowT[]> {
+  return request(
+    `/api/admin/teams/${encodeURIComponent(id)}/members`,
+    (b) => TeamMemberList.parse(b),
+    { signal }
+  )
+}
+
+export function addTeamMember(teamId: string, body: AddTeamMemberRequestT): Promise<void> {
+  return request(`/api/admin/teams/${encodeURIComponent(teamId)}/members`, () => undefined, {
+    method: 'POST',
+    body: JSON.stringify(AddTeamMemberRequest.parse(body))
+  })
+}
+
+export function removeTeamMember(teamId: string, userId: string): Promise<void> {
+  const path = `/api/admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`
+  return request(path, () => undefined, { method: 'DELETE' })
+}
+
+// ----- admin products + team↔product matrix ------------------------------
+
+export function adminCreateProduct(input: CreateProductRequestT): Promise<ProductRefT> {
+  return request('/api/admin/products', (b) => ProductRef.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateProductRequest.parse(input))
+  })
+}
+
+export function adminPatchProduct(id: string, patch: UpdateProductRequestT): Promise<void> {
+  return request(`/api/admin/products/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateProductRequest.parse(patch))
+  })
+}
+
+export function adminDeleteProduct(id: string): Promise<void> {
+  return request(`/api/admin/products/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'DELETE'
+  })
+}
+
+export function fetchTeamProducts(signal?: AbortSignal): Promise<TeamProductsAssignmentT[]> {
+  return request('/api/admin/team-products', (b) => TeamProductsList.parse(b), { signal })
+}
+
+export function putTeamProducts(rules: TeamProductsAssignmentT[]): Promise<void> {
+  return request('/api/admin/team-products', () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(TeamProductsPayload.parse({ rules }))
+  })
 }
 
 // Silence unused warning for the VOID schema export — keeping it

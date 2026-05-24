@@ -363,6 +363,45 @@ table:hover .bn-table-cell-handle {
   padding-top: 32px !important;
 }
 
+/* ── Editor typography ─────────────────────────────────────── */
+/* BlockNote ships Inter and sets it as the editor font. The rest
+   of the SPA uses the system font, so the chrome→canvas transition
+   looks like switching apps. Override BlockNote's family back to
+   the SPA's so it feels native, and drop the body size a notch so
+   docs render at chrome size rather than the bigger 16px default. */
+.bn-editor,
+.bn-container,
+.bn-mantine,
+.bn-mantine [contenteditable='true'] {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif !important;
+}
+.bn-editor,
+.bn-block-content[data-content-type='paragraph'],
+.bn-block-content[data-content-type='bulletListItem'],
+.bn-block-content[data-content-type='numberedListItem'],
+.bn-block-content[data-content-type='checkListItem'],
+.bn-block-content[data-content-type='toggleListItem'],
+.bn-block-content[data-content-type='quote'] {
+  font-size: 14px !important;
+  line-height: 1.55;
+}
+
+/* Tables + code blocks: a denser type for content that's already
+   visually heavier than prose. */
+.bn-block-content[data-content-type='table'] table,
+.bn-block-content[data-content-type='table'] td,
+.bn-block-content[data-content-type='table'] th {
+  font-size: 12px !important;
+  line-height: 1.4;
+}
+.bn-block-content[data-content-type='codeBlock'],
+.bn-block-content[data-content-type='codeBlock'] pre,
+.bn-block-content[data-content-type='codeBlock'] code {
+  font-size: 12px !important;
+  line-height: 1.45;
+}
+
 /* Compact "kv" style info widget — used by the editor's
    created/last-edited strip. */
 .info-strip {

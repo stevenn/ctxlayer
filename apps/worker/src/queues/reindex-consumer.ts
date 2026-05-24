@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Env } from '../env'
 import { getDocById } from '../db/queries/docs'
+import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readRevision } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 import { chunkMarkdown } from '../rag/chunker'
@@ -93,14 +94,21 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
   }
 
   const chunks = chunkMarkdown(markdown)
-  const { vectors } = await embed(env, chunks.map((c) => c.text))
+  const [{ vectors }, tags] = await Promise.all([
+    embed(env, chunks.map((c) => c.text)),
+    listTagsForDoc(env, docId)
+  ])
+  // Topic tags aren't part of the search filter today; we pass only
+  // team + product onto chunk metadata. Topics live in `doc_tags`
+  // for the editor + (future) drill-down browse, not the scope
+  // predicate. `is_global` is derived in upsertChunks from these two.
   await upsertChunks(env, {
     docId,
     revisionId,
     title: doc.title,
     chunks,
-    vectors
-    // tags omitted in M2b/1 → upsertChunks treats as is_global=true
+    vectors,
+    tags: { teams: tags.teams, products: tags.products }
   })
 }
 

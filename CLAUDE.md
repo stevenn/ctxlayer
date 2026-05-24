@@ -106,19 +106,26 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 + M2a + M2b/1 complete.** M1: Google/GitHub sign-in + `/api/me`.
-M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` cookie +
-`requireCsrf` middleware, `/api/docs` REST + content save, `/api/docs/:id/editors`
-sharing, `/api/users?email=` lookup, BlockNote editor route with
-sharing dialog and creator/editor attribution. M2b/1: reindex pipeline
-in `apps/worker/src/rag/{markdown,chunker,embedder,index}.ts` wired
-into the queue consumer (covers all 14 BlockNote 0.51 default block
-types; Workers AI `@cf/baai/bge-base-en-v1.5`; Vectorize upsert
-logged-only with M2c idempotency contract documented inline).
-Next work is **M2b/2** (doc-tag editor pane + `doc_tags` populated on
-chunk metadata) then **M2c** (`McpAgent` at `/mcp`+`/sse` +
-`workers-oauth-provider` + `search_docs`/`get_doc` + flip Vectorize
-upsert to real).
+**M1 + M2a + M2b/1 + M2b/2 complete.** M1: Google/GitHub sign-in.
+M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` + middleware,
+`/api/docs` REST + content save, `/api/docs/:id/editors`,
+`/api/users?email=`, BlockNote editor with sharing + creator/editor
+attribution + inline title rename + import-markdown + doc-to-doc
+links + roadmapper theme. M2b/1: reindex pipeline in
+`apps/worker/src/rag/{markdown,chunker,embedder,index}.ts`; Workers
+AI `@cf/baai/bge-base-en-v1.5`; Vectorize upsert logged-only with
+M2c idempotency contract documented inline. M2b/2: `doc_tags`
+queries + `/api/docs/:id/tags` + `/api/teams` + `/api/products` +
+full admin CRUD at `/api/admin/teams|products|team-products`, SPA
+tag pane in editor right rail, `/app/admin/teams` +
+`/app/admin/products` pages (create/edit/delete + team-members
+drawer + team↔product matrix), reindex consumer reads `doc_tags`
+into chunk metadata, tag changes enqueue a fresh reindex,
+`seed.mjs` seeds 3 teams + 2 products.
+Next work is **M2c** (`McpAgent` at `/mcp`+`/sse` +
+`workers-oauth-provider` + `search_docs`/`get_doc`/`list_my_context`
++ flip Vectorize upsert to real + create the real Vectorize index
+in CF).
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed

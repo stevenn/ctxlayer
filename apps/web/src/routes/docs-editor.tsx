@@ -23,6 +23,7 @@ import {
   putDocContent
 } from '../lib/api'
 import { BlockNoteEditor } from '../components/editor/blocknote-editor'
+import { TagPane } from '../components/editor/tag-pane'
 import { SharingDialog } from './docs-sharing'
 
 type Loaded = { doc: DocDetail; content: DocContent }
@@ -289,17 +290,20 @@ export function DocsEditor() {
           style={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 12,
+            gap: 16,
             position: 'sticky',
             top: 0,
             color: 'var(--text-dim)',
             fontSize: 12
           }}
         >
-          <MetaRow label="Created">
-            <Person u={doc.createdBy} />
-            <div>{formatAbsolute(doc.createdAt)}</div>
-          </MetaRow>
+          <TagPane docId={doc.id} canEdit={doc.canEdit} />
+
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+            <MetaRow label="Created">
+              <Person u={doc.createdBy} />
+              <div>{formatAbsolute(doc.createdAt)}</div>
+            </MetaRow>
           <MetaRow label="Last edited">
             {doc.updatedBy ? (
               <>
@@ -310,10 +314,11 @@ export function DocsEditor() {
               <span>Never edited</span>
             )}
           </MetaRow>
-          <MetaRow label="Slug">
-            <code>{doc.slug}</code>
-          </MetaRow>
-          <MetaRow label="Kind">{doc.kind}</MetaRow>
+            <MetaRow label="Slug">
+              <code>{doc.slug}</code>
+            </MetaRow>
+            <MetaRow label="Kind">{doc.kind}</MetaRow>
+          </div>
         </aside>
       </div>
 

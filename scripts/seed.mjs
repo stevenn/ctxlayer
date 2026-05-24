@@ -1,6 +1,12 @@
 #!/usr/bin/env bun
-// Load fixture upstreams + docs into D1. Defaults to --local; --remote
-// must be explicit so a stray invocation can't touch production.
+// Load fixture rows (teams + products) into D1. Defaults to --local;
+// --remote must be explicit so a stray invocation can't touch
+// production. The seeded ids are deterministic so re-running is
+// idempotent (INSERT OR IGNORE).
+//
+// M4 will add upstream_servers fixtures here too. Docs are NOT
+// seeded — every doc needs a real created_by user, and we don't
+// want to bypass the IdP allowlist by inserting a fake user row.
 
 import { spawnSync } from 'node:child_process'
 
@@ -13,15 +19,36 @@ if (remote) {
   await new Promise((r) => setTimeout(r, 3000))
 }
 
-// M2a: doc fixtures are created through the UI (sign in → "+ New doc")
-// because every doc needs a real created_by user, and we don't want
-// the seed script to bypass the IdP allowlist by inserting a fake
-// user row. M4 will add upstream fixtures here (no auth dependency).
-console.log(`Seeding D1 (${target})... (no fixtures yet; placeholder)`)
+// Deterministic ids (lowercased, dashes stripped) so re-runs are idempotent.
+const now = Math.floor(Date.now() / 1000)
+const teams = [
+  { id: 'seedteamplatform', slug: 'platform', name: 'Platform', desc: 'Core infra + DX' },
+  { id: 'seedteamweb', slug: 'web', name: 'Web', desc: 'Frontend + SPA' },
+  { id: 'seedteamdata', slug: 'data', name: 'Data', desc: 'Analytics + pipelines' }
+]
+const products = [
+  { id: 'seedprodcheckout', slug: 'checkout', name: 'Checkout', desc: 'Payment flow' },
+  { id: 'seedprodsearch', slug: 'search', name: 'Search', desc: 'Discovery surfaces' }
+]
 
-const result = spawnSync(
-  'wrangler',
-  ['d1', 'execute', 'DB', target, '--command', 'SELECT 1'],
-  { stdio: 'inherit' }
-)
+const stmts = []
+for (const t of teams) {
+  stmts.push(
+    `INSERT OR IGNORE INTO teams (id, slug, display_name, description, created_at, updated_at) ` +
+      `VALUES ('${t.id}', '${t.slug}', '${t.name}', '${t.desc}', ${now}, ${now});`
+  )
+}
+for (const p of products) {
+  stmts.push(
+    `INSERT OR IGNORE INTO products (id, slug, display_name, description, created_at, updated_at) ` +
+      `VALUES ('${p.id}', '${p.slug}', '${p.name}', '${p.desc}', ${now}, ${now});`
+  )
+}
+const sql = stmts.join('\n')
+
+console.log(`Seeding D1 (${target}) — ${teams.length} teams + ${products.length} products…`)
+
+const result = spawnSync('wrangler', ['d1', 'execute', 'DB', target, '--command', sql], {
+  stdio: 'inherit'
+})
 process.exit(result.status ?? 1)

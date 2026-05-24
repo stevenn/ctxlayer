@@ -7,7 +7,11 @@ import { configRoute } from './api/config'
 import { authRoute } from './api/auth'
 import { docsRoute } from './api/docs'
 import { docSharingRoute } from './api/doc-sharing'
+import { docTagsRoute } from './api/doc-tags'
 import { usersRoute } from './api/users'
+import { teamsRoute, productsRoute } from './api/teams'
+import { adminTeamsRoute } from './api/admin-teams'
+import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
 import { usageConsumer } from './queues/usage-consumer'
@@ -24,11 +28,19 @@ app.route('/api/me', meRoute)
 app.route('/api/config', configRoute)
 app.route('/api/auth', authRoute)
 app.route('/api/users', usersRoute)
-// Docs CRUD and per-doc ACL share the same /api/docs prefix; the
-// sharing router only matches /:id/editors* paths so the order of
-// mounts does not matter.
+app.route('/api/teams', teamsRoute)
+app.route('/api/products', productsRoute)
+// Docs CRUD, per-doc ACL, and tags share the same /api/docs prefix;
+// the sub-routers each match disjoint subpaths so mount order does
+// not matter.
 app.route('/api/docs', docsRoute)
 app.route('/api/docs', docSharingRoute)
+app.route('/api/docs', docTagsRoute)
+// Admin REST. All inner routes gate on requireAdmin so non-admins
+// hitting these endpoints get 403, not 401.
+app.route('/api/admin/teams', adminTeamsRoute)
+app.route('/api/admin/products', adminProductsRoute)
+app.route('/api/admin/team-products', adminTeamProductsRoute)
 
 // IdP sign-in (M1). The SPA hits these from /sign-in; both providers
 // redirect back to /app/docs (or the `return_to` param) after issuing
