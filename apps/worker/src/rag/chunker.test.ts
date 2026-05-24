@@ -52,6 +52,21 @@ describe('chunkMarkdown', () => {
     }
   })
 
+  it('falls back to [title] when a chunk starts before any heading', () => {
+    // No h1-h3 anywhere -> active heading stack stays empty for all
+    // chunks. With `title` supplied, every chunk's headings === [title].
+    const md = 'Just a paragraph.\n\nAnd one more.'
+    const chunks = chunkMarkdown(md, { title: 'Doc Title' })
+    expect(chunks).toHaveLength(1)
+    expect(chunks[0]?.headings).toEqual(['Doc Title'])
+  })
+
+  it('uses real headings when present and ignores title fallback', () => {
+    const md = '# Real H1\n\nbody'
+    const chunks = chunkMarkdown(md, { title: 'Doc Title' })
+    expect(chunks[0]?.headings).toEqual(['Real H1'])
+  })
+
   it('assigns sequential idx starting at 0', () => {
     const md = Array.from({ length: 50 }, (_, i) => `Para ${i}.`).join('\n\n')
     const chunks = chunkMarkdown(md, { targetTokens: 32 })

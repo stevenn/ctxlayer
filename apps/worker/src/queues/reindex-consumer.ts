@@ -112,7 +112,7 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
     return
   }
 
-  const chunks = chunkMarkdown(markdown)
+  const chunks = chunkMarkdown(markdown, { title: doc.title })
   const [{ vectors }, tags] = await Promise.all([
     embed(env, chunks.map((c) => c.text)),
     listTagsForDoc(env, docId)

@@ -33,9 +33,14 @@ export interface Chunk {
 export interface ChunkerOptions {
   targetTokens?: number
   overlapTokens?: number
+  /** When a chunk starts before any h1-h3 has appeared, headings is
+   *  normally `[]`. If `title` is supplied, those chunks carry
+   *  `[title]` instead so downstream display + future
+   *  context-prepending RAG strategies have something to show. */
+  title?: string
 }
 
-const DEFAULTS: Required<ChunkerOptions> = {
+const DEFAULTS: Required<Omit<ChunkerOptions, 'title'>> = {
   targetTokens: 512,
   overlapTokens: 64
 }
@@ -48,6 +53,7 @@ function encoder(): Tiktoken {
 
 export function chunkMarkdown(md: string, opts: ChunkerOptions = {}): Chunk[] {
   const { targetTokens, overlapTokens } = { ...DEFAULTS, ...opts }
+  const title = opts.title?.trim() ?? ''
   const enc = encoder()
   const lines = md.split('\n')
   const chunks: Chunk[] = []
@@ -58,7 +64,7 @@ export function chunkMarkdown(md: string, opts: ChunkerOptions = {}): Chunk[] {
 
   let buf: string[] = []
   let bufTokens = 0
-  let chunkHeadings: string[] = []
+  let chunkHeadings: string[] = title ? [title] : []
 
   function flush() {
     if (buf.length === 0) return
@@ -75,7 +81,9 @@ export function chunkMarkdown(md: string, opts: ChunkerOptions = {}): Chunk[] {
   }
 
   function activeHeadings(): string[] {
-    return stack.filter((s): s is string => !!s)
+    const active = stack.filter((s): s is string => !!s)
+    if (active.length > 0) return active
+    return title ? [title] : []
   }
 
   function startNewBufferWithOverlap() {

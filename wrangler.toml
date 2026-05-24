@@ -45,12 +45,12 @@ run_worker_first = [
 [[d1_databases]]
 binding = "DB"
 database_name = "ctxlayer"
-database_id = "00000000-0000-0000-0000-000000000000"  # <TODO>
+database_id = "c26162b8-8840-44f4-9e76-12a63d0c094a"
 migrations_dir = "apps/worker/src/db/migrations"
 
 [[kv_namespaces]]
 binding = "OAUTH_KV"
-id = "0000000000000000000000000000000000"  # <TODO>
+id = "26fde346650d4f5d9fe0ae7d9a1c842e"
 
 [[r2_buckets]]
 binding = "DOCS_BUCKET"
@@ -85,21 +85,13 @@ name = "DOC_ROOM_DO"
 class_name = "DocRoomDO"
 
 # Durable Object class migrations.
-# v1 declared both classes as non-SQLite stubs (storage backend is
-# sticky once chosen). v2 promotes McpSessionDO to a SQLite-backed
-# class because it now extends `McpAgent` from the `agents` SDK,
-# which uses `ctx.storage.sql` for session state. We `deleted_classes`
-# first so the v1 non-SQLite class is gone, then `new_sqlite_classes`
-# brings it back fresh. No production data existed for the v1 class
-# so the wipe is harmless. `DocRoomDO` stays non-SQLite until M3
-# wires real Yjs persistence.
+# `McpSessionDO` is SQLite-backed because it extends `McpAgent` from
+# the `agents` SDK (uses `ctx.storage.sql` for session state).
+# `DocRoomDO` stays non-SQLite until M3 wires real Yjs persistence.
+# Storage backend is sticky once a class is created on the account.
 [[migrations]]
 tag = "v1"
-new_classes = ["McpSessionDO", "DocRoomDO"]
-
-[[migrations]]
-tag = "v2"
-deleted_classes = ["McpSessionDO"]
+new_classes = ["DocRoomDO"]
 new_sqlite_classes = ["McpSessionDO"]
 
 [[queues.producers]]
@@ -137,7 +129,7 @@ port = 8787
 local_protocol = "https"
 
 [vars]
-PUBLIC_BASE_URL = "https://localhost:8787"
+PUBLIC_BASE_URL = "https://ctxlayer.stevenn-a65.workers.dev"
 # Google sign-in is enabled if EITHER allowlist is set. A user passes
 # the allowlist when their id_token.hd matches ALLOWED_GOOGLE_HD OR
 # their email is in ALLOWED_GOOGLE_EMAILS. Both empty disables Google.
@@ -147,8 +139,11 @@ ALLOWED_GOOGLE_EMAILS = ""           # comma-separated emails for solo / persona
 # when they're a member of ALLOWED_GITHUB_ORG OR their login is in
 # ALLOWED_GITHUB_USERS. Both empty disables GitHub.
 ALLOWED_GITHUB_ORG = ""              # e.g. "acme-inc" (org slug)
-ALLOWED_GITHUB_USERS = ""            # comma-separated GitHub logins for personal accounts
-ADMIN_EMAILS = ""                    # comma-separated bootstrap admins
+# ALLOWED_GITHUB_USERS and ADMIN_EMAILS are intentionally not declared
+# here: in prod they're set via `wrangler secret put` (so personal
+# logins / admin emails don't get committed); in local dev `.dev.vars`
+# supplies them. Declaring an empty default would block `wrangler
+# secret put` with code 10053 ("binding name already in use").
 DAYTONA_API_URL = "https://app.daytona.io/api"
 DAYTONA_DEFAULT_IDLE_SECONDS = "600"
 MAX_SANDBOXES_PER_USER = "5"

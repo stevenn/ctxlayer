@@ -8,6 +8,7 @@
  *   KV namespace      (OAUTH_KV)
  *   R2 bucket         (ctxlayer-docs) — no id, just create
  *   Vectorize index   (ctxlayer-docs)
+ *   Queues            (ctxlayer-usage, ctxlayer-reindex)
  *
  * Requires `wrangler login` (or CLOUDFLARE_API_TOKEN + ACCOUNT_ID in
  * env). Re-run any time without harm.
@@ -21,6 +22,7 @@ const DB_NAME = 'ctxlayer'
 const KV_NAME = 'OAUTH_KV'
 const R2_BUCKET = 'ctxlayer-docs'
 const VECTORIZE_NAME = 'ctxlayer-docs'
+const QUEUES = ['ctxlayer-usage', 'ctxlayer-reindex']
 
 const PLACEHOLDER_RE = /^0+(-0+)*$/
 
@@ -131,6 +133,36 @@ if (exists) {
     '--description=ctxlayer doc chunks (bge-base-en-v1.5 embeddings)'
   ])
   console.log(`✓ Vectorize index created`)
+}
+
+// ----- Queues -----------------------------------------------------------
+// Queues are referenced by name (no id). `wrangler queues list` enumerates
+// them; create if missing. As of wrangler 4.x, `wrangler deploy` errors
+// rather than auto-creating queues, so this has to run before the first
+// deploy.
+const queuesList = spawnSync('wrangler', ['queues', 'list'], {
+  stdio: ['ignore', 'pipe', 'pipe'],
+  encoding: 'utf8'
+})
+const queuesListed = queuesList.stdout ?? ''
+for (const queue of QUEUES) {
+  console.log(`\nEnsuring queue "${queue}"…`)
+  if (queuesListed.includes(queue)) {
+    console.log(`✓ Queue already exists`)
+    continue
+  }
+  const q = spawnSync('wrangler', ['queues', 'create', queue], {
+    stdio: ['ignore', 'pipe', 'pipe'],
+    encoding: 'utf8'
+  })
+  if (q.status === 0) {
+    console.log(`✓ Queue created`)
+  } else if ((q.stderr ?? '').toLowerCase().includes('already exists')) {
+    console.log(`✓ Queue already exists`)
+  } else {
+    console.error(`Queue create failed (exit ${q.status}):\n${q.stderr ?? q.stdout}`)
+    process.exit(q.status ?? 1)
+  }
 }
 
 // ----- write back -------------------------------------------------------

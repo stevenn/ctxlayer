@@ -392,22 +392,21 @@ Each milestone is independently deployable and demoable.
 
 After each milestone:
 - **M1**: `wrangler deploy`, open URL, sign in with both Google and GitHub, confirm allowlist rejection works for outside-domain users.
-- **M2**: Add ctxlayer to Claude Desktop as remote MCP server; run `search_docs` and `get_doc`; verify reindex queue depth via `wrangler queues consumer`.
-  - **Done-done checklist (run in order)**. Local-only dev iteration (sign-in / docs / sharing / tags / admin pages) works without any of these steps — `bun run dev` from a fresh checkout boots straight through. The steps below are required for end-to-end RAG validation (search_docs hitting real Vectorize).
+- **M2 (CLOSED — May 2026)**: Claude (Web + Desktop) connects to ctxlayer as a remote MCP server; `search_docs`, `get_doc`, `whoami`, `list_my_context` all return real data against real Vectorize.
+  - **Done-done checklist (validated, in order)**. Local-only dev iteration (sign-in / docs / sharing / tags / admin pages) works without any of these steps — `bun run dev` from a fresh checkout boots straight through. The steps below are required for end-to-end RAG validation (search_docs hitting real Vectorize). `wrangler dev --remote` is NOT a viable shortcut: it can't host the reindex queue consumer or SQLite-backed Durable Objects (warnings emitted at boot), so the RAG pipeline can't complete there. Go straight to deploy.
     1. `wrangler login` (or set `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`).
-    2. `bun run bootstrap` — provisions the real D1/KV/R2/Vectorize resources and patches `wrangler.toml` with their IDs. Idempotent.
+    2. `bun run bootstrap` — provisions D1, KV, R2, Vectorize, and both queues (`ctxlayer-usage`, `ctxlayer-reindex`); patches `wrangler.toml` with the IDs. Idempotent.
     3. `bun run migrate:remote` — applies migrations 0001-0006 to the real D1.
-    4. Set remote secrets — one `wrangler secret put <NAME>` per: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY` (32 random bytes b64), `SESSION_COOKIE_SECRET` (random 32+ bytes). Same values you put in `.dev.vars` locally — the file is local-only by design.
+    4. Set remote secrets — one `wrangler secret put <NAME>` per: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY` (32 random bytes b64), `SESSION_COOKIE_SECRET` (random 32+ bytes), `ALLOWED_GITHUB_USERS` (or `ALLOWED_GOOGLE_EMAILS`), `ADMIN_EMAILS`. Same values you put in `.dev.vars` locally — the file is local-only by design. Note: `ALLOWED_*` and `ADMIN_EMAILS` are intentionally NOT declared in `[vars]` because that would block `wrangler secret put` with code 10053 ("binding name already in use").
     5. `bun run seed:remote` — seeds 3 teams + 2 products so the tag pane isn't empty.
-    6. `bun run deploy` — registers the worker script with the real bindings.
-    7. `bun run dev` — boots worker + SPA over HTTPS. The dev session attaches to the deployed script's edge preview, so AI + Vectorize bindings resolve.
-    8. Sign in via the SPA (`/sign-in`). Confirm `/api/me` returns 200 and `__Host-ctx_session` + `__Host-ctx_csrf` cookies are set.
-    9. Create a doc, type real content, save. Tag it with at least one team.
-    10. Tail logs (`bun run logs:all`). Saving a doc enqueues `{docId, revisionId}` → consumer renders → embeds via Workers AI → upserts to Vectorize.
-    11. Sanity: `wrangler vectorize get-by-ids ctxlayer-docs <docId>:0` returns the chunk.
-    12. Add ctxlayer to Claude Desktop: `{"mcpServers": {"ctxlayer": {"url": "https://<your-deployed-url>/mcp"}}}` (the SPA's local URL doesn't work — Claude Desktop hits the public hostname). Restart Claude Desktop. It opens `/oauth/authorize`; pick an IdP; you're back.
-    13. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data.
-    14. Delete the doc — next reindex cleans up the orphan vectors via `chunk_count` tracking (Section 0006_doc_chunk_count.sql).
+    6. First `bun run deploy` — registers the worker script with the real bindings and prints `https://ctxlayer.<subdomain>.workers.dev`. Patch `[vars] PUBLIC_BASE_URL` in `wrangler.toml` to this URL, add `/idp/<provider>/callback` to each IdP's redirect URI list (GitHub OAuth apps allow only one, so swap rather than add for prod), then `bun run deploy` again. For local dev to keep working with the workers.dev base committed, put `PUBLIC_BASE_URL=https://localhost:8787` in `.dev.vars` to override `[vars]`.
+    7. Sign in via the deployed SPA. Confirm `/api/me` returns 200 and `__Host-ctx_session` + `__Host-ctx_csrf` cookies are set.
+    8. Create a doc, type real content (the embedder works on actual prose), save. Tag it with at least one team via the right-rail tag pane.
+    9. Tail logs (`bun run logs:all`). Saving a doc enqueues `{docId, revisionId}` → consumer renders → embeds via Workers AI → upserts to Vectorize. Queue batches every 30s by default.
+    10. Sanity: `wrangler vectorize get-vectors ctxlayer-docs --ids <docId>:0` returns the chunk + metadata; `wrangler vectorize list-vectors ctxlayer-docs --count 100` shows the full set.
+    11. Wire Claude (Web or Desktop): `{"mcpServers": {"ctxlayer": {"url": "https://<your-deployed-url>/mcp"}}}`. For Claude Web that's at claude.ai → Settings → Connectors → Add custom. Claude triggers DCR + `/oauth/authorize` → IdP chooser → back.
+    12. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data. Note admin role doesn't grant team membership; use `scope: "all"` to search across the full library, or add yourself to a team via `/app/admin/teams`.
+    13. Shrink the doc (delete most content, save). Next reindex deletes the orphan vectors via `chunk_count` tracking (migration 0006); `list-vectors` should drop to the new count with no stragglers above.
 - **M3**: Two browser tabs editing concurrently; kill DO via `wrangler tail`, confirm WS reconnect + snapshot reload; verify revisions in D1.
 - **M4**: (a) Add Notion HTTP upstream via D1 insert; paste PAT in SPA; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). (b) Pre-build a Daytona snapshot containing `@modelcontextprotocol/server-github` + `supergateway`; register as `stdio_daytona` upstream; from Claude call `github_stdio__create_issue`; observe sandbox in Daytona dashboard; wait 10min; confirm auto-stop; call again, confirm wake works.
 - **M5**: Walk OAuth flow end-to-end for Linear; force token expiry by editing `expires_at`, confirm auto-refresh; admin UI smoke-test all CRUD operations.
@@ -1399,6 +1398,18 @@ gotchas the rest of the build should respect.
   For stubs that don't use `ctx.storage.sql`, declare them under
   `new_classes`. Promote to SQLite in a later migration tag when SQL
   state actually lands.
+- **First deploy is end-state, not history-replay.** The CF migration
+  validator rejects two things that local dev tolerates:
+  (1) `deleted_classes` + `new_sqlite_classes` for the same class in
+  one migration tag (error 10021 — "class cannot be the target of more
+  than one migration"); and (2) a `deleted_classes` referencing a
+  class that wasn't exported in the previous deployed version (error
+  10074). On a fresh account there IS no previous version — collapse
+  any local backend-flip dance into a single migration that declares
+  the end state. See ctxlayer's M2 closure: v1+v2+v3 (`new_classes`
+  → `deleted_classes` → `new_sqlite_classes`) collapsed to one v1
+  with `new_classes = ["DocRoomDO"]` + `new_sqlite_classes =
+  ["McpSessionDO"]`.
 
 ### G4. Hono / Workers entry
 

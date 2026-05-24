@@ -106,7 +106,10 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 + M2 complete (pending real Vectorize index provisioning).**
+**M1 + M2 closed (May 2026).** Real RAG validated end-to-end: Claude (Web)
+DCR + OAuth handshake → `whoami`/`list_my_context`/`search_docs`/`get_doc`
+against real Vectorize, with orphan-vector cleanup via `chunk_count`
+tracking verified by shrink test.
 M1: Google/GitHub sign-in.
 M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` + middleware,
 `/api/docs` REST + content save, `/api/docs/:id/editors`,
@@ -141,19 +144,27 @@ soft-skips Vectorize in dev so saves don't drop after retries;
 `search_docs` returns nothing locally because no vectors land —
 that's expected.
 
-**End-to-end RAG validation** (search_docs hitting real Vectorize):
-either `wrangler dev --remote` (proxies all bindings to CF; bills
-against the logged-in account) or a real deploy. For a real deploy:
+**End-to-end RAG validation** (search_docs hitting real Vectorize)
+requires a real deploy. `wrangler dev --remote` is NOT a viable
+shortcut — it emits "Queues are not yet supported in wrangler dev
+remote mode" + "SQLite in Durable Objects is only supported in local
+mode" warnings, and SPA routes 503 because the McpSessionDO can't
+boot SQLite-backed in that mode. Go straight to deploy:
 
 1. `wrangler login`
-2. `bun run bootstrap` — provisions D1/KV/R2/Vectorize, patches wrangler.toml
+2. `bun run bootstrap` — provisions D1/KV/R2/Vectorize + queues, patches wrangler.toml
 3. `bun run migrate:remote`
-4. `wrangler secret put` for each: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY`, `SESSION_COOKIE_SECRET`
+4. `wrangler secret put` for each: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY`, `SESSION_COOKIE_SECRET`, `ALLOWED_GITHUB_USERS`, `ADMIN_EMAILS` (add Google equivalents if using Google). `ALLOWED_*` and `ADMIN_EMAILS` are intentionally not declared in `[vars]` because a `[vars]` declaration with the same name blocks `wrangler secret put`.
 5. `bun run seed:remote`
-6. `bun run deploy`
+6. First `bun run deploy` — prints the `*.workers.dev` URL.
+7. Patch `[vars] PUBLIC_BASE_URL` to that URL, swap the GitHub OAuth app's callback URL to `<URL>/idp/github/callback`, `bun run deploy` again.
+8. Wire Claude (Web/Desktop) with `{"mcpServers": {"ctxlayer": {"url": "<URL>/mcp"}}}`.
 
-The full done-done checklist (14 steps to Claude-Desktop
-`search_docs` round-trip) lives in `docs/PLAN.md` under the M2
+For local dev to keep working with the workers.dev URL committed
+to `wrangler.toml`, put `PUBLIC_BASE_URL=https://localhost:8787`
+in `.dev.vars` to override `[vars]`.
+
+The full done-done checklist lives in `docs/PLAN.md` under the M2
 verification entry.
 
 Next work after M2 closes: **M3 (Yjs realtime collab)** then **M4
