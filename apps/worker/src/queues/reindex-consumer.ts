@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Env } from '../env'
-import { getDocById } from '../db/queries/docs'
+import { getDocById, updateChunkCount } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readRevision } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
@@ -108,8 +108,12 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
     title: doc.title,
     chunks,
     vectors,
-    tags: { teams: tags.teams, products: tags.products }
+    tags: { teams: tags.teams, products: tags.products },
+    previousChunkCount: doc.chunk_count
   })
+  // Cache the count for the next reindex so orphan cleanup knows
+  // the previous high-water mark.
+  await updateChunkCount(env, docId, chunks.length)
 }
 
 function safeSample(blocks: unknown): string {

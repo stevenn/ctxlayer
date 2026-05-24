@@ -18,6 +18,7 @@ export interface DocumentRow {
   created_at: number
   updated_at: number
   deleted_at: number | null
+  chunk_count: number
 }
 
 /**
@@ -38,6 +39,7 @@ export interface DocumentWithUsersRow extends DocumentRow {
 const SELECT_DOC_WITH_USERS = `
   SELECT d.id, d.title, d.slug, d.kind, d.current_rev_id, d.r2_snapshot,
          d.created_by, d.created_at, d.updated_at, d.deleted_at,
+         d.chunk_count,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
          ru.id    AS updated_by_id,
@@ -75,6 +77,17 @@ export async function getDocById(env: Env, id: string): Promise<DocumentWithUser
     .bind(id)
     .first<DocumentWithUsersRow>()
   return row ?? null
+}
+
+/**
+ * Set the cached chunk_count after a successful reindex. Called by the
+ * queue consumer so the next reindex knows how many chunks the
+ * previous revision produced, which drives orphan cleanup in Vectorize.
+ */
+export async function updateChunkCount(env: Env, docId: string, count: number): Promise<void> {
+  await env.DB.prepare(`UPDATE documents SET chunk_count = ?1 WHERE id = ?2`)
+    .bind(count, docId)
+    .run()
 }
 
 export interface CreateDocInput {

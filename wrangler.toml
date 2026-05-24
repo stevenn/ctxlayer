@@ -66,15 +66,23 @@ class_name = "McpSessionDO"
 name = "DOC_ROOM_DO"
 class_name = "DocRoomDO"
 
-# Durable Object class migrations. We use `new_classes` (not
-# `new_sqlite_classes`) for the M1 stubs because the classes don't use
-# `ctx.storage.sql` yet — choosing SQLite storage at class creation locks
-# the backend permanently. When M2/M3 wire SQL-backed state, a new
-# migration tag with `new_sqlite_classes` (for fresh classes) or a
-# rename migration is appropriate.
+# Durable Object class migrations.
+# v1 declared both classes as non-SQLite stubs (storage backend is
+# sticky once chosen). v2 promotes McpSessionDO to a SQLite-backed
+# class because it now extends `McpAgent` from the `agents` SDK,
+# which uses `ctx.storage.sql` for session state. We `deleted_classes`
+# first so the v1 non-SQLite class is gone, then `new_sqlite_classes`
+# brings it back fresh. No production data existed for the v1 class
+# so the wipe is harmless. `DocRoomDO` stays non-SQLite until M3
+# wires real Yjs persistence.
 [[migrations]]
 tag = "v1"
 new_classes = ["McpSessionDO", "DocRoomDO"]
+
+[[migrations]]
+tag = "v2"
+deleted_classes = ["McpSessionDO"]
+new_sqlite_classes = ["McpSessionDO"]
 
 [[queues.producers]]
 binding = "USAGE_QUEUE"

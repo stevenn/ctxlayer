@@ -1,4 +1,5 @@
 import { Hono } from 'hono'
+import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
 import type { Env, QueueName } from './env'
 import { healthRoute } from './api/health'
 import { meRoute } from './api/me'
@@ -14,6 +15,8 @@ import { adminTeamsRoute } from './api/admin-teams'
 import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
+import { handleAuthorize } from './oauth/authorize-page'
+import { McpSessionDO } from './mcp/session-do'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 
@@ -42,35 +45,47 @@ app.route('/api/admin/teams', adminTeamsRoute)
 app.route('/api/admin/products', adminProductsRoute)
 app.route('/api/admin/team-products', adminTeamProductsRoute)
 
-// IdP sign-in (M1). The SPA hits these from /sign-in; both providers
-// redirect back to /app/docs (or the `return_to` param) after issuing
-// the session cookie.
+// IdP sign-in. The SPA hits these from /sign-in; both providers
+// redirect back to /app/docs after issuing the session cookie. When
+// reached from an MCP-client OAuth flow (?oauth_request_id=...) the
+// same callbacks instead call provider.completeAuthorization.
 app.route('/idp/google', googleIdpRoute)
 app.route('/idp/github', githubIdpRoute)
 
-// Placeholders for routes wired up in later milestones. Both the bare path
-// and any subpath need to be matched so MCP clients hitting `/mcp/<session>`
-// don't accidentally fall through to the asset resolver.
-const m2 = (label: string) => (c: { text: (s: string, status: 501) => Response }) =>
-  c.text(`${label} coming in M2`, 501)
-app.all('/mcp', m2('MCP endpoint'))
-app.all('/mcp/*', m2('MCP endpoint'))
-app.all('/sse', m2('SSE endpoint'))
-app.all('/sse/*', m2('SSE endpoint'))
-app.all('/oauth/*', (c) => c.text('OAuth provider coming in M2', 501))
-app.all('/.well-known/oauth-authorization-server', (c) =>
-  c.text('OAuth metadata coming in M2', 501)
-)
+// /oauth/authorize is the IdP chooser shown to MCP clients. The OAuth
+// provider library handles /oauth/token, /oauth/register, and
+// /.well-known/oauth-authorization-server itself (see provider config
+// below). Everything else under /oauth/ falls through to 404.
+app.get('/oauth/authorize', (c) => handleAuthorize(c.req.raw, c.env))
+
+// Placeholder for the realtime collab WebSocket endpoint (M3).
 app.all('/collab/*', (c) => c.text('Realtime collab coming in M3', 501))
 
 // notFound fires only for paths in `run_worker_first` that no Hono route
-// matched (e.g. typo'd `/api/upstreamz`). Return JSON 404 — the SPA shell
-// fallback for unknown non-API paths is handled by Workers Assets'
-// `not_found_handling = "single-page-application"` in wrangler.toml.
+// matched. JSON 404 — the SPA shell fallback for unknown non-API paths
+// is handled by Workers Assets' `not_found_handling` in wrangler.toml.
 app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404))
 
+// OAuthProvider wraps the worker's fetch. It implements /oauth/token,
+// /oauth/register, /.well-known/oauth-authorization-server, and gates
+// /mcp + /sse on a valid bearer token. Everything else falls through
+// to the Hono app (default handler). The McpSessionDO's `serve` /
+// `serveSSE` helpers return ExportedHandler-shaped wrappers that
+// route the request to a DO instance per session.
+const oauthProvider = new OAuthProvider<Env>({
+  apiHandlers: {
+    '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }),
+    '/sse': McpSessionDO.serveSSE('/sse', { binding: 'MCP_SESSION_DO' })
+  },
+  defaultHandler: { fetch: app.fetch as ExportedHandler<Env>['fetch'] },
+  authorizeEndpoint: '/oauth/authorize',
+  tokenEndpoint: '/oauth/token',
+  clientRegistrationEndpoint: '/oauth/register',
+  scopesSupported: ['mcp']
+})
+
 const worker: ExportedHandler<Env> = {
-  fetch: app.fetch,
+  fetch: (req, env, ctx) => oauthProvider.fetch(req, env, ctx),
   async queue(batch, env, ctx) {
     const queue = batch.queue as QueueName
     if (queue === 'ctxlayer-usage') return usageConsumer(batch, env, ctx)

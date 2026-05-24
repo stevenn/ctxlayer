@@ -13,6 +13,7 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import { signSession, sessionSetCookie } from '../auth/session'
 import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
+import { completeMcpAuthorization } from './complete-mcp'
 import { upsertUser } from '../db/queries/users'
 import { AllowlistError, enforceGoogleAllowlist } from '../util/allowlist'
 import { b64urlDecode } from '../auth/session'
@@ -41,6 +42,9 @@ googleIdpRoute.get('/start', async (c) => {
   const verifier = pkceVerifier()
   const challenge = await pkceChallenge(verifier)
   const returnTo = c.req.query('return_to') ?? '/app/docs'
+  // If present, the callback will complete an MCP OAuth grant instead
+  // of setting a SPA session cookie. See oauth/authorize-page.ts.
+  const oauthRequestId = c.req.query('oauth_request_id') ?? undefined
 
   const url = new URL(AUTHZ)
   url.searchParams.set('client_id', c.env.GOOGLE_CLIENT_ID)
@@ -55,7 +59,7 @@ googleIdpRoute.get('/start', async (c) => {
   if (c.env.ALLOWED_GOOGLE_HD) url.searchParams.set('hd', c.env.ALLOWED_GOOGLE_HD)
 
   const cookie = await serializeStateCookie(
-    { state, codeVerifier: verifier, returnTo },
+    { state, codeVerifier: verifier, returnTo, oauthRequestId },
     c.env.SESSION_COOKIE_SECRET
   )
   return new Response(null, {
@@ -122,7 +126,14 @@ googleIdpRoute.get('/callback', async (c) => {
     avatarUrl: claims.picture ?? null
   })
 
-  // 5. Issue session cookie + redirect.
+  // 5a. MCP OAuth path — complete the grant and redirect to the
+  // MCP client's redirect_uri. No SPA cookie is set.
+  if (stateRow.oauthRequestId) {
+    return completeMcpAuthorization(c.env, stateRow.oauthRequestId, user)
+  }
+
+  // 5b. SPA path — issue session + CSRF cookies and redirect back to
+  // the app.
   const session = await signSession(
     { userId: user.id, role: user.role },
     c.env.SESSION_COOKIE_SECRET

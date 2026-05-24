@@ -11,6 +11,7 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import { signSession, sessionSetCookie } from '../auth/session'
 import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
+import { completeMcpAuthorization } from './complete-mcp'
 import { upsertUser } from '../db/queries/users'
 import { AllowlistError, enforceGithubAllowlist } from '../util/allowlist'
 import {
@@ -38,6 +39,7 @@ githubIdpRoute.get('/start', async (c) => {
   const verifier = pkceVerifier()
   const challenge = await pkceChallenge(verifier)
   const returnTo = c.req.query('return_to') ?? '/app/docs'
+  const oauthRequestId = c.req.query('oauth_request_id') ?? undefined
 
   const url = new URL(AUTHZ)
   url.searchParams.set('client_id', c.env.GITHUB_CLIENT_ID)
@@ -50,7 +52,7 @@ githubIdpRoute.get('/start', async (c) => {
   url.searchParams.set('allow_signup', 'false')
 
   const cookie = await serializeStateCookie(
-    { state, codeVerifier: verifier, returnTo },
+    { state, codeVerifier: verifier, returnTo, oauthRequestId },
     c.env.SESSION_COOKIE_SECRET
   )
   return new Response(null, {
@@ -138,7 +140,13 @@ githubIdpRoute.get('/callback', async (c) => {
     avatarUrl: profile.avatar_url
   })
 
-  // 5. Issue session cookie + redirect.
+  // 5a. MCP OAuth path — complete the grant and redirect to the
+  // MCP client's redirect_uri. No SPA cookie is set.
+  if (stateRow.oauthRequestId) {
+    return completeMcpAuthorization(c.env, stateRow.oauthRequestId, user)
+  }
+
+  // 5b. SPA path — issue session + CSRF cookies.
   const session = await signSession(
     { userId: user.id, role: user.role },
     c.env.SESSION_COOKIE_SECRET

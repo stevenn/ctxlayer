@@ -1,3 +1,5 @@
+import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
+
 /**
  * Typed wrangler bindings. Anything reachable through `env` in a Worker
  * handler is declared here. Never read `process.env` — Workers don't have it.
@@ -35,6 +37,22 @@ export interface Env {
   MCP_SESSION_DO: DurableObjectNamespace
   DOC_ROOM_DO: DurableObjectNamespace
   ASSETS: Fetcher
+
+  // Injected at runtime by @cloudflare/workers-oauth-provider so the
+  // defaultHandler can parse authorize requests, look up clients, and
+  // complete grants via `env.OAUTH_PROVIDER.completeAuthorization(...)`.
+  OAUTH_PROVIDER: OAuthHelpers
+}
+
+/**
+ * Token-derived properties attached to each authenticated MCP request.
+ * Set by `provider.completeAuthorization({props})` in the IdP callback;
+ * read by the McpAgent via `ctx.props` per request.
+ */
+export interface McpProps extends Record<string, unknown> {
+  userId: string
+  email: string
+  role: 'user' | 'admin'
 }
 
 export type QueueName = 'ctxlayer-usage' | 'ctxlayer-reindex'

@@ -24,6 +24,10 @@ export interface StatePayload {
   returnTo: string
   iat: number
   exp: number
+  // When present, the IdP callback completes an MCP-client OAuth grant
+  // instead of setting a SPA session cookie. The id maps to a KV entry
+  // produced by `oauth/authorize-page.ts:handleAuthorize`.
+  oauthRequestId?: string
 }
 
 export function randomToken(byteLength = 32): string {
@@ -43,7 +47,12 @@ export async function pkceChallenge(verifier: string): Promise<string> {
 }
 
 export async function serializeStateCookie(
-  payload: { state: string; codeVerifier: string; returnTo: string },
+  payload: {
+    state: string
+    codeVerifier: string
+    returnTo: string
+    oauthRequestId?: string
+  },
   secret: string,
   now: number = Math.floor(Date.now() / 1000)
 ): Promise<string> {

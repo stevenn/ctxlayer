@@ -18,7 +18,10 @@
     "test:int": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^0.7.0",
     "@ctxlayer/shared": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "agents": "^0.13.2",
     "hono": "^4.6.0",
     "js-tiktoken": "^1.0.21",
     "zod": "^3.23.8"

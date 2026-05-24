@@ -26,23 +26,22 @@ const checks = [
     path: '/api/me',
     expect: process.env.SMOKE_ME_OK === '1' ? [200, 401] : [401]
   },
-  // .well-known OAuth metadata: returns 501 until M2 wires the OAuth
-  // provider; once wired it returns 200.
+  // OAuth metadata is wired (M2c) — MUST be 200 from now on.
   {
     name: 'oauth-meta',
     method: 'GET',
     path: '/.well-known/oauth-authorization-server',
-    expect: [200, 501]
+    expect: [200]
   },
-  // MCP initialize JSON-RPC frame. Pre-M2 the route returns 501; post-M2
-  // an unauthenticated call returns 401 from the OAuth provider.
+  // Anonymous MCP initialize MUST be rejected by the OAuth provider.
+  // 401 is the right answer; 200 would mean the provider regressed.
   {
     name: 'mcp-init',
     method: 'POST',
     path: '/mcp',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize' }),
-    expect: [200, 401, 501]
+    expect: [401]
   },
   // SPA shell. With `not_found_handling = "single-page-application"` and
   // a populated dist/index.html, an unknown SPA path MUST return 200

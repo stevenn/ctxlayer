@@ -106,7 +106,8 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 + M2a + M2b/1 + M2b/2 complete.** M1: Google/GitHub sign-in.
+**M1 + M2 complete (pending real Vectorize index provisioning).**
+M1: Google/GitHub sign-in.
 M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` + middleware,
 `/api/docs` REST + content save, `/api/docs/:id/editors`,
 `/api/users?email=`, BlockNote editor with sharing + creator/editor
@@ -122,10 +123,22 @@ tag pane in editor right rail, `/app/admin/teams` +
 drawer + team↔product matrix), reindex consumer reads `doc_tags`
 into chunk metadata, tag changes enqueue a fresh reindex,
 `seed.mjs` seeds 3 teams + 2 products.
-Next work is **M2c** (`McpAgent` at `/mcp`+`/sse` +
-`workers-oauth-provider` + `search_docs`/`get_doc`/`list_my_context`
-+ flip Vectorize upsert to real + create the real Vectorize index
-in CF).
+M2c: `@cloudflare/workers-oauth-provider` mounts OAuth at /oauth/*
++ /.well-known/oauth-authorization-server. /oauth/authorize renders
+a minimal SSR'd IdP chooser; IdP callbacks fork between SPA-cookie
+and `provider.completeAuthorization(props)` based on
+`oauth_request_id`. McpSessionDO extends `McpAgent` from `agents`
+SDK (SQLite-backed v2 migration); registers `whoami`,
+`list_my_context`, `list_upstreams`, `get_doc`, `search_docs` (embed
++ Vectorize query + scope post-filter). Doc resources at
+`mcp://ctxlayer/docs/{id}`. Reindex now writes to real Vectorize
+with `chunk_count` tracking (migration 0006) so orphans get deleted
+when revisions shrink.
+
+Before this can demo end-to-end, **one external step**: run
+`wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine`
+and paste the index name into wrangler.toml. Same goes for the D1
+and KV namespace IDs (currently placeholder UUIDs).
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
