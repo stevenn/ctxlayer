@@ -56,37 +56,44 @@ export function SharingDialog({ docId, onClose }: Props) {
     }
   }, [query])
 
-  async function grantUser(userId: string) {
+  async function withBusy(action: () => Promise<void>, label: string) {
     setBusy(true)
+    setError(null)
     try {
+      await action()
+    } catch (err) {
+      // Surfacing failures (404 from a misrouted DELETE, 403 from a
+      // missed canShare check, network) so the user sees why the
+      // checkbox or list didn't move. Without this the UI silently
+      // reverts and looks broken.
+      setError(`${label} failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function grantUser(userId: string) {
+    await withBusy(async () => {
       await addDocEditor(docId, { kind: 'user', userId })
       setQuery('')
       setResults([])
       await reload()
-    } finally {
-      setBusy(false)
-    }
+    }, 'Grant')
   }
 
   async function revokeUser(userId: string) {
-    setBusy(true)
-    try {
+    await withBusy(async () => {
       await removeDocEditor(docId, 'user', userId)
       await reload()
-    } finally {
-      setBusy(false)
-    }
+    }, 'Revoke')
   }
 
   async function toggleEveryone(next: boolean) {
-    setBusy(true)
-    try {
+    await withBusy(async () => {
       if (next) await addDocEditor(docId, { kind: 'everyone' })
       else await removeDocEditor(docId, 'everyone', '')
       await reload()
-    } finally {
-      setBusy(false)
-    }
+    }, next ? 'Grant everyone' : 'Revoke everyone')
   }
 
   return (

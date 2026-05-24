@@ -7,8 +7,7 @@
 import { Hono } from 'hono'
 import {
   AddEditorRequest,
-  type DocEditorsResponse,
-  DocEditorScope
+  type DocEditorsResponse
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
@@ -52,16 +51,23 @@ docSharingRoute.post('/:id/editors', async (c) => {
   return new Response(null, { status: 204 })
 })
 
-docSharingRoute.delete('/:id/editors/:scope/:scopeId', async (c) => {
+// Two separate DELETE routes instead of one parameterised `:scope/:scopeId`.
+// The "everyone" grant has no scopeId (sentinel '' in the table) which
+// produced a trailing-slash URL that Hono refused to route.
+docSharingRoute.delete('/:id/editors/everyone', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
   if (!(await canShareDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
-  const scope = DocEditorScope.safeParse(c.req.param('scope'))
-  if (!scope.success) return c.json({ error: 'bad_scope' }, 400)
-  if (scope.data === 'user') {
-    await removeUserEditor(c.env, id, c.req.param('scopeId'))
-  } else {
-    await removeEveryoneEditor(c.env, id)
-  }
+  await removeEveryoneEditor(c.env, id)
+  return new Response(null, { status: 204 })
+})
+
+docSharingRoute.delete('/:id/editors/user/:userId', async (c) => {
+  const id = c.req.param('id')
+  const { userId } = c.get('user')
+  if (!(await canShareDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const target = c.req.param('userId')
+  if (!target) return c.json({ error: 'bad_request' }, 400)
+  await removeUserEditor(c.env, id, target)
   return new Response(null, { status: 204 })
 })

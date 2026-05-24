@@ -193,7 +193,11 @@ export function removeDocEditor(
   scope: 'user' | 'everyone',
   scopeId: string
 ): Promise<void> {
-  const path = `/api/docs/${encodeURIComponent(id)}/editors/${scope}/${encodeURIComponent(scopeId)}`
+  const base = `/api/docs/${encodeURIComponent(id)}/editors`
+  // 'everyone' is a singleton on a doc — the server route has no
+  // :scopeId segment for it. 'user' carries the userId in the path.
+  const path =
+    scope === 'everyone' ? `${base}/everyone` : `${base}/user/${encodeURIComponent(scopeId)}`
   return request(path, () => undefined, { method: 'DELETE' })
 }
 
