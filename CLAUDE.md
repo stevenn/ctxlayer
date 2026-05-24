@@ -106,10 +106,19 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 ## Where to start
 
 Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 complete.** Skeleton + Google/GitHub sign-in + `/api/me` are wired.
-Next work is **M2** — `McpAgent` at `/mcp`+`/sse`,
-`workers-oauth-provider`, BlockNote editor with REST save, Vectorize
-RAG, built-in MCP tools.
+**M1 + M2a + M2b/1 complete.** M1: Google/GitHub sign-in + `/api/me`.
+M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` cookie +
+`requireCsrf` middleware, `/api/docs` REST + content save, `/api/docs/:id/editors`
+sharing, `/api/users?email=` lookup, BlockNote editor route with
+sharing dialog and creator/editor attribution. M2b/1: reindex pipeline
+in `apps/worker/src/rag/{markdown,chunker,embedder,index}.ts` wired
+into the queue consumer (covers all 14 BlockNote 0.51 default block
+types; Workers AI `@cf/baai/bge-base-en-v1.5`; Vectorize upsert
+logged-only with M2c idempotency contract documented inline).
+Next work is **M2b/2** (doc-tag editor pane + `doc_tags` populated on
+chunk metadata) then **M2c** (`McpAgent` at `/mcp`+`/sse` +
+`workers-oauth-provider` + `search_docs`/`get_doc` + flip Vectorize
+upsert to real).
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
