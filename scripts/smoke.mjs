@@ -50,7 +50,10 @@ const checks = [
   // M2a: docs API requires a session. Anonymous read MUST be 401, never
   // 200 (would mean the requireUser middleware regressed) and never 501
   // (would mean the route didn't mount).
-  { name: 'docs-anon', method: 'GET', path: '/api/docs', expect: [401] }
+  { name: 'docs-anon', method: 'GET', path: '/api/docs', expect: [401] },
+  // M3a: realtime collab. Plain GET (no Upgrade) MUST be 426 — proves the
+  // route mounted. 501 here means the placeholder is still in place.
+  { name: 'collab-noupgrade', method: 'GET', path: '/collab/any-doc', expect: [426] }
 ]
 
 let failed = 0

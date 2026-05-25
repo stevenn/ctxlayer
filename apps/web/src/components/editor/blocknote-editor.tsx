@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FormattingToolbar,
@@ -12,18 +12,32 @@ import {
   type DefaultReactSuggestionItem
 } from '@blocknote/react'
 import { BlockNoteView } from '@blocknote/mantine'
-import { filterSuggestionItems } from '@blocknote/core'
+import {
+  filterSuggestionItems,
+  type BlockNoteEditor as BlockNoteEditorCore,
+  type BlockNoteEditorOptions
+} from '@blocknote/core'
 import { useMantineColorScheme } from '@mantine/core'
+import type * as Y from 'yjs'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 
+export interface CollaborationConfig {
+  /** Yjs provider exposing `.awareness` (for y-prosemirror cursor plugin). */
+  provider: { awareness: unknown }
+  /** Y.XmlFragment that holds the editor doc. */
+  fragment: Y.XmlFragment
+  /** Local user identity shown in collaborative cursors / selections. */
+  user: { name: string; color: string }
+}
+
 export interface BlockNoteEditorProps {
-  /** Initial block tree (BlockNote JSON). Mutating this prop after
-   *  first render does NOT re-mount the editor; remount by keying
-   *  the component with the doc/revision id from the parent. */
+  /** Initial block tree (BlockNote JSON). Used in REST mode; ignored
+   *  when `collaboration` is provided (Yjs owns the doc state). */
   initialBlocks: unknown[]
   editable: boolean
-  /** Fires on every keystroke. Callers debounce / hash for dirty tracking. */
+  /** Fires on every keystroke. Callers debounce / hash for dirty
+   *  tracking. In collab mode prefer subscribing to the Y.Doc itself. */
   onChange?: (blocks: unknown[]) => void
   /**
    * Slash-menu "Link to doc" handler. When the user picks the item
@@ -32,6 +46,15 @@ export interface BlockNoteEditorProps {
    * the picker) is a no-op. Omit to hide the item entirely.
    */
   resolveDocLink?: () => Promise<{ label: string; href: string } | null>
+  /** Wire BlockNote's Yjs collab extension. Omit for REST autosave mode. */
+  collaboration?: CollaborationConfig
+}
+
+/** Imperative handle so the host route can seed the Y.Doc from existing
+ *  JSON when migrating an old doc into collab. */
+export interface BlockNoteEditorHandle {
+  replaceBlocks(blocks: unknown[]): void
+  getBlocks(): unknown[]
 }
 
 /**
@@ -42,17 +65,44 @@ export interface BlockNoteEditorProps {
  *   - Esc-to-blur (drop edit mode without saving)
  *   - Optional "Link to doc" slash-menu item via resolveDocLink
  */
-export function BlockNoteEditor(props: BlockNoteEditorProps) {
-  const editor = useCreateBlockNote({
-    initialContent:
-      props.initialBlocks.length > 0
-        ? (props.initialBlocks as Parameters<typeof useCreateBlockNote>[0] extends {
-            initialContent?: infer T
-          }
-            ? T
-            : never)
-        : undefined
-  })
+export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditorProps>(
+  function BlockNoteEditor(props, ref) {
+  type EditorOpts = Partial<BlockNoteEditorOptions<any, any, any>>
+  // `collaboration` is the source of truth when present, so we must
+  // not pass `initialContent` (BlockNote rejects both together).
+  const editorOptions: EditorOpts = props.collaboration
+    ? {
+        collaboration: {
+          provider: props.collaboration.provider,
+          fragment: props.collaboration.fragment,
+          user: props.collaboration.user
+        } as unknown as EditorOpts['collaboration']
+      }
+    : {
+        initialContent:
+          props.initialBlocks.length > 0
+            ? (props.initialBlocks as EditorOpts['initialContent'])
+            : undefined
+      }
+  const editor = useCreateBlockNote(editorOptions)
+
+  useImperativeHandle(
+    ref,
+    (): BlockNoteEditorHandle => ({
+      replaceBlocks(blocks) {
+        const core = editor as unknown as BlockNoteEditorCore
+        // `editor.document` is the current top-level block list; replacing
+        // it with the incoming blocks is the v0.51-supported way to swap
+        // the entire doc programmatically. Casts because BlockNote types
+        // the second arg with the editor's resolved schema generics.
+        core.replaceBlocks(core.document, blocks as Parameters<typeof core.replaceBlocks>[1])
+      },
+      getBlocks() {
+        return (editor as unknown as BlockNoteEditorCore).document as unknown[]
+      }
+    }),
+    [editor]
+  )
 
   // Bridge editor.onChange -> prop callback. The editor's onChange
   // returns an unsubscribe function from BlockNote v0.14+.
@@ -176,7 +226,7 @@ export function BlockNoteEditor(props: BlockNoteEditorProps) {
       </BlockNoteView>
     </div>
   )
-}
+})
 
 /**
  * Toolbar button that wraps the current selection in an internal

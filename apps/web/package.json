@@ -20,9 +20,12 @@
     "@ctxlayer/shared": "workspace:*",
     "@mantine/core": "^9.2.1",
     "@mantine/hooks": "^9.2.1",
+    "lib0": "^0.2.117",
     "react": "^19",
     "react-dom": "^19",
     "react-router-dom": "^6.27.0",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.30",
     "zod": "^3.23.8"
   },
   "devDependencies": {

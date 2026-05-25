@@ -19,6 +19,7 @@ import type { Env } from '../env'
 import type { DocContent } from '@ctxlayer/shared'
 
 export const CONTENT_TYPE = 'application/json; charset=utf-8'
+export const YJS_CONTENT_TYPE = 'application/octet-stream'
 
 export function snapshotKey(docId: string): string {
   return `docs/${docId}/snapshot.json`
@@ -26,6 +27,10 @@ export function snapshotKey(docId: string): string {
 
 export function revisionKey(docId: string, revisionId: string): string {
   return `docs/${docId}/revisions/${revisionId}.json`
+}
+
+export function yjsSnapshotKey(docId: string): string {
+  return `docs/${docId}/yjs/snapshot.bin`
 }
 
 export interface PutResult {
@@ -77,6 +82,29 @@ export async function readRevision(
   const obj = await env.DOCS_BUCKET.get(revisionKey(docId, revisionId))
   if (!obj) return null
   return parse(await obj.arrayBuffer())
+}
+
+/**
+ * Yjs binary snapshot helpers. These persist `Y.encodeStateAsUpdate(doc)`
+ * bytes so a `DocRoomDO` cold-wake can rebuild the live collab state
+ * without round-tripping through BlockNote JSON. There's only ever one
+ * current Y.Doc snapshot per doc — the human-facing revision history
+ * stays in the JSON layout above.
+ */
+export async function readYjsSnapshot(env: Env, docId: string): Promise<Uint8Array | null> {
+  const obj = await env.DOCS_BUCKET.get(yjsSnapshotKey(docId))
+  if (!obj) return null
+  return new Uint8Array(await obj.arrayBuffer())
+}
+
+export async function writeYjsSnapshot(
+  env: Env,
+  docId: string,
+  bytes: Uint8Array
+): Promise<void> {
+  await env.DOCS_BUCKET.put(yjsSnapshotKey(docId), bytes, {
+    httpMetadata: { contentType: YJS_CONTENT_TYPE }
+  })
 }
 
 /**

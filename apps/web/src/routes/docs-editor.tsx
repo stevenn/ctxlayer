@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useBlocker, useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
 import {
   Alert,
   Badge,
@@ -11,7 +11,8 @@ import {
   TextInput,
   Title
 } from '@mantine/core'
-import type { DocContent, DocDetail, DocSummary } from '@ctxlayer/shared'
+import * as Y from 'yjs'
+import type { DocContent, DocDetail, DocSummary, MeResponse } from '@ctxlayer/shared'
 import {
   ApiError,
   ApiSchemaError,
@@ -19,29 +20,48 @@ import {
   fetchDoc,
   fetchDocContent,
   fetchDocs,
+  fetchMe,
   patchDoc,
   putDocContent
 } from '../lib/api'
-import { BlockNoteEditor } from '../components/editor/blocknote-editor'
+import {
+  BlockNoteEditor,
+  type BlockNoteEditorHandle
+} from '../components/editor/blocknote-editor'
 import { TagPane } from '../components/editor/tag-pane'
 import { SharingDialog } from './docs-sharing'
+import { CollabWSProvider, type CollabStatus } from '../lib/yjs-ws-provider'
 
-type Loaded = { doc: DocDetail; content: DocContent }
-type Status =
+type Loaded = { doc: DocDetail; content: DocContent; me: MeResponse }
+type LoadStatus =
   | { kind: 'loading' }
   | { kind: 'ready'; data: Loaded }
   | { kind: 'error'; message: string }
 
 type LinkResolver = (link: { label: string; href: string } | null) => void
 
+const COLLAB_FRAGMENT = 'document-store'
+
+// Debounced autosave windows — match the DO's flush cadence so users
+// perceive one consistent "save heartbeat" across REST + Yjs snapshot.
+const SAVE_IDLE_MS = 5_000
+const SAVE_MAX_MS = 30_000
+
+// Stable per-user cursor color. HSL hue derived from a fast 32-bit
+// hash of the userId, full saturation, mid lightness.
+function userColor(userId: string): string {
+  let h = 0
+  for (let i = 0; i < userId.length; i++) h = (h * 31 + userId.charCodeAt(i)) | 0
+  const hue = ((h % 360) + 360) % 360
+  return `hsl(${hue}, 70%, 50%)`
+}
+
 export function DocsEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
-  const [status, setStatus] = useState<Status>({ kind: 'loading' })
-  const [saving, setSaving] = useState(false)
-  const [dirty, setDirty] = useState(false)
+  const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
+  const [collabStatus, setCollabStatus] = useState<CollabStatus>('connecting')
   const [sharingOpen, setSharingOpen] = useState(false)
-  const blocksRef = useRef<unknown[]>([])
 
   // Inline title rename state.
   const [editingTitle, setEditingTitle] = useState(false)
@@ -54,15 +74,33 @@ export function DocsEditor() {
   const [linkPickerOpen, setLinkPickerOpen] = useState(false)
   const linkResolverRef = useRef<LinkResolver | null>(null)
 
+  // Yjs + provider live for the lifetime of one (doc, user) pair.
+  // Construction lives in the effect below — NOT useMemo — so a
+  // StrictMode synthetic unmount/remount cleanly destroys + recreates
+  // the provider instead of leaving the React tree pointing at a
+  // dead WebSocket.
+  type CollabBundle = {
+    doc: Y.Doc
+    provider: CollabWSProvider
+    fragment: Y.XmlFragment
+    user: { name: string; color: string }
+  }
+  const [collab, setCollab] = useState<CollabBundle | null>(null)
+  const editorRef = useRef<BlockNoteEditorHandle | null>(null)
+
+  // Initial fetch: doc detail + current REST content (used to seed Yjs
+  // for docs created before M3) + current user (for awareness label).
   useEffect(() => {
     if (!id) return
     const ctrl = new AbortController()
-    Promise.all([fetchDoc(id, ctrl.signal), fetchDocContent(id, ctrl.signal)]).then(
-      ([doc, content]) => {
+    Promise.all([
+      fetchDoc(id, ctrl.signal),
+      fetchDocContent(id, ctrl.signal),
+      fetchMe(ctrl.signal)
+    ]).then(
+      ([doc, content, me]) => {
         if (ctrl.signal.aborted) return
-        blocksRef.current = content.blocks
-        setStatus({ kind: 'ready', data: { doc, content } })
-        setDirty(false)
+        setStatus({ kind: 'ready', data: { doc, content, me } })
       },
       (err) => {
         if (ctrl.signal.aborted) return
@@ -76,35 +114,147 @@ export function DocsEditor() {
     return () => ctrl.abort()
   }, [id])
 
-  // beforeunload: hard refresh / close-tab native prompt.
+  // Build Y.Doc + provider once we know the doc + user. Owning
+  // construction inside the effect (rather than useMemo) guarantees
+  // mount → create, unmount → destroy, and is StrictMode-safe (the
+  // synthetic double-mount destroys A then constructs B cleanly).
+  // The effect intentionally depends only on (id, user.id) — title
+  // renames refetch DocDetail but should not tear down the live
+  // collab session.
+  const userId = status.kind === 'ready' ? status.data.me.id : null
+  const userLabel =
+    status.kind === 'ready'
+      ? status.data.me.name && status.data.me.name.length > 0
+        ? status.data.me.name
+        : status.data.me.email
+      : null
   useEffect(() => {
-    if (!dirty) return
-    function onBeforeUnload(e: BeforeUnloadEvent) {
-      e.preventDefault()
-      e.returnValue = ''
+    if (!id || !userId || !userLabel) return
+    const doc = new Y.Doc()
+    const wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const url = `${wsProto}//${window.location.host}/collab/${encodeURIComponent(id)}`
+    const provider = new CollabWSProvider(url, doc)
+    const color = userColor(userId)
+    provider.awareness.setLocalState({
+      user: { id: userId, name: userLabel, color }
+    })
+    setCollab({
+      doc,
+      provider,
+      fragment: doc.getXmlFragment(COLLAB_FRAGMENT),
+      user: { name: userLabel, color }
+    })
+    return () => {
+      provider.destroy()
+      doc.destroy()
+      setCollab(null)
     }
-    window.addEventListener('beforeunload', onBeforeUnload)
-    return () => window.removeEventListener('beforeunload', onBeforeUnload)
-  }, [dirty])
+  }, [id, userId, userLabel])
 
-  // In-app navigation guard. Same-doc transitions pass through.
-  const blocker = useBlocker(
-    ({ currentLocation, nextLocation }) =>
-      dirty && currentLocation.pathname !== nextLocation.pathname
-  )
+  // Track provider status so the badge stays in sync. The provider
+  // calls back synchronously with the current status on subscribe.
+  useEffect(() => {
+    const provider = collab?.provider
+    if (!provider) return
+    return provider.onStatus(setCollabStatus)
+  }, [collab])
 
-  async function onSave() {
-    if (!id || status.kind !== 'ready') return
-    setSaving(true)
-    try {
-      await putDocContent(id, { blocks: blocksRef.current })
-      setDirty(false)
-    } catch (err) {
-      window.alert(`Save failed: ${explain(err)}`)
-    } finally {
-      setSaving(false)
+  // Seed migration: if the Y.Doc fragment is still empty after the
+  // first 'connected' status AND we have legacy JSON content AND
+  // we're the awareness leader (lowest clientID), replace blocks with
+  // the JSON. Subsequent opens won't trigger this because the DO will
+  // have persisted the seeded state to yjs/snapshot.bin.
+  const seededRef = useRef(false)
+  useEffect(() => {
+    if (collabStatus !== 'connected' || seededRef.current) return
+    if (status.kind !== 'ready' || !collab) return
+    if (!status.data.doc.canEdit) {
+      // Read-only viewers must not write seeds.
+      seededRef.current = true
+      return
     }
-  }
+    const blocks = status.data.content.blocks
+    if (blocks.length === 0) {
+      seededRef.current = true
+      return
+    }
+    // Defer one tick so the initial syncStep2 from the server has a
+    // chance to land — otherwise we might seed on top of a non-empty
+    // doc that just hasn't been applied yet.
+    const t = window.setTimeout(() => {
+      seededRef.current = true
+      const fragment = collab.fragment
+      if (fragment.length > 0) return
+      const localID = collab.doc.clientID
+      const ids = [...collab.provider.awareness.getStates().keys()]
+      if (ids.length > 0 && Math.min(...ids) !== localID) return
+      editorRef.current?.replaceBlocks(blocks)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [collabStatus, collab, status])
+
+  // Autosave: any local Y.Doc update kicks the debounce. The save
+  // call is gated on awareness-leader election so concurrent tabs
+  // share a single revision per save window.
+  useEffect(() => {
+    if (!id || !collab || status.kind !== 'ready') return
+    if (!status.data.doc.canEdit) return
+    const { doc, provider } = collab
+    let idleTimer: number | null = null
+    let maxTimer: number | null = null
+    let dirty = false
+    let inFlight = false
+
+    const save = async () => {
+      if (idleTimer != null) {
+        clearTimeout(idleTimer)
+        idleTimer = null
+      }
+      if (maxTimer != null) {
+        clearTimeout(maxTimer)
+        maxTimer = null
+      }
+      if (!dirty || inFlight) return
+      const localID = doc.clientID
+      const ids = [...provider.awareness.getStates().keys()]
+      // If we're the only known client we're trivially leader. Otherwise
+      // lowest-clientID wins; deterministic and zero-coordination.
+      const isLeader = ids.length === 0 || Math.min(...ids) === localID
+      if (!isLeader) {
+        dirty = false
+        return
+      }
+      const blocks = editorRef.current?.getBlocks() ?? []
+      dirty = false
+      inFlight = true
+      try {
+        await putDocContent(id, { blocks })
+      } catch (err) {
+        // Re-mark dirty so the next change triggers another attempt.
+        dirty = true
+        console.error('collab autosave failed', err)
+      } finally {
+        inFlight = false
+      }
+    }
+
+    const onUpdate = (_update: Uint8Array, origin: unknown) => {
+      if (origin === provider) return // remote update; the leader on the originating tab will save
+      dirty = true
+      if (idleTimer != null) clearTimeout(idleTimer)
+      idleTimer = window.setTimeout(save, SAVE_IDLE_MS)
+      if (maxTimer == null) maxTimer = window.setTimeout(save, SAVE_MAX_MS)
+    }
+
+    doc.on('update', onUpdate)
+    return () => {
+      doc.off('update', onUpdate)
+      if (idleTimer) clearTimeout(idleTimer)
+      if (maxTimer) clearTimeout(maxTimer)
+      // Best-effort final save so the last keystroke isn't lost.
+      if (dirty && !inFlight) void save()
+    }
+  }, [collab, id, status])
 
   async function onDelete() {
     if (!id || status.kind !== 'ready') return
@@ -112,7 +262,6 @@ export function DocsEditor() {
       return
     try {
       await deleteDoc(id)
-      setDirty(false)
       nav('/app/docs', { replace: true })
     } catch (err) {
       window.alert(`Delete failed: ${explain(err)}`)
@@ -135,9 +284,11 @@ export function DocsEditor() {
     setTitleSaving(true)
     try {
       await patchDoc(id, { title: trimmed })
-      // Refetch so updatedAt / updatedBy reflect the change.
       const fresh = await fetchDoc(id)
-      setStatus({ kind: 'ready', data: { doc: fresh, content: status.data.content } })
+      setStatus({
+        kind: 'ready',
+        data: { ...status.data, doc: fresh }
+      })
       setEditingTitle(false)
     } catch (err) {
       window.alert(`Rename failed: ${explain(err)}`)
@@ -176,7 +327,7 @@ export function DocsEditor() {
     )
   }
 
-  const { doc, content } = status.data
+  const { doc } = status.data
   return (
     <Stack gap="sm" style={{ height: '100%' }}>
       {/* Action row spans full width. */}
@@ -190,7 +341,7 @@ export function DocsEditor() {
           >
             ← Docs
           </Button>
-          <DirtyBadge canEdit={doc.canEdit} dirty={dirty} saving={saving} />
+          <CollabBadge canEdit={doc.canEdit} status={collabStatus} />
         </Group>
         <Group gap="xs">
           {doc.canShare && (
@@ -201,11 +352,6 @@ export function DocsEditor() {
           {doc.canEdit && (
             <Button variant="default" color="red" onClick={onDelete}>
               Delete
-            </Button>
-          )}
-          {doc.canEdit && (
-            <Button onClick={onSave} disabled={!dirty} loading={saving}>
-              Save
             </Button>
           )}
         </Group>
@@ -252,8 +398,6 @@ export function DocsEditor() {
         </Title>
       )}
 
-      {/* Editor + meta share a row so the meta column is flush-top
-          with the editor canvas, not with the page header. */}
       <div
         style={{
           display: 'grid',
@@ -274,16 +418,20 @@ export function DocsEditor() {
             height: '100%'
           }}
         >
-          <BlockNoteEditor
-            key={doc.id}
-            initialBlocks={content.blocks}
-            editable={doc.canEdit}
-            onChange={(blocks) => {
-              blocksRef.current = blocks
-              if (!dirty) setDirty(true)
-            }}
-            resolveDocLink={doc.canEdit ? resolveDocLink : undefined}
-          />
+          {collab && (
+            <BlockNoteEditor
+              key={doc.id}
+              ref={editorRef}
+              initialBlocks={[]}
+              editable={doc.canEdit}
+              collaboration={{
+                provider: collab.provider,
+                fragment: collab.fragment,
+                user: collab.user
+              }}
+              resolveDocLink={doc.canEdit ? resolveDocLink : undefined}
+            />
+          )}
         </div>
 
         <aside
@@ -304,16 +452,16 @@ export function DocsEditor() {
               <Person u={doc.createdBy} />
               <div>{formatAbsolute(doc.createdAt)}</div>
             </MetaRow>
-          <MetaRow label="Last edited">
-            {doc.updatedBy ? (
-              <>
-                <Person u={doc.updatedBy} />
-                <div>{formatAbsolute(doc.updatedAt)}</div>
-              </>
-            ) : (
-              <span>Never edited</span>
-            )}
-          </MetaRow>
+            <MetaRow label="Last edited">
+              {doc.updatedBy ? (
+                <>
+                  <Person u={doc.updatedBy} />
+                  <div>{formatAbsolute(doc.updatedAt)}</div>
+                </>
+              ) : (
+                <span>Never edited</span>
+              )}
+            </MetaRow>
             <MetaRow label="Slug">
               <code>{doc.slug}</code>
             </MetaRow>
@@ -325,25 +473,6 @@ export function DocsEditor() {
       {sharingOpen && doc.canShare && (
         <SharingDialog docId={doc.id} onClose={() => setSharingOpen(false)} />
       )}
-
-      <Modal
-        opened={blocker.state === 'blocked'}
-        onClose={() => blocker.reset?.()}
-        title="Unsaved changes"
-        centered
-      >
-        <Stack gap="md">
-          <Text>You have unsaved changes in this doc. Leave anyway?</Text>
-          <Group justify="flex-end" gap="xs">
-            <Button variant="default" onClick={() => blocker.reset?.()}>
-              Stay
-            </Button>
-            <Button color="red" onClick={() => blocker.proceed?.()}>
-              Discard &amp; leave
-            </Button>
-          </Group>
-        </Stack>
-      </Modal>
 
       {linkPickerOpen && (
         <DocLinkPicker
@@ -378,19 +507,18 @@ function MetaRow({ label, children }: { label: string; children: React.ReactNode
   )
 }
 
-function DirtyBadge({
-  canEdit,
-  dirty,
-  saving
-}: {
-  canEdit: boolean
-  dirty: boolean
-  saving: boolean
-}) {
+function CollabBadge({ canEdit, status }: { canEdit: boolean; status: CollabStatus }) {
   if (!canEdit) return <Badge variant="default">Read-only</Badge>
-  if (saving) return <Badge color="blue">Saving…</Badge>
-  if (dirty) return <Badge color="yellow">Unsaved</Badge>
-  return <Badge variant="default">Saved</Badge>
+  switch (status) {
+    case 'connected':
+      return <Badge color="green">Live</Badge>
+    case 'connecting':
+      return <Badge color="blue">Connecting…</Badge>
+    case 'reconnecting':
+      return <Badge color="yellow">Reconnecting…</Badge>
+    case 'disconnected':
+      return <Badge color="red">Offline</Badge>
+  }
 }
 
 function Person({ u }: { u: DocDetail['createdBy'] }) {
@@ -445,8 +573,6 @@ function DocLinkPicker({ currentDocId, onClose, onPick }: DocLinkPickerProps) {
   )
 
   function pickDoc(d: DocSummary) {
-    // Use the doc id in the href so the link survives renames; show
-    // the slug as the visible label per the design.
     onPick({ label: d.slug, href: `/app/docs/${d.id}` })
   }
 

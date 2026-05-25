@@ -16,6 +16,7 @@ import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
 import { handleAuthorize } from './oauth/authorize-page'
+import { handleCollabUpgrade } from './collab/upgrade'
 import { McpSessionDO } from './mcp/session-do'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
@@ -58,8 +59,13 @@ app.route('/idp/github', githubIdpRoute)
 // below). Everything else under /oauth/ falls through to 404.
 app.get('/oauth/authorize', (c) => handleAuthorize(c.req.raw, c.env))
 
-// Placeholder for the realtime collab WebSocket endpoint (M3).
-app.all('/collab/*', (c) => c.text('Realtime collab coming in M3', 501))
+// Realtime collab WebSocket endpoint. The handler authenticates the
+// upgrade with the SPA session cookie + canEditDoc and then forwards
+// the request to a `DocRoomDO` instance sharded by docId. CSRF does
+// not apply: WebSocket handshakes can't send custom headers, the
+// upgrade is a same-origin GET, and the DO never accepts state-
+// changing HTTP — only WebSocket frames after the upgrade.
+app.get('/collab/:docId', (c) => handleCollabUpgrade(c.req.raw, c.env, c.req.param('docId')))
 
 // notFound fires only for paths in `run_worker_first` that no Hono route
 // matched. JSON 404 — the SPA shell fallback for unknown non-API paths

@@ -16,6 +16,7 @@
 import type { MiddlewareHandler } from 'hono'
 import type { Env } from '../env'
 import { b64urlEncode, readCookie } from './session'
+import { isAllowedOrigin } from '../util/origin'
 
 export const CSRF_COOKIE_NAME = '__Host-ctx_csrf'
 const CSRF_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -68,8 +69,7 @@ export const requireCsrf: MiddlewareHandler<{ Bindings: Env }> = async (c, next)
     await next()
     return
   }
-  const origin = c.req.header('origin')
-  if (!origin || origin !== c.env.PUBLIC_BASE_URL) {
+  if (!isAllowedOrigin(c.req.header('origin') ?? null, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'bad_origin' }, 403)
   }
   const cookie = readCsrfCookie(c.req.raw)
