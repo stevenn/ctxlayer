@@ -6,14 +6,14 @@
 |---|---|---|
 | **M1** — Skeleton + sign-in | ✅ done | Live; Google/GitHub sign-in + allowlist |
 | **M2** — Docs + RAG via MCP | ✅ done (May 2026) | Claude Web → `search_docs` against real Vectorize |
-| **M3** — Realtime collab (Yjs) | ⏳ next | (planned) two tabs editing live |
-| **M4** — Upstream proxy (HTTP + Daytona stdio) | 📋 planned | Notion + GitHub via Claude |
+| **M3** — Realtime collab (Yjs) | ✅ done (May 2026) | Two-tab live edit on `:5173`, deployed to workers.dev |
+| **M4** — Upstream proxy (HTTP + Daytona stdio) | ⏳ next | Notion + GitHub via Claude |
 | **M5** — OAuth upstreams + Admin UI | 📋 planned | Linear OAuth + admin smoke test |
 | **M6** — Usage pipeline + dashboards | 📋 planned | per-user/upstream charts |
 
 - **Live**: `https://ctxlayer.stevenn-a65.workers.dev` — GitHub-only sign-in (`ALLOWED_GITHUB_USERS` + `ADMIN_EMAILS` gated).
-- **Local dev**: `bun run dev` boots straight through; put `PUBLIC_BASE_URL=https://localhost:8787` in `.dev.vars` to override the committed prod base.
-- **Validation entry point**: M2 done-done checklist (see [Verification](#verification-plan)).
+- **Local dev**: `bun run dev` boots straight through. For sign-in / collab WS at `https://localhost:5173` (Vite HMR), also put `PUBLIC_BASE_URL=https://localhost:8787` in `.dev.vars` (the worker's Origin check has a localhost carve-out, but the IdP redirect URI is derived from PUBLIC_BASE_URL).
+- **Validation entry point**: M3 prep notes (see [`docs/plan/M3-prep.md`](plan/M3-prep.md)) + M2 done-done checklist (see [Verification](#verification-plan)).
 
 Deep-dive plans for each topic live in [`docs/plan/`](#deep-dive-index) so this file stays browsable.
 
@@ -262,17 +262,17 @@ Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream
 - Stdio upstreams pass through Daytona sandboxes (see [docs/plan/B-daytona-stdio.md](plan/B-daytona-stdio.md)) — credentials injected as sandbox env vars, not HTTP headers.
 - Sandbox lifecycle: configurable `idleTimeoutSeconds` (default 600), nightly reconcile via `sandbox_sessions`, admin force-destroy.
 
-## Collaborative editor — ⏳ M3
+## Collaborative editor — ✅ M3 (shipped May 2026)
 
-- **SPA**: `@blocknote/react` + `@blocknote/core` with the Yjs collab extension. ✅ editor wired (REST autosave today).
-- **Transport** *(M3)*: WebSocket to `/collab/:id`, session cookie + CSRF ticket verified before `upgrade`.
-- **`DocRoomDO`** *(M3 — currently 501 stub)*:
-  - WebSocket Hibernation API (`webSocketMessage`, `webSocketClose`).
-  - Lazy-loads `docs/{id}/snapshot.bin` from R2 on first wake.
-  - Broadcasts sync/awareness frames via `ctx.getWebSockets()`.
-  - Debounced flush (5s idle / 30s max) + final flush via `setAlarm` when room empties.
-  - Flush writes snapshot, rotates `revisions/{ts}.bin`, inserts `doc_revisions` row, enqueues `{docId, revisionId}` to `DOC_REINDEX_QUEUE`.
-- **Reindex consumer** ✅ already wired; M3 keeps it on BlockNote JSON (driven by the SPA's debounced REST autosave). See [M3-prep.md D-M3.1](plan/M3-prep.md#d-m31--blocknoteserver-util-is-not-viable-in-workerd).
+- **SPA**: `@blocknote/react` + `@blocknote/core` with the Yjs collab extension. ✅ Editor builds a per-doc `Y.Doc` + `CollabWSProvider` inside a StrictMode-safe effect; awareness-leader election (lowest clientID) decides which tab fires the REST autosave so concurrent tabs share one revision per ~5s debounce window. Connection status badge replaces the old dirty/Save UI.
+- **Transport**: WebSocket to `/collab/:docId`. Pre-upgrade auth: session cookie + `getDocById` existence + same-origin via `util/origin.ts` (localhost carve-out for Vite HMR). CSRF intentionally not required on the upgrade — the DO never accepts state-changing HTTP, only WebSocket frames tagged read-only or read-write via per-socket attachment.
+- **`DocRoomDO`**:
+  - WebSocket Hibernation API (`acceptWebSocket` + `webSocketMessage` / `webSocketClose` / `webSocketError`).
+  - Lazy-loads `docs/{id}/yjs/snapshot.bin` from R2 on construct / post-eviction wake; immediately sends `syncStep1` to every still-attached socket so peers re-send unflushed in-memory updates.
+  - Broadcasts sync + awareness frames via `ctx.getWebSockets()`.
+  - **Snapshot on every applied update**, coalesced through a single in-flight write (latest-wins) and held alive via `ctx.waitUntil`. The original "alarm-debounced flush" plan was wrong under hibernation — alarms fire on a fresh instance with stale R2 state. Details in [M3-prep.md D-M3.1 + D-M3.2](plan/M3-prep.md).
+- **Reindex consumer** ✅ unchanged; SPA's debounced `PUT /api/docs/:id/content` keeps writing BlockNote JSON revisions that the existing consumer renders → embeds → upserts.
+- **Storage**: `apps/worker/src/storage/docs-r2.ts` adds `readYjsSnapshot` / `writeYjsSnapshot`. Y.Doc bytes live alongside the JSON snapshot/revision tree; no rotation (one current binary snapshot only).
 
 ## Usage tracking — 📋 M6
 
@@ -317,7 +317,7 @@ Each milestone is independently deployable and demoable.
 
 - **M1 — Skeleton (1 wk)** ✅: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations `0001`–`0004`, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. Demo (closed): sign in, see your email.
 - **M2 — Docs + RAG (1.5 wk)** ✅: BlockNote editor with REST save, R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`/`whoami`/`list_my_context`/`list_upstreams`, doc resources, doc tags + admin teams/products, chunk_count orphan cleanup. Demo (closed May 2026): Claude Web searches internal docs via MCP against real Vectorize.
-- **M3 — Realtime collab (1 wk)** ⏳: `DocRoomDO` as a Yjs relay + binary snapshot over `/collab/:docId`; BlockNote gets the Yjs collab extension; existing REST autosave triggers off Y.Doc updates with an awareness-leader election so concurrent tabs share one revision per debounce window. Demo: two browser tabs edit live; MCP search reflects changes within seconds. Slice plan + the two pinned deviations: [docs/plan/M3-prep.md](plan/M3-prep.md).
+- **M3 — Realtime collab (1 wk)** ✅: `DocRoomDO` as a Yjs relay + per-update R2 binary snapshot (coalesced + `ctx.waitUntil`-held) over `/collab/:docId`; BlockNote wired with the Yjs collab extension via a custom 200-LoC `CollabWSProvider`; REST autosave triggers off Y.Doc updates with an awareness-leader election so concurrent tabs share one revision per ~5s debounce. Shared `util/origin.ts` Origin check (localhost carve-out) keeps Vite HMR at `:5173` viable for dev. Two pinned deviations from the original plan documented in [docs/plan/M3-prep.md](plan/M3-prep.md): @blocknote/server-util can't run in workerd (jsdom), and the alarm-debounced flush approach is wrong under WS Hibernation. Demo (closed May 2026): two browser tabs edit live, `doc_revisions` grows on leader-tab autosave, MCP `search_docs` reflects changes within seconds.
 - **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)** 📋: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk`, one pre-baked Daytona snapshot for a reference stdio MCP server, env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy. Demo: (a) Notion HTTP MCP — paste token, agent calls `notion__search_pages`; (b) GitHub stdio MCP — paste PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle. Detailed plans: [C](plan/C-upstream-proxy.md) + [B](plan/B-daytona-stdio.md).
 - **M5 — OAuth upstreams + Admin UI (2 wk)** 📋: `user_oauth` start/callback/refresh, admin UI (upstreams CRUD incl. snapshot/start-command editor, users, OAuth clients, audit log, sandboxes view with force-destroy), role promotion. Demo: Linear added via OAuth; admin manages everything from UI including killing a runaway sandbox.
 - **M6 — Usage pipeline + dashboards (1 wk)** 📋: usage queue + tiktoken consumer + rollups, admin usage dashboard, user usage page, cron prune. Demo: charts showing per-user/per-upstream calls + tokens.
@@ -369,7 +369,7 @@ Each milestone is independently deployable and demoable.
   11. Wire Claude (Web or Desktop): `{"mcpServers": {"ctxlayer": {"url": "https://<URL>/mcp"}}}`. For Claude Web that's claude.ai → Settings → Connectors → Add custom. Claude triggers DCR + `/oauth/authorize` → IdP chooser → back.
   12. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data. Note: admin role doesn't grant team membership; use `scope: "all"`, or add yourself to a team via `/app/admin/teams`.
   13. Shrink the doc; next reindex deletes the orphan vectors via `chunk_count` tracking (migration `0006`); `list-vectors` drops to the new count with no stragglers above.
-- **M3**: Two browser tabs editing concurrently; kill DO via `wrangler tail`, confirm WS reconnect + snapshot reload; verify revisions in D1.
+- **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per ~5s debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
 - **M4**: (a) Add Notion HTTP upstream via D1 insert; paste PAT in SPA; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). (b) Pre-build a Daytona snapshot containing `@modelcontextprotocol/server-github` + `supergateway`; register as `stdio_daytona` upstream; from Claude call `github_stdio__create_issue`; observe sandbox in Daytona dashboard; wait 10min; confirm auto-stop; call again, confirm wake works.
 - **M5**: Walk OAuth flow end-to-end for Linear; force token expiry by editing `expires_at`, confirm auto-refresh; admin UI smoke-test all CRUD operations.
 - **M6**: Drive synthetic load (script that opens MCP session + calls 100 tools), confirm `usage_events` populated and `usage_rollups_daily` reflects totals; verify tiktoken counts ≈ OpenAI tokenizer for spot-checked payloads.

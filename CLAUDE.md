@@ -107,21 +107,33 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 
 Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
 
-- **M1 + M2 closed (May 2026).** GitHub sign-in (Google supported but
-  off in the live deploy), per-doc ACL, BlockNote editor with sharing /
-  tags / admin teams+products, full RAG pipeline
+- **M1 + M2 + M3 closed (May 2026).** GitHub sign-in (Google supported
+  but off in the live deploy), per-doc ACL, BlockNote editor with
+  sharing / tags / admin teams+products, full RAG pipeline
   (`rag/{markdown,chunker,embedder,index}.ts`, Workers AI
   `@cf/baai/bge-base-en-v1.5`, Vectorize upsert with `chunk_count`
   orphan cleanup), MCP server (`McpSessionDO` extends `McpAgent`)
   registering `whoami` / `list_my_context` / `list_upstreams` /
   `get_doc` / `search_docs`, OAuth provider mounted at `/oauth/*` +
-  `/.well-known/oauth-authorization-server` with SSR'd IdP chooser.
-  Doc resources at `mcp://ctxlayer/docs/{id}`. Validated end-to-end
-  via Claude Web → real Vectorize.
-- **M3 next**: Yjs realtime collab. `collab/doc-room-do.ts` is a
-  14-line 501 stub today; `/collab/*` route not yet wired.
-- Then **M4** (upstream proxy + Daytona) → **M5** (admin UI) → **M6**
-  (usage + dashboards).
+  `/.well-known/oauth-authorization-server` with SSR'd IdP chooser,
+  doc resources at `mcp://ctxlayer/docs/{id}`. Realtime collab via
+  `DocRoomDO` (`collab/doc-room-do.ts`) — Yjs over WS Hibernation at
+  `/collab/:docId`, per-update R2 snapshot held by `ctx.waitUntil`,
+  resync-on-wake closes the eviction window. SPA `CollabWSProvider`
+  (`apps/web/src/lib/yjs-ws-provider.ts`) wires BlockNote's collab
+  extension; awareness-leader election drives a single REST autosave
+  per ~5s debounce so concurrent tabs don't multiply revisions.
+  Shared `util/origin.ts` allowlist (localhost carve-out) lets Vite
+  HMR at `:5173` talk to wrangler at `:8787` in dev. Validated
+  end-to-end via Claude Web → real Vectorize + two-tab live edit
+  on workers.dev.
+- **M4 next**: upstream proxy (Notion HTTP + GitHub stdio via
+  Daytona). `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`,
+  `crypto/aead.ts`, `mcp/{tools-proxy,upstream-client}.ts`, and
+  `apps/worker/src/api/admin-upstreams.ts` are all unwritten today.
+  Plans: `docs/plan/C-upstream-proxy.md` + `docs/plan/B-daytona-stdio.md`.
+- Then **M5** (admin UI for upstreams / OAuth) → **M6** (usage +
+  dashboards).
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
 `bun run dev` from a fresh checkout. The reindex consumer
