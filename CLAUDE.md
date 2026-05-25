@@ -5,7 +5,7 @@ serves curated docs (with RAG over Vectorize), proxies upstream MCP servers
 with centralised per-user credentials, and exposes a React SPA for self
 onboarding + collaborative markdown editing + admin/usage analytics.
 
-The full plan lives at **`docs/PLAN.md`**. Read it first.
+The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/plan/`** (A: auth, B: Daytona, C: upstream proxy, D: UI+REST, E: dev environment, F: org IA, G: conventions). Read PLAN.md first; pull in a deep-dive when the topic comes up.
 
 ## What runs where
 
@@ -60,7 +60,7 @@ The full plan lives at **`docs/PLAN.md`**. Read it first.
 ## Architectural gotchas baked into M1
 
 These all bit us during the scaffold review; do NOT re-introduce them.
-Full rationale in `docs/PLAN.md` Section G.
+Full rationale in `docs/plan/G-conventions.md`.
 
 - **SQLite/D1**: no expressions allowed in `PRIMARY KEY`. Use a `''`
   sentinel on `NOT NULL` columns and a partial `UNIQUE INDEX` for
@@ -101,42 +101,27 @@ context, gate execution":
   or product. `list_upstreams` only returns what the user can use.
 
 Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
-`docs/PLAN.md` Section F.
+`docs/plan/F-org-ia.md`.
 
 ## Where to start
 
-Milestones live in `docs/PLAN.md` under "Milestone breakdown". Current state:
-**M1 + M2 closed (May 2026).** Real RAG validated end-to-end: Claude (Web)
-DCR + OAuth handshake → `whoami`/`list_my_context`/`search_docs`/`get_doc`
-against real Vectorize, with orphan-vector cleanup via `chunk_count`
-tracking verified by shrink test.
-M1: Google/GitHub sign-in.
-M2a: per-doc ACL (`0005_doc_acl.sql`), `__Host-ctx_csrf` + middleware,
-`/api/docs` REST + content save, `/api/docs/:id/editors`,
-`/api/users?email=`, BlockNote editor with sharing + creator/editor
-attribution + inline title rename + import-markdown + doc-to-doc
-links + roadmapper theme. M2b/1: reindex pipeline in
-`apps/worker/src/rag/{markdown,chunker,embedder,index}.ts`; Workers
-AI `@cf/baai/bge-base-en-v1.5`; Vectorize upsert logged-only with
-M2c idempotency contract documented inline. M2b/2: `doc_tags`
-queries + `/api/docs/:id/tags` + `/api/teams` + `/api/products` +
-full admin CRUD at `/api/admin/teams|products|team-products`, SPA
-tag pane in editor right rail, `/app/admin/teams` +
-`/app/admin/products` pages (create/edit/delete + team-members
-drawer + team↔product matrix), reindex consumer reads `doc_tags`
-into chunk metadata, tag changes enqueue a fresh reindex,
-`seed.mjs` seeds 3 teams + 2 products.
-M2c: `@cloudflare/workers-oauth-provider` mounts OAuth at /oauth/*
-+ /.well-known/oauth-authorization-server. /oauth/authorize renders
-a minimal SSR'd IdP chooser; IdP callbacks fork between SPA-cookie
-and `provider.completeAuthorization(props)` based on
-`oauth_request_id`. McpSessionDO extends `McpAgent` from `agents`
-SDK (SQLite-backed v2 migration); registers `whoami`,
-`list_my_context`, `list_upstreams`, `get_doc`, `search_docs` (embed
-+ Vectorize query + scope post-filter). Doc resources at
-`mcp://ctxlayer/docs/{id}`. Reindex now writes to real Vectorize
-with `chunk_count` tracking (migration 0006) so orphans get deleted
-when revisions shrink.
+Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
+
+- **M1 + M2 closed (May 2026).** GitHub sign-in (Google supported but
+  off in the live deploy), per-doc ACL, BlockNote editor with sharing /
+  tags / admin teams+products, full RAG pipeline
+  (`rag/{markdown,chunker,embedder,index}.ts`, Workers AI
+  `@cf/baai/bge-base-en-v1.5`, Vectorize upsert with `chunk_count`
+  orphan cleanup), MCP server (`McpSessionDO` extends `McpAgent`)
+  registering `whoami` / `list_my_context` / `list_upstreams` /
+  `get_doc` / `search_docs`, OAuth provider mounted at `/oauth/*` +
+  `/.well-known/oauth-authorization-server` with SSR'd IdP chooser.
+  Doc resources at `mcp://ctxlayer/docs/{id}`. Validated end-to-end
+  via Claude Web → real Vectorize.
+- **M3 next**: Yjs realtime collab. `collab/doc-room-do.ts` is a
+  14-line 501 stub today; `/collab/*` route not yet wired.
+- Then **M4** (upstream proxy + Daytona) → **M5** (admin UI) → **M6**
+  (usage + dashboards).
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
 `bun run dev` from a fresh checkout. The reindex consumer
@@ -167,12 +152,8 @@ in `.dev.vars` to override `[vars]`.
 The full done-done checklist lives in `docs/PLAN.md` under the M2
 verification entry.
 
-Next work after M2 closes: **M3 (Yjs realtime collab)** then **M4
-(upstream proxy + Daytona)** then **M5 (admin UI)** then **M6
-(usage + dashboards)**.
-
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
 `{userId, role, iat, exp}` body keyed by `SESSION_COOKIE_SECRET`; the
 sibling `__Host-ctx_oauth_state` cookie carries the redirect-dance
-state. See Section G11–G12 in `docs/PLAN.md` for full rationale.
+state. See G11–G12 in `docs/plan/G-conventions.md` for full rationale.
