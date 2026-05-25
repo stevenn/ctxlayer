@@ -127,13 +127,19 @@ Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
   HMR at `:5173` talk to wrangler at `:8787` in dev. Validated
   end-to-end via Claude Web → real Vectorize + two-tab live edit
   on workers.dev.
-- **M4 next**: upstream proxy (Notion HTTP + GitHub stdio via
-  Daytona). `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`,
-  `crypto/aead.ts`, `mcp/{tools-proxy,upstream-client}.ts`, and
+- **M4 next**: upstream proxy, **HTTP/SSE only** (Notion HTTP MCP is
+  the demo). `crypto/aead.ts`, `apps/worker/src/upstream/http-client.ts`,
+  `mcp/{tools-proxy,upstream-client}.ts`, and
   `apps/worker/src/api/admin-upstreams.ts` are all unwritten today.
-  Plans: `docs/plan/C-upstream-proxy.md` + `docs/plan/B-daytona-stdio.md`.
+  Plan: `docs/plan/C-upstream-proxy.md` (HTTP/SSE rows only — stdio bits
+  are flagged 🅿️).
 - Then **M5** (admin UI for upstreams / OAuth) → **M6** (usage +
   dashboards).
+- **Later (parked)**: stdio upstreams via Daytona. `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`
+  and the snapshot baking pipeline stay unwritten until a real stdio MCP
+  upstream is in scope. The `stdio_daytona` literal in the 0001 CHECK
+  constraint and the `sandbox_sessions` table are inert reservations.
+  Recipe: `docs/plan/B-daytona-stdio.md`.
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
 `bun run dev` from a fresh checkout. The reindex consumer

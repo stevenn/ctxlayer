@@ -7,9 +7,10 @@
 | **M1** — Skeleton + sign-in | ✅ done | Live; Google/GitHub sign-in + allowlist |
 | **M2** — Docs + RAG via MCP | ✅ done (May 2026) | Claude Web → `search_docs` against real Vectorize |
 | **M3** — Realtime collab (Yjs) | ✅ done (May 2026) | Two-tab live edit on `:5173`, deployed to workers.dev |
-| **M4** — Upstream proxy (HTTP + Daytona stdio) | ⏳ next | Notion + GitHub via Claude |
+| **M4** — Upstream proxy (HTTP/SSE only) | ⏳ next | Notion HTTP MCP via Claude |
 | **M5** — OAuth upstreams + Admin UI | 📋 planned | Linear OAuth + admin smoke test |
 | **M6** — Usage pipeline + dashboards | 📋 planned | per-user/upstream charts |
+| **Later** — Stdio upstreams via Daytona | 🅿️ parked | revisit when we have a real stdio upstream to serve |
 
 - **Live**: `https://ctxlayer.stevenn-a65.workers.dev` — GitHub-only sign-in (`ALLOWED_GITHUB_USERS` + `ADMIN_EMAILS` gated).
 - **Local dev**: `bun run dev` boots straight through. For sign-in / collab WS at `https://localhost:5173` (Vite HMR), also put `PUBLIC_BASE_URL=https://localhost:8787` in `.dev.vars` (the worker's Origin check has a localhost carve-out, but the IdP redirect URI is derived from PUBLIC_BASE_URL).
@@ -29,13 +30,13 @@ Building **ctxlayer**, a remote MCP server that:
 **Locked-in choices** (from clarifying questions):
 - Single-org per deployment (no multi-tenant complexity).
 - Identity: **Google Workspace + GitHub** with org/domain allowlist.
-- Upstream transports: **Streamable HTTP / SSE natively** on Workers, **stdio via Daytona Cloud** (a hosted container sandbox per user×upstream, with a stdio↔HTTP bridge inside).
+- Upstream transports: **Streamable HTTP / SSE natively** on Workers. Stdio via Daytona Cloud is designed (deep-dive [B](plan/B-daytona-stdio.md)) but **parked** — no real stdio upstream in scope yet.
 - **Vectorize-backed RAG** for curated docs (chunked + embedded via Workers AI `@cf/baai/bge-base-en-v1.5`).
 - Usage tracking: bytes + **approximate tokens via tiktoken** (WASM in the queue consumer).
 - Editor: **BlockNote** (Notion-style, Tiptap-based, Yjs collab built in).
 - Single Worker hosts both the API/MCP endpoints and the React SPA (Workers Assets).
 
-**Why Daytona for stdio**: Workers cannot spawn subprocesses (no `child_process` even with `nodejs_compat` — `workerd` is a V8-isolate sandbox without POSIX). Stdio MCP servers need a real OS. Daytona offers sub-90ms sandbox creation, a TypeScript SDK callable from a Worker, public HTTP/WS proxy URLs with API-key auth at the proxy, snapshot templates so the server is pre-installed, and auto-stop/activity-refresh lifecycle.
+**Why Daytona is the future-stdio plan (parked)**: Workers cannot spawn subprocesses (no `child_process` even with `nodejs_compat` — `workerd` is a V8-isolate sandbox without POSIX). When a real stdio MCP upstream lands, Daytona is the chosen offload — sub-90ms sandbox creation, TypeScript SDK callable from a Worker, public HTTP/WS proxy URLs, snapshot templates, auto-stop lifecycle. Until then we ship HTTP/SSE only and keep `apps/worker/src/upstream/daytona.ts` unwritten. The `stdio_daytona` transport literal in the `upstream_servers` CHECK constraint and the `sandbox_sessions` table are inert reservations from migration `0001`.
 
 **Inspiration**: [stainless-api/mcp-front](https://github.com/stainless-api/mcp-front). Reuse patterns (per-service auth strategies, encrypted creds at rest, audience-scoped tokens, OAuth gateway). Do not reuse code (Go, ELv2-licensed).
 
@@ -63,19 +64,21 @@ Building **ctxlayer**, a remote MCP server that:
                      v        v        v        v          v       v
                     D1       KV       R2    Vectorize   Workers AI |
                                                                    |
-                                              +--------------------+
-                                              |                    |
-                                              v                    v
-                                       Daytona Cloud         Native HTTP/SSE
-                                       (per-user sandbox     upstream MCP
-                                        running stdio MCP    servers
-                                        + stdio<->HTTP       (Notion, Linear,
-                                        bridge)              internal)
+                                                                   v
+                                                            Native HTTP/SSE
+                                                            upstream MCP
+                                                            servers
+                                                            (Notion, Linear,
+                                                             internal)
+
+   (Future / parked) stdio upstreams would land via Daytona Cloud
+   sandboxes per (user × upstream) with an in-sandbox stdio↔HTTP
+   bridge — see docs/plan/B-daytona-stdio.md.
 ```
 
 ### Key flows
 - **MCP tool call (HTTP/SSE upstream)** *(M4)*: agent → `/mcp` → OAuth-validated → `McpSessionDO` resolves namespace `notion__create_page` → lazy-connects `UpstreamClient` with decrypted user credentials → streams response → `waitUntil` enqueues a usage event.
-- **MCP tool call (stdio upstream via Daytona)** *(M4)*: agent → `/mcp` → resolves `github_stdio__create_issue` → `daytona.getOrCreateSandbox(...)` → sandbox runs stdio MCP server behind a stdio↔HTTP bridge → `UpstreamClient` opens HTTP → streams response → activity-refresh resets idle timer.
+- **MCP tool call (stdio upstream via Daytona)** *(parked — Later)*: agent → `/mcp` → resolves `github_stdio__create_issue` → `daytona.getOrCreateSandbox(...)` → sandbox runs stdio MCP server behind a stdio↔HTTP bridge → `UpstreamClient` opens HTTP → streams response → activity-refresh resets idle timer.
 - **Doc edit** *(M3)*: SPA opens WebSocket to `/collab/:id` → `DocRoomDO` (one per doc) loads Y.Doc from R2 → BlockNote↔Yjs sync → debounced (5s idle / 30s max) snapshot to R2 + revision row in D1 + enqueue reindex.
 - **Reindex** *(shipped)*: queue consumer renders blocks → markdown, chunks (~512 tokens, 64 overlap, heading-aware), embeds via Workers AI, upserts into Vectorize keyed `${docId}:${chunkIdx}`. Orphan cleanup via `chunk_count` tracking when revisions shrink.
 
@@ -99,7 +102,8 @@ ctxlayer/
         oauth/authorize-page.ts
         mcp/session-do.ts       # McpAgent + built-in tools
         mcp/{tools-proxy,upstream-client}.ts          †(M4)
-        upstream/{daytona,sandbox-pool}.ts            †(M4)
+        upstream/http-client.ts                       †(M4 — Streamable HTTP / SSE)
+        upstream/{daytona,sandbox-pool}.ts            †(Later — parked stdio plan)
         collab/{doc-room-do,yjs-persistence}.ts       †(M3 — currently 501 stub)
         queues/reindex-consumer.ts
         queues/usage-consumer.ts                      †(M6)
@@ -141,18 +145,23 @@ CREATE TABLE users (
 CREATE TABLE upstream_servers (
   id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE,  -- used in tool namespace
   display_name TEXT NOT NULL,
-  transport TEXT NOT NULL,                    -- 'streamable_http' | 'sse' | 'stdio_daytona'
+  transport TEXT NOT NULL,                    -- 'streamable_http' | 'sse' (M4) | 'stdio_daytona' (parked)
   url TEXT,                                   -- NULL for stdio_daytona (resolved from sandbox)
   auth_strategy TEXT NOT NULL,                -- 'none'|'shared_bearer'|'user_bearer'|'user_oauth'
   auth_config TEXT NOT NULL,                  -- JSON; see below
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
--- auth_config for stdio_daytona additionally carries:
+-- M4 only writes rows with transport in ('streamable_http','sse').
+-- The 'stdio_daytona' literal stays in the CHECK constraint for forward
+-- compatibility; admin form validation rejects it until Daytona ships.
+-- (Future) auth_config for stdio_daytona additionally carries:
 --   { snapshotId, startCommand, bridgePort,
 --     envTemplate: { "GITHUB_TOKEN": "${creds.access_token}", ... },
 --     idleTimeoutSeconds, perUser: true }
 
+-- sandbox_sessions: reserved table from 0001, no rows written until the
+-- Daytona track ships. Plan: docs/plan/B-daytona-stdio.md.
 CREATE TABLE sandbox_sessions (
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   upstream_id TEXT NOT NULL REFERENCES upstream_servers(id) ON DELETE CASCADE,
@@ -254,13 +263,13 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 ### Dynamic proxied tools — **📋 M4**
 - For each enabled upstream where the caller has access via `upstream_visibility` AND is credentialed (or strategy is `none`/`shared_bearer`), expose cached `upstream_tools` rows as `${slug}__${upstreamToolName}`. `__` in upstream tool names escapes to `_~_`.
 
-## Upstream proxy mechanics — 📋 M4
+## Upstream proxy mechanics — 📋 M4 (HTTP/SSE only)
 
 Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy.md)):
 - Lazy connect via `McpSessionDO`'s upstream-client map; built-ins never force a connect.
-- HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly.
-- Stdio upstreams pass through Daytona sandboxes (see [docs/plan/B-daytona-stdio.md](plan/B-daytona-stdio.md)) — credentials injected as sandbox env vars, not HTTP headers.
-- Sandbox lifecycle: configurable `idleTimeoutSeconds` (default 600), nightly reconcile via `sandbox_sessions`, admin force-destroy.
+- HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly; bearer/OAuth creds decrypted just-in-time.
+- Catalogue cache in `upstream_tools`; session-start refresh is `ctx.waitUntil`-only and never blocks `initialize`.
+- Stdio upstreams via Daytona — designed in [docs/plan/B-daytona-stdio.md](plan/B-daytona-stdio.md) but **parked until a real stdio upstream is in scope**. The sandbox lifecycle / pool / nightly reconcile work all moves to that future track.
 
 ## Collaborative editor — ✅ M3 (shipped May 2026)
 
@@ -286,7 +295,7 @@ Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream
 - **Teams / Products / Team↔Product matrix** ✅ shipped (M2b/2).
 - **Upstreams** 📋 M5 — CRUD + edit modal, "Test connection" + "Refresh tool cache" buttons, visibility section per [F](plan/F-org-ia.md).
 - **Users** 📋 M5 — table, promote/demote, revoke creds, inline team-membership.
-- **Sandboxes** 📋 M5 — live/idle/archived per user, force-destroy.
+- **Sandboxes** 🅿️ Later — live/idle/archived per user, force-destroy. Lands with the parked Daytona track, not M5.
 - **Usage** 📋 M6 — charts + tables.
 - **OAuth clients** 📋 M5 — DCR-registered MCP clients from `OAUTH_KV`.
 - **Audit log** 📋 M5 — tail of `audit_log` rows.
@@ -318,9 +327,18 @@ Each milestone is independently deployable and demoable.
 - **M1 — Skeleton (1 wk)** ✅: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations `0001`–`0004`, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. Demo (closed): sign in, see your email.
 - **M2 — Docs + RAG (1.5 wk)** ✅: BlockNote editor with REST save, R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`/`whoami`/`list_my_context`/`list_upstreams`, doc resources, doc tags + admin teams/products, chunk_count orphan cleanup. Demo (closed May 2026): Claude Web searches internal docs via MCP against real Vectorize.
 - **M3 — Realtime collab (1 wk)** ✅: `DocRoomDO` as a Yjs relay + per-update R2 binary snapshot (coalesced + `ctx.waitUntil`-held) over `/collab/:docId`; BlockNote wired with the Yjs collab extension via a custom 200-LoC `CollabWSProvider`; REST autosave triggers off Y.Doc updates with an awareness-leader election so concurrent tabs share one revision per ~5s debounce. Shared `util/origin.ts` Origin check (localhost carve-out) keeps Vite HMR at `:5173` viable for dev. Two pinned deviations from the original plan documented in [docs/plan/M3-prep.md](plan/M3-prep.md): @blocknote/server-util can't run in workerd (jsdom), and the alarm-debounced flush approach is wrong under WS Hibernation. Demo (closed May 2026): two browser tabs edit live, `doc_revisions` grows on leader-tab autosave, MCP `search_docs` reflects changes within seconds.
-- **M4 — Upstream proxy: bearer + stdio via Daytona (3 wk)** 📋: `upstream_servers` + `sandbox_sessions` admin REST (no UI yet), `user_credentials` + AES-GCM crypto, `UpstreamClient` lazy connect + catalogue cache, dynamic tool aggregation + proxy routing, `apps/worker/src/upstream/daytona.ts` wrapping `@daytonaio/sdk`, one pre-baked Daytona snapshot for a reference stdio MCP server, env-var template substitution from `user_credentials`, SPA `/upstreams` for `user_bearer` strategy. Demo: (a) Notion HTTP MCP — paste token, agent calls `notion__search_pages`; (b) GitHub stdio MCP — paste PAT, agent calls `github_stdio__create_issue`; sandbox auto-stops after 10min idle. Detailed plans: [C](plan/C-upstream-proxy.md) + [B](plan/B-daytona-stdio.md).
-- **M5 — OAuth upstreams + Admin UI (2 wk)** 📋: `user_oauth` start/callback/refresh, admin UI (upstreams CRUD incl. snapshot/start-command editor, users, OAuth clients, audit log, sandboxes view with force-destroy), role promotion. Demo: Linear added via OAuth; admin manages everything from UI including killing a runaway sandbox.
+- **M4 — Upstream proxy: HTTP/SSE bearer (1.5–2 wk)** 📋:
+  - `crypto/aead.ts` (AES-GCM seal/open keyed by `ENCRYPTION_KEY`, `key_version` ready for rotation).
+  - `apps/worker/src/upstream/http-client.ts`: lazy `@modelcontextprotocol/sdk` Client per `(session, upstream)` for Streamable HTTP + SSE; decrypts `user_credentials` just-in-time; 60s `AbortController` wall cap; streams responses without buffering.
+  - `apps/worker/src/mcp/{tools-proxy,upstream-client}.ts`: aggregate `upstream_tools` rows into `tools/list` with `${slug}__${tool}` namespacing (escape `__` → `_~_`); route `tools/call` by prefix; per-upstream error taxonomy (see [C4](plan/C-upstream-proxy.md#c4-error-surface-taxonomy)) minus the sandbox-specific codes.
+  - `apps/worker/src/api/admin-upstreams.ts`: REST CRUD on `upstream_servers` rows (no admin UI yet; SPA admin form lands in M5). Form validation rejects `transport = 'stdio_daytona'` until the Daytona track ships.
+  - Catalogue cache: `client.listTools()` on first successful connect → write `upstream_tools`; session-start refresh fires in `ctx.waitUntil` for any row older than 24h, never blocks `initialize`.
+  - SPA `/upstreams`: cards per enabled upstream; for `user_bearer`/`shared_bearer` upstreams the user pastes a token, POST `/api/upstreams/:slug/credentials` encrypts + stores. `user_oauth` cards link out to "coming in M5".
+  - Demo: register the Notion HTTP MCP via D1 insert, paste a Notion PAT in `/upstreams`, from Claude call `notion__search_pages` end-to-end; verify decrypted creds never leave the Worker (log audit). Detailed plan: [C](plan/C-upstream-proxy.md).
+  - **Out of scope (parked until a real stdio upstream is needed)**: `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, `sandbox_sessions` writes, Daytona snapshot baking, env-var template substitution, idle-timeout reconcile cron, the admin Sandboxes pane. Recipe preserved in [B](plan/B-daytona-stdio.md).
+- **M5 — OAuth upstreams + Admin UI (2 wk)** 📋: `user_oauth` start/callback/refresh, admin UI (upstreams CRUD form, users, OAuth clients, audit log), role promotion. Demo: Linear added via OAuth; admin manages everything from UI. *(Sandboxes admin pane moves to the parked Daytona track.)*
 - **M6 — Usage pipeline + dashboards (1 wk)** 📋: usage queue + tiktoken consumer + rollups, admin usage dashboard, user usage page, cron prune. Demo: charts showing per-user/per-upstream calls + tokens.
+- **Later — Stdio upstreams via Daytona** 🅿️: revive when a real stdio MCP upstream is on the roadmap. Picks up `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, the snapshot baking pipeline, env-var substitution, `sandbox_sessions` reconcile + nightly cron, Daytona-specific error codes (`-32002`/`-32003`), admin Sandboxes pane with force-destroy, and the `MAX_SANDBOXES_PER_USER` quota. Full recipe in [B](plan/B-daytona-stdio.md).
 
 ## Patterns to mirror from mcp-front (and what to skip)
 
@@ -333,17 +351,19 @@ Each milestone is independently deployable and demoable.
 - `slug__tool` namespacing across upstreams.
 
 **Diverge:**
-- Stdio transport — mcp-front spawns subprocesses directly; ctxlayer offloads to Daytona Cloud sandboxes per (user, upstream) with an in-sandbox stdio↔HTTP bridge.
+- Stdio transport — mcp-front spawns subprocesses directly; ctxlayer's plan is to offload to Daytona Cloud sandboxes per (user, upstream) with an in-sandbox stdio↔HTTP bridge (parked until a real stdio upstream is in scope).
 - mcp-front's Go runtime and ELv2 licensing — pick our own license freely.
 
 ## Risks / known unknowns
 
-- **Daytona cost scaling**: per-user × per-stdio-upstream active sandboxes. Mitigations: aggressive `idleTimeoutSeconds`, `MAX_SANDBOXES_PER_USER` quota enforced at provision time, admin UI showing live sandbox count + cost-per-day projection. Re-evaluate at M6 with real usage data.
-- **Daytona vendor lock-in**: `apps/worker/src/upstream/daytona.ts` is a single file with a narrow interface (`getOrReadySandbox`, `refreshActivity`, `destroy`, `list`) so swapping to E2B / Northflank / self-hosted Daytona later is a one-file change.
+- **MCP spec churn**: pin `@modelcontextprotocol/sdk` and `agents`; support both Streamable HTTP and SSE today; revisit when SSE fully deprecates.
+
+**Parked (re-evaluate when the Daytona track is revived):**
+- **Daytona cost scaling**: per-user × per-stdio-upstream active sandboxes. Mitigations: aggressive `idleTimeoutSeconds`, `MAX_SANDBOXES_PER_USER` quota enforced at provision time, admin UI showing live sandbox count + cost-per-day projection. Re-evaluate with real usage data.
+- **Daytona vendor lock-in**: `apps/worker/src/upstream/daytona.ts` is intended as a single file with a narrow interface (`getOrReadySandbox`, `refreshActivity`, `destroy`, `list`) so swapping to E2B / Northflank / self-hosted Daytona later is a one-file change.
 - **Daytona availability dependence**: if Daytona Cloud is down, stdio upstreams are down. HTTP upstreams remain unaffected. Surface in admin UI status panel; add a circuit breaker after N consecutive sandbox-create failures.
 - **Sandbox snapshot drift**: stdio MCP servers update frequently; snapshots go stale. Build `bun run rebuild-snapshot:<slug>`, surface pinned package version in admin UI.
 - **Credential exposure inside sandbox**: tokens flow as env vars into the container. Disable interactive shells on production snapshots; restrict `DAYTONA_API_KEY` scope; per-user sandboxes bound the blast radius.
-- **MCP spec churn**: pin `@modelcontextprotocol/sdk` and `agents`; support both Streamable HTTP and SSE today; revisit when SSE fully deprecates.
 - **OAuth UX from inside the agent**: handled by doing all `user_oauth` connection in the SPA before the agent session — flag prominently in `/mcp-setup`.
 - **Vectorize cost/limits**: 5M vectors/index is plenty for org-scale corpora; cache `search_docs` results in KV by query hash if it becomes hot.
 - **Workers CPU/wall limits**: streaming responses avoid CPU pressure; enforce 60s wall cap on a single upstream call.
@@ -370,7 +390,7 @@ Each milestone is independently deployable and demoable.
   12. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data. Note: admin role doesn't grant team membership; use `scope: "all"`, or add yourself to a team via `/app/admin/teams`.
   13. Shrink the doc; next reindex deletes the orphan vectors via `chunk_count` tracking (migration `0006`); `list-vectors` drops to the new count with no stragglers above.
 - **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per ~5s debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
-- **M4**: (a) Add Notion HTTP upstream via D1 insert; paste PAT in SPA; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). (b) Pre-build a Daytona snapshot containing `@modelcontextprotocol/server-github` + `supergateway`; register as `stdio_daytona` upstream; from Claude call `github_stdio__create_issue`; observe sandbox in Daytona dashboard; wait 10min; confirm auto-stop; call again, confirm wake works.
+- **M4**: Add Notion HTTP upstream via D1 insert; paste PAT in SPA `/upstreams`; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). Confirm catalogue cache populates `upstream_tools`; force a 24h-stale row and re-open session to see the `ctx.waitUntil` refresh fire without delaying `initialize`. Confirm `transport = 'stdio_daytona'` is rejected by admin form validation. *(Stdio/Daytona end-to-end deferred — see Later.)*
 - **M5**: Walk OAuth flow end-to-end for Linear; force token expiry by editing `expires_at`, confirm auto-refresh; admin UI smoke-test all CRUD operations.
 - **M6**: Drive synthetic load (script that opens MCP session + calls 100 tools), confirm `usage_events` populated and `usage_rollups_daily` reflects totals; verify tiktoken counts ≈ OpenAI tokenizer for spot-checked payloads.
 
@@ -379,7 +399,7 @@ Each milestone is independently deployable and demoable.
 Topic-specific deep-dives live under [`docs/plan/`](plan/) so this file stays browsable:
 
 - [A — Auth flows (inbound + outbound)](plan/A-auth-flows.md) — DCR, paste-bearer fallback, SPA session, allowlist enforcement, `user_bearer` / `user_oauth` / `shared_bearer` outbound, token & secret matrix.
-- [B — Daytona stdio bridge](plan/B-daytona-stdio.md) — snapshot Dockerfile pattern, baking pipeline, env-var substitution, sandbox lifecycle, keep-alive, per-user vs pooled, fallback, cost projection.
+- [B — Daytona stdio bridge](plan/B-daytona-stdio.md) 🅿️ *parked* — snapshot Dockerfile pattern, baking pipeline, env-var substitution, sandbox lifecycle, keep-alive, per-user vs pooled, fallback, cost projection. Revive when a real stdio MCP upstream is in scope.
 - [C — Upstream proxy mechanics](plan/C-upstream-proxy.md) — `tools/list` aggregation, namespacing edge cases, lazy connect cost analysis, error taxonomy, streaming, subrequest accounting, concurrent calls, `list_upstreams()` shape.
 - [D — UI surface + REST endpoints](plan/D-ui-and-rest.md) — sitemap, user screens, admin screens, role gating, full REST catalogue.
 - [E — Dev environment](plan/E-dev-environment.md) — cloud-native session bootstrap, local dev DX, test harness, CI/CD, mobile/chat-driven workflow, module conventions, observability, env vars summary, onboarding checklist.

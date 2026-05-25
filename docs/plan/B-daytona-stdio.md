@@ -1,5 +1,13 @@
 # Daytona stdio bridge — concrete recipe
 
+> **🅿️ Parked (2026-05-25).** This deep-dive is preserved as the recipe for the
+> day a real stdio MCP upstream lands in scope. M4 ships HTTP/SSE-only and does
+> not touch `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, the
+> `sandbox_sessions` table, snapshot baking, or the admin Sandboxes pane.
+> Revive when a concrete stdio upstream (GitHub stdio, Python `mcp-server-*`,
+> etc.) is on the roadmap. See `docs/PLAN.md` → "Later — Stdio upstreams via
+> Daytona".
+
 ### B1. Snapshot Dockerfile pattern
 
 One Dockerfile per supported stdio MCP server. Base image is shared.
