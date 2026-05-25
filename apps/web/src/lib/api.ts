@@ -415,6 +415,28 @@ export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsRespo
   )
 }
 
+export function adminPutSharedCredentials(
+  id: string,
+  body: PasteBearerRequestT
+): Promise<void> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/shared-credentials`,
+    () => undefined,
+    {
+      method: 'PUT',
+      body: JSON.stringify(PasteBearerRequest.parse(body))
+    }
+  )
+}
+
+export function adminDeleteSharedCredentials(id: string): Promise<void> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/shared-credentials`,
+    () => undefined,
+    { method: 'DELETE' }
+  )
+}
+
 // ----- admin users --------------------------------------------------------
 
 const AdminUserList = z.array(AdminUserRow)

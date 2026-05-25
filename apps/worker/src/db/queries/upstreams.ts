@@ -395,6 +395,90 @@ function toUint8Array(v: unknown): Uint8Array {
   return new Uint8Array(v as ArrayLike<number>)
 }
 
+// ----- upstream_shared_credentials --------------------------------------
+
+export interface SharedCredentialRow {
+  upstream_id: string
+  kind: 'bearer'
+  ciphertext: Uint8Array
+  iv: Uint8Array
+  key_version: number
+  created_by: string | null
+  created_at: number
+  updated_at: number
+}
+
+export async function getSharedCredential(
+  env: Env,
+  upstreamId: string
+): Promise<SharedCredentialRow | null> {
+  const row = await env.DB.prepare(
+    `SELECT upstream_id, kind, ciphertext, iv, key_version, created_by, created_at, updated_at
+     FROM upstream_shared_credentials WHERE upstream_id = ?1`
+  )
+    .bind(upstreamId)
+    .first<SharedCredentialRow>()
+  if (!row) return null
+  // Same D1-BLOB-shape normalisation as getUserCredential — see the
+  // long comment there.
+  row.ciphertext = toUint8Array(row.ciphertext)
+  row.iv = toUint8Array(row.iv)
+  return row
+}
+
+export async function hasSharedCredential(env: Env, upstreamId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT 1 AS one FROM upstream_shared_credentials WHERE upstream_id = ?1`
+  )
+    .bind(upstreamId)
+    .first<{ one: number }>()
+  return row !== null
+}
+
+export interface UpsertSharedCredentialInput {
+  kind: 'bearer'
+  ciphertext: Uint8Array
+  iv: Uint8Array
+  keyVersion: number
+  createdBy: string
+}
+
+export async function upsertSharedCredential(
+  env: Env,
+  upstreamId: string,
+  input: UpsertSharedCredentialInput
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `INSERT INTO upstream_shared_credentials
+       (upstream_id, kind, ciphertext, iv, key_version, created_by, created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+     ON CONFLICT (upstream_id) DO UPDATE SET
+       kind = excluded.kind,
+       ciphertext = excluded.ciphertext,
+       iv = excluded.iv,
+       key_version = excluded.key_version,
+       created_by = excluded.created_by,
+       updated_at = excluded.updated_at`
+  )
+    .bind(
+      upstreamId,
+      input.kind,
+      input.ciphertext,
+      input.iv,
+      input.keyVersion,
+      input.createdBy,
+      now
+    )
+    .run()
+}
+
+export async function deleteSharedCredential(env: Env, upstreamId: string): Promise<void> {
+  await env.DB.prepare(`DELETE FROM upstream_shared_credentials WHERE upstream_id = ?1`)
+    .bind(upstreamId)
+    .run()
+}
+
 export interface UpsertCredentialInput {
   kind: 'bearer' | 'oauth'
   ciphertext: Uint8Array
@@ -476,12 +560,22 @@ export async function adminRowFor(
   if (row.transport !== 'streamable_http' && row.transport !== 'sse') return null
   const requiresUserCred =
     row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
-  const [visibility, toolsCount, cachedAt, cred] = await Promise.all([
+  const isSharedBearer = row.auth_strategy === 'shared_bearer'
+  const [visibility, toolsCount, cachedAt, cred, sharedConfigured] = await Promise.all([
     listVisibilityForUpstream(env, upstreamId),
     countToolsForUpstream(env, upstreamId),
     getToolsCachedAt(env, upstreamId),
-    requiresUserCred ? getUserCredential(env, callerUserId, upstreamId) : Promise.resolve(null)
+    requiresUserCred ? getUserCredential(env, callerUserId, upstreamId) : Promise.resolve(null),
+    isSharedBearer ? hasSharedCredential(env, upstreamId) : Promise.resolve(false)
   ])
+  // For shared_bearer, the "connection" is org-wide — every user is
+  // connected as soon as the admin configures the token. For 'none'
+  // there's no credential concept; always-on.
+  const connectedForCaller = requiresUserCred
+    ? cred !== null
+    : isSharedBearer
+      ? sharedConfigured
+      : true
   return {
     id: row.id,
     slug: row.slug,
@@ -494,10 +588,8 @@ export async function adminRowFor(
     visibility,
     toolsCount,
     toolsCachedAt: cachedAt,
-    // 'none' upstreams have no per-user concept of "connected"; treat
-    // as always-on. 'shared_bearer' will follow the same pattern once
-    // its storage lands (M5 phase 2).
-    currentUserConnected: requiresUserCred ? cred !== null : true,
+    currentUserConnected: connectedForCaller,
+    sharedCredentialConfigured: sharedConfigured,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -514,11 +606,23 @@ export async function listUserUpstreamSummaries(
   const rows = await listUpstreamsVisibleToUser(env, userId)
   if (rows.length === 0) return []
   const credIds = await listUserCredentialedUpstreamIds(env, userId)
+  const sharedFlags = await Promise.all(
+    rows.map((r) =>
+      r.auth_strategy === 'shared_bearer'
+        ? hasSharedCredential(env, r.id)
+        : Promise.resolve(false)
+    )
+  )
   const counts = await Promise.all(rows.map((r) => countToolsForUpstream(env, r.id)))
   return rows.map((r, i) => {
     const requiresCredentials =
       r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth'
-    const connected = requiresCredentials ? credIds.has(r.id) : true
+    const isShared = r.auth_strategy === 'shared_bearer'
+    const connected = requiresCredentials
+      ? credIds.has(r.id)
+      : isShared
+        ? (sharedFlags[i] ?? false)
+        : true
     return {
       id: r.id,
       slug: r.slug,

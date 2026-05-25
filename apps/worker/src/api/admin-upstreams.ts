@@ -11,6 +11,7 @@
 import { Hono } from 'hono'
 import {
   CreateUpstreamRequest,
+  PasteBearerRequest,
   ReplaceVisibilityRequest,
   UpdateUpstreamRequest
 } from '@ctxlayer/shared'
@@ -20,18 +21,22 @@ import { requireCsrf } from '../auth/csrf'
 import {
   adminRowFor,
   createUpstream,
+  deleteSharedCredential,
   deleteUpstream,
   getUpstreamById,
   listUpstreams,
   patchUpstream,
   replaceVisibility,
-  toUpstreamConnection
+  toUpstreamConnection,
+  upsertSharedCredential
 } from '../db/queries/upstreams'
 import {
   refreshCatalogueByUpstreamId,
   refreshCatalogueForConnection
 } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
+import { seal } from '../crypto/aead'
+import { audit } from '../audit/log'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -171,6 +176,80 @@ adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
     toolsCount: result.toolsCount,
     cachedAt: result.cachedAt
   })
+})
+
+/**
+ * Set / replace the shared bearer token for a `shared_bearer` upstream.
+ * The whole org uses this token for outbound calls — there's no
+ * per-user storage. Caller's user id goes in `created_by` for the
+ * audit trail. After the upsert, warm the catalogue in waitUntil
+ * (admin doesn't need to click Refresh).
+ */
+adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
+  const id = c.req.param('id')
+  const row = await getUpstreamById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (row.auth_strategy !== 'shared_bearer') {
+    return c.json({ error: 'auth_strategy_mismatch', expected: 'shared_bearer' }, 400)
+  }
+  const parsed = PasteBearerRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) {
+    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  }
+  const actor = c.get('user')
+  const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)
+  await upsertSharedCredential(c.env, id, {
+    kind: 'bearer',
+    ciphertext: sealed.ciphertext,
+    iv: sealed.iv,
+    keyVersion: sealed.keyVersion,
+    createdBy: actor.userId
+  })
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'upstream.shared_bearer_set',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  // Warm catalogue immediately so the admin sees toolsCount populate
+  // without a manual Refresh click.
+  c.executionCtx.waitUntil(
+    refreshCatalogueByUpstreamId(c.env, id, parsed.data.token).then(
+      (r) => {
+        if (r.ok) {
+          console.log(
+            `[catalogue] ${r.slug}: warmed ${r.toolsCount} tools after shared-bearer set`
+          )
+        } else {
+          console.warn(
+            `[catalogue] ${row.slug}: shared-bearer refresh failed (${r.reason})${
+              r.message ? `: ${r.message}` : ''
+            }`
+          )
+        }
+      },
+      (err) => {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error(`[catalogue] ${row.slug}: shared-bearer refresh threw: ${msg}`)
+      }
+    )
+  )
+  return new Response(null, { status: 204 })
+})
+
+adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
+  const id = c.req.param('id')
+  const row = await getUpstreamById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  const actor = c.get('user')
+  await deleteSharedCredential(c.env, id)
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'upstream.shared_bearer_clear',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  return new Response(null, { status: 204 })
 })
 
 function isUniqueViolation(err: unknown): boolean {

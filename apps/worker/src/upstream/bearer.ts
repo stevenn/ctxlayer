@@ -21,6 +21,7 @@ import { auth as mcpAuth } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { Env } from '../env'
 import { open as openSecret, type SealedSecret } from '../crypto/aead'
 import {
+  getSharedCredential,
   getUserCredential,
   type UpstreamConnection,
   type UpstreamServerRow
@@ -35,9 +36,20 @@ export async function resolveUserUpstreamBearer(
 ): Promise<string | null> {
   if (conn.authStrategy === 'none') return null
   if (conn.authStrategy === 'shared_bearer') {
-    // shared_bearer storage lands in M5 Phase 2 (separate table +
-    // admin form). Until then this strategy has no usable bearer.
-    return null
+    const shared = await getSharedCredential(env, conn.id)
+    if (!shared) return null
+    const sealed: SealedSecret = {
+      ciphertext: shared.ciphertext,
+      iv: shared.iv,
+      keyVersion: shared.key_version
+    }
+    try {
+      return await openSecret(sealed, env.ENCRYPTION_KEY)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error(`[shared-bearer] ${conn.slug}: decrypt failed: ${msg}`)
+      return null
+    }
   }
   if (conn.authStrategy === 'user_oauth') {
     const provider = new UpstreamOAuthProvider(env, row, userId)

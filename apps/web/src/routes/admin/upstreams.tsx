@@ -27,8 +27,10 @@ import {
   ApiError,
   ApiSchemaError,
   adminCreateUpstream,
+  adminDeleteSharedCredentials,
   adminDeleteUpstream,
   adminPatchUpstream,
+  adminPutSharedCredentials,
   adminPutUpstreamVisibility,
   adminRefreshUpstreamTools,
   deleteUpstreamCredentials,
@@ -65,8 +67,9 @@ const AUTH_OPTIONS: {
   {
     value: 'shared_bearer',
     label: 'Shared bearer',
-    description: 'A single token used for all users. Storage lands in M5.',
-    enabled: false
+    description:
+      'One token used for all users. Admin sets it here; users see no per-user setup.',
+    enabled: true
   },
   {
     value: 'user_oauth',
@@ -480,6 +483,27 @@ function UpstreamDrawer({
               onChanged()
             }, 'Disconnect')
           }
+          onSaveShared={(token) =>
+            withBusy(async () => {
+              await adminPutSharedCredentials(upstreamId, { token })
+              await reload()
+              onChanged()
+            }, 'Save shared token')
+          }
+          onClearShared={() =>
+            withBusy(async () => {
+              if (
+                !confirm(
+                  `Clear the shared token for "${row.displayName}"? Every user of this upstream loses access until a new token is configured.`
+                )
+              ) {
+                return
+              }
+              await adminDeleteSharedCredentials(upstreamId)
+              await reload()
+              onChanged()
+            }, 'Clear shared token')
+          }
         />
 
         <ToolsCacheSection
@@ -703,14 +727,19 @@ function ConnectionSection({
   row,
   busy,
   onSaveBearer,
-  onDisconnect
+  onDisconnect,
+  onSaveShared,
+  onClearShared
 }: {
   row: AdminUpstreamRow
   busy: boolean
   onSaveBearer: (token: string) => void
   onDisconnect: () => void
+  onSaveShared: (token: string) => void
+  onClearShared: () => void
 }) {
   const [token, setToken] = useState('')
+  const [sharedToken, setSharedToken] = useState('')
 
   const isUserBearer = row.authStrategy === 'user_bearer'
   const isUserOauth = row.authStrategy === 'user_oauth'
@@ -748,12 +777,50 @@ function ConnectionSection({
         )}
 
         {isShared && (
-          <Alert color="gray" variant="light" radius="sm">
-            <Text fz="xs">
-              Shared-bearer credential storage lands in M5 phase 2. Until
-              then, this strategy has no working credential path.
+          <Stack gap="xs">
+            <Text fz="xs" c="dimmed">
+              One token shared across every user with visibility. The token
+              is encrypted at rest and only decrypted to call the upstream.
+              {row.sharedCredentialConfigured
+                ? ' Paste a new value to rotate it.'
+                : ' Paste a token to configure this upstream.'}
             </Text>
-          </Alert>
+            <PasswordInput
+              size="xs"
+              placeholder={
+                row.sharedCredentialConfigured
+                  ? 'Paste a new shared token to replace the stored one…'
+                  : 'Paste the shared token…'
+              }
+              value={sharedToken}
+              onChange={(e) => setSharedToken(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <Group justify="flex-end" gap="xs">
+              {row.sharedCredentialConfigured && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="red"
+                  onClick={onClearShared}
+                  disabled={busy}
+                >
+                  Clear shared token
+                </Button>
+              )}
+              <Button
+                size="xs"
+                onClick={() => {
+                  if (!sharedToken.trim()) return
+                  onSaveShared(sharedToken.trim())
+                  setSharedToken('')
+                }}
+                disabled={!sharedToken.trim() || busy}
+              >
+                {row.sharedCredentialConfigured ? 'Replace token' : 'Configure'}
+              </Button>
+            </Group>
+          </Stack>
         )}
 
         {isUserBearer && (

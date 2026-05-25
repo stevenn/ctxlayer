@@ -92,6 +92,10 @@ export const AdminUpstreamRow = z.object({
   toolsCount: z.number().int().min(0),
   toolsCachedAt: z.number().int().nullable(),
   currentUserConnected: z.boolean(),
+  // True iff the upstream has a `shared_bearer` cred stored. Always
+  // false for non-shared_bearer upstreams. Drives the admin drawer
+  // shared-bearer section.
+  sharedCredentialConfigured: z.boolean(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

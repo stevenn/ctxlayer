@@ -128,8 +128,8 @@ function UpstreamCard({
 
   const isUserBearer = upstream.authStrategy === 'user_bearer'
   const isOauth = upstream.authStrategy === 'user_oauth'
-  const isNoAuthNeeded =
-    upstream.authStrategy === 'none' || upstream.authStrategy === 'shared_bearer'
+  const isShared = upstream.authStrategy === 'shared_bearer'
+  const isNone = upstream.authStrategy === 'none'
 
   async function save() {
     if (!token.trim()) return
@@ -261,11 +261,18 @@ function UpstreamCard({
           </Stack>
         )}
 
-        {isNoAuthNeeded && (
+        {isNone && (
           <Text fz="xs" c="dimmed">
-            No personal token needed — this upstream uses{' '}
-            <code>{upstream.authStrategy}</code> credentials managed by an
-            admin.
+            No personal token needed — this upstream uses <code>none</code>{' '}
+            (no auth required).
+          </Text>
+        )}
+
+        {isShared && (
+          <Text fz="xs" c="dimmed">
+            {upstream.connected
+              ? 'Configured by an admin — one shared token is used for everyone with access. Nothing for you to do.'
+              : 'Awaiting admin configuration. An admin needs to set the shared token on this upstream before it can be used.'}
           </Text>
         )}
       </Stack>
