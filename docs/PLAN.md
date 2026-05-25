@@ -7,8 +7,8 @@
 | **M1** — Skeleton + sign-in | ✅ done | Live; Google/GitHub sign-in + allowlist |
 | **M2** — Docs + RAG via MCP | ✅ done (May 2026) | Claude Web → `search_docs` against real Vectorize |
 | **M3** — Realtime collab (Yjs) | ✅ done (May 2026) | Two-tab live edit on `:5173`, deployed to workers.dev |
-| **M4** — Upstream proxy (HTTP/SSE only) | ⏳ next | Notion HTTP MCP via Claude |
-| **M5** — OAuth upstreams + Admin UI | 📋 planned | Linear OAuth + admin smoke test |
+| **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done (May 2026) | Claude Desktop → ctxlayer → Notion read + write via DCR/PKCE OAuth |
+| **M5** — Admin polish (users, OAuth clients, audit) | ⏳ next | OAuth-flow + outbound proxy already shipped in M4; M5 trims to admin Users/OAuth/Audit pages + `shared_bearer` storage |
 | **M6** — Usage pipeline + dashboards | 📋 planned | per-user/upstream charts |
 | **Later** — Stdio upstreams via Daytona | 🅿️ parked | revisit when we have a real stdio upstream to serve |
 
@@ -260,15 +260,17 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 - Each non-deleted document is published as `mcp://ctxlayer/docs/{id}` (`text/markdown`). ✅
 - Prompt-kind documents via `prompts/list` — 📋 planned (M5 polish).
 
-### Dynamic proxied tools — **📋 M4**
-- For each enabled upstream where the caller has access via `upstream_visibility` AND is credentialed (or strategy is `none`/`shared_bearer`), expose cached `upstream_tools` rows as `${slug}__${upstreamToolName}`. `__` in upstream tool names escapes to `_~_`.
+### Dynamic proxied tools — ✅ M4
+- For each enabled upstream where the caller has access via `upstream_visibility` AND is credentialed (or strategy is `none`), expose cached `upstream_tools` rows as `${slug}__${upstreamToolName}`. `__` in upstream tool names escapes to `_~_`. JSON-Schema → Zod conversion (`mcp/json-schema-to-zod.ts`) preserves descriptions + types so the SDK re-emits a faithful schema to MCP clients.
 
-## Upstream proxy mechanics — 📋 M4 (HTTP/SSE only)
+## Upstream proxy mechanics — ✅ M4 (HTTP/SSE shipped; Daytona stdio parked)
 
-Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy.md)):
-- Lazy connect via `McpSessionDO`'s upstream-client map; built-ins never force a connect.
-- HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly; bearer/OAuth creds decrypted just-in-time.
-- Catalogue cache in `upstream_tools`; session-start refresh is `ctx.waitUntil`-only and never blocks `initialize`.
+Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy.md)):
+- Per-session `UpstreamProxyRegistry` (`apps/worker/src/mcp/tools-proxy.ts`) hydrates on `McpSessionDO.init()`; built-ins never force a connect.
+- HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly via `apps/worker/src/upstream/http-client.ts`; bearer/OAuth creds decrypted just-in-time, 60s `AbortController` wall cap per tool call.
+- `user_oauth` outbound: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider`. DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + context → `OAUTH_KV`, sealed token bundle → `user_credentials` (kind=`oauth`). Routes at `apps/worker/src/api/upstream-oauth.ts`.
+- Catalogue cache in `upstream_tools`; populates via post-OAuth `ctx.waitUntil` + session-init `ensureCatalogue` for stale rows. Admin "Refresh now" available for `none`-strategy upstreams.
+- D1 BLOB normalization at the trust boundary in `db/queries/upstreams.getUserCredential` — D1 returns BLOBs in a shape SubtleCrypto rejects; we coerce to `Uint8Array` before handing to `aead.open`.
 - Stdio upstreams via Daytona — designed in [docs/plan/B-daytona-stdio.md](plan/B-daytona-stdio.md) but **parked until a real stdio upstream is in scope**. The sandbox lifecycle / pool / nightly reconcile work all moves to that future track.
 
 ## Collaborative editor — ✅ M3 (shipped May 2026)
@@ -293,7 +295,7 @@ Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream
 ## Admin UI (`/app/admin/*`, role-gated)
 
 - **Teams / Products / Team↔Product matrix** ✅ shipped (M2b/2).
-- **Upstreams** 📋 M5 — CRUD + edit modal, "Test connection" + "Refresh tool cache" buttons, visibility section per [F](plan/F-org-ia.md).
+- **Upstreams** ✅ shipped (M4) — list table + drawer with Details (slug locked, all other fields editable + enabled toggle + delete), Visibility (everyone / team checklist / product checklist), Tool-cache (count + last-refreshed + "Refresh now" for `none`-auth upstreams). `+ New upstream` modal. `shared_bearer` + `user_oauth` enabled; `stdio_daytona` rejected at form validation.
 - **Users** 📋 M5 — table, promote/demote, revoke creds, inline team-membership.
 - **Sandboxes** 🅿️ Later — live/idle/archived per user, force-destroy. Lands with the parked Daytona track, not M5.
 - **Usage** 📋 M6 — charts + tables.
@@ -303,10 +305,10 @@ Headline plan (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream
 ## User UI
 
 - `/sign-in` ✅ — GitHub (Google supported but disabled in this deploy).
-- `/app/docs` ✅ — tree/list + BlockNote editor (REST autosave today, Yjs in M3).
-- `/app/admin/teams`, `/app/admin/products` ✅.
-- `/upstreams` 📋 M4 — cards per enabled upstream with auth-strategy-appropriate control. Crucial UX note: all `user_oauth` connections happen here in the SPA, *before* the agent session, so Claude/Cursor never need to host a browser flow.
-- `/mcp-setup` 📋 M4/M5 — ctxlayer MCP URL + DCR instructions.
+- `/app/docs` ✅ — tree/list + BlockNote editor with Yjs realtime collab.
+- `/app/admin/teams`, `/app/admin/products`, `/app/admin/upstreams` ✅.
+- `/upstreams` ✅ shipped (M4) — cards per enabled upstream: `user_bearer` shows password-input + Connect/Replace/Disconnect; `user_oauth` shows Connect-with-OAuth button (DCR + PKCE round-trip happens here, before the agent session); `none`/`shared_bearer` show an info notice. `?oauth_connected=<slug>` / `?oauth_error=<...>` flash banner on return from the callback.
+- `/mcp-setup` 📋 M5 — ctxlayer MCP URL + DCR instructions (currently the README covers this).
 - `/usage` 📋 M6 — personal stats.
 
 ## Deployment / configuration
@@ -327,16 +329,18 @@ Each milestone is independently deployable and demoable.
 - **M1 — Skeleton (1 wk)** ✅: Bun workspace, Vite SPA shell, `wrangler.toml` with all bindings, D1 migrations `0001`–`0004`, Google/GitHub sign-in with allowlist, `/api/me`, `/api/config`. Demo (closed): sign in, see your email.
 - **M2 — Docs + RAG (1.5 wk)** ✅: BlockNote editor with REST save, R2 storage, `documents`/`doc_revisions`, reindex queue + Vectorize + Workers AI, `McpAgent` mounted at `/mcp`+`/sse`, `workers-oauth-provider` wired, built-in tools `search_docs`/`get_doc`/`whoami`/`list_my_context`/`list_upstreams`, doc resources, doc tags + admin teams/products, chunk_count orphan cleanup. Demo (closed May 2026): Claude Web searches internal docs via MCP against real Vectorize.
 - **M3 — Realtime collab (1 wk)** ✅: `DocRoomDO` as a Yjs relay + per-update R2 binary snapshot (coalesced + `ctx.waitUntil`-held) over `/collab/:docId`; BlockNote wired with the Yjs collab extension via a custom 200-LoC `CollabWSProvider`; REST autosave triggers off Y.Doc updates with an awareness-leader election so concurrent tabs share one revision per ~5s debounce. Shared `util/origin.ts` Origin check (localhost carve-out) keeps Vite HMR at `:5173` viable for dev. Two pinned deviations from the original plan documented in [docs/plan/M3-prep.md](plan/M3-prep.md): @blocknote/server-util can't run in workerd (jsdom), and the alarm-debounced flush approach is wrong under WS Hibernation. Demo (closed May 2026): two browser tabs edit live, `doc_revisions` grows on leader-tab autosave, MCP `search_docs` reflects changes within seconds.
-- **M4 — Upstream proxy: HTTP/SSE bearer (1.5–2 wk)** 📋:
+- **M4 — Upstream proxy: HTTP/SSE bearer + OAuth (shipped May 2026)** ✅:
   - `crypto/aead.ts` (AES-GCM seal/open keyed by `ENCRYPTION_KEY`, `key_version` ready for rotation).
   - `apps/worker/src/upstream/http-client.ts`: lazy `@modelcontextprotocol/sdk` Client per `(session, upstream)` for Streamable HTTP + SSE; decrypts `user_credentials` just-in-time; 60s `AbortController` wall cap; streams responses without buffering.
-  - `apps/worker/src/mcp/{tools-proxy,upstream-client}.ts`: aggregate `upstream_tools` rows into `tools/list` with `${slug}__${tool}` namespacing (escape `__` → `_~_`); route `tools/call` by prefix; per-upstream error taxonomy (see [C4](plan/C-upstream-proxy.md#c4-error-surface-taxonomy)) minus the sandbox-specific codes.
-  - `apps/worker/src/api/admin-upstreams.ts`: REST CRUD on `upstream_servers` rows (no admin UI yet; SPA admin form lands in M5). Form validation rejects `transport = 'stdio_daytona'` until the Daytona track ships.
-  - Catalogue cache: `client.listTools()` on first successful connect → write `upstream_tools`; session-start refresh fires in `ctx.waitUntil` for any row older than 24h, never blocks `initialize`.
-  - SPA `/upstreams`: cards per enabled upstream; for `user_bearer`/`shared_bearer` upstreams the user pastes a token, POST `/api/upstreams/:slug/credentials` encrypts + stores. `user_oauth` cards link out to "coming in M5".
-  - Demo: register the Notion HTTP MCP via D1 insert, paste a Notion PAT in `/upstreams`, from Claude call `notion__search_pages` end-to-end; verify decrypted creds never leave the Worker (log audit). Detailed plan: [C](plan/C-upstream-proxy.md).
+  - `apps/worker/src/mcp/{tools-proxy,tool-name,json-schema-to-zod}.ts`: aggregate `upstream_tools` rows into `tools/list` with `${slug}__${tool}` namespacing (escape `__` → `_~_`); JSON-Schema → Zod converter so the SDK emits a faithful schema back to the client; route `tools/call` by prefix; per-upstream error taxonomy minus the sandbox-specific codes.
+  - `apps/worker/src/api/admin-upstreams.ts` + `apps/web/src/routes/admin/upstreams.tsx`: full admin REST + UI — list, create/edit drawer, visibility checklist (everyone/team/product), tool-cache view with refresh, delete. Slugs immutable. Form validation rejects `transport = 'stdio_daytona'`.
+  - Catalogue cache: `client.listTools()` on first successful connect → write `upstream_tools`; session-start refresh inside `ensureCatalogue` for stale rows; post-credential-paste auto-warm via `ctx.waitUntil` so `toolsCount` populates immediately.
+  - SPA `/upstreams`: cards per enabled upstream — `user_bearer` paste-token, `user_oauth` connect-with-OAuth button, `none`/`shared_bearer` info notice. `?oauth_connected=` / `?oauth_error=` banner round-trip from the callback.
+  - **`user_oauth` flow (pulled forward from original M5 plan)**: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider` — DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + flow context → `OAUTH_KV` (10 min TTL), sealed `{access_token, refresh_token, expires_at}` JSON → `user_credentials` with `kind='oauth'` (no migration). Routes: `GET /api/upstreams/:id/oauth/start` (per-user) → `auth()` → 302 to captured authorize URL or back to SPA when already AUTHORIZED; `GET /api/upstreams/oauth/callback` (global path, single redirect_uri per deployment) → state-keyed lookup → SDK exchange → catalogue warm.
+  - Demo (closed May 2026): admin registers Notion via `/app/admin/upstreams` → user connects via OAuth on `/upstreams` (DCR + PKCE round-trip to `mcp.notion.com`) → Claude Desktop (via `mcp-remote`) calls `notion__notion-search`, `notion__notion-fetch`, `notion__notion-create-pages` end-to-end. 16 tools cached. Page successfully created in Notion through the proxy chain.
   - **Out of scope (parked until a real stdio upstream is needed)**: `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, `sandbox_sessions` writes, Daytona snapshot baking, env-var template substitution, idle-timeout reconcile cron, the admin Sandboxes pane. Recipe preserved in [B](plan/B-daytona-stdio.md).
-- **M5 — OAuth upstreams + Admin UI (2 wk)** 📋: `user_oauth` start/callback/refresh, admin UI (upstreams CRUD form, users, OAuth clients, audit log), role promotion. Demo: Linear added via OAuth; admin manages everything from UI. *(Sandboxes admin pane moves to the parked Daytona track.)*
+  - **Deferred bits that slipped to M5**: `shared_bearer` storage (needs separate table or new columns; not blocking since Notion is `user_oauth`). Cosmetic: `mcp-remote`'s SSE-disconnect spam on idle (purely client-side; tool calls are POSTs and unaffected). Tool double-prefix when upstream names tools with their own prefix (e.g. `notion__notion-search`).
+- **M5 — Admin polish + shared_bearer (1 wk)** 📋: admin Users page (promote/demote, revoke creds, team membership inline), admin OAuth clients page (DCR-registered MCP clients from `OAUTH_KV`), admin Audit log, `shared_bearer` credential storage (admin-set token used for all users on that upstream — new table or columns + admin form). *(Sandboxes admin pane moves to the parked Daytona track.)*
 - **M6 — Usage pipeline + dashboards (1 wk)** 📋: usage queue + tiktoken consumer + rollups, admin usage dashboard, user usage page, cron prune. Demo: charts showing per-user/per-upstream calls + tokens.
 - **Later — Stdio upstreams via Daytona** 🅿️: revive when a real stdio MCP upstream is on the roadmap. Picks up `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, the snapshot baking pipeline, env-var substitution, `sandbox_sessions` reconcile + nightly cron, Daytona-specific error codes (`-32002`/`-32003`), admin Sandboxes pane with force-destroy, and the `MAX_SANDBOXES_PER_USER` quota. Full recipe in [B](plan/B-daytona-stdio.md).
 
@@ -390,8 +394,8 @@ Each milestone is independently deployable and demoable.
   12. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data. Note: admin role doesn't grant team membership; use `scope: "all"`, or add yourself to a team via `/app/admin/teams`.
   13. Shrink the doc; next reindex deletes the orphan vectors via `chunk_count` tracking (migration `0006`); `list-vectors` drops to the new count with no stragglers above.
 - **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per ~5s debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
-- **M4**: Add Notion HTTP upstream via D1 insert; paste PAT in SPA `/upstreams`; from Claude call `notion__search_pages`; verify decrypted creds never leave the Worker (check logs). Confirm catalogue cache populates `upstream_tools`; force a 24h-stale row and re-open session to see the `ctx.waitUntil` refresh fire without delaying `initialize`. Confirm `transport = 'stdio_daytona'` is rejected by admin form validation. *(Stdio/Daytona end-to-end deferred — see Later.)*
-- **M5**: Walk OAuth flow end-to-end for Linear; force token expiry by editing `expires_at`, confirm auto-refresh; admin UI smoke-test all CRUD operations.
+- **M4** ✅ **CLOSED May 2026**: Admin · Upstreams → register Notion (`https://mcp.notion.com/mcp`, transport `streamable_http`, auth `user_oauth`) → Visibility → Everyone signed in. User on `/upstreams` → **Connect with OAuth** → DCR + PKCE redirect to Notion → consent → back to `/upstreams?oauth_connected=notion`. Admin UI shows non-zero `toolsCount` after the auto-warm. Claude Desktop wired via `mcp-remote` shim (`NODE_EXTRA_CA_CERTS=$(mkcert -CAROOT)/rootCA.pem` for local-https trust): `list_upstreams` reports `connected: true, toolsCount: 16`; `notion__notion-search`, `notion__notion-fetch`, `notion__notion-create-pages` all return real data; page successfully created in Notion through the proxy. Sealed creds never logged. Visibility query correctly hides upstreams from users not in the granted team/product.
+- **M5**: Admin · Users page CRUD smoke (promote/demote, revoke creds); admin OAuth clients listing reflects `OAUTH_KV` contents; admin Audit log shows recent role + credential mutations; `shared_bearer` upstream registers, admin pastes token, every user sees `connected: true` without per-user setup.
 - **M6**: Drive synthetic load (script that opens MCP session + calls 100 tools), confirm `usage_events` populated and `usage_rollups_daily` reflects totals; verify tiktoken counts ≈ OpenAI tokenizer for spot-checked payloads.
 
 ## Deep-dive index

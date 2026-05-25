@@ -13,6 +13,12 @@ import { usersRoute } from './api/users'
 import { teamsRoute, productsRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
 import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
+import { adminUpstreamsRoute } from './api/admin-upstreams'
+import { upstreamsRoute } from './api/upstreams'
+import {
+  upstreamOauthCallbackRoute,
+  upstreamOauthStartRoute
+} from './api/upstream-oauth'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
 import { handleAuthorize } from './oauth/authorize-page'
@@ -45,6 +51,16 @@ app.route('/api/docs', docTagsRoute)
 app.route('/api/admin/teams', adminTeamsRoute)
 app.route('/api/admin/products', adminProductsRoute)
 app.route('/api/admin/team-products', adminTeamProductsRoute)
+app.route('/api/admin/upstreams', adminUpstreamsRoute)
+
+// User-facing upstream connections (paste-bearer, list visible). Lives
+// at /api/upstreams to mirror the SPA route at /upstreams.
+app.route('/api/upstreams', upstreamsRoute)
+// Outbound OAuth — `/start` is per-upstream, `/callback` is shared.
+// The callback URL must match what we register at DCR time, so the
+// path is global to avoid registering a separate client per upstream.
+app.route('/api/upstreams', upstreamOauthStartRoute)
+app.route('/api/upstreams/oauth', upstreamOauthCallbackRoute)
 
 // IdP sign-in. The SPA hits these from /sign-in; both providers
 // redirect back to /app/docs after issuing the session cookie. When

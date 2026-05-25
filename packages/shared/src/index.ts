@@ -1,5 +1,6 @@
 export * from './api-types'
 export * from './mcp-types'
 export * from './upstream-auth-strategy'
+export * from './upstream-api'
 export * from './org-ia'
 export * from './docs-types'

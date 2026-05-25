@@ -127,14 +127,29 @@ Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
   HMR at `:5173` talk to wrangler at `:8787` in dev. Validated
   end-to-end via Claude Web → real Vectorize + two-tab live edit
   on workers.dev.
-- **M4 next**: upstream proxy, **HTTP/SSE only** (Notion HTTP MCP is
-  the demo). `crypto/aead.ts`, `apps/worker/src/upstream/http-client.ts`,
-  `mcp/{tools-proxy,upstream-client}.ts`, and
-  `apps/worker/src/api/admin-upstreams.ts` are all unwritten today.
-  Plan: `docs/plan/C-upstream-proxy.md` (HTTP/SSE rows only — stdio bits
-  are flagged 🅿️).
-- Then **M5** (admin UI for upstreams / OAuth) → **M6** (usage +
-  dashboards).
+- **M4 closed (May 2026)**: HTTP/SSE upstream proxy with the
+  `user_oauth` flow pulled forward from the original M5 plan.
+  `crypto/aead.ts` (AES-GCM at rest), `upstream/http-client.ts`
+  (MCP SDK Client per (session,upstream) with 60s wall cap),
+  `mcp/tools-proxy.ts` (namespacing + dispatch + per-session
+  registry), `mcp/json-schema-to-zod.ts` (faithful tools/list
+  re-emission), `upstream/oauth-provider.ts` (MCP SDK's
+  `OAuthClientProvider` impl — DCR + PKCE + sealed token
+  bundles), `api/admin-upstreams.ts` + `api/upstreams.ts` +
+  `api/upstream-oauth.ts`, full admin UI at
+  `/app/admin/upstreams` (CRUD + visibility + tool cache),
+  user UI at `/upstreams` (paste-bearer + OAuth). One real
+  gotcha worth remembering: D1 returns BLOB columns in a
+  shape SubtleCrypto rejects — `db/queries/upstreams.getUserCredential`
+  normalises to `Uint8Array` at the trust boundary. Validated
+  end-to-end via Claude Desktop (mcp-remote shim) → Notion
+  search + fetch + create-page. 16 tools cached, page actually
+  created in Notion.
+- **M5 next**: admin Users page, admin OAuth-clients listing
+  (`OAUTH_KV`), admin Audit log, `shared_bearer` storage
+  (small schema migration). M5 scope shrunk because user_oauth
+  shipped in M4.
+- Then **M6** (usage + dashboards).
 - **Later (parked)**: stdio upstreams via Daytona. `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`
   and the snapshot baking pipeline stay unwritten until a real stdio MCP
   upstream is in scope. The `stdio_daytona` literal in the 0001 CHECK
@@ -142,10 +157,19 @@ Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
   Recipe: `docs/plan/B-daytona-stdio.md`.
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
-`bun run dev` from a fresh checkout. The reindex consumer
-soft-skips Vectorize in dev so saves don't drop after retries;
-`search_docs` returns nothing locally because no vectors land —
-that's expected.
+
+- `bun run dev:worker` (terminal 1) + `bun run dev:web` (terminal 2)
+  is the recommended workflow — clean per-process logs, no
+  cross-stream interleaving, wrangler's interactive UI works.
+  Use this for backend debugging where elided stack traces under
+  `concurrently` would otherwise bite.
+- `bun run dev` is the one-window combined runner (`concurrently`
+  with `worker`/`web` prefixes). Convenient but mixes streams; not
+  ideal when chasing a backend bug.
+
+The reindex consumer soft-skips Vectorize in dev so saves don't drop
+after retries; `search_docs` returns nothing locally because no
+vectors land — that's expected.
 
 **End-to-end RAG validation** (search_docs hitting real Vectorize)
 requires a real deploy. `wrangler dev --remote` is NOT a viable

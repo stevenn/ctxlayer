@@ -11,8 +11,14 @@ import {
   DocSummary,
   DocTags,
   HealthResponse,
+  AdminUpstreamRow,
+  CreateUpstreamRequest,
   MeResponse,
+  PasteBearerRequest,
   ProductRef,
+  RefreshToolsResponse,
+  ReplaceVisibilityRequest,
+  UpdateUpstreamRequest,
   RevisionSummary,
   RestoreRequest,
   TeamMemberRow,
@@ -22,9 +28,15 @@ import {
   UpdateDocRequest,
   UpdateProductRequest,
   UpdateTeamRequest,
-  UserSearchResult
+  UserSearchResult,
+  UserUpstreamSummary
 } from '@ctxlayer/shared'
 import type {
+  AdminUpstreamRow as AdminUpstreamRowT,
+  CreateUpstreamRequest as CreateUpstreamRequestT,
+  RefreshToolsResponse as RefreshToolsResponseT,
+  ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
+  UpdateUpstreamRequest as UpdateUpstreamRequestT,
   AddEditorRequest as AddEditorRequestT,
   AddTeamMemberRequest as AddTeamMemberRequestT,
   ConfigResponse as ConfigResponseT,
@@ -38,6 +50,7 @@ import type {
   DocTags as DocTagsT,
   HealthResponse as HealthResponseT,
   MeResponse as MeResponseT,
+  PasteBearerRequest as PasteBearerRequestT,
   ProductRef as ProductRefT,
   RevisionSummary as RevisionSummaryT,
   RestoreRequest as RestoreRequestT,
@@ -47,7 +60,8 @@ import type {
   UpdateDocRequest as UpdateDocRequestT,
   UpdateProductRequest as UpdateProductRequestT,
   UpdateTeamRequest as UpdateTeamRequestT,
-  UserSearchResult as UserSearchResultT
+  UserSearchResult as UserSearchResultT,
+  UserUpstreamSummary as UserUpstreamSummaryT
 } from '@ctxlayer/shared'
 import { readCsrfToken } from './csrf'
 import { z } from 'zod'
@@ -331,6 +345,97 @@ export function putTeamProducts(rules: TeamProductsAssignmentT[]): Promise<void>
     method: 'PUT',
     body: JSON.stringify(TeamProductsPayload.parse({ rules }))
   })
+}
+
+// ----- admin upstreams ----------------------------------------------------
+
+const AdminUpstreamList = z.array(AdminUpstreamRow)
+
+export function fetchAdminUpstreams(signal?: AbortSignal): Promise<AdminUpstreamRowT[]> {
+  return request('/api/admin/upstreams', (b) => AdminUpstreamList.parse(b), { signal })
+}
+
+export function fetchAdminUpstream(
+  id: string,
+  signal?: AbortSignal
+): Promise<AdminUpstreamRowT> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}`,
+    (b) => AdminUpstreamRow.parse(b),
+    { signal }
+  )
+}
+
+export function adminCreateUpstream(input: CreateUpstreamRequestT): Promise<AdminUpstreamRowT> {
+  return request('/api/admin/upstreams', (b) => AdminUpstreamRow.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateUpstreamRequest.parse(input))
+  })
+}
+
+export function adminPatchUpstream(
+  id: string,
+  patch: UpdateUpstreamRequestT
+): Promise<void> {
+  return request(`/api/admin/upstreams/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateUpstreamRequest.parse(patch))
+  })
+}
+
+export function adminDeleteUpstream(id: string): Promise<void> {
+  return request(`/api/admin/upstreams/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'DELETE'
+  })
+}
+
+export function adminPutUpstreamVisibility(
+  id: string,
+  body: ReplaceVisibilityRequestT
+): Promise<void> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/visibility`,
+    () => undefined,
+    {
+      method: 'PUT',
+      body: JSON.stringify(ReplaceVisibilityRequest.parse(body))
+    }
+  )
+}
+
+export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsResponseT> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/refresh-tools`,
+    (b) => RefreshToolsResponse.parse(b),
+    { method: 'POST' }
+  )
+}
+
+// ----- upstreams (user-facing) --------------------------------------------
+
+const UserUpstreamList = z.array(UserUpstreamSummary)
+
+export function fetchUpstreams(signal?: AbortSignal): Promise<UserUpstreamSummaryT[]> {
+  return request('/api/upstreams', (b) => UserUpstreamList.parse(b), { signal })
+}
+
+export function putUpstreamCredentials(
+  upstreamId: string,
+  body: PasteBearerRequestT
+): Promise<void> {
+  return request(
+    `/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`,
+    () => undefined,
+    { method: 'PUT', body: JSON.stringify(PasteBearerRequest.parse(body)) }
+  )
+}
+
+export function deleteUpstreamCredentials(upstreamId: string): Promise<void> {
+  return request(
+    `/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`,
+    () => undefined,
+    { method: 'DELETE' }
+  )
 }
 
 // Silence unused warning for the VOID schema export — keeping it

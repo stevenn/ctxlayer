@@ -12,6 +12,8 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "concurrently -n worker,web -c blue,green \"bun --filter='@ctxlayer/worker' run dev\" \"bun --filter='@ctxlayer/web' run dev\"",
+    "dev:worker": "bun --filter='@ctxlayer/worker' run dev",
+    "dev:web": "bun --filter='@ctxlayer/web' run dev",
     "build": "bun --filter='@ctxlayer/web' run build && bun --filter='@ctxlayer/worker' run build",
     "build:web": "bun --filter='@ctxlayer/web' run build",
     "build:worker": "bun --filter='@ctxlayer/worker' run build",

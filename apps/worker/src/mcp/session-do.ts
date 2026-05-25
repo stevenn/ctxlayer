@@ -22,6 +22,7 @@ import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
+import { UpstreamProxyRegistry } from './tools-proxy'
 
 const SEARCH_K_DEFAULT = 8
 const SEARCH_K_MAX = 50
@@ -35,6 +36,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     name: 'ctxlayer',
     version: '0.1.0'
   })
+
+  private upstreamProxy: UpstreamProxyRegistry | null = null
 
   async init(): Promise<void> {
     this.server.registerTool(
@@ -58,7 +61,10 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       async () => {
         const userId = this.props?.userId
         if (!userId) return errText('not_signed_in')
-        const scope = await resolveUserScope(this.env, userId)
+        const [scope, accessibleUpstreams] = await Promise.all([
+          resolveUserScope(this.env, userId),
+          UpstreamProxyRegistry.accessibleSlugs(this.env, userId)
+        ])
         return {
           content: [
             {
@@ -67,7 +73,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
                 {
                   teams: scope.teams,
                   products: scope.products,
-                  accessibleUpstreams: [],
+                  accessibleUpstreams,
                   defaultScope: scope
                 },
                 null,
@@ -84,9 +90,16 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       {
         title: 'List upstreams',
         description:
-          'Lists the upstream MCP servers visible to the caller. Empty until M4 ships the proxy layer.'
+          'Lists the upstream MCP servers visible to the caller, with connected state, transport, and cached tool count. Disconnected upstreams point the user at /upstreams to paste a token.'
       },
-      async () => ({ content: [{ type: 'text', text: JSON.stringify([], null, 2) }] })
+      async () => {
+        const userId = this.props?.userId
+        if (!userId) return errText('not_signed_in')
+        const entries = await UpstreamProxyRegistry.listUpstreamsForUser(this.env, userId)
+        return {
+          content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }]
+        }
+      }
     )
 
     this.server.registerTool(
@@ -190,6 +203,21 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         }
       }
     })
+
+    // Hydrate proxied upstream tools alongside the built-ins. Best-effort:
+    // a failure here must not block built-ins (search_docs / get_doc) from
+    // serving. Each upstream's own listTools/callTool errors are caught
+    // inside the registry; we only need to guard the enumeration itself.
+    const userId = this.props?.userId
+    if (userId) {
+      try {
+        this.upstreamProxy = new UpstreamProxyRegistry(this.env, userId)
+        await this.upstreamProxy.init(this.server)
+      } catch (err) {
+        console.error('upstream proxy init failed:', err)
+        this.upstreamProxy = null
+      }
+    }
 
     this.server.registerResource(
       'doc',
