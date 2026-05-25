@@ -752,10 +752,30 @@ function explain(err: unknown): string {
     return 'Your session expired. Refresh to sign in again.'
   if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
   if (err instanceof ApiError && err.status === 409) return 'That slug is already taken.'
-  if (err instanceof ApiError && err.status === 400) return 'Server rejected the request.'
-  if (err instanceof ApiError && err.status === 502) return 'Upstream is unreachable or returned an error.'
+  if (err instanceof ApiError && err.status === 502) {
+    return apiErrorBodyMessage(err) ?? 'Upstream is unreachable or returned an error.'
+  }
+  if (err instanceof ApiError && err.status === 400) {
+    return apiErrorBodyMessage(err) ?? 'Server rejected the request.'
+  }
   if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
   if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
   if (err instanceof Error) return err.message
   return 'Could not reach the server.'
+}
+
+/**
+ * Pull a human-readable message out of an ApiError body when the
+ * backend supplied one. Conventions used by ctxlayer's REST: 4xx/5xx
+ * bodies look like `{error: "code", hint?: "...", message?: "..."}`.
+ * We prefer `hint` (instructive) → `message` (raw) → the `error` code
+ * itself (machine-y but better than nothing).
+ */
+function apiErrorBodyMessage(err: ApiError): string | null {
+  const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
+  if (!body || typeof body !== 'object') return null
+  if (typeof body.hint === 'string' && body.hint) return body.hint
+  if (typeof body.message === 'string' && body.message) return body.message
+  if (typeof body.error === 'string' && body.error) return body.error
+  return null
 }
