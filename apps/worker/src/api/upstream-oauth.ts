@@ -22,11 +22,16 @@
  * redirect_uri registered per ctxlayer deployment.
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { auth as mcpAuth } from '@modelcontextprotocol/sdk/client/auth.js'
+import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { getUpstreamById } from '../db/queries/upstreams'
+import {
+  deleteUserCredential,
+  getUpstreamById,
+  type UpstreamServerRow
+} from '../db/queries/upstreams'
 import {
   UpstreamOAuthProvider,
   deleteVerifierState,
@@ -49,23 +54,49 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
   }
 
-  const provider = new UpstreamOAuthProvider(c.env, upstream, userId)
   try {
-    const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
-    if (result === 'AUTHORIZED') {
-      // Tokens already on file and valid — nothing to do.
-      return c.redirect(spaUpstreamsUrl(c.env), 302)
-    }
-    if (!provider.capturedRedirect) {
-      // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
-      return c.json({ error: 'oauth_redirect_missing' }, 500)
-    }
-    return c.redirect(provider.capturedRedirect.toString(), 302)
+    return await runStart(c, upstream, userId)
   } catch (err) {
-    console.error(`oauth start failed for upstream ${upstream.slug}:`, err)
-    return c.json({ error: 'oauth_start_failed', message: errMessage(err) }, 502)
+    // OAuth error during the refresh attempt — most commonly Notion (or
+    // any upstream) rotating / revoking / expiring our stored
+    // refresh_token. The SDK re-throws non-ServerError OAuthErrors
+    // instead of falling through to startAuthorization, which leaves
+    // the user stuck in a 502 loop unless we wipe the bad creds and
+    // start a fresh dance. Self-heal once.
+    if (err instanceof OAuthError) {
+      console.warn(
+        `[oauth] ${upstream.slug}: refresh rejected (${err.errorCode ?? 'unknown'}); clearing stored creds and retrying`
+      )
+      await deleteUserCredential(c.env, userId, upstream.id)
+      try {
+        return await runStart(c, upstream, userId)
+      } catch (retryErr) {
+        const msg = errMessage(retryErr)
+        console.error(`[oauth] ${upstream.slug}: retry after wipe failed: ${msg}`)
+        return c.json({ error: 'oauth_start_failed', message: msg }, 502)
+      }
+    }
+    const msg = errMessage(err)
+    console.error(`[oauth] ${upstream.slug}: start failed: ${msg}`)
+    return c.json({ error: 'oauth_start_failed', message: msg }, 502)
   }
 })
+
+type StartCtx = Context<{ Bindings: Env; Variables: AuthedVariables }>
+
+async function runStart(c: StartCtx, upstream: UpstreamServerRow, userId: string) {
+  const provider = new UpstreamOAuthProvider(c.env, upstream, userId)
+  const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
+  if (result === 'AUTHORIZED') {
+    // Tokens already on file and valid — nothing to do.
+    return c.redirect(spaUpstreamsUrl(c.env), 302)
+  }
+  if (!provider.capturedRedirect) {
+    // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
+    return c.json({ error: 'oauth_redirect_missing' }, 500)
+  }
+  return c.redirect(provider.capturedRedirect.toString(), 302)
+}
 
 export const upstreamOauthCallbackRoute = new Hono<{
   Bindings: Env
