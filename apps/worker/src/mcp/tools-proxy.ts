@@ -20,10 +20,7 @@
  */
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { auth as mcpAuth } from '@modelcontextprotocol/sdk/client/auth.js'
 import type { Env } from '../env'
-import { open as openSecret, type SealedSecret } from '../crypto/aead'
-import { UpstreamOAuthProvider } from '../upstream/oauth-provider'
 import {
   countToolsForUpstream,
   getToolsCachedAt,
@@ -37,6 +34,7 @@ import {
   type UpstreamToolRow
 } from '../db/queries/upstreams'
 import { UpstreamHttpClient } from '../upstream/http-client'
+import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 
@@ -138,59 +136,11 @@ export class UpstreamProxyRegistry {
 
   // ----- internals ------------------------------------------------------
 
-  private async resolveBearer(
+  private resolveBearer(
     row: UpstreamServerRow,
     conn: UpstreamConnection
   ): Promise<string | null> {
-    if (conn.authStrategy === 'none') return null
-    if (conn.authStrategy === 'shared_bearer') {
-      // Shared tokens land in M5 alongside the admin shared-secret form.
-      return null
-    }
-    if (conn.authStrategy === 'user_oauth') {
-      // Defer to the MCP SDK's auth() orchestrator — it handles the
-      // transparent refresh path. Returns AUTHORIZED only if either
-      // the cached access token is still valid or it could refresh.
-      //
-      // NOTE on a SDK quirk: the SDK's auth() ALWAYS attempts a refresh
-      // when a refresh_token is present (regardless of access_token
-      // freshness). When refresh fails with anything that isn't a
-      // structured OAuthError, the SDK silently falls back to
-      // startAuthorization() → calls our `redirectToAuthorization` →
-      // returns 'REDIRECT'. We surface that here so the dev console
-      // shows it as a real failure rather than an opaque "no bearer".
-      const provider = new UpstreamOAuthProvider(this.env, row, this.userId)
-      try {
-        const result = await mcpAuth(provider, { serverUrl: conn.url })
-        if (result === 'AUTHORIZED') {
-          const tok = (await provider.tokens())?.access_token ?? null
-          if (!tok) console.warn(`[oauth] ${conn.slug}: AUTHORIZED but no access_token in storage`)
-          return tok
-        }
-        const redirect = provider.capturedRedirect?.toString() ?? '<none>'
-        console.warn(
-          `[oauth] ${conn.slug}: refresh failed, SDK wants new authz flow (redirect=${redirect})`
-        )
-        return null
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
-        return null
-      }
-    }
-    const cred = await getUserCredential(this.env, this.userId, conn.id)
-    if (!cred) return null
-    const sealed: SealedSecret = {
-      ciphertext: cred.ciphertext,
-      iv: cred.iv,
-      keyVersion: cred.key_version
-    }
-    try {
-      return await openSecret(sealed, this.env.ENCRYPTION_KEY)
-    } catch (err) {
-      console.error(`failed to decrypt cred for upstream ${conn.slug}:`, err)
-      return null
-    }
+    return resolveUserUpstreamBearer(this.env, row, conn, this.userId)
   }
 
   private async ensureCatalogue(

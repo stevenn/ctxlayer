@@ -24,9 +24,11 @@ import {
   getUpstreamById,
   listUpstreams,
   patchUpstream,
-  replaceVisibility
+  replaceVisibility,
+  toUpstreamConnection
 } from '../db/queries/upstreams'
-import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
+import { refreshCatalogueForConnection } from '../upstream/catalogue'
+import { resolveUserUpstreamBearer } from '../upstream/bearer'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -97,23 +99,37 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
 })
 
 /**
- * Admin-triggered catalogue refresh. Works for `none`-strategy upstreams
- * (no creds needed) — for `user_bearer` / `user_oauth` the catalogue
- * populates the first time a user pastes a token (see
- * `api/upstreams.ts` PUT credentials, which fires a refresh in
- * `ctx.waitUntil`).
+ * Admin-triggered catalogue refresh. Uses the calling admin's own
+ * credentials for upstreams that need them (paste-bearer for
+ * `user_bearer`, OAuth tokens for `user_oauth`, no creds for `none`).
+ * If the admin hasn't connected the upstream on `/upstreams` yet, we
+ * tell them so they can connect once and reuse the refresh button
+ * thereafter. The per-user MCP session refresh path is still available
+ * as a fallback for non-admin users on session init.
  */
 adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
-  const result = await refreshCatalogueByUpstreamId(c.env, id, null)
+  const row = await getUpstreamById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  let conn
+  try {
+    conn = toUpstreamConnection(row)
+  } catch {
+    return c.json({ error: 'unsupported_transport' }, 400)
+  }
+  const userId = c.get('user').userId
+  const bearer = await resolveUserUpstreamBearer(c.env, row, conn, userId)
+  if (conn.authStrategy !== 'none' && bearer === null) {
+    return c.json(
+      {
+        error: 'admin_not_connected',
+        hint: `Connect this upstream on /upstreams as ${conn.authStrategy}, then try again.`
+      },
+      400
+    )
+  }
+  const result = await refreshCatalogueForConnection(c.env, conn, bearer)
   if (!result.ok) {
-    if (result.reason === 'not_found') return c.json({ error: 'not_found' }, 404)
-    if (result.reason === 'unsupported_transport') {
-      return c.json({ error: 'unsupported_transport' }, 400)
-    }
-    if (result.reason === 'no_credentials') {
-      return c.json({ error: 'user_credentials_required' }, 400)
-    }
     return c.json({ error: 'refresh_failed', message: result.message }, 502)
   }
   return c.json({

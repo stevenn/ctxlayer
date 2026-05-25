@@ -641,7 +641,8 @@ function ToolsCacheSection({
   const cachedAt = row.toolsCachedAt
     ? new Date(row.toolsCachedAt * 1000).toLocaleString()
     : 'never'
-  const canRefreshNow = row.authStrategy === 'none'
+  const needsAdminConnection =
+    row.authStrategy === 'user_bearer' || row.authStrategy === 'user_oauth'
 
   return (
     <Section title="Tool catalogue cache">
@@ -656,16 +657,16 @@ function ToolsCacheSection({
             <Text fz="sm">{cachedAt}</Text>
           </div>
         </Group>
-        {!canRefreshNow && (
+        {needsAdminConnection && (
           <Alert color="gray" variant="light" radius="sm">
             <Text fz="xs">
-              For <code>{row.authStrategy}</code> upstreams the catalogue
-              populates the first time a user{' '}
+              Refresh uses <strong>your own</strong> connection. If you
+              haven't{' '}
               {row.authStrategy === 'user_oauth'
-                ? 'completes the OAuth flow'
-                : 'pastes a token'}{' '}
-              on <code>/upstreams</code> (auto-refresh in the background)
-              or opens an MCP session.
+                ? 'completed the OAuth flow'
+                : 'pasted a token'}{' '}
+              for this upstream on <code>/upstreams</code> yet, do that
+              first.
             </Text>
           </Alert>
         )}
@@ -674,7 +675,7 @@ function ToolsCacheSection({
             size="xs"
             variant="default"
             onClick={onRefresh}
-            disabled={busy || !canRefreshNow}
+            disabled={busy}
           >
             Refresh now
           </Button>
