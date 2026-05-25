@@ -9,6 +9,7 @@ import { authRoute } from './api/auth'
 import { docsRoute } from './api/docs'
 import { docSharingRoute } from './api/doc-sharing'
 import { docTagsRoute } from './api/doc-tags'
+import { foldersRoute } from './api/folders'
 import { usersRoute } from './api/users'
 import { teamsRoute, productsRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
@@ -47,6 +48,7 @@ app.route('/api/products', productsRoute)
 app.route('/api/docs', docsRoute)
 app.route('/api/docs', docSharingRoute)
 app.route('/api/docs', docTagsRoute)
+app.route('/api/folders', foldersRoute)
 // Admin REST. All inner routes gate on requireAdmin so non-admins
 // hitting these endpoints get 403, not 401.
 app.route('/api/admin/teams', adminTeamsRoute)

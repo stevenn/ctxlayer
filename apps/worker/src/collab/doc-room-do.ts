@@ -33,7 +33,13 @@ import * as awarenessProtocol from 'y-protocols/awareness'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import type { Env } from '../env'
+import { isDocLocked } from '../db/queries/docs'
 import { readYjsSnapshot, writeYjsSnapshot } from '../storage/docs-r2'
+
+// How long to trust the cached lock state for. Long enough to amortise
+// the D1 read across rapid Yjs frames, short enough that a lock applied
+// by an admin propagates in a few seconds.
+const LOCK_CACHE_TTL_MS = 5_000
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
@@ -59,6 +65,14 @@ export class DocRoomDO extends DurableObject<Env> {
   // bytes win when the current write completes.
   private writeInFlight: Promise<void> | null = null
   private writePending: Uint8Array | null = null
+
+  // Lock-state cache so we don't D1-read on every Yjs frame. The
+  // upgrade handler already tags new sockets read-only when the doc
+  // is locked, but a peer that connected pre-lock would otherwise
+  // keep writing through their stale `canEdit:true` attachment until
+  // they reconnect. The cache catches that case with a small TTL.
+  private lockCacheUntil = 0
+  private isLockedCached = false
 
   override async fetch(req: Request): Promise<Response> {
     if (req.headers.get('upgrade') !== 'websocket') {
@@ -98,6 +112,7 @@ export class DocRoomDO extends DurableObject<Env> {
         const isWrite =
           syncSubType === sync.messageYjsSyncStep2 || syncSubType === sync.messageYjsUpdate
         if (isWrite && !canEdit) return // silently drop writes from read-only peers
+        if (isWrite && (await this.isLocked())) return // doc was locked while this peer was connected
         const encoder = encoding.createEncoder()
         encoding.writeVarUint(encoder, MESSAGE_SYNC)
         sync.readSyncMessage(decoder, encoder, this.doc!, ws)
@@ -160,6 +175,27 @@ export class DocRoomDO extends DurableObject<Env> {
   }
 
   // ----- internals --------------------------------------------------------
+
+  /**
+   * TTL-cached lock check. Avoids a D1 read per Yjs frame while still
+   * propagating a fresh lock within `LOCK_CACHE_TTL_MS`. A peer that
+   * was tagged `canEdit: true` at upgrade time will eventually see
+   * its writes dropped here once an admin flips the lock.
+   */
+  private async isLocked(): Promise<boolean> {
+    const now = Date.now()
+    if (now < this.lockCacheUntil) return this.isLockedCached
+    if (!this.docId) return false
+    try {
+      this.isLockedCached = await isDocLocked(this.env, this.docId)
+    } catch {
+      // On D1 error, prefer "not locked" — better to let writes
+      // through than to inadvertently freeze the doc.
+      this.isLockedCached = false
+    }
+    this.lockCacheUntil = now + LOCK_CACHE_TTL_MS
+    return this.isLockedCached
+  }
 
   /**
    * Lazy load on first message after construct (cold start OR after a

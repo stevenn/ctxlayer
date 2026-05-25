@@ -12,6 +12,9 @@ export interface DocumentRow {
   title: string
   slug: string
   kind: 'doc' | 'prompt'
+  // Folder path (`/specs/api/v2`) or null for root. Format validated
+  // at the request layer (packages/shared/src/docs-types.ts).
+  folder: string | null
   current_rev_id: string | null
   r2_snapshot: string | null
   created_by: string | null
@@ -19,6 +22,11 @@ export interface DocumentRow {
   updated_at: number
   deleted_at: number | null
   chunk_count: number
+  // Lock state. Both NULL = unlocked. Both set = locked (pair always
+  // moves together; isDocLocked / setDocLock / clearDocLock are the
+  // only writers).
+  locked_at: number | null
+  locked_by: string | null
 }
 
 /**
@@ -34,21 +42,27 @@ export interface DocumentWithUsersRow extends DocumentRow {
   updated_by_id: string | null
   updated_by_email: string | null
   updated_by_name: string | null
+  locked_by_email: string | null
+  locked_by_name: string | null
 }
 
 const SELECT_DOC_WITH_USERS = `
-  SELECT d.id, d.title, d.slug, d.kind, d.current_rev_id, d.r2_snapshot,
-         d.created_by, d.created_at, d.updated_at, d.deleted_at,
-         d.chunk_count,
+  SELECT d.id, d.title, d.slug, d.kind, d.folder, d.current_rev_id,
+         d.r2_snapshot, d.created_by, d.created_at, d.updated_at,
+         d.deleted_at, d.chunk_count,
+         d.locked_at, d.locked_by,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
          ru.id    AS updated_by_id,
          ru.email AS updated_by_email,
-         ru.name  AS updated_by_name
+         ru.name  AS updated_by_name,
+         lu.email AS locked_by_email,
+         lu.name  AS locked_by_name
   FROM documents d
   LEFT JOIN users cu ON cu.id = d.created_by
   LEFT JOIN doc_revisions r ON r.id = d.current_rev_id
-  LEFT JOIN users ru ON ru.id = r.author_id`
+  LEFT JOIN users ru ON ru.id = r.author_id
+  LEFT JOIN users lu ON lu.id = d.locked_by`
 
 export interface RevisionRow {
   id: string
@@ -94,6 +108,7 @@ export interface CreateDocInput {
   title: string
   slug?: string
   kind?: 'doc' | 'prompt'
+  folder?: string | null
   createdBy: string
 }
 
@@ -106,16 +121,17 @@ export async function createDoc(env: Env, input: CreateDocInput): Promise<Docume
   const id = newId()
   const now = Math.floor(Date.now() / 1000)
   const kind = input.kind ?? 'doc'
+  const folder = input.folder ?? null
   const baseSlug = input.slug ?? slugify(input.title)
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomSuffix()}`
     try {
       await env.DB.prepare(
-        `INSERT INTO documents (id, title, slug, kind, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`
+        `INSERT INTO documents (id, title, slug, kind, folder, created_by, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
       )
-        .bind(id, input.title, slug, kind, input.createdBy, now)
+        .bind(id, input.title, slug, kind, folder, input.createdBy, now)
         .run()
       const row = await getDocById(env, id)
       if (!row) throw new Error('doc_insert_lost')
@@ -132,6 +148,8 @@ export interface PatchDocInput {
   title?: string
   slug?: string
   kind?: 'doc' | 'prompt'
+  // `null` moves the doc to root; `undefined` leaves folder unchanged.
+  folder?: string | null
 }
 
 export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Promise<void> {
@@ -149,6 +167,10 @@ export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Prom
     fields.push(`kind = ?${fields.length + 1}`)
     binds.push(patch.kind)
   }
+  if (patch.folder !== undefined) {
+    fields.push(`folder = ?${fields.length + 1}`)
+    binds.push(patch.folder)
+  }
   fields.push(`updated_at = ?${fields.length + 1}`)
   binds.push(Math.floor(Date.now() / 1000))
   binds.push(id)
@@ -157,6 +179,100 @@ export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Prom
   )
     .bind(...binds)
     .run()
+}
+
+// ----- folder tree + rename ----------------------------------------------
+
+/**
+ * Aggregate every populated folder path with two counts:
+ *   - docCount: docs at exactly this path
+ *   - descendantDocCount: docs at this path OR under any sub-path
+ *
+ * The SPA builds the tree client-side from this flat list.
+ *
+ * `descendantDocCount` is computed via a self-join: a row contributes
+ * to its own count + every prefix that's also a folder. Cheap because
+ * SQLite handles the small result set well; if doc count ever gets
+ * into the thousands a CTE with recursive splitting would be the next
+ * step.
+ */
+export interface FolderAggregateRow {
+  path: string
+  doc_count: number
+  descendant_doc_count: number
+}
+
+export async function listFolderAggregates(env: Env): Promise<FolderAggregateRow[]> {
+  // First: every distinct folder path + the count of docs directly in
+  // it (not descendants). Second: for each path, count docs whose
+  // folder = path OR LIKE path||'/%'.
+  const res = await env.DB.prepare(
+    `WITH paths AS (
+       SELECT DISTINCT folder AS path
+       FROM documents
+       WHERE folder IS NOT NULL AND deleted_at IS NULL
+     )
+     SELECT p.path,
+            (SELECT COUNT(*) FROM documents d
+              WHERE d.folder = p.path AND d.deleted_at IS NULL) AS doc_count,
+            (SELECT COUNT(*) FROM documents d
+              WHERE (d.folder = p.path OR d.folder LIKE p.path || '/%')
+                AND d.deleted_at IS NULL) AS descendant_doc_count
+     FROM paths p
+     ORDER BY p.path`
+  ).all<FolderAggregateRow>()
+  return res.results ?? []
+}
+
+/**
+ * Rename a folder (and every nested folder). Returns the list of doc
+ * ids that were affected — caller uses this for audit metadata and
+ * the SPA refresh signal.
+ */
+export async function renameFolderPrefix(
+  env: Env,
+  oldPath: string,
+  newPath: string
+): Promise<string[]> {
+  if (oldPath === newPath) return []
+  const now = Math.floor(Date.now() / 1000)
+  // Affected: folder == oldPath OR folder LIKE oldPath || '/%'
+  const affectedRes = await env.DB.prepare(
+    `SELECT id, folder FROM documents
+     WHERE deleted_at IS NULL
+       AND (folder = ?1 OR folder LIKE ?1 || '/%')`
+  )
+    .bind(oldPath)
+    .all<{ id: string; folder: string }>()
+  const rows = affectedRes.results ?? []
+  if (rows.length === 0) return []
+  const stmts = rows.map((r) => {
+    const nextFolder =
+      r.folder === oldPath ? newPath : `${newPath}${r.folder.slice(oldPath.length)}`
+    return env.DB.prepare(
+      `UPDATE documents SET folder = ?1, updated_at = ?2
+       WHERE id = ?3 AND deleted_at IS NULL`
+    ).bind(nextFolder, now, r.id)
+  })
+  await env.DB.batch(stmts)
+  return rows.map((r) => r.id)
+}
+
+/**
+ * Find every doc id that lives in the given folder OR under any
+ * sub-folder. Powers the "can the caller edit all of these?" check
+ * for folder rename, plus the "is this folder empty?" check for
+ * delete.
+ */
+export async function listDocIdsInFolder(env: Env, path: string): Promise<string[]> {
+  const res = await env.DB.prepare(
+    `SELECT id FROM documents
+     WHERE deleted_at IS NULL
+       AND (folder = ?1 OR folder LIKE ?1 || '/%')`
+  )
+    .bind(path)
+    .all<{ id: string }>()
+  return (res.results ?? []).map((r) => r.id)
 }
 
 export async function softDeleteDoc(env: Env, id: string): Promise<void> {
@@ -229,21 +345,31 @@ export async function getRevision(
 // ----- access predicates -------------------------------------------------
 
 /**
- * Caller can EDIT a doc iff: admin, or author, or has an explicit
- * 'user' grant, or there's an 'everyone' grant on the doc.
- * Implemented as one query so the route doesn't fan out into four.
+ * Caller can EDIT a doc iff (a) they have the access role AND (b) the
+ * doc isn't locked. Per the lock design (M5 phase-3 side feature),
+ * locks block edits for everyone — admin + creator included. To edit
+ * a locked doc, call `clearDocLock` first via the lock endpoint.
+ *
+ * Implemented as one query: the UNION ALL builds the access predicate,
+ * the outer SELECT only returns a hit when documents.locked_at IS NULL.
  */
 export async function canEditDoc(env: Env, userId: string, docId: string): Promise<boolean> {
   const row = await env.DB.prepare(
-    `SELECT 1 AS hit FROM (
-       SELECT 1 FROM users WHERE id = ?1 AND role = 'admin'
-       UNION ALL
-       SELECT 1 FROM documents WHERE id = ?2 AND created_by = ?1 AND deleted_at IS NULL
-       UNION ALL
-       SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'user' AND scope_id = ?1
-       UNION ALL
-       SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'everyone' AND scope_id = ''
-     ) LIMIT 1`
+    `SELECT 1 AS hit
+     FROM documents d
+     WHERE d.id = ?2
+       AND d.deleted_at IS NULL
+       AND d.locked_at IS NULL
+       AND EXISTS (
+         SELECT 1 FROM users WHERE id = ?1 AND role = 'admin'
+         UNION ALL
+         SELECT 1 FROM documents WHERE id = ?2 AND created_by = ?1 AND deleted_at IS NULL
+         UNION ALL
+         SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'user' AND scope_id = ?1
+         UNION ALL
+         SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'everyone' AND scope_id = ''
+       )
+     LIMIT 1`
   )
     .bind(userId, docId)
     .first<{ hit: number }>()
@@ -253,6 +379,10 @@ export async function canEditDoc(env: Env, userId: string, docId: string): Promi
 /**
  * Caller can MANAGE SHARING iff: admin or author. Granted editors do
  * NOT re-grant; this keeps the permission graph one-hop deep.
+ *
+ * NOTE: sharing is intentionally NOT lock-gated. Per the lock design
+ * choice, locks freeze content/title/tags but admins should still be
+ * able to revoke access on a locked doc.
  */
 export async function canShareDoc(env: Env, userId: string, docId: string): Promise<boolean> {
   const row = await env.DB.prepare(
@@ -265,6 +395,89 @@ export async function canShareDoc(env: Env, userId: string, docId: string): Prom
     .bind(userId, docId)
     .first<{ hit: number }>()
   return !!row
+}
+
+/**
+ * Caller can LOCK / UNLOCK iff: admin or doc creator. Same role-set
+ * as canShareDoc (both are "doc-owner-class" operations) but kept
+ * as a separate function so the predicates can drift later without
+ * confusing the sharing path.
+ */
+export async function canLockDoc(env: Env, userId: string, docId: string): Promise<boolean> {
+  return canShareDoc(env, userId, docId)
+}
+
+// ----- lock state ---------------------------------------------------------
+
+export async function isDocLocked(env: Env, docId: string): Promise<boolean> {
+  const row = await env.DB.prepare(
+    `SELECT locked_at FROM documents WHERE id = ?1 AND deleted_at IS NULL`
+  )
+    .bind(docId)
+    .first<{ locked_at: number | null }>()
+  return !!(row && row.locked_at !== null)
+}
+
+/**
+ * One-shot edit-gate predicate: returns null when the caller can
+ * edit, otherwise the *reason*. Lets route handlers emit a
+ * distinguished 423-Locked vs 403-Forbidden status without
+ * duplicating two D1 reads per route.
+ */
+export type EditBlockReason = 'not_found' | 'locked' | 'forbidden'
+
+export async function editGateReason(
+  env: Env,
+  userId: string,
+  docId: string
+): Promise<EditBlockReason | null> {
+  // Combine doc existence + lock check + access role check into a
+  // single round-trip. The `flags` row tells us which gate (if any)
+  // is closed.
+  const row = await env.DB.prepare(
+    `SELECT
+       (SELECT 1 FROM documents WHERE id = ?2 AND deleted_at IS NULL) AS exists_flag,
+       (SELECT locked_at FROM documents WHERE id = ?2 AND deleted_at IS NULL) AS locked_at,
+       EXISTS (
+         SELECT 1 FROM users WHERE id = ?1 AND role = 'admin'
+         UNION ALL
+         SELECT 1 FROM documents WHERE id = ?2 AND created_by = ?1 AND deleted_at IS NULL
+         UNION ALL
+         SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'user' AND scope_id = ?1
+         UNION ALL
+         SELECT 1 FROM doc_editors WHERE doc_id = ?2 AND scope_kind = 'everyone' AND scope_id = ''
+       ) AS has_role`
+  )
+    .bind(userId, docId)
+    .first<{ exists_flag: number | null; locked_at: number | null; has_role: number }>()
+  if (!row || !row.exists_flag) return 'not_found'
+  if (!row.has_role) return 'forbidden'
+  if (row.locked_at !== null) return 'locked'
+  return null
+}
+
+/**
+ * Apply a lock. Idempotent: a re-lock just refreshes locked_at +
+ * locked_by. Caller has already passed canLockDoc.
+ */
+export async function setDocLock(env: Env, docId: string, byUserId: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `UPDATE documents SET locked_at = ?1, locked_by = ?2, updated_at = ?3
+     WHERE id = ?4 AND deleted_at IS NULL`
+  )
+    .bind(now, byUserId, now, docId)
+    .run()
+}
+
+export async function clearDocLock(env: Env, docId: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `UPDATE documents SET locked_at = NULL, locked_by = NULL, updated_at = ?1
+     WHERE id = ?2 AND deleted_at IS NULL`
+  )
+    .bind(now, docId)
+    .run()
 }
 
 // ----- helpers -----------------------------------------------------------

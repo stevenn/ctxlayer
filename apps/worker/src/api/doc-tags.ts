@@ -14,7 +14,7 @@ import { DocTags } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
-import { canEditDoc, getDocById } from '../db/queries/docs'
+import { editGateReason, getDocById } from '../db/queries/docs'
 import { listTagsForDoc, replaceTagsForDoc } from '../db/queries/doc-tags'
 
 export const docTagsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -32,7 +32,18 @@ docTagsRoute.get('/:id/tags', async (c) => {
 docTagsRoute.put('/:id/tags', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  // Same gate as the doc body endpoints: 404 / 423-Locked / 403.
+  // Tag edits are part of the "frozen surface" when a doc is locked
+  // (per the lock-scope design choice).
+  const reason = await editGateReason(c.env, userId, id)
+  if (reason === 'not_found') return c.json({ error: 'not_found' }, 404)
+  if (reason === 'locked') {
+    return c.json(
+      { error: 'locked', hint: 'This doc is locked; tags cannot be edited until unlock.' },
+      423
+    )
+  }
+  if (reason === 'forbidden') return c.json({ error: 'forbidden' }, 403)
   const parsed = DocTags.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   await replaceTagsForDoc(c.env, id, parsed.data)

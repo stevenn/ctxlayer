@@ -19,6 +19,7 @@ import {
   type DocSummary,
   type RevisionSummary,
   RestoreRequest,
+  SetLockedRequest,
   UpdateDocRequest
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
@@ -26,18 +27,24 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
   canEditDoc,
+  canLockDoc,
   canShareDoc,
+  clearDocLock,
   createDoc,
+  editGateReason,
   getDocById,
   getRevision,
   listDocs,
   listRevisions,
   patchDoc,
   recordRevision,
+  setDocLock,
   softDeleteDoc,
   type DocumentWithUsersRow,
+  type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
+import { audit } from '../audit/log'
 import {
   readRevision,
   readSnapshot,
@@ -71,18 +78,26 @@ docsRoute.get('/:id', async (c) => {
   const row = await getDocById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
   const { userId } = c.get('user')
-  const [canEdit, canShare] = await Promise.all([
+  const [canEdit, canShare, canLock] = await Promise.all([
     canEditDoc(c.env, userId, id),
-    canShareDoc(c.env, userId, id)
+    canShareDoc(c.env, userId, id),
+    canLockDoc(c.env, userId, id)
   ])
-  const body: DocDetail = { ...toSummary(row), currentRevId: row.current_rev_id, canEdit, canShare }
+  const body: DocDetail = {
+    ...toSummary(row),
+    currentRevId: row.current_rev_id,
+    canEdit,
+    canShare,
+    canLock
+  }
   return c.json(body)
 })
 
 docsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const blocked = await gateEdit(c.env, userId, id)
+  if (blocked) return blocked
   const parsed = UpdateDocRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   await patchDoc(c.env, id, parsed.data)
@@ -92,7 +107,8 @@ docsRoute.patch('/:id', async (c) => {
 docsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const blocked = await gateEdit(c.env, userId, id)
+  if (blocked) return blocked
   await softDeleteDoc(c.env, id)
   return new Response(null, { status: 204 })
 })
@@ -108,7 +124,8 @@ docsRoute.get('/:id/content', async (c) => {
 docsRoute.put('/:id/content', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const blocked = await gateEdit(c.env, userId, id)
+  if (blocked) return blocked
   const raw = await c.req.arrayBuffer()
   if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
   const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
@@ -151,7 +168,8 @@ docsRoute.get('/:id/revisions/:rev/content', async (c) => {
 docsRoute.post('/:id/restore', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const blocked = await gateEdit(c.env, userId, id)
+  if (blocked) return blocked
   const parsed = RestoreRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   const sourceRev = await getRevision(c.env, id, parsed.data.revisionId)
@@ -175,6 +193,71 @@ docsRoute.post('/:id/restore', async (c) => {
   return c.json({ revisionId: newRevId })
 })
 
+// ----- lock toggle --------------------------------------------------------
+
+/**
+ * PUT /api/docs/:id/lock with body `{ locked: boolean }`.
+ *
+ * Lock + unlock both gated by canLockDoc (admin or doc creator). The
+ * lock predicate stays separate from the edit predicate per the
+ * no-bypass design: locks can be cleared by the lock-permitted caller
+ * even though they can't edit the locked doc.
+ */
+docsRoute.put('/:id/lock', async (c) => {
+  const id = c.req.param('id')
+  const { userId } = c.get('user')
+  if (!(await canLockDoc(c.env, userId, id))) {
+    return c.json({ error: 'forbidden' }, 403)
+  }
+  const parsed = SetLockedRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) {
+    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  }
+  if (parsed.data.locked) {
+    await setDocLock(c.env, id, userId)
+    await audit(c.env, { actorId: userId, action: 'doc.lock', target: id })
+  } else {
+    await clearDocLock(c.env, id)
+    await audit(c.env, { actorId: userId, action: 'doc.unlock', target: id })
+  }
+  return new Response(null, { status: 204 })
+})
+
+// ----- edit-gate helper ---------------------------------------------------
+
+/**
+ * Used by every doc mutation route to short-circuit with the right
+ * status code: 404 (no such doc), 423-Locked (doc is frozen), or
+ * 403-Forbidden (caller lacks the access role). Returns null when
+ * the caller can proceed.
+ */
+async function gateEdit(env: Env, userId: string, docId: string): Promise<Response | null> {
+  const reason = await editGateReason(env, userId, docId)
+  return reasonToResponse(reason)
+}
+
+function reasonToResponse(reason: EditBlockReason | null): Response | null {
+  if (reason === null) return null
+  if (reason === 'not_found') return jsonStatus({ error: 'not_found' }, 404)
+  if (reason === 'locked') {
+    return jsonStatus(
+      {
+        error: 'locked',
+        hint: 'This doc is locked. Ask an admin or the doc creator to unlock it before editing.'
+      },
+      423
+    )
+  }
+  return jsonStatus({ error: 'forbidden' }, 403)
+}
+
+function jsonStatus(body: unknown, status: number): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' }
+  })
+}
+
 // ----- shapers ------------------------------------------------------------
 
 function toSummary(row: DocumentWithUsersRow): DocSummary {
@@ -183,8 +266,13 @@ function toSummary(row: DocumentWithUsersRow): DocSummary {
     title: row.title,
     slug: row.slug,
     kind: row.kind,
+    folder: row.folder,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    lockedAt: row.locked_at,
+    lockedBy: row.locked_by
+      ? { id: row.locked_by, email: row.locked_by_email ?? '', name: row.locked_by_name }
+      : null,
     createdBy: row.created_by
       ? { id: row.created_by, email: row.created_by_email ?? '', name: row.created_by_name }
       : null,

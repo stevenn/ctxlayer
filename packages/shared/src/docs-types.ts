@@ -22,6 +22,31 @@ export const DocSlug = z
   .max(96)
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase, digits and dashes only')
 
+// Folder path. `null` = root. Otherwise an absolute path like
+// `/specs/api/v2`. Segments are slug-shaped (lowercase letters, digits,
+// dashes). Max depth 5 keeps the tree sidebar usable; max total 200
+// chars matches reasonable filesystem-ish paths and stops anyone storing
+// arbitrary blobs in the column.
+const FolderSegment = /^[a-z0-9]+(?:-[a-z0-9]+)*$/
+export const FolderPath = z
+  .string()
+  .min(2)
+  .max(200)
+  .refine(
+    (s) => {
+      if (!s.startsWith('/')) return false
+      if (s.endsWith('/')) return false
+      const segs = s.slice(1).split('/')
+      if (segs.length > 5) return false
+      return segs.every((seg) => FolderSegment.test(seg))
+    },
+    {
+      message:
+        'leading "/", slug-shaped segments separated by "/", max depth 5, no trailing "/"'
+    }
+  )
+export type FolderPath = z.infer<typeof FolderPath>
+
 // Compact user shape for "created by" / "last edited by" attributions.
 // `null` when the underlying user row was deleted out from under the
 // doc (FK is informational in D1; rows may dangle).
@@ -37,6 +62,8 @@ export const DocSummary = z.object({
   title: z.string(),
   slug: DocSlug,
   kind: DocKind,
+  // Folder path or null (= root). See FolderPath above for the format.
+  folder: FolderPath.nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
   // The original author (documents.created_by joined to users).
@@ -44,7 +71,12 @@ export const DocSummary = z.object({
   // The author of the most recent revision (documents.current_rev_id
   // → doc_revisions.author_id → users). Null for freshly-created docs
   // that have no revisions yet.
-  updatedBy: UserSummary.nullish()
+  updatedBy: UserSummary.nullish(),
+  // Lock state. `lockedAt` is the unix timestamp the lock was
+  // applied; `lockedBy` is the user who applied it. Both null when
+  // the doc is unlocked (the normal case).
+  lockedAt: z.number().nullable(),
+  lockedBy: UserSummary.nullable()
 })
 export type DocSummary = z.infer<typeof DocSummary>
 
@@ -54,26 +86,73 @@ export const DocDetail = DocSummary.extend({
   // read-only when false; the Sharing button only appears when caller
   // is author or admin (a stricter property the server returns
   // separately so non-authors don't see it).
+  //
+  // `canEdit` already reflects the lock: a locked doc returns false
+  // for everyone (incl. admin + creator) per the no-bypass design.
+  // The SPA still shows the lock toggle when `canLock` is true.
   canEdit: z.boolean(),
-  canShare: z.boolean()
+  canShare: z.boolean(),
+  canLock: z.boolean()
 })
 export type DocDetail = z.infer<typeof DocDetail>
+
+// PUT /api/docs/:id/lock body. `locked: true` applies a lock (server
+// fills in the actor + timestamp); `locked: false` releases it.
+export const SetLockedRequest = z.object({
+  locked: z.boolean()
+})
+export type SetLockedRequest = z.infer<typeof SetLockedRequest>
 
 export const CreateDocRequest = z.object({
   title: z.string().min(1).max(200),
   // If omitted, the server slugifies the title and appends a 6-char
   // suffix on collision.
   slug: DocSlug.optional(),
-  kind: DocKind.optional()
+  kind: DocKind.optional(),
+  // Folder path. Omit or pass null to create at root.
+  folder: FolderPath.nullable().optional()
 })
 export type CreateDocRequest = z.infer<typeof CreateDocRequest>
 
 export const UpdateDocRequest = z.object({
   title: z.string().min(1).max(200).optional(),
   slug: DocSlug.optional(),
-  kind: DocKind.optional()
+  kind: DocKind.optional(),
+  // Pass `null` to move to root, a FolderPath to move, or omit to leave
+  // the folder unchanged. `.nullable()` admits null; `.optional()` admits
+  // omission — together they distinguish "set to null" from "no change".
+  folder: FolderPath.nullable().optional()
 })
 export type UpdateDocRequest = z.infer<typeof UpdateDocRequest>
+
+// ----- Folder tree + ops --------------------------------------------------
+
+// `path` is the absolute folder path (e.g. '/specs/api'). `docCount`
+// counts docs whose folder == this exact path (not descendants).
+// `descendantDocCount` counts docs whose folder == this path OR starts
+// with `${path}/`. The SPA uses descendantDocCount for "delete folder"
+// confirmation copy.
+export const FolderTreeNode = z.object({
+  path: FolderPath,
+  docCount: z.number().int().min(0),
+  descendantDocCount: z.number().int().min(0)
+})
+export type FolderTreeNode = z.infer<typeof FolderTreeNode>
+
+export const FolderTreeResponse = z.object({
+  folders: z.array(FolderTreeNode)
+})
+export type FolderTreeResponse = z.infer<typeof FolderTreeResponse>
+
+// Rename / move folder: every doc whose folder == oldPath OR starts
+// with `${oldPath}/` gets re-pathed under newPath. Server-side validates
+// that the caller can edit ALL affected docs (returns 403 with a list of
+// blocking doc ids if not).
+export const FolderRenameRequest = z.object({
+  oldPath: FolderPath,
+  newPath: FolderPath
+})
+export type FolderRenameRequest = z.infer<typeof FolderRenameRequest>
 
 export const RevisionSummary = z.object({
   id: z.string(),
