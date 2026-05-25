@@ -12,8 +12,10 @@ import {
   DocTags,
   HealthResponse,
   AdminUpstreamRow,
+  AdminUserRow,
   CreateUpstreamRequest,
   MeResponse,
+  UpdateUserRoleRequest,
   PasteBearerRequest,
   ProductRef,
   RefreshToolsResponse,
@@ -33,10 +35,12 @@ import {
 } from '@ctxlayer/shared'
 import type {
   AdminUpstreamRow as AdminUpstreamRowT,
+  AdminUserRow as AdminUserRowT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
   UpdateUpstreamRequest as UpdateUpstreamRequestT,
+  UpdateUserRoleRequest as UpdateUserRoleRequestT,
   AddEditorRequest as AddEditorRequestT,
   AddTeamMemberRequest as AddTeamMemberRequestT,
   ConfigResponse as ConfigResponseT,
@@ -408,6 +412,35 @@ export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsRespo
     `/api/admin/upstreams/${encodeURIComponent(id)}/refresh-tools`,
     (b) => RefreshToolsResponse.parse(b),
     { method: 'POST' }
+  )
+}
+
+// ----- admin users --------------------------------------------------------
+
+const AdminUserList = z.array(AdminUserRow)
+const RevokeCredsResult = z.object({ removed: z.number().int().min(0) })
+
+export function fetchAdminUsers(signal?: AbortSignal): Promise<AdminUserRowT[]> {
+  return request('/api/admin/users', (b) => AdminUserList.parse(b), { signal })
+}
+
+export function adminPatchUserRole(
+  userId: string,
+  body: UpdateUserRoleRequestT
+): Promise<void> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateUserRoleRequest.parse(body))
+  })
+}
+
+export function adminRevokeUserCredentials(
+  userId: string
+): Promise<{ removed: number }> {
+  return request(
+    `/api/admin/users/${encodeURIComponent(userId)}/credentials`,
+    (b) => RevokeCredsResult.parse(b),
+    { method: 'DELETE' }
   )
 }
 

@@ -4,7 +4,8 @@
  */
 
 import type { Env } from '../../env'
-import type { Idp, Role } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Idp, Role } from '@ctxlayer/shared'
+import { audit } from '../../audit/log'
 
 export interface UserRow {
   id: string
@@ -68,19 +69,17 @@ export async function upsertUser(env: Env, input: UpsertUserInput): Promise<User
     .first<UserRow>()
   if (!row) throw new Error('user_upsert_failed')
 
-  // Audit-log the promotion only when the row's role flipped to admin in
-  // this transaction. Cheap heuristic: if promoteToAdmin AND row.role is
-  // now 'admin' AND created_at == now (just-created) OR previously
-  // recorded role wasn't admin, log it. We can't easily detect the prior
-  // state from D1 without a second read, so we audit every sign-in that
-  // resulted in admin role *and* mention of email in ADMIN_EMAILS — the
-  // entries are de-duplicated downstream by reader queries if needed.
+  // Audit-log the promotion. We can't easily detect the prior role
+  // without a second read, so we audit every sign-in that resulted in
+  // admin role *and* mention of email in ADMIN_EMAILS — readers can
+  // dedupe downstream if it matters.
   if (promoteToAdmin) {
-    await env.DB.prepare(
-      `INSERT INTO audit_log (id, ts, actor_id, action, target, meta) VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
-    )
-      .bind(newUlid(), now, row.id, 'user.admin_promote', row.id, JSON.stringify({ via: 'ADMIN_EMAILS' }))
-      .run()
+    await audit(env, {
+      actorId: row.id,
+      action: 'user.admin_promote',
+      target: row.id,
+      meta: { via: 'ADMIN_EMAILS' }
+    })
   }
 
   return row
@@ -99,6 +98,112 @@ export async function findById(env: Env, id: string): Promise<UserRow | null> {
 export async function bumpLastSeen(env: Env, id: string): Promise<void> {
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(`UPDATE users SET last_seen_at = ?1 WHERE id = ?2`).bind(now, id).run()
+}
+
+// ----- admin Users page ---------------------------------------------------
+
+/**
+ * Fetch every user with their team membership joined. One query + one
+ * aggregation pass instead of N+1 round-trips.
+ *
+ * Membership joining is left-join-style: users with no team rows still
+ * appear with an empty `teams` array. Credential count comes from a
+ * separate aggregate query — small enough to be a second roundtrip.
+ */
+export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
+  const [usersRes, teamsRes, credsRes] = await Promise.all([
+    env.DB.prepare(
+      `SELECT id, email, name, avatar_url, idp, role, created_at, last_seen_at
+       FROM users ORDER BY LOWER(email)`
+    ).all<{
+      id: string
+      email: string
+      name: string | null
+      avatar_url: string | null
+      idp: string
+      role: Role
+      created_at: number
+      last_seen_at: number | null
+    }>(),
+    env.DB.prepare(
+      `SELECT tm.user_id, tm.team_id, tm.role AS member_role,
+              t.slug AS team_slug, t.display_name AS team_display_name,
+              t.description AS team_description
+       FROM team_members tm
+       JOIN teams t ON t.id = tm.team_id`
+    ).all<{
+      user_id: string
+      team_id: string
+      member_role: 'member' | 'lead'
+      team_slug: string
+      team_display_name: string
+      team_description: string | null
+    }>(),
+    env.DB.prepare(
+      `SELECT user_id, COUNT(*) AS n FROM user_credentials GROUP BY user_id`
+    ).all<{ user_id: string; n: number }>()
+  ])
+
+  const teamsByUser = new Map<string, AdminUserTeam[]>()
+  for (const r of teamsRes.results ?? []) {
+    const list = teamsByUser.get(r.user_id) ?? []
+    list.push({
+      id: r.team_id,
+      slug: r.team_slug,
+      displayName: r.team_display_name,
+      description: r.team_description,
+      role: r.member_role
+    })
+    teamsByUser.set(r.user_id, list)
+  }
+  const credsByUser = new Map<string, number>()
+  for (const r of credsRes.results ?? []) credsByUser.set(r.user_id, r.n)
+
+  return (usersRes.results ?? []).map((u) => ({
+    id: u.id,
+    email: u.email,
+    name: u.name,
+    avatarUrl: u.avatar_url,
+    role: u.role,
+    idp: u.idp,
+    createdAt: u.created_at,
+    lastSeenAt: u.last_seen_at,
+    teams: teamsByUser.get(u.id) ?? [],
+    credentialCount: credsByUser.get(u.id) ?? 0
+  }))
+}
+
+/** PATCH /api/admin/users/:id role. */
+export async function updateUserRole(env: Env, userId: string, role: Role): Promise<void> {
+  await env.DB.prepare(`UPDATE users SET role = ?1 WHERE id = ?2`).bind(role, userId).run()
+}
+
+/**
+ * Delete every stored upstream credential for the user. Returns the
+ * count we just removed so the audit log + UI can show what happened.
+ */
+export async function revokeAllUserCredentials(env: Env, userId: string): Promise<number> {
+  const before = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM user_credentials WHERE user_id = ?1`
+  )
+    .bind(userId)
+    .first<{ n: number }>()
+  await env.DB.prepare(`DELETE FROM user_credentials WHERE user_id = ?1`)
+    .bind(userId)
+    .run()
+  return before?.n ?? 0
+}
+
+/**
+ * Count current admins. Used to gate self-demotion: the last admin
+ * can't downgrade themselves or the org loses access to the admin
+ * surface entirely.
+ */
+export async function countAdmins(env: Env): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).first<{
+    n: number
+  }>()
+  return row?.n ?? 0
 }
 
 // ----- helpers ------------------------------------------------------------

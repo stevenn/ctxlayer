@@ -3,4 +3,5 @@
 export { AdminTeams } from './teams'
 export { AdminProducts } from './products'
 export { AdminUpstreams } from './upstreams'
-export { AdminUsers, AdminUsage, AdminAudit } from './stubs'
+export { AdminUsers } from './users'
+export { AdminUsage, AdminAudit } from './stubs'
