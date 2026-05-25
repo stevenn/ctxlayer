@@ -35,9 +35,26 @@ import {
 import {
   UpstreamOAuthProvider,
   deleteVerifierState,
-  readVerifierState
+  readVerifierState,
+  type OAuthReturnTarget
 } from '../upstream/oauth-provider'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
+
+// SPA paths we're allowed to bounce the user back to after the OAuth
+// dance — `return_to=admin` lands them on the admin upstreams page
+// instead of /upstreams, so admin onboarding flows don't context-switch.
+const RETURN_PATHS: Record<OAuthReturnTarget, string> = {
+  user: '/upstreams',
+  admin: '/app/admin/upstreams'
+}
+
+function parseReturnTo(raw: string | undefined): OAuthReturnTarget {
+  return raw === 'admin' ? 'admin' : 'user'
+}
+
+function spaReturnUrl(env: Env, target: OAuthReturnTarget): string {
+  return new URL(RETURN_PATHS[target], env.PUBLIC_BASE_URL).toString()
+}
 
 export const upstreamOauthStartRoute = new Hono<{
   Bindings: Env
@@ -53,9 +70,10 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
   if (upstream.auth_strategy !== 'user_oauth') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
   }
+  const returnTo = parseReturnTo(c.req.query('return_to'))
 
   try {
-    return await runStart(c, upstream, userId)
+    return await runStart(c, upstream, userId, returnTo)
   } catch (err) {
     // OAuth error during the refresh attempt — most commonly Notion (or
     // any upstream) rotating / revoking / expiring our stored
@@ -69,7 +87,7 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
       )
       await deleteUserCredential(c.env, userId, upstream.id)
       try {
-        return await runStart(c, upstream, userId)
+        return await runStart(c, upstream, userId, returnTo)
       } catch (retryErr) {
         const msg = errMessage(retryErr)
         console.error(`[oauth] ${upstream.slug}: retry after wipe failed: ${msg}`)
@@ -84,12 +102,47 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
 
 type StartCtx = Context<{ Bindings: Env; Variables: AuthedVariables }>
 
-async function runStart(c: StartCtx, upstream: UpstreamServerRow, userId: string) {
-  const provider = new UpstreamOAuthProvider(c.env, upstream, userId)
+async function runStart(
+  c: StartCtx,
+  upstream: UpstreamServerRow,
+  userId: string,
+  returnTo: OAuthReturnTarget
+) {
+  const provider = new UpstreamOAuthProvider(c.env, upstream, userId, undefined, returnTo)
   const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
   if (result === 'AUTHORIZED') {
-    // Tokens already on file and valid — nothing to do.
-    return c.redirect(spaUpstreamsUrl(c.env), 302)
+    // Tokens already on file and valid — no new dance needed. Still
+    // fire a catalogue refresh so the admin "Reconnect" button doubles
+    // as a force-refresh and the SPA reflects the latest tool set on
+    // return. Best-effort.
+    const access = (await provider.tokens())?.access_token ?? null
+    c.executionCtx.waitUntil(
+      refreshCatalogueByUpstreamId(c.env, upstream.id, access).then(
+        (r) => {
+          if (r.ok) {
+            console.log(
+              `[catalogue] ${r.slug}: re-warmed ${r.toolsCount} tools after AUTHORIZED reconnect`
+            )
+          } else {
+            console.warn(
+              `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh failed (${r.reason})${
+                r.message ? `: ${r.message}` : ''
+              }`
+            )
+          }
+        },
+        (err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(
+            `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh threw: ${msg}`
+          )
+        }
+      )
+    )
+    return c.redirect(
+      `${spaReturnUrl(c.env, returnTo)}?oauth_connected=${encodeURIComponent(upstream.slug)}`,
+      302
+    )
   }
   if (!provider.capturedRedirect) {
     // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
@@ -109,10 +162,16 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   const code = c.req.query('code')
   const state = c.req.query('state')
   const errParam = c.req.query('error')
+
+  // returnTo isn't known yet if state is missing/expired; default to
+  // the user-side page in that degenerate path so we still land
+  // somewhere sensible.
+  let returnTo: OAuthReturnTarget = 'user'
+
   if (errParam) {
     const desc = c.req.query('error_description') ?? ''
     return c.redirect(
-      `${spaUpstreamsUrl(c.env)}?oauth_error=${encodeURIComponent(errParam)}&desc=${encodeURIComponent(desc)}`,
+      `${spaReturnUrl(c.env, returnTo)}?oauth_error=${encodeURIComponent(errParam)}&desc=${encodeURIComponent(desc)}`,
       302
     )
   }
@@ -127,6 +186,7 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
     // into someone else's account.
     return c.json({ error: 'oauth_user_mismatch' }, 403)
   }
+  returnTo = stored.returnTo ?? 'user'
 
   const upstream = await getUpstreamById(c.env, stored.upstreamId)
   if (!upstream) return c.json({ error: 'not_found' }, 404)
@@ -143,7 +203,7 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   } catch (err) {
     console.error(`oauth callback exchange failed for ${upstream.slug}:`, err)
     return c.redirect(
-      `${spaUpstreamsUrl(c.env)}?oauth_error=exchange&desc=${encodeURIComponent(errMessage(err))}`,
+      `${spaReturnUrl(c.env, returnTo)}?oauth_error=exchange&desc=${encodeURIComponent(errMessage(err))}`,
       302
     )
   } finally {
@@ -175,12 +235,11 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
     )
   )
 
-  return c.redirect(`${spaUpstreamsUrl(c.env)}?oauth_connected=${encodeURIComponent(upstream.slug)}`, 302)
+  return c.redirect(
+    `${spaReturnUrl(c.env, returnTo)}?oauth_connected=${encodeURIComponent(upstream.slug)}`,
+    302
+  )
 })
-
-function spaUpstreamsUrl(env: Env): string {
-  return new URL('/upstreams', env.PUBLIC_BASE_URL).toString()
-}
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)

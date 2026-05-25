@@ -457,19 +457,30 @@ export async function listUserCredentialedUpstreamIds(
 
 /**
  * Hydrate an `AdminUpstreamRow` from an upstream id. Joins visibility +
- * cached tool count + cached_at. Returns null when the row is missing.
+ * cached tool count + cached_at + the calling admin's connection
+ * status. Returns null when the row is missing or has a parked
+ * (`stdio_daytona`) transport.
+ *
+ * `currentUserConnected` lets the admin drawer show "you are
+ * connected" / "you are not connected" badges and gate the Refresh
+ * button — refresh uses the admin's own creds, so it can't work for
+ * strategies the admin hasn't connected yet.
  */
 export async function adminRowFor(
   env: Env,
-  upstreamId: string
+  upstreamId: string,
+  callerUserId: string
 ): Promise<AdminUpstreamRow | null> {
   const row = await getUpstreamById(env, upstreamId)
   if (!row) return null
   if (row.transport !== 'streamable_http' && row.transport !== 'sse') return null
-  const [visibility, toolsCount, cachedAt] = await Promise.all([
+  const requiresUserCred =
+    row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
+  const [visibility, toolsCount, cachedAt, cred] = await Promise.all([
     listVisibilityForUpstream(env, upstreamId),
     countToolsForUpstream(env, upstreamId),
-    getToolsCachedAt(env, upstreamId)
+    getToolsCachedAt(env, upstreamId),
+    requiresUserCred ? getUserCredential(env, callerUserId, upstreamId) : Promise.resolve(null)
   ])
   return {
     id: row.id,
@@ -483,6 +494,10 @@ export async function adminRowFor(
     visibility,
     toolsCount,
     toolsCachedAt: cachedAt,
+    // 'none' upstreams have no per-user concept of "connected"; treat
+    // as always-on. 'shared_bearer' will follow the same pattern once
+    // its storage lands (M5 phase 2).
+    currentUserConnected: requiresUserCred ? cred !== null : true,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }

@@ -7,6 +7,7 @@ import {
   Drawer,
   Group,
   Modal,
+  PasswordInput,
   Select,
   Stack,
   Switch,
@@ -30,10 +31,12 @@ import {
   adminPatchUpstream,
   adminPutUpstreamVisibility,
   adminRefreshUpstreamTools,
+  deleteUpstreamCredentials,
   fetchAdminUpstream,
   fetchAdminUpstreams,
   fetchProducts,
-  fetchTeams
+  fetchTeams,
+  putUpstreamCredentials
 } from '../../lib/api'
 
 const TRANSPORT_OPTIONS: { value: SupportedTransport; label: string }[] = [
@@ -79,6 +82,9 @@ export function AdminUpstreams() {
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(
+    null
+  )
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -95,6 +101,30 @@ export function AdminUpstreams() {
     return () => ctrl.abort()
   }, [reload])
 
+  // OAuth callbacks bounced via `return_to=admin` flash a slug or
+  // an error code on the URL; surface it and clean the URL.
+  useMemo(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connected = params.get('oauth_connected')
+    const errCode = params.get('oauth_error')
+    if (connected) {
+      setOauthBanner({ kind: 'ok', message: `Connected ${connected}.` })
+    } else if (errCode) {
+      const desc = params.get('desc') ?? ''
+      setOauthBanner({
+        kind: 'err',
+        message: `OAuth failed: ${errCode}${desc ? ` — ${desc}` : ''}`
+      })
+    }
+    if (connected || errCode) {
+      params.delete('oauth_connected')
+      params.delete('oauth_error')
+      params.delete('desc')
+      const qs = params.toString()
+      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
+    }
+  }, [])
+
   return (
     <>
       <Group justify="space-between" align="center" mb="md">
@@ -104,6 +134,18 @@ export function AdminUpstreams() {
         <Button onClick={() => setCreateOpen(true)}>+ New upstream</Button>
       </Group>
 
+      {oauthBanner && (
+        <Alert
+          color={oauthBanner.kind === 'ok' ? 'green' : 'red'}
+          variant="light"
+          radius="sm"
+          mb="md"
+          withCloseButton
+          onClose={() => setOauthBanner(null)}
+        >
+          {oauthBanner.message}
+        </Alert>
+      )}
       {error && (
         <Alert color="red" variant="light" radius="sm" mb="md">
           {error}
@@ -412,6 +454,34 @@ function UpstreamDrawer({
           }
         />
 
+        <ConnectionSection
+          row={row}
+          busy={busy}
+          onSaveBearer={(token) =>
+            withBusy(async () => {
+              await putUpstreamCredentials(upstreamId, { token })
+              await reload()
+              onChanged()
+            }, 'Save bearer')
+          }
+          onDisconnect={() =>
+            withBusy(async () => {
+              if (
+                !confirm(
+                  `Disconnect your credentials for "${row.displayName}"? You'll need to ${
+                    row.authStrategy === 'user_oauth' ? 'reauthorize' : 'paste a new token'
+                  } before Refresh works again.`
+                )
+              ) {
+                return
+              }
+              await deleteUpstreamCredentials(upstreamId)
+              await reload()
+              onChanged()
+            }, 'Disconnect')
+          }
+        />
+
         <ToolsCacheSection
           row={row}
           busy={busy}
@@ -624,6 +694,134 @@ function VisibilitySection({
             Save visibility
           </Button>
         </Group>
+      </Stack>
+    </Section>
+  )
+}
+
+function ConnectionSection({
+  row,
+  busy,
+  onSaveBearer,
+  onDisconnect
+}: {
+  row: AdminUpstreamRow
+  busy: boolean
+  onSaveBearer: (token: string) => void
+  onDisconnect: () => void
+}) {
+  const [token, setToken] = useState('')
+
+  const isUserBearer = row.authStrategy === 'user_bearer'
+  const isUserOauth = row.authStrategy === 'user_oauth'
+  const isShared = row.authStrategy === 'shared_bearer'
+  const isNone = row.authStrategy === 'none'
+
+  // Admin clicks Connect → OAuth start with return_to=admin so the
+  // callback lands back here instead of /upstreams. Full-page nav
+  // because OAuth needs real browser redirects.
+  const startOauth = () => {
+    window.location.assign(
+      `/api/upstreams/${encodeURIComponent(row.id)}/oauth/start?return_to=admin`
+    )
+  }
+
+  return (
+    <Section title="Your connection">
+      <Stack gap="xs">
+        <Group gap="xs">
+          <Text fz="xs" c="dimmed">Status</Text>
+          <Badge
+            color={row.currentUserConnected ? 'green' : 'gray'}
+            variant={row.currentUserConnected ? 'filled' : 'light'}
+          >
+            {row.currentUserConnected ? 'connected' : 'not connected'}
+          </Badge>
+        </Group>
+
+        {isNone && (
+          <Text fz="xs" c="dimmed">
+            This upstream uses <code>none</code> auth — no per-user
+            credentials needed. Refresh and tool calls work for everyone
+            with visibility, no setup required.
+          </Text>
+        )}
+
+        {isShared && (
+          <Alert color="gray" variant="light" radius="sm">
+            <Text fz="xs">
+              Shared-bearer credential storage lands in M5 phase 2. Until
+              then, this strategy has no working credential path.
+            </Text>
+          </Alert>
+        )}
+
+        {isUserBearer && (
+          <Stack gap="xs">
+            <PasswordInput
+              size="xs"
+              placeholder={
+                row.currentUserConnected
+                  ? 'Paste a new token to replace the stored one…'
+                  : 'Paste a personal access token…'
+              }
+              value={token}
+              onChange={(e) => setToken(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <Group justify="flex-end" gap="xs">
+              {row.currentUserConnected && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="red"
+                  onClick={onDisconnect}
+                  disabled={busy}
+                >
+                  Disconnect
+                </Button>
+              )}
+              <Button
+                size="xs"
+                onClick={() => {
+                  if (!token.trim()) return
+                  onSaveBearer(token.trim())
+                  setToken('')
+                }}
+                disabled={!token.trim() || busy}
+              >
+                {row.currentUserConnected ? 'Replace token' : 'Connect'}
+              </Button>
+            </Group>
+          </Stack>
+        )}
+
+        {isUserOauth && (
+          <Stack gap="xs">
+            <Text fz="xs" c="dimmed">
+              Connect signs you in at the upstream via OAuth (PKCE).
+              ctxlayer stores the refresh token sealed at rest and
+              transparently refreshes the access token as needed. The
+              callback lands back here on this admin page.
+            </Text>
+            <Group justify="flex-end" gap="xs">
+              {row.currentUserConnected && (
+                <Button
+                  size="xs"
+                  variant="subtle"
+                  color="red"
+                  onClick={onDisconnect}
+                  disabled={busy}
+                >
+                  Disconnect
+                </Button>
+              )}
+              <Button size="xs" onClick={startOauth} disabled={busy}>
+                {row.currentUserConnected ? 'Reconnect' : 'Connect with OAuth'}
+              </Button>
+            </Group>
+          </Stack>
+        )}
       </Stack>
     </Section>
   )

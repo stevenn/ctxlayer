@@ -27,7 +27,10 @@ import {
   replaceVisibility,
   toUpstreamConnection
 } from '../db/queries/upstreams'
-import { refreshCatalogueForConnection } from '../upstream/catalogue'
+import {
+  refreshCatalogueByUpstreamId,
+  refreshCatalogueForConnection
+} from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -35,13 +38,15 @@ adminUpstreamsRoute.use('*', requireAdmin)
 adminUpstreamsRoute.use('*', requireCsrf)
 
 adminUpstreamsRoute.get('/', async (c) => {
+  const userId = c.get('user').userId
   const rows = await listUpstreams(c.env)
-  const hydrated = await Promise.all(rows.map((r) => adminRowFor(c.env, r.id)))
+  const hydrated = await Promise.all(rows.map((r) => adminRowFor(c.env, r.id, userId)))
   return c.json(hydrated.filter((x) => x !== null))
 })
 
 adminUpstreamsRoute.get('/:id', async (c) => {
-  const row = await adminRowFor(c.env, c.req.param('id'))
+  const userId = c.get('user').userId
+  const row = await adminRowFor(c.env, c.req.param('id'), userId)
   if (!row) return c.json({ error: 'not_found' }, 404)
   return c.json(row)
 })
@@ -62,7 +67,35 @@ adminUpstreamsRoute.post('/', async (c) => {
       authConfig: input.authConfig ?? {},
       enabled: input.enabled ?? true
     })
-    const hydrated = await adminRowFor(c.env, row.id)
+    // For unauth (`none`) upstreams there's nothing to wait for —
+    // warm the catalogue immediately so the admin sees a real tool
+    // count in the drawer instead of zero. user_bearer / user_oauth /
+    // shared_bearer all need credentials before refresh is meaningful;
+    // those are warmed on connect (PUT credentials / OAuth callback).
+    if (input.authStrategy === 'none') {
+      c.executionCtx.waitUntil(
+        refreshCatalogueByUpstreamId(c.env, row.id, null).then(
+          (r) => {
+            if (r.ok) {
+              console.log(
+                `[catalogue] ${r.slug}: warmed ${r.toolsCount} tools on create (auth=none)`
+              )
+            } else {
+              console.warn(
+                `[catalogue] ${row.slug}: post-create refresh failed (${r.reason})${
+                  r.message ? `: ${r.message}` : ''
+                }`
+              )
+            }
+          },
+          (err) => {
+            const msg = err instanceof Error ? err.message : String(err)
+            console.error(`[catalogue] ${row.slug}: post-create refresh threw: ${msg}`)
+          }
+        )
+      )
+    }
+    const hydrated = await adminRowFor(c.env, row.id, c.get('user').userId)
     return c.json(hydrated, 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)

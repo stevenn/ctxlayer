@@ -74,6 +74,11 @@ export type PasteBearerRequest = z.infer<typeof PasteBearerRequest>
 // ----- Read-side shapes -------------------------------------------------
 
 // Admin-facing row: full record, no decrypted secrets.
+//
+// `currentUserConnected` reflects whether the calling admin has stored
+// credentials for this upstream. Drives the connection badge + button
+// state in the admin drawer. For `none`-strategy upstreams it's always
+// true (no creds needed).
 export const AdminUpstreamRow = z.object({
   id: z.string(),
   slug: UpstreamSlug,
@@ -86,6 +91,7 @@ export const AdminUpstreamRow = z.object({
   visibility: z.array(VisibilityRulePayload),
   toolsCount: z.number().int().min(0),
   toolsCachedAt: z.number().int().nullable(),
+  currentUserConnected: z.boolean(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

@@ -51,10 +51,18 @@ import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 const VERIFIER_TTL_SECONDS = 600
 const REDIRECT_PATH = '/api/upstreams/oauth/callback'
 
+/**
+ * Where to bounce the user after the callback completes. Constrained
+ * to the names we know — never accept a raw URL from the client.
+ */
+export type OAuthReturnTarget = 'user' | 'admin'
+
 interface StoredVerifier {
   verifier: string
   userId: string
   upstreamId: string
+  /** Defaults to 'user' (i.e. /upstreams) when absent for older rows. */
+  returnTo?: OAuthReturnTarget
   createdAt: number
 }
 
@@ -87,7 +95,13 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
      * verifier KV row the start path wrote. On the start path leave this
      * undefined — `state()` generates a fresh token.
      */
-    presetState?: string
+    presetState?: string,
+    /**
+     * Persisted in the KV verifier row so the callback knows where to
+     * send the user back. Only consulted on the start path; the callback
+     * reads its own copy via `readVerifierState`.
+     */
+    private readonly returnTo?: OAuthReturnTarget
   ) {
     if (presetState) this.stateToken = presetState
   }
@@ -125,6 +139,7 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
       verifier,
       userId: this.userId,
       upstreamId: this.upstream.id,
+      returnTo: this.returnTo,
       createdAt: Math.floor(Date.now() / 1000)
     }
     await this.env.OAUTH_KV.put(verifierKey(state), JSON.stringify(stored), {
