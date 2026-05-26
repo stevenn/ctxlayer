@@ -16,7 +16,7 @@ agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
 **[`AGENTS.md`](AGENTS.md)**. Architectural conventions and gotchas baked
 into the M1 scaffold live in `docs/plan/G-conventions.md`.
 
-## Current state (2026-05-25)
+## Current state (2026-05-26)
 
 | Milestone | Status | What works |
 |---|---|---|
@@ -24,8 +24,8 @@ into the M1 scaffold live in `docs/plan/G-conventions.md`.
 | **M2** — Docs + RAG via MCP | ✅ done | BlockNote editor with revisions, R2 snapshots, Vectorize embedding pipeline, MCP server at `/mcp` with `search_docs` / `get_doc` / `whoami` / `list_my_context` / `list_upstreams`, doc resources, admin teams + products + tags |
 | **M3** — Realtime collab (Yjs) | ✅ done | `DocRoomDO` over WS Hibernation, BlockNote Yjs extension, awareness-leader REST autosave, R2-backed snapshots |
 | **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done | AES-GCM creds, MCP SDK Client for Streamable HTTP / SSE, namespaced tool aggregation, JSON-Schema → Zod schema preservation, full admin UI for upstreams, user `/upstreams` page with paste-bearer + OAuth. **Validated end-to-end against Notion MCP via Claude Desktop** — search, fetch, create-page. |
-| **M5** — Admin polish | ⏳ next | Admin Users / OAuth-clients / Audit pages, `shared_bearer` storage |
-| **M6** — Usage pipeline + dashboards | 📋 planned | Per-user/upstream call + token charts |
+| **M5** — Admin polish | ✅ done | Admin Users (promote/demote + revoke creds), `shared_bearer` storage, admin Audit log viewer (`/app/admin/audit`), admin OAuth-clients viewer (`/app/admin/oauth-clients`), real `/app/mcp-setup` with per-client snippets. Bundled side features: folder organisation for docs, per-doc lock, modal-dialog system, doc-move UI |
+| **M6** — Usage pipeline + dashboards | ⏳ next | Per-user/upstream call + token charts |
 | **Later** — Stdio upstreams via Daytona | 🅿️ parked | Revisit when a real stdio upstream is in scope |
 
 ## Quickstart (contributors hacking on ctxlayer)
