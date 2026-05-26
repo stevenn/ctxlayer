@@ -1,64 +1,94 @@
+import { useEffect, useRef, useState } from 'react'
 import type { UsageDailyTotal } from '@ctxlayer/shared'
 
 /**
- * Inline SVG charts used by the M6 usage pages. Hand-rolled to avoid
+ * Inline SVG charts for the M6 usage pages. Hand-rolled to avoid
  * pulling in recharts / mantine-charts and the ~100KB they'd add.
- * Two views:
  *
- *   - `DailyBars` — one bar per day for the last N days, with a Y axis
- *     (request + response tokens) and an X axis with date ticks at
- *     ~6 evenly-spaced positions across the window.
- *   - `Sparkline` — line over the daily call count for compact
- *     embedding inside leaderboard rows or summary headers.
+ * `DailyBars` is responsive: it measures its container with a
+ * ResizeObserver and renders the SVG at the real pixel width so
+ * bars and axes scale naturally to whatever column it sits in.
+ * X-tick density adapts to the selected period (every day for
+ * 7-day view, ~every 5 days for 30, ~every 15 for 90, ~every 30
+ * for 180+).
+ *
+ * `Sparkline` is a fixed-width compact embed — no axes needed.
  */
 
 const SECONDS_PER_DAY = 86400
 
-// Left gutter for Y-axis labels, bottom for X-axis labels.
-const M_LEFT = 44
-const M_BOTTOM = 22
+// Plot-area gutters for axes.
+const M_LEFT = 48
+const M_BOTTOM = 24
 const M_TOP = 8
 const M_RIGHT = 8
+const DEFAULT_HEIGHT = 220
 
-interface Sized {
-  width?: number
+interface DailyBarsProps {
+  rows: UsageDailyTotal[]
+  daysBack: number
   height?: number
 }
 
-export function DailyBars({
+export function DailyBars({ rows, daysBack, height = DEFAULT_HEIGHT }: DailyBarsProps) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const [width, setWidth] = useState(0)
+
+  useEffect(() => {
+    const el = containerRef.current
+    if (!el) return
+    // Seed with the current width so first paint isn't blank.
+    setWidth(el.clientWidth)
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0
+      if (w > 0) setWidth(w)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return (
+    <div ref={containerRef} style={{ width: '100%' }}>
+      {width > 0 && <Bars rows={rows} daysBack={daysBack} width={width} height={height} />}
+    </div>
+  )
+}
+
+function Bars({
   rows,
   daysBack,
-  width = 720,
-  height = 200
-}: { rows: UsageDailyTotal[]; daysBack: number } & Sized) {
+  width,
+  height
+}: {
+  rows: UsageDailyTotal[]
+  daysBack: number
+  width: number
+  height: number
+}) {
   const days = fillDays(rows, daysBack)
   const rawMax = Math.max(1, ...days.map((d) => d.reqTokens + d.respTokens))
-  // Round up to a "nice" axis max so tick labels read cleanly.
   const maxTokens = niceCeil(rawMax)
-  const plotW = width - M_LEFT - M_RIGHT
-  const plotH = height - M_TOP - M_BOTTOM
-  const barWidth = plotW / days.length
-  const padX = 1
+  const plotW = Math.max(0, width - M_LEFT - M_RIGHT)
+  const plotH = Math.max(0, height - M_TOP - M_BOTTOM)
+  const barWidth = plotW / Math.max(1, days.length)
+  // Tighten bar padding for very narrow days (long periods), keep
+  // breathing room when there's space.
+  const padX = barWidth >= 8 ? 1.5 : barWidth >= 3 ? 0.5 : 0
 
-  const ticks = niceTicks(maxTokens, 4) // 4 horizontal grid + label lines
-
-  // Pick ~6 evenly-spaced X labels (first, last, ~4 in the middle).
-  const xLabelStride = Math.max(1, Math.ceil(days.length / 6))
-  const xLabels = days
-    .map((d, i) => ({ d, i }))
-    .filter(({ i }) => i === 0 || i === days.length - 1 || i % xLabelStride === 0)
+  const yTicks = niceTicks(maxTokens, 4)
+  const xTickIdx = pickXTickIndices(days.length, daysBack)
 
   return (
     <svg
       viewBox={`0 0 ${width} ${height}`}
-      width="100%"
+      width={width}
       height={height}
-      style={{ display: 'block', maxWidth: '100%' }}
+      style={{ display: 'block' }}
       role="img"
       aria-label="Daily request + response tokens"
     >
       {/* horizontal grid + Y tick labels */}
-      {ticks.map((v) => {
+      {yTicks.map((v) => {
         const y = M_TOP + plotH - (v / maxTokens) * plotH
         return (
           <g key={`yt-${v}`}>
@@ -84,8 +114,9 @@ export function DailyBars({
         )
       })}
 
-      {/* X tick labels (rotated 30° so they don't collide) */}
-      {xLabels.map(({ d, i }) => {
+      {/* X ticks + labels */}
+      {xTickIdx.map((i) => {
+        const d = days[i]!
         const cx = M_LEFT + (i + 0.5) * barWidth
         return (
           <g key={`xt-${d.day}`}>
@@ -160,7 +191,12 @@ export function Sparkline({
   daysBack,
   width = 140,
   height = 28
-}: { rows: UsageDailyTotal[]; daysBack: number } & Sized) {
+}: {
+  rows: UsageDailyTotal[]
+  daysBack: number
+  width?: number
+  height?: number
+}) {
   const days = fillDays(rows, daysBack)
   const max = Math.max(1, ...days.map((d) => d.calls))
   if (days.length < 2) return <span style={{ fontSize: 11, opacity: 0.5 }}>—</span>
@@ -180,14 +216,24 @@ export function Sparkline({
       role="img"
       aria-label="Daily call count"
     >
-      <path
-        d={path}
-        fill="none"
-        stroke="var(--mantine-color-blue-6)"
-        strokeWidth={1.4}
-      />
+      <path d={path} fill="none" stroke="var(--mantine-color-blue-6)" strokeWidth={1.4} />
     </svg>
   )
+}
+
+// Decide which day-indices get an X-axis label. Always include the
+// first and last; in between, pick a stride that produces ~8 labels
+// max, with short windows (≤14 days) labeling every day so the user
+// sees daily granularity at small periods.
+function pickXTickIndices(daysCount: number, daysBack: number): number[] {
+  if (daysCount === 0) return []
+  if (daysCount === 1) return [0]
+  if (daysBack <= 14) return Array.from({ length: daysCount }, (_, i) => i)
+  const targetLabels = 8
+  const stride = Math.max(1, Math.round((daysCount - 1) / (targetLabels - 1)))
+  const out = new Set<number>([0, daysCount - 1])
+  for (let i = stride; i < daysCount - stride; i += stride) out.add(i)
+  return [...out].sort((a, b) => a - b)
 }
 
 // Fill missing days with zeros so the bars span the entire window
@@ -229,7 +275,6 @@ function niceCeil(raw: number): number {
   return nice * mag
 }
 
-// Generate `count`+1 evenly-spaced tick values from 0 to max inclusive.
 function niceTicks(max: number, count: number): number[] {
   const step = max / count
   const out: number[] = []
@@ -251,9 +296,6 @@ function fmtDate(unixSec: number): string {
 }
 
 function fmtDateShort(unixSec: number): string {
-  // Compact "May 26" form for axis ticks — same as fmtDate today
-  // but kept separate so we can later switch to numeric "5/26" or
-  // weekday-only without affecting the tooltip text.
   return new Date(unixSec * 1000).toLocaleDateString(undefined, {
     month: 'short',
     day: 'numeric'
