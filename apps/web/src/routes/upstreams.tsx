@@ -8,16 +8,23 @@ import {
   PasswordInput,
   Stack,
   Text,
-  Title
+  Title,
+  UnstyledButton
 } from '@mantine/core'
-import type { UserUpstreamSummary } from '@ctxlayer/shared'
+import { mangleToolName, type UpstreamToolSummary, type UserUpstreamSummary } from '@ctxlayer/shared'
 import {
   ApiError,
   ApiSchemaError,
   deleteUpstreamCredentials,
   fetchUpstreams,
+  fetchUserUpstreamTools,
   putUpstreamCredentials
 } from '../lib/api'
+
+type ToolsState =
+  | { kind: 'loading' }
+  | { kind: 'error'; message: string }
+  | { kind: 'ready'; tools: UpstreamToolSummary[] }
 
 export function Upstreams() {
   const [items, setItems] = useState<UserUpstreamSummary[] | null>(null)
@@ -125,6 +132,40 @@ function UpstreamCard({
 }) {
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
+  const [toolsOpen, setToolsOpen] = useState(false)
+  const [toolsState, setToolsState] = useState<ToolsState | undefined>()
+
+  // Drop the cached tool list whenever the upstream's tools count
+  // changes — e.g. after an admin refresh between renders. The next
+  // expand will re-fetch.
+  const knownCount = upstream.toolsCount
+  useEffect(() => {
+    setToolsState(undefined)
+  }, [knownCount])
+
+  // Lazy-load the catalogue on the first expand. We deliberately do
+  // this from the click handler, not a useEffect with `toolsState` in
+  // its deps — the latter triggers a deps-changed cleanup the moment
+  // we setState(loading), which aborts the request before it resolves.
+  async function loadTools() {
+    setToolsState({ kind: 'loading' })
+    try {
+      const res = await fetchUserUpstreamTools(upstream.id)
+      setToolsState({ kind: 'ready', tools: res.tools })
+    } catch (err) {
+      setToolsState({ kind: 'error', message: explain(err) })
+    }
+  }
+
+  function toggleTools() {
+    setToolsOpen((open) => {
+      const next = !open
+      if (next && !toolsState) {
+        void loadTools()
+      }
+      return next
+    })
+  }
 
   const isUserBearer = upstream.authStrategy === 'user_bearer'
   const isOauth = upstream.authStrategy === 'user_oauth'
@@ -173,11 +214,21 @@ function UpstreamCard({
                 <code>{upstream.slug}</code> · {upstream.transport}
               </Text>
             </Group>
-            <Text fz="xs" c="dimmed">
-              {upstream.toolsCount > 0
-                ? `${upstream.toolsCount} tool${upstream.toolsCount === 1 ? '' : 's'} cached`
-                : 'Tool catalogue empty — refresh after connect'}
-            </Text>
+            {upstream.toolsCount > 0 ? (
+              <UnstyledButton
+                onClick={toggleTools}
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                <ExpandChevron open={toolsOpen} />
+                <Text fz="xs" c="dimmed">
+                  {`${upstream.toolsCount} tool${upstream.toolsCount === 1 ? '' : 's'} cached`}
+                </Text>
+              </UnstyledButton>
+            ) : (
+              <Text fz="xs" c="dimmed">
+                Tool catalogue empty — refresh after connect
+              </Text>
+            )}
           </div>
           <Badge
             color={upstream.connected ? 'green' : 'gray'}
@@ -275,8 +326,94 @@ function UpstreamCard({
               : 'Awaiting admin configuration. An admin needs to set the shared token on this upstream before it can be used.'}
           </Text>
         )}
+
+        {toolsOpen && (
+          <div style={{ marginTop: 6 }}>
+            <ToolsExpansion slug={upstream.slug} state={toolsState} />
+          </div>
+        )}
       </Stack>
     </Card>
+  )
+}
+
+function ToolsExpansion({
+  slug,
+  state
+}: {
+  slug: string
+  state: ToolsState | undefined
+}) {
+  if (!state || state.kind === 'loading') {
+    return (
+      <Text c="dimmed" fz="xs">
+        Loading tools…
+      </Text>
+    )
+  }
+  if (state.kind === 'error') {
+    return (
+      <Alert color="red" variant="light" radius="sm">
+        {state.message}
+      </Alert>
+    )
+  }
+  if (state.tools.length === 0) {
+    return (
+      <Text c="dimmed" fz="xs">
+        No tools cached yet. An admin can populate the catalogue via Admin · Upstreams →
+        Refresh tools.
+      </Text>
+    )
+  }
+  return (
+    <table className="data-table" style={{ marginTop: 0 }}>
+      <thead>
+        <tr>
+          <th style={{ width: '34%' }}>Agent-visible name</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {state.tools.map((t) => (
+          <tr key={t.toolName}>
+            <td>
+              <code style={{ fontSize: 11 }}>{mangleToolName(slug, t.toolName)}</code>
+            </td>
+            <td className="text-muted" style={{ fontSize: 12 }}>
+              {t.description ?? <span style={{ opacity: 0.5 }}>—</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function ExpandChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={12}
+      height={12}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+        transition: 'transform 120ms ease',
+        color: 'var(--text-muted)'
+      }}
+      aria-hidden="true"
+    >
+      <path
+        d="M6 3.5 L10.5 8 L6 12.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 

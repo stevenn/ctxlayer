@@ -625,6 +625,17 @@ export function fetchUpstreams(signal?: AbortSignal): Promise<UserUpstreamSummar
   return request('/api/upstreams', (b) => UserUpstreamList.parse(b), { signal })
 }
 
+export function fetchUserUpstreamTools(
+  id: string,
+  signal?: AbortSignal
+): Promise<UpstreamToolsResponseT> {
+  return request(
+    `/api/upstreams/${encodeURIComponent(id)}/tools`,
+    (b) => UpstreamToolsResponse.parse(b),
+    { signal }
+  )
+}
+
 export function putUpstreamCredentials(
   upstreamId: string,
   body: PasteBearerRequestT

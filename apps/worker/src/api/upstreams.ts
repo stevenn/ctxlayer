@@ -18,6 +18,8 @@ import { seal } from '../crypto/aead'
 import {
   deleteUserCredential,
   getUpstreamById,
+  listCachedTools,
+  listUpstreamsVisibleToUser,
   listUserUpstreamSummaries,
   upsertUserCredential
 } from '../db/queries/upstreams'
@@ -30,6 +32,30 @@ upstreamsRoute.get('/', async (c) => {
   const userId = c.get('user').userId
   const summaries = await listUserUpstreamSummaries(c.env, userId)
   return c.json(summaries)
+})
+
+// Read-only view of the cached tool catalogue for one upstream. Used
+// by the expand-row on /upstreams so a user can see which tools a
+// connected upstream exposes. Gated on the same visibility rules that
+// `GET /` uses — anything not visible to the caller returns 404 so we
+// don't leak the existence of upstreams scoped to other teams.
+upstreamsRoute.get('/:id/tools', async (c) => {
+  const userId = c.get('user').userId
+  const id = c.req.param('id')
+  const visible = await listUpstreamsVisibleToUser(c.env, userId)
+  const row = visible.find((r) => r.id === id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  const tools = await listCachedTools(c.env, id)
+  return c.json({
+    upstreamId: id,
+    slug: row.slug,
+    tools: tools.map((t) => ({
+      toolName: t.tool_name,
+      description: t.description,
+      inputSchema: safeParse(t.input_schema),
+      cachedAt: t.cached_at
+    }))
+  })
 })
 
 upstreamsRoute.put('/:id/credentials', requireCsrf, async (c) => {
@@ -74,3 +100,11 @@ upstreamsRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   await deleteUserCredential(c.env, userId, id)
   return new Response(null, { status: 204 })
 })
+
+function safeParse(s: string): unknown {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return s
+  }
+}

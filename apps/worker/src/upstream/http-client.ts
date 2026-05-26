@@ -13,6 +13,7 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
+import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker-provider.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
 
 export const UPSTREAM_CALL_TIMEOUT_MS = 60_000
@@ -63,7 +64,14 @@ export class UpstreamHttpClient {
           : new StreamableHTTPClientTransport(url, { requestInit })
       const client = new Client(
         { name: CLIENT_NAME, version: CLIENT_VERSION },
-        { capabilities: {} }
+        {
+          capabilities: {},
+          // AJV (the SDK default) compiles JSON Schema via `new Function`,
+          // which Workers blocks. cacheToolMetadata() runs after every
+          // listTools(), so Refresh-tools dies before returning unless we
+          // swap in the cfworker-backed validator.
+          jsonSchemaValidator: new CfWorkerJsonSchemaValidator()
+        }
       )
       await client.connect(transport)
       this.client = client
