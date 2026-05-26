@@ -16,8 +16,10 @@ import {
   SetLockedRequest,
   AdminUpstreamRow,
   AdminUserRow,
+  AdminUsageResponse,
   AuditLogResponse,
   OAuthClientsResponse,
+  UsageResponse,
   CreateUpstreamRequest,
   MeResponse,
   UpdateUserRoleRequest,
@@ -41,8 +43,10 @@ import {
 import type {
   AdminUpstreamRow as AdminUpstreamRowT,
   AdminUserRow as AdminUserRowT,
+  AdminUsageResponse as AdminUsageResponseT,
   AuditLogResponse as AuditLogResponseT,
   OAuthClientsResponse as OAuthClientsResponseT,
+  UsageResponse as UsageResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
@@ -503,6 +507,41 @@ export function adminPatchUserRole(
     method: 'PATCH',
     body: JSON.stringify(UpdateUserRoleRequest.parse(body))
   })
+}
+
+// ----- usage --------------------------------------------------------------
+
+export interface FetchUsageOpts {
+  days?: number
+}
+
+export function fetchUsage(
+  opts: FetchUsageOpts = {},
+  signal?: AbortSignal
+): Promise<UsageResponseT> {
+  const params = new URLSearchParams()
+  if (opts.days) params.set('days', String(opts.days))
+  const qs = params.toString()
+  const path = qs ? `/api/usage?${qs}` : '/api/usage'
+  return request(path, (b) => UsageResponse.parse(b), { signal })
+}
+
+export interface FetchAdminUsageOpts extends FetchUsageOpts {
+  userId?: string
+  upstreamId?: string
+}
+
+export function fetchAdminUsage(
+  opts: FetchAdminUsageOpts = {},
+  signal?: AbortSignal
+): Promise<AdminUsageResponseT> {
+  const params = new URLSearchParams()
+  if (opts.days) params.set('days', String(opts.days))
+  if (opts.userId) params.set('userId', opts.userId)
+  if (opts.upstreamId) params.set('upstreamId', opts.upstreamId)
+  const qs = params.toString()
+  const path = qs ? `/api/admin/usage?${qs}` : '/api/admin/usage'
+  return request(path, (b) => AdminUsageResponse.parse(b), { signal })
 }
 
 // ----- admin oauth clients ------------------------------------------------

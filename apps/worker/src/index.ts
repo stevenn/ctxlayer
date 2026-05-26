@@ -18,6 +18,8 @@ import { adminAuditRoute } from './api/admin-audit'
 import { adminOAuthClientsRoute } from './api/admin-oauth-clients'
 import { adminUpstreamsRoute } from './api/admin-upstreams'
 import { adminUsersRoute } from './api/admin-users'
+import { adminUsageRoute } from './api/admin-usage'
+import { usageRoute } from './api/usage'
 import { upstreamsRoute } from './api/upstreams'
 import {
   upstreamOauthCallbackRoute,
@@ -31,6 +33,7 @@ import { McpSessionDO } from './mcp/session-do'
 import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
+import { pruneUsageEvents } from './db/queries/usage'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -61,6 +64,10 @@ app.route('/api/admin/upstreams', adminUpstreamsRoute)
 app.route('/api/admin/users', adminUsersRoute)
 app.route('/api/admin/audit', adminAuditRoute)
 app.route('/api/admin/oauth-clients', adminOAuthClientsRoute)
+app.route('/api/admin/usage', adminUsageRoute)
+
+// User-facing usage dashboard read endpoint.
+app.route('/api/usage', usageRoute)
 
 // User-facing upstream connections (paste-bearer, list visible). Lives
 // at /api/upstreams to mirror the SPA route at /upstreams.
@@ -116,9 +123,21 @@ const worker: ExportedHandler<Env> = {
     console.error(`unknown queue: ${batch.queue}`)
     for (const msg of batch.messages) msg.retry()
   },
-  async scheduled(_controller, _env, _ctx) {
-    // Nightly cron lands here in M6 (prune usage_events, refresh
-    // upstream_tools catalogue). No-op for now.
+  async scheduled(_controller, env, ctx) {
+    // Nightly cron (`0 3 * * *`). Prune raw usage_events older than
+    // 30 days (rollups stay forever). Wrapped in waitUntil so a slow
+    // D1 delete can't time out the trigger.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const removed = await pruneUsageEvents(env, 30)
+          console.log(`[cron] pruned ${removed} usage_events rows older than 30d`)
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          console.error(`[cron] usage_events prune failed: ${m}`)
+        }
+      })()
+    )
   }
 }
 

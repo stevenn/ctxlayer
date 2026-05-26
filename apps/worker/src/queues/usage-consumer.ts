@@ -1,26 +1,35 @@
 import type { Env } from '../env'
+import { UsageEventMsg } from '../usage/event'
+import { writeUsageEvent } from '../db/queries/usage'
 
 /**
- * Batch consumer for ctxlayer-usage. M6 turns this into:
- *   1. tokenize req/resp JSON via js-tiktoken
- *   2. INSERT into usage_events
- *   3. UPSERT into usage_rollups_daily (translating NULL upstream_id to ''
- *      to match the rollup PK)
- * Skeleton: ack each message individually, retry on per-message error so
- * a poison message doesn't stall a whole batch. ctx is reserved for
- * `waitUntil` of post-ack fire-and-forget work.
+ * Batch consumer for ctxlayer-usage. One D1 batch per message
+ * (raw INSERT + rollup UPSERT) — see `db/queries/usage.ts`.
+ *
+ * Ack per message rather than per batch so a single poison row can't
+ * stall the whole queue. The producer-side validation already enforces
+ * the message shape, but parse-with-recovery here defends against
+ * stale messages from older worker versions.
  */
 export async function usageConsumer(
   batch: MessageBatch,
-  _env: Env,
+  env: Env,
   _ctx: ExecutionContext
 ): Promise<void> {
   for (const msg of batch.messages) {
     try {
-      // M6: handle(msg.body, env, ctx)
+      const parsed = UsageEventMsg.safeParse(msg.body)
+      if (!parsed.success) {
+        // Bad shape will never become good — ack and move on.
+        console.error('[usage-consumer] dropping malformed message', parsed.error.issues)
+        msg.ack()
+        continue
+      }
+      await writeUsageEvent(env, parsed.data)
       msg.ack()
     } catch (err) {
-      console.error('usage-consumer error', err)
+      const m = err instanceof Error ? err.message : String(err)
+      console.error(`[usage-consumer] write failed: ${m}`)
       msg.retry()
     }
   }

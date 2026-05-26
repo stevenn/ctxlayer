@@ -37,6 +37,7 @@ import { UpstreamHttpClient } from '../upstream/http-client'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
+import { recordUsage } from '../usage/record'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
@@ -56,7 +57,9 @@ export class UpstreamProxyRegistry {
 
   constructor(
     private readonly env: Env,
-    private readonly userId: string
+    private readonly userId: string,
+    private readonly waitUntil: (p: Promise<unknown>) => void,
+    private readonly sessionId: string
   ) {}
 
   /**
@@ -184,8 +187,14 @@ export class UpstreamProxyRegistry {
       if (!unmangled) return errText(`bad tool name: ${mangled}`)
       const client = this.clients.get(conn.id)
       if (!client) return errText(`upstream ${conn.slug} not connected`)
+      const t0 = Date.now()
+      const reqJson = safeJson(args)
+      let status: 'ok' | 'error' | 'timeout' = 'ok'
+      let respJson = ''
       try {
         const result = await client.callTool(unmangled.toolName, args)
+        respJson = safeJson(result.content ?? null)
+        if (result.isError) status = 'error'
         return {
           isError: !!result.isError,
           content: Array.isArray(result.content)
@@ -194,7 +203,25 @@ export class UpstreamProxyRegistry {
           structuredContent: result.structuredContent as Record<string, unknown> | undefined
         }
       } catch (err) {
-        return errText(`upstream ${conn.slug} error: ${stringifyError(err)}`)
+        status = isTimeoutError(err) ? 'timeout' : 'error'
+        const msg = stringifyError(err)
+        respJson = msg
+        return errText(`upstream ${conn.slug} error: ${msg}`)
+      } finally {
+        recordUsage(
+          this.env,
+          { waitUntil: this.waitUntil },
+          {
+            userId: this.userId,
+            sessionId: this.sessionId,
+            upstreamId: conn.id,
+            tool: mangled,
+            reqJson,
+            respJson,
+            latencyMs: Date.now() - t0,
+            status
+          }
+        )
       }
     }
     // The SDK's `registerTool` overload requires a Zod schema at the
@@ -229,6 +256,21 @@ function truncateDescription(s: string): string {
 function stringifyError(err: unknown): string {
   if (err instanceof Error) return err.message
   return String(err)
+}
+
+function isTimeoutError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  // Both the upstream/http-client 60s wall cap and the MCP SDK's
+  // own RequestTimeoutError surface as messages mentioning timeout.
+  return /timeout|timed out|deadline/i.test(msg)
+}
+
+function safeJson(v: unknown): string {
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v ?? null)
+  } catch {
+    return ''
+  }
 }
 
 function errText(msg: string) {

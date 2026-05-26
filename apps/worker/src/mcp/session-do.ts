@@ -23,6 +23,7 @@ import { renderBlocksToMarkdown } from '../rag/markdown'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
 import { UpstreamProxyRegistry } from './tools-proxy'
+import { recordUsage } from '../usage/record'
 
 const SEARCH_K_DEFAULT = 8
 const SEARCH_K_MAX = 50
@@ -40,15 +41,57 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
   private upstreamProxy: UpstreamProxyRegistry | null = null
 
   async init(): Promise<void> {
+    // Usage-recording wrapper for built-in tools (upstreamId = null).
+    // Returns the inner result untouched; records bytes/tokens/latency
+    // + 'ok' / 'error' status (from `isError` flag) on every call.
+    // Errors thrown by `exec` propagate after recording.
+    const rec = <T extends { content?: unknown; isError?: boolean }>(
+      tool: string,
+      args: unknown,
+      exec: () => Promise<T>
+    ): Promise<T> => {
+      const t0 = Date.now()
+      const reqJson = safeJson(args)
+      const userId = this.props?.userId ?? ''
+      const sessionId = this.getSessionId()
+      const finalize = (respJson: string, status: 'ok' | 'error') => {
+        recordUsage(
+          this.env,
+          { waitUntil: (p) => this.ctx.waitUntil(p) },
+          {
+            userId,
+            sessionId,
+            upstreamId: null,
+            tool,
+            reqJson,
+            respJson,
+            latencyMs: Date.now() - t0,
+            status
+          }
+        )
+      }
+      return exec().then(
+        (result) => {
+          finalize(safeJson(result.content), result.isError ? 'error' : 'ok')
+          return result
+        },
+        (err) => {
+          finalize(stringifyError(err), 'error')
+          throw err
+        }
+      )
+    }
+
     this.server.registerTool(
       'whoami',
       {
         title: 'Who am I?',
         description: 'Returns the user props attached to this MCP session by ctxlayer.'
       },
-      async () => ({
-        content: [{ type: 'text', text: JSON.stringify(this.props ?? null, null, 2) }]
-      })
+      () =>
+        rec('whoami', undefined, async () => ({
+          content: [{ type: 'text', text: JSON.stringify(this.props ?? null, null, 2) }]
+        }))
     )
 
     this.server.registerTool(
@@ -58,31 +101,32 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         description:
           'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the default search scope that `search_docs` will use when no scope is supplied.'
       },
-      async () => {
-        const userId = this.props?.userId
-        if (!userId) return errText('not_signed_in')
-        const [scope, accessibleUpstreams] = await Promise.all([
-          resolveUserScope(this.env, userId),
-          UpstreamProxyRegistry.accessibleSlugs(this.env, userId)
-        ])
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(
-                {
-                  teams: scope.teams,
-                  products: scope.products,
-                  accessibleUpstreams,
-                  defaultScope: scope
-                },
-                null,
-                2
-              )
-            }
-          ]
-        }
-      }
+      () =>
+        rec('list_my_context', undefined, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const [scope, accessibleUpstreams] = await Promise.all([
+            resolveUserScope(this.env, userId),
+            UpstreamProxyRegistry.accessibleSlugs(this.env, userId)
+          ])
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    teams: scope.teams,
+                    products: scope.products,
+                    accessibleUpstreams,
+                    defaultScope: scope
+                  },
+                  null,
+                  2
+                )
+              }
+            ]
+          }
+        })
     )
 
     this.server.registerTool(
@@ -92,14 +136,15 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         description:
           'Lists the upstream MCP servers visible to the caller, with connected state, transport, and cached tool count. Disconnected upstreams point the user at /upstreams to paste a token.'
       },
-      async () => {
-        const userId = this.props?.userId
-        if (!userId) return errText('not_signed_in')
-        const entries = await UpstreamProxyRegistry.listUpstreamsForUser(this.env, userId)
-        return {
-          content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }]
-        }
-      }
+      () =>
+        rec('list_upstreams', undefined, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const entries = await UpstreamProxyRegistry.listUpstreamsForUser(this.env, userId)
+          return {
+            content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }]
+          }
+        })
     )
 
     this.server.registerTool(
@@ -109,20 +154,22 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         description: 'Returns the markdown for a doc by id.',
         inputSchema: { id: z.string().min(1) }
       },
-      async ({ id }) => {
-        const doc = await getDocById(this.env, id)
-        if (!doc) return errText(`doc not found: ${id}`)
-        const content = await readSnapshot(this.env, id)
-        const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
-        return {
-          content: [
-            {
-              type: 'text',
-              text: `# ${doc.title}\n\n${markdown || '_empty document_'}`
-            }
-          ]
-        }
-      }
+      (args) =>
+        rec('get_doc', args, async () => {
+          const { id } = args
+          const doc = await getDocById(this.env, id)
+          if (!doc) return errText(`doc not found: ${id}`)
+          const content = await readSnapshot(this.env, id)
+          const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
+          return {
+            content: [
+              {
+                type: 'text',
+                text: `# ${doc.title}\n\n${markdown || '_empty document_'}`
+              }
+            ]
+          }
+        })
     )
 
     this.server.registerTool(
@@ -145,44 +192,46 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             .optional()
         }
       },
-      async ({ query, k, scope }) => {
-        const userId = this.props?.userId
-        if (!userId) return errText('not_signed_in')
-        const limit = k ?? SEARCH_K_DEFAULT
+      (args) =>
+        rec('search_docs', args, async () => {
+          const { query, k, scope } = args
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const limit = k ?? SEARCH_K_DEFAULT
 
-        // Embed the query (one-element batch).
-        const { vectors } = await embed(this.env, [query])
-        const qvec = vectors[0]
-        if (!qvec) return errText('embedding_failed')
+          // Embed the query (one-element batch).
+          const { vectors } = await embed(this.env, [query])
+          const qvec = vectors[0]
+          if (!qvec) return errText('embedding_failed')
 
-        // Resolve the caller's effective scope.
-        const userScope = await resolveUserScope(this.env, userId)
-        const effective = effectiveScope(scope, userScope)
+          // Resolve the caller's effective scope.
+          const userScope = await resolveUserScope(this.env, userId)
+          const effective = effectiveScope(scope, userScope)
 
-        // Overshoot topK to give post-filter room, capped at Vectorize's max.
-        const topK = Math.min(limit * SEARCH_OVERSHOOT, VECTORIZE_TOPK_MAX)
-        const result = await this.env.DOCS_INDEX.query(qvec, {
-          topK,
-          returnMetadata: 'all'
+          // Overshoot topK to give post-filter room, capped at Vectorize's max.
+          const topK = Math.min(limit * SEARCH_OVERSHOOT, VECTORIZE_TOPK_MAX)
+          const result = await this.env.DOCS_INDEX.query(qvec, {
+            topK,
+            returnMetadata: 'all'
+          })
+
+          const matches = (result.matches ?? [])
+            .map((m) => ({ ...m, metadata: m.metadata as unknown as ChunkMetadata }))
+            .filter((m) => passesScope(m.metadata, effective))
+            .slice(0, limit)
+            .map((m) => ({
+              docId: m.metadata.docId,
+              chunkIdx: m.metadata.chunkIdx,
+              title: m.metadata.title,
+              headings: m.metadata.headings,
+              score: m.score,
+              snippet: truncate(m.metadata.text, 600)
+            }))
+
+          return {
+            content: [{ type: 'text', text: JSON.stringify({ matches }, null, 2) }]
+          }
         })
-
-        const matches = (result.matches ?? [])
-          .map((m) => ({ ...m, metadata: m.metadata as unknown as ChunkMetadata }))
-          .filter((m) => passesScope(m.metadata, effective))
-          .slice(0, limit)
-          .map((m) => ({
-            docId: m.metadata.docId,
-            chunkIdx: m.metadata.chunkIdx,
-            title: m.metadata.title,
-            headings: m.metadata.headings,
-            score: m.score,
-            snippet: truncate(m.metadata.text, 600)
-          }))
-
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ matches }, null, 2) }]
-        }
-      }
     )
 
     // ----- doc resources: mcp://ctxlayer/docs/{id} -----
@@ -211,7 +260,12 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     const userId = this.props?.userId
     if (userId) {
       try {
-        this.upstreamProxy = new UpstreamProxyRegistry(this.env, userId)
+        this.upstreamProxy = new UpstreamProxyRegistry(
+          this.env,
+          userId,
+          (p) => this.ctx.waitUntil(p),
+          this.getSessionId()
+        )
         await this.upstreamProxy.init(this.server)
       } catch (err) {
         console.error('upstream proxy init failed:', err)
@@ -292,5 +346,18 @@ function truncate(s: string, n: number): string {
 
 function errText(msg: string) {
   return { isError: true, content: [{ type: 'text' as const, text: msg }] }
+}
+
+function safeJson(v: unknown): string {
+  try {
+    return typeof v === 'string' ? v : JSON.stringify(v ?? null)
+  } catch {
+    return ''
+  }
+}
+
+function stringifyError(err: unknown): string {
+  if (err instanceof Error) return err.message
+  return String(err)
 }
 
