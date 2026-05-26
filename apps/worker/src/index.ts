@@ -14,6 +14,7 @@ import { usersRoute } from './api/users'
 import { teamsRoute, productsRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
 import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
+import { adminAuditRoute } from './api/admin-audit'
 import { adminUpstreamsRoute } from './api/admin-upstreams'
 import { adminUsersRoute } from './api/admin-users'
 import { upstreamsRoute } from './api/upstreams'
@@ -56,6 +57,7 @@ app.route('/api/admin/products', adminProductsRoute)
 app.route('/api/admin/team-products', adminTeamProductsRoute)
 app.route('/api/admin/upstreams', adminUpstreamsRoute)
 app.route('/api/admin/users', adminUsersRoute)
+app.route('/api/admin/audit', adminAuditRoute)
 
 // User-facing upstream connections (paste-bearer, list visible). Lives
 // at /api/upstreams to mirror the SPA route at /upstreams.

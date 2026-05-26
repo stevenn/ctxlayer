@@ -16,6 +16,7 @@ import {
   SetLockedRequest,
   AdminUpstreamRow,
   AdminUserRow,
+  AuditLogResponse,
   CreateUpstreamRequest,
   MeResponse,
   UpdateUserRoleRequest,
@@ -39,6 +40,7 @@ import {
 import type {
   AdminUpstreamRow as AdminUpstreamRowT,
   AdminUserRow as AdminUserRowT,
+  AuditLogResponse as AuditLogResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
@@ -499,6 +501,29 @@ export function adminPatchUserRole(
     method: 'PATCH',
     body: JSON.stringify(UpdateUserRoleRequest.parse(body))
   })
+}
+
+// ----- admin audit --------------------------------------------------------
+
+export interface FetchAdminAuditOpts {
+  before?: number
+  action?: string
+  actorId?: string
+  limit?: number
+}
+
+export function fetchAdminAudit(
+  opts: FetchAdminAuditOpts = {},
+  signal?: AbortSignal
+): Promise<AuditLogResponseT> {
+  const params = new URLSearchParams()
+  if (opts.before !== undefined) params.set('before', String(opts.before))
+  if (opts.action) params.set('action', opts.action)
+  if (opts.actorId) params.set('actorId', opts.actorId)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  const qs = params.toString()
+  const path = qs ? `/api/admin/audit?${qs}` : '/api/admin/audit'
+  return request(path, (b) => AuditLogResponse.parse(b), { signal })
 }
 
 export function adminRevokeUserCredentials(

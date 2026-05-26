@@ -14,4 +14,3 @@ function ComingSoon({ title, in: where }: { title: string; in: string }) {
 }
 
 export const AdminUsage = () => <ComingSoon title="Admin · Usage" in="M6" />
-export const AdminAudit = () => <ComingSoon title="Admin · Audit log" in="M5" />
