@@ -13,11 +13,11 @@ import {
   Title
 } from '@mantine/core'
 import type {
+  AdminTeamRow,
   ProductRef,
   TeamMemberRole,
   TeamMemberRow,
   TeamProductsAssignment,
-  TeamRef,
   UserSearchResult
 } from '@ctxlayer/shared'
 import {
@@ -27,24 +27,24 @@ import {
   adminCreateTeam,
   adminDeleteTeam,
   adminPatchTeam,
+  fetchAdminTeams,
   fetchProducts,
   fetchTeamMembers,
   fetchTeamProducts,
-  fetchTeams,
   putTeamProducts,
   removeTeamMember,
   searchUsers
 } from '../../lib/api'
 
 export function AdminTeams() {
-  const [teams, setTeams] = useState<TeamRef[] | null>(null)
+  const [teams, setTeams] = useState<AdminTeamRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
-  const [editingTeam, setEditingTeam] = useState<TeamRef | null>(null)
+  const [editingTeam, setEditingTeam] = useState<AdminTeamRow | null>(null)
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
-      const t = await fetchTeams(signal)
+      const t = await fetchAdminTeams(signal)
       if (!signal?.aborted) setTeams(t)
     } catch (err) {
       if (!signal?.aborted) setError(explain(err))
@@ -86,6 +86,8 @@ export function AdminTeams() {
               <th>Display name</th>
               <th>Slug</th>
               <th>Description</th>
+              <th>IdP group</th>
+              <th>Managed by IdP</th>
             </tr>
           </thead>
           <tbody>
@@ -94,6 +96,10 @@ export function AdminTeams() {
                 <td style={{ fontWeight: 500 }}>{t.displayName}</td>
                 <td className="text-muted"><code>{t.slug}</code></td>
                 <td className="text-muted">{t.description ?? '—'}</td>
+                <td className="text-muted">
+                  {t.idpGroup ? <code style={{ fontSize: 11 }}>{t.idpGroup}</code> : '—'}
+                </td>
+                <td className="text-muted">{t.managedByIdp ? 'Yes' : 'No'}</td>
               </tr>
             ))}
           </tbody>
@@ -138,6 +144,8 @@ function CreateTeamModal({
   const [slug, setSlug] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [description, setDescription] = useState('')
+  const [idpGroup, setIdpGroup] = useState('')
+  const [managedByIdp, setManagedByIdp] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -146,6 +154,8 @@ function CreateTeamModal({
       setSlug('')
       setDisplayName('')
       setDescription('')
+      setIdpGroup('')
+      setManagedByIdp(false)
       setError(null)
     }
   }, [opened])
@@ -158,7 +168,9 @@ function CreateTeamModal({
       await adminCreateTeam({
         slug: slug.trim(),
         displayName: displayName.trim(),
-        description: description.trim() || null
+        description: description.trim() || null,
+        idpGroup: idpGroup.trim() || null,
+        managedByIdp
       })
       onCreated()
     } catch (err) {
@@ -190,6 +202,19 @@ function CreateTeamModal({
           value={description}
           onChange={(e) => setDescription(e.currentTarget.value)}
         />
+        <TextInput
+          label="IdP group"
+          placeholder="google:eng@example.com or github:acme/platform"
+          value={idpGroup}
+          onChange={(e) => setIdpGroup(e.currentTarget.value)}
+          description="Optional. Reserved for future SSO/group-sync — no automatic membership today."
+        />
+        <Checkbox
+          label="Managed by IdP"
+          description="Flag intent — sync logic not implemented yet."
+          checked={managedByIdp}
+          onChange={(e) => setManagedByIdp(e.currentTarget.checked)}
+        />
         {error && (
           <Alert color="red" variant="light" radius="sm">
             {error}
@@ -220,7 +245,7 @@ function TeamDrawer({
   onChanged,
   onDeleted
 }: {
-  team: TeamRef
+  team: AdminTeamRow
   onClose: () => void
   onChanged: () => void
   onDeleted: () => void
@@ -228,6 +253,8 @@ function TeamDrawer({
   const [slug, setSlug] = useState(team.slug)
   const [displayName, setDisplayName] = useState(team.displayName)
   const [description, setDescription] = useState(team.description ?? '')
+  const [idpGroup, setIdpGroup] = useState(team.idpGroup ?? '')
+  const [managedByIdp, setManagedByIdp] = useState(team.managedByIdp)
   const [members, setMembers] = useState<TeamMemberRow[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [allTeamProducts, setAllTeamProducts] = useState<TeamProductsAssignment[] | null>(null)
@@ -299,7 +326,9 @@ function TeamDrawer({
       await adminPatchTeam(team.id, {
         slug: slug.trim(),
         displayName: displayName.trim(),
-        description: description.trim() || null
+        description: description.trim() || null,
+        idpGroup: idpGroup.trim() || null,
+        managedByIdp
       })
       onChanged()
     }, 'Save')
@@ -381,6 +410,19 @@ function TeamDrawer({
             label="Description"
             value={description}
             onChange={(e) => setDescription(e.currentTarget.value)}
+          />
+          <TextInput
+            label="IdP group"
+            placeholder="google:eng@example.com or github:acme/platform"
+            value={idpGroup}
+            onChange={(e) => setIdpGroup(e.currentTarget.value)}
+            description="Optional. Reserved for future SSO/group-sync — no automatic membership today."
+          />
+          <Checkbox
+            label="Managed by IdP"
+            description="Flag intent — sync logic not implemented yet."
+            checked={managedByIdp}
+            onChange={(e) => setManagedByIdp(e.currentTarget.checked)}
           />
           <Group justify="flex-end" gap="xs">
             <Button variant="default" color="red" onClick={onDelete} disabled={busy}>

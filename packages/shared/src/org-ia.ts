@@ -86,7 +86,11 @@ export const CreateTeamRequest = z.object({
   slug: OrgSlug,
   displayName: z.string().min(1).max(200),
   description: z.string().max(2000).nullish(),
-  idpGroup: z.string().max(200).nullish()
+  idpGroup: z.string().max(200).nullish(),
+  // `true` reserves the team for IdP-sync ownership; sync logic itself
+  // isn't shipped yet. Until then admins can still toggle this to mark
+  // intent. See docs/plan/F-org-ia.md.
+  managedByIdp: z.boolean().optional()
 })
 export type CreateTeamRequest = z.infer<typeof CreateTeamRequest>
 
@@ -94,9 +98,21 @@ export const UpdateTeamRequest = z.object({
   slug: OrgSlug.optional(),
   displayName: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullish(),
-  idpGroup: z.string().max(200).nullish()
+  idpGroup: z.string().max(200).nullish(),
+  managedByIdp: z.boolean().optional()
 })
 export type UpdateTeamRequest = z.infer<typeof UpdateTeamRequest>
+
+// Admin-only enriched team row: `TeamRef` fields + IdP/group-sync prep.
+// The user-facing `/api/teams` keeps returning `TeamRef[]` so IdP
+// internals stay admin-scoped.
+export const AdminTeamRow = TeamRef.extend({
+  idpGroup: z.string().nullable(),
+  managedByIdp: z.boolean(),
+  createdAt: z.number(),
+  updatedAt: z.number()
+})
+export type AdminTeamRow = z.infer<typeof AdminTeamRow>
 
 export const CreateProductRequest = z.object({
   slug: OrgSlug,

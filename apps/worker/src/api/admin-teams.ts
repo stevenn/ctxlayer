@@ -19,25 +19,28 @@ import {
   createTeam,
   deleteTeam,
   getTeamById,
+  listAdminTeams,
   listTeamMembers,
-  listTeams,
   patchTeam,
   removeTeamMember,
-  toTeamRef
+  toAdminTeamRow
 } from '../db/queries/teams'
 
 export const adminTeamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminTeamsRoute.use('*', requireAdmin)
 adminTeamsRoute.use('*', requireCsrf)
 
-adminTeamsRoute.get('/', async (c) => c.json(await listTeams(c.env)))
+// Returns the admin-enriched shape — includes idp_group and managed_by_idp.
+// The signed-in user endpoint at /api/teams still returns the slimmer
+// TeamRef[] so IdP internals stay admin-scoped.
+adminTeamsRoute.get('/', async (c) => c.json(await listAdminTeams(c.env)))
 
 adminTeamsRoute.post('/', async (c) => {
   const parsed = CreateTeamRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     const row = await createTeam(c.env, parsed.data)
-    return c.json(toTeamRef(row), 201)
+    return c.json(toAdminTeamRow(row), 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
     throw err

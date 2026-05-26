@@ -30,6 +30,7 @@ import {
   UpdateUpstreamRequest,
   RevisionSummary,
   RestoreRequest,
+  AdminTeamRow,
   TeamMemberRow,
   TeamProductsAssignment,
   TeamProductsPayload,
@@ -72,6 +73,7 @@ import type {
   ProductRef as ProductRefT,
   RevisionSummary as RevisionSummaryT,
   RestoreRequest as RestoreRequestT,
+  AdminTeamRow as AdminTeamRowT,
   TeamMemberRow as TeamMemberRowT,
   TeamProductsAssignment as TeamProductsAssignmentT,
   TeamRef as TeamRefT,
@@ -333,8 +335,14 @@ export function fetchProducts(signal?: AbortSignal): Promise<ProductRefT[]> {
 
 // ----- admin teams --------------------------------------------------------
 
-export function adminCreateTeam(input: CreateTeamRequestT): Promise<TeamRefT> {
-  return request('/api/admin/teams', (b) => TeamRef.parse(b), {
+const AdminTeamList = z.array(AdminTeamRow)
+
+export function fetchAdminTeams(signal?: AbortSignal): Promise<AdminTeamRowT[]> {
+  return request('/api/admin/teams', (b) => AdminTeamList.parse(b), { signal })
+}
+
+export function adminCreateTeam(input: CreateTeamRequestT): Promise<AdminTeamRowT> {
+  return request('/api/admin/teams', (b) => AdminTeamRow.parse(b), {
     method: 'POST',
     body: JSON.stringify(CreateTeamRequest.parse(input))
   })

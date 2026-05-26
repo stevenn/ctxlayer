@@ -5,7 +5,7 @@
  */
 
 import type { Env } from '../../env'
-import type { TeamRef, TeamMemberRow as TeamMemberShape } from '@ctxlayer/shared'
+import type { AdminTeamRow, TeamRef, TeamMemberRow as TeamMemberShape } from '@ctxlayer/shared'
 
 interface TeamRow {
   id: string
@@ -13,9 +13,13 @@ interface TeamRow {
   display_name: string
   description: string | null
   idp_group: string | null
+  managed_by_idp: number
   created_at: number
   updated_at: number
 }
+
+const SELECT_TEAM = `SELECT id, slug, display_name, description, idp_group,
+  managed_by_idp, created_at, updated_at FROM teams`
 
 export function toTeamRef(row: TeamRow): TeamRef {
   return {
@@ -26,21 +30,28 @@ export function toTeamRef(row: TeamRow): TeamRef {
   }
 }
 
+export function toAdminTeamRow(row: TeamRow): AdminTeamRow {
+  return {
+    ...toTeamRef(row),
+    idpGroup: row.idp_group,
+    managedByIdp: row.managed_by_idp === 1,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
 export async function listTeams(env: Env): Promise<TeamRef[]> {
-  const res = await env.DB.prepare(
-    `SELECT id, slug, display_name, description, idp_group, created_at, updated_at
-     FROM teams ORDER BY display_name`
-  ).all<TeamRow>()
+  const res = await env.DB.prepare(`${SELECT_TEAM} ORDER BY display_name`).all<TeamRow>()
   return (res.results ?? []).map(toTeamRef)
 }
 
+export async function listAdminTeams(env: Env): Promise<AdminTeamRow[]> {
+  const res = await env.DB.prepare(`${SELECT_TEAM} ORDER BY display_name`).all<TeamRow>()
+  return (res.results ?? []).map(toAdminTeamRow)
+}
+
 export async function getTeamById(env: Env, id: string): Promise<TeamRow | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, slug, display_name, description, idp_group, created_at, updated_at
-     FROM teams WHERE id = ?1`
-  )
-    .bind(id)
-    .first<TeamRow>()
+  const row = await env.DB.prepare(`${SELECT_TEAM} WHERE id = ?1`).bind(id).first<TeamRow>()
   return row ?? null
 }
 
@@ -49,16 +60,26 @@ export interface CreateTeamInput {
   displayName: string
   description?: string | null
   idpGroup?: string | null
+  managedByIdp?: boolean
 }
 
 export async function createTeam(env: Env, input: CreateTeamInput): Promise<TeamRow> {
   const id = newId()
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
-    `INSERT INTO teams (id, slug, display_name, description, idp_group, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`
+    `INSERT INTO teams (id, slug, display_name, description, idp_group, managed_by_idp,
+       created_at, updated_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
   )
-    .bind(id, input.slug, input.displayName, input.description ?? null, input.idpGroup ?? null, now)
+    .bind(
+      id,
+      input.slug,
+      input.displayName,
+      input.description ?? null,
+      input.idpGroup ?? null,
+      input.managedByIdp ? 1 : 0,
+      now
+    )
     .run()
   const row = await getTeamById(env, id)
   if (!row) throw new Error('team_insert_lost')
@@ -70,6 +91,7 @@ export interface PatchTeamInput {
   displayName?: string
   description?: string | null
   idpGroup?: string | null
+  managedByIdp?: boolean
 }
 
 export async function patchTeam(env: Env, id: string, patch: PatchTeamInput): Promise<void> {
@@ -90,6 +112,10 @@ export async function patchTeam(env: Env, id: string, patch: PatchTeamInput): Pr
   if (patch.idpGroup !== undefined) {
     fields.push(`idp_group = ?${fields.length + 1}`)
     binds.push(patch.idpGroup)
+  }
+  if (patch.managedByIdp !== undefined) {
+    fields.push(`managed_by_idp = ?${fields.length + 1}`)
+    binds.push(patch.managedByIdp ? 1 : 0)
   }
   if (fields.length === 0) return
   fields.push(`updated_at = ?${fields.length + 1}`)
