@@ -24,6 +24,7 @@ import {
   deleteSharedCredential,
   deleteUpstream,
   getUpstreamById,
+  listCachedTools,
   listUpstreams,
   patchUpstream,
   replaceVisibility,
@@ -145,6 +146,30 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
  * thereafter. The per-user MCP session refresh path is still available
  * as a fallback for non-admin users on session init.
  */
+/**
+ * Read the cached tool list for an upstream. Backs the expand-row
+ * drill-down on /app/admin/upstreams. Read-only; doesn't trigger a
+ * refresh. If the cache is empty (newly created, never warmed) the
+ * `tools` array is empty and the admin can click the existing
+ * "Refresh tools" button to populate it.
+ */
+adminUpstreamsRoute.get('/:id/tools', async (c) => {
+  const id = c.req.param('id')
+  const row = await getUpstreamById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  const tools = await listCachedTools(c.env, id)
+  return c.json({
+    upstreamId: id,
+    slug: row.slug,
+    tools: tools.map((t) => ({
+      toolName: t.tool_name,
+      description: t.description,
+      inputSchema: safeParse(t.input_schema),
+      cachedAt: t.cached_at
+    }))
+  })
+})
+
 adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
@@ -255,4 +280,12 @@ adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
 function isUniqueViolation(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
   return /UNIQUE constraint failed/i.test(msg)
+}
+
+function safeParse(s: string): unknown {
+  try {
+    return JSON.parse(s)
+  } catch {
+    return s
+  }
 }

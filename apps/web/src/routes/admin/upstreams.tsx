@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -21,8 +21,10 @@ import type {
   ProductRef,
   SupportedTransport,
   TeamRef,
+  UpstreamToolSummary,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
+import { mangleToolName } from '@ctxlayer/shared'
 import {
   ApiError,
   ApiSchemaError,
@@ -36,6 +38,7 @@ import {
   deleteUpstreamCredentials,
   fetchAdminUpstream,
   fetchAdminUpstreams,
+  fetchAdminUpstreamTools,
   fetchProducts,
   fetchTeams,
   putUpstreamCredentials
@@ -80,11 +83,20 @@ const AUTH_OPTIONS: {
   }
 ]
 
+type ToolsState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; tools: UpstreamToolSummary[] }
+  | { kind: 'error'; message: string }
+
 export function AdminUpstreams() {
   const [items, setItems] = useState<AdminUpstreamRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
+  // Expanded upstream ids → lazy-fetched tool cache. Toggled by the
+  // per-row chevron; the row's main click still opens the drawer.
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
+  const [toolsByUpstream, setToolsByUpstream] = useState<Map<string, ToolsState>>(new Map())
   const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(
     null
   )
@@ -97,6 +109,45 @@ export function AdminUpstreams() {
       if (!signal?.aborted) setError(explain(err))
     }
   }, [])
+
+  // Toggle expand for a row. First time a row is expanded, lazy-fetch
+  // its tool cache; subsequent toggles reuse the cached state.
+  const toggleExpanded = useCallback(
+    (id: string) => {
+      setExpandedIds((prev) => {
+        const next = new Set(prev)
+        if (next.has(id)) {
+          next.delete(id)
+          return next
+        }
+        next.add(id)
+        // Fire-and-forget fetch on first expand. Skip if we already
+        // have a ready/error state cached.
+        setToolsByUpstream((cur) => {
+          if (cur.has(id) && cur.get(id)!.kind !== 'loading') return cur
+          const m = new Map(cur)
+          m.set(id, { kind: 'loading' })
+          return m
+        })
+        void fetchAdminUpstreamTools(id).then(
+          (resp) =>
+            setToolsByUpstream((cur) => {
+              const m = new Map(cur)
+              m.set(id, { kind: 'ready', tools: resp.tools })
+              return m
+            }),
+          (err) =>
+            setToolsByUpstream((cur) => {
+              const m = new Map(cur)
+              m.set(id, { kind: 'error', message: explain(err) })
+              return m
+            })
+        )
+        return next
+      })
+    },
+    []
+  )
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -167,6 +218,7 @@ export function AdminUpstreams() {
         <table className="data-table">
           <thead>
             <tr>
+              <th style={{ width: 32 }} aria-label="Expand" />
               <th>Display name</th>
               <th>Slug</th>
               <th>Transport</th>
@@ -176,20 +228,44 @@ export function AdminUpstreams() {
             </tr>
           </thead>
           <tbody>
-            {items.map((u) => (
-              <tr key={u.id} onClick={() => setEditingId(u.id)}>
-                <td style={{ fontWeight: 500 }}>{u.displayName}</td>
-                <td className="text-muted"><code>{u.slug}</code></td>
-                <td className="text-muted">{u.transport}</td>
-                <td className="text-muted">{u.authStrategy}</td>
-                <td className="text-muted">{u.toolsCount}</td>
-                <td>
-                  <Badge color={u.enabled ? 'green' : 'gray'} variant="light">
-                    {u.enabled ? 'enabled' : 'disabled'}
-                  </Badge>
-                </td>
-              </tr>
-            ))}
+            {items.map((u) => {
+              const open = expandedIds.has(u.id)
+              const tools = toolsByUpstream.get(u.id)
+              return (
+                <Fragment key={u.id}>
+                  <tr onClick={() => setEditingId(u.id)}>
+                    <td
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        toggleExpanded(u.id)
+                      }}
+                      style={{ textAlign: 'center', cursor: 'pointer', userSelect: 'none' }}
+                      aria-label={open ? 'Collapse tools' : 'Expand tools'}
+                    >
+                      <ExpandChevron open={open} />
+                    </td>
+                    <td style={{ fontWeight: 500 }}>{u.displayName}</td>
+                    <td className="text-muted"><code>{u.slug}</code></td>
+                    <td className="text-muted">{u.transport}</td>
+                    <td className="text-muted">{u.authStrategy}</td>
+                    <td className="text-muted">{u.toolsCount}</td>
+                    <td>
+                      <Badge color={u.enabled ? 'green' : 'gray'} variant="light">
+                        {u.enabled ? 'enabled' : 'disabled'}
+                      </Badge>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr style={{ background: 'var(--bg-surface)' }}>
+                      <td />
+                      <td colSpan={6} style={{ padding: '8px 12px' }}>
+                        <ToolsExpansion slug={u.slug} state={tools} />
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              )
+            })}
           </tbody>
         </table>
       )}
@@ -1043,4 +1119,108 @@ function apiErrorBodyMessage(err: ApiError): string | null {
   if (typeof body.message === 'string' && body.message) return body.message
   if (typeof body.error === 'string' && body.error) return body.error
   return null
+}
+
+// ----- Expand chevron ------------------------------------------------------
+
+/**
+ * Small inline-SVG chevron. Points right when collapsed, rotates 90°
+ * to point down when expanded. SVG keeps the icon crisp at any zoom
+ * level and avoids the font-rendering oddities you get with `▸` /
+ * `>`-style character chevrons.
+ */
+function ExpandChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={14}
+      height={14}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+        transition: 'transform 120ms ease',
+        color: 'var(--text-muted)'
+      }}
+      aria-hidden="true"
+    >
+      <path
+        d="M6 3.5 L10.5 8 L6 12.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={1.75}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  )
+}
+
+// ----- Tools expand-row body ----------------------------------------------
+
+/**
+ * Body of the expanded tools row. Three states:
+ *  - loading: first fetch in flight
+ *  - error:   fetch failed — show inline alert
+ *  - ready:   render a compact nested table of cached tools
+ *
+ * The agent-visible name is computed client-side via `mangleToolName`
+ * — same rule the worker uses to register the tool with the MCP
+ * server, so the value here matches exactly what the model sees.
+ */
+function ToolsExpansion({
+  slug,
+  state
+}: {
+  slug: string
+  state: ToolsState | undefined
+}) {
+  if (!state || state.kind === 'loading') {
+    return (
+      <Text c="dimmed" fz="xs">
+        Loading tools…
+      </Text>
+    )
+  }
+  if (state.kind === 'error') {
+    return (
+      <Alert color="red" variant="light" radius="sm">
+        {state.message}
+      </Alert>
+    )
+  }
+  if (state.tools.length === 0) {
+    return (
+      <Text c="dimmed" fz="xs">
+        No tools cached yet. Open the upstream drawer and click <strong>Refresh tools</strong>{' '}
+        to populate.
+      </Text>
+    )
+  }
+  return (
+    <table className="data-table" style={{ marginTop: 0 }}>
+      <thead>
+        <tr>
+          <th style={{ width: '22%' }}>Agent-visible name</th>
+          <th style={{ width: '18%' }}>Upstream tool</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        {state.tools.map((t) => (
+          <tr key={t.toolName}>
+            <td>
+              <code style={{ fontSize: 11 }}>{mangleToolName(slug, t.toolName)}</code>
+            </td>
+            <td className="text-muted">
+              <code style={{ fontSize: 11 }}>{t.toolName}</code>
+            </td>
+            <td className="text-muted" style={{ fontSize: 12 }}>
+              {t.description ?? <span style={{ opacity: 0.5 }}>—</span>}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }

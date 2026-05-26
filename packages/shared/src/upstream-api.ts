@@ -126,3 +126,24 @@ export const RefreshToolsResponse = z.object({
 })
 export type RefreshToolsResponse = z.infer<typeof RefreshToolsResponse>
 
+// One cached tool as exposed to the admin tool-browser. Surfaces the
+// upstream-side name (the real one called over the wire), the
+// description shown to agents, and the parsed input schema. The
+// mangled namespaced name agents actually see is derived client-side
+// via the same `mangleToolName` rule the worker uses, so we don't
+// duplicate that logic in the response.
+export const UpstreamToolSummary = z.object({
+  toolName: z.string(),
+  description: z.string().nullable(),
+  inputSchema: z.unknown(),
+  cachedAt: z.number().int()
+})
+export type UpstreamToolSummary = z.infer<typeof UpstreamToolSummary>
+
+export const UpstreamToolsResponse = z.object({
+  upstreamId: z.string(),
+  slug: UpstreamSlug,
+  tools: z.array(UpstreamToolSummary)
+})
+export type UpstreamToolsResponse = z.infer<typeof UpstreamToolsResponse>
+

@@ -27,6 +27,7 @@ import {
   ProductRef,
   RefreshToolsResponse,
   ReplaceVisibilityRequest,
+  UpstreamToolsResponse,
   UpdateUpstreamRequest,
   RevisionSummary,
   RestoreRequest,
@@ -50,6 +51,7 @@ import type {
   UsageResponse as UsageResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
+  UpstreamToolsResponse as UpstreamToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
   UpdateUpstreamRequest as UpdateUpstreamRequestT,
   UpdateUserRoleRequest as UpdateUserRoleRequestT,
@@ -473,6 +475,17 @@ export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsRespo
     `/api/admin/upstreams/${encodeURIComponent(id)}/refresh-tools`,
     (b) => RefreshToolsResponse.parse(b),
     { method: 'POST' }
+  )
+}
+
+export function fetchAdminUpstreamTools(
+  id: string,
+  signal?: AbortSignal
+): Promise<UpstreamToolsResponseT> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/tools`,
+    (b) => UpstreamToolsResponse.parse(b),
+    { signal }
   )
 }
 
