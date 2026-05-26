@@ -12,21 +12,34 @@ import { upsertChunks } from '../rag/index'
  * Batch consumer for ctxlayer-reindex.
  *
  * Per message: R2 read → markdown render → chunk → embed → upsert.
- * The upsert is stubbed in M2b/1 (logs the payload); M2c flips
- * `rag/index.ts` to call Vectorize without touching this file.
  *
  * Failure model:
- *   - Malformed message body → ack + log (no DLQ yet; replaying it
- *     would loop the batch). G4 in PLAN.md tracks the DLQ work.
+ *   - Malformed message body → ack + log. Replaying would loop the
+ *     batch; G4 in PLAN.md tracks the DLQ work.
  *   - Doc/revision missing (e.g. deleted between produce and consume)
  *     → ack + log; nothing to reindex.
- *   - Transient pipeline error (R2/AI/D1) → `retry()` so the queue
- *     redelivers with backoff.
+ *   - `PermanentError` (markdown render, schema) → ack + log. Retrying
+ *     a permanent error would loop until the message ages out; ack so
+ *     the queue drains and a human picks it up via the log.
+ *   - Any other thrown error (R2 / Workers AI / D1) → `retry()` for the
+ *     queue's exponential-backoff redelivery.
  */
 const ReindexMessage = z.object({
   docId: z.string().min(1),
   revisionId: z.string().min(1)
 })
+
+/**
+ * Thrown by `handle()` when the message can never succeed on its own:
+ * malformed content, bad block shape, etc. The consumer maps this to
+ * `msg.ack()` so the queue isn't poisoned by retrying forever.
+ */
+class PermanentError extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options)
+    this.name = 'PermanentError'
+  }
+}
 
 export async function reindexConsumer(
   batch: MessageBatch,
@@ -66,6 +79,20 @@ export async function reindexConsumer(
         msg.ack()
         continue
       }
+      if (err instanceof PermanentError) {
+        // Acking instead of retrying — replays of a permanent error
+        // just waste queue budget. The log line is the trail for a
+        // human to investigate.
+        const cause = err.cause
+        console.error('reindex-consumer: permanent failure; dropping', {
+          id: msg.id,
+          body: parsed.data,
+          err: message,
+          cause: cause instanceof Error ? cause.message : undefined
+        })
+        msg.ack()
+        continue
+      }
       console.error('reindex-consumer: pipeline error; retrying', {
         id: msg.id,
         body: parsed.data,
@@ -92,17 +119,17 @@ async function handle(env: Env, docId: string, revisionId: string): Promise<void
   try {
     markdown = renderBlocksToMarkdown(content.blocks)
   } catch (err) {
-    // We've now defended renderInline + renderTable, but if a future
-    // BlockNote schema change still trips us, log a sample of the
-    // payload so the offending block is identifiable from the queue
-    // log instead of just `items.map is not a function`.
+    // Permanent: bad block shape will trip on every redelivery. Log a
+    // sample so the offending block is identifiable from the queue
+    // log, then mark the failure permanent so the consumer drops the
+    // message instead of looping it.
     console.error('reindex-consumer: markdown render failed', {
       docId,
       revisionId,
       blockCount: Array.isArray(content.blocks) ? content.blocks.length : 'not-an-array',
       sample: safeSample(content.blocks)
     })
-    throw err
+    throw new PermanentError('markdown render failed', { cause: err })
   }
   if (!markdown) {
     // Empty body — nothing to embed. M2c's delete-by-docId-prefix will

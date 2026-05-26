@@ -57,6 +57,52 @@ The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/pl
   honest.
 - Don't write new docs/README files unless asked. Update `docs/PLAN.md`.
 
+## Security gotchas (from 2026-05-26 review)
+
+Durable rules surfaced by the multi-agent code review. Re-introducing
+any of these on a new endpoint or proxy hop is a regression.
+
+- **Never log token-exchange response bodies.** `idp/{google,github}.ts`
+  used to `console.error(await tokenRes.text())` on failure — that
+  string can contain access/id tokens or detailed IdP error meta that
+  leak to centralised logs. Log HTTP status and error code only.
+- **Never echo upstream MCP error messages verbatim to the agent.**
+  `mcp/tools-proxy.ts` returns proxied-tool errors to the caller; the
+  message field must be a generic code (`upstream_error`, `timeout`)
+  with the real text logged server-side only. Upstream errors can
+  carry API keys, internal hostnames, or stack traces.
+- **Untrusted upstream tool descriptions are model input.** When a tool
+  description from a third-party MCP server is forwarded to the agent
+  (via `mcp/tools-proxy.ts`), strip control characters and treat it as
+  untrusted prompt content. Never inline-concatenate it into a prompt
+  template without sanitisation.
+- **Validate upstream URLs at the trust boundary.** Admin can register
+  any URL on `/api/admin/upstreams`; the `global_fetch_strictly_public`
+  compatibility flag (set in `wrangler.toml`) blocks RFC 1918 ranges at
+  the runtime, but defensive checks (https-only, hostname not in
+  `cloudflareworkers.com`/`workers.dev` to avoid loops) belong in the
+  admin REST handler too.
+- **Clear the IdP state cookie on every completion path.**
+  `idp/complete-mcp.ts` and the IdP `/callback` success branches both
+  set `clearStateCookie()`. Any new completion path (additional IdP,
+  alternative success/failure branch) must do the same — relying on
+  the 10-minute cookie TTL alone is hygiene, not defense.
+- **Allowlist failures expose the configured shape.** `?error=wrong_domain`
+  vs `not_in_org` tells an outside attacker which IdP allowlist style
+  is in use. Acceptable for now (the error is also a UX signal for
+  legitimate users hitting the wrong IdP), but if you tighten this,
+  collapse to a single `access_denied` and log the real reason.
+- **`requireCsrf` is per-mutation, not router-wide on admin routes.**
+  `admin-users.ts` applies `requireCsrf` to PATCH/DELETE inline rather
+  than via `.use('*', requireCsrf)` (which is what `admin-teams.ts`
+  uses). When adding a new mutation to an admin router, double-check
+  the CSRF gate is present on that specific route.
+- **`listDocs` returns every non-deleted doc to every signed-in user
+  by design.** This is the org-IA "open-read" stance — tags filter
+  `search_docs` defaults but do not gate reads. Do NOT add per-doc
+  read-ACL on top without confirming with the operator; the upstream
+  proxy is the gated-execution surface, not docs.
+
 ## Architectural gotchas baked into M1
 
 These all bit us during the scaffold review; do NOT re-introduce them.
@@ -136,25 +182,30 @@ Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
   re-emission), `upstream/oauth-provider.ts` (MCP SDK's
   `OAuthClientProvider` impl — DCR + PKCE + sealed token
   bundles), `api/admin-upstreams.ts` + `api/upstreams.ts` +
-  `api/upstream-oauth.ts`, full admin UI at
-  `/app/admin/upstreams` (CRUD + visibility + tool cache),
-  user UI at `/upstreams` (paste-bearer + OAuth). One real
-  gotcha worth remembering: D1 returns BLOB columns in a
-  shape SubtleCrypto rejects — `db/queries/upstreams.getUserCredential`
-  normalises to `Uint8Array` at the trust boundary. Validated
-  end-to-end via Claude Desktop (mcp-remote shim) → Notion
-  search + fetch + create-page. 16 tools cached, page actually
-  created in Notion.
-- **M5 next**: admin Users page, admin OAuth-clients listing
-  (`OAUTH_KV`), admin Audit log, `shared_bearer` storage
-  (small schema migration). M5 scope shrunk because user_oauth
-  shipped in M4.
-- Then **M6** (usage + dashboards).
-- **Later (parked)**: stdio upstreams via Daytona. `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`
-  and the snapshot baking pipeline stay unwritten until a real stdio MCP
-  upstream is in scope. The `stdio_daytona` literal in the 0001 CHECK
-  constraint and the `sandbox_sessions` table are inert reservations.
-  Recipe: `docs/plan/B-daytona-stdio.md`.
+  `api/upstream-oauth.ts`. One real gotcha worth remembering:
+  D1 returns BLOB columns in a shape SubtleCrypto rejects —
+  `db/queries/upstreams.getUserCredential` normalises to
+  `Uint8Array` at the trust boundary.
+- **M5 closed (May 2026)**: admin Users (`/app/admin/users` —
+  promote/demote + revoke creds + last-admin guard), admin
+  Audit-log viewer (`/app/admin/audit`), admin OAuth-clients
+  viewer (`/app/admin/oauth-clients` reads `OAUTH_KV` via
+  shared `oauth/provider-config.ts`), `shared_bearer` storage
+  (migration `0007`), real `/app/mcp-setup` per-client snippets.
+  Bundled side features: folder organisation for docs (path-on-doc,
+  no folders table), per-doc lock (`canLock` ACL + 423 response),
+  modal-dialog system replacing `window.confirm`, doc-move UI.
+- **M6 closed (May 2026)**: usage pipeline + dashboards. Per-tool
+  call counts, byte sizes, tiktoken-approximated tokens, daily
+  rollups via the `ctxlayer-usage` queue consumer, admin + user
+  usage pages with period-adaptive bar charts, nightly cron prunes
+  `usage_events` older than 30d.
+- **Later (parked)**: stdio upstreams via Daytona.
+  `apps/worker/src/upstream/{daytona,sandbox-pool}.ts` and the
+  snapshot baking pipeline stay unwritten until a real stdio MCP
+  upstream is in scope. The `stdio_daytona` literal in the 0001
+  CHECK constraint and the `sandbox_sessions` table are inert
+  reservations. Recipe: `docs/plan/B-daytona-stdio.md`.
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
 
@@ -176,23 +227,22 @@ requires a real deploy. `wrangler dev --remote` is NOT a viable
 shortcut — it emits "Queues are not yet supported in wrangler dev
 remote mode" + "SQLite in Durable Objects is only supported in local
 mode" warnings, and SPA routes 503 because the McpSessionDO can't
-boot SQLite-backed in that mode. Go straight to deploy:
+boot SQLite-backed in that mode.
 
-1. `wrangler login`
-2. `bun run bootstrap` — provisions D1/KV/R2/Vectorize + queues, patches wrangler.toml
-3. `bun run migrate:remote`
-4. `wrangler secret put` for each: `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `ENCRYPTION_KEY`, `SESSION_COOKIE_SECRET`, `ALLOWED_GITHUB_USERS`, `ADMIN_EMAILS` (add Google equivalents if using Google). `ALLOWED_*` and `ADMIN_EMAILS` are intentionally not declared in `[vars]` because a `[vars]` declaration with the same name blocks `wrangler secret put`.
-5. `bun run seed:remote`
-6. First `bun run deploy` — prints the `*.workers.dev` URL.
-7. Patch `[vars] PUBLIC_BASE_URL` to that URL, swap the GitHub OAuth app's callback URL to `<URL>/idp/github/callback`, `bun run deploy` again.
-8. Wire Claude (Web/Desktop) with `{"mcpServers": {"ctxlayer": {"url": "<URL>/mcp"}}}`.
+The full production install (resource provisioning, IdP setup, custom
+domain) lives in **[README.md → Deploying ctxlayer to
+production](../README.md#deploying-ctxlayer-to-production)**. The
+condensed dev-loop sequence is unchanged: `bun run bootstrap` →
+`bun run migrate:remote` → `wrangler secret put` for the IdP creds +
+`ENCRYPTION_KEY` + `SESSION_COOKIE_SECRET` + `ADMIN_EMAILS` → first
+`bun run deploy` to print the workers.dev URL, then patch
+`PUBLIC_BASE_URL` (and ideally pin a custom domain — see README §4)
+and redeploy.
 
-For local dev to keep working with the workers.dev URL committed
-to `wrangler.toml`, put `PUBLIC_BASE_URL=https://localhost:8787`
-in `.dev.vars` to override `[vars]`.
-
-The full done-done checklist lives in `docs/PLAN.md` under the M2
-verification entry.
+For local dev to keep working with the prod base URL committed to
+`wrangler.toml`, put `PUBLIC_BASE_URL=https://localhost:8787` in
+`.dev.vars` to override `[vars]`. The full done-done checklist lives
+in `docs/PLAN.md` under the M2 verification entry.
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed

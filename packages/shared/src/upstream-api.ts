@@ -31,11 +31,33 @@ export const UpstreamSlug = z
 
 const ReservedSlugs = new Set(['list_upstreams', 'search_docs', 'get_doc', 'whoami', 'list_my_context'])
 
+/**
+ * Outbound upstream URLs must be https in production. We allow http
+ * only when the host is a literal loopback address — this keeps the
+ * dev story (point at a local MCP server) without softening the prod
+ * rule. Hostname-based private-range checks are NOT done here; the
+ * Worker runtime's `global_fetch_strictly_public` compatibility flag
+ * (set in wrangler.toml) blocks RFC 1918 + link-local egress at the
+ * fetch layer.
+ *
+ * The regex avoids `new URL(...)`: the shared package targets ES2023
+ * with no DOM/Node `URL` global, and `.url()` above has already
+ * validated the overall syntax.
+ */
+const HTTP_LOOPBACK_RE = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i
+const UpstreamUrl = z
+  .string()
+  .url()
+  .refine(
+    (value) => value.toLowerCase().startsWith('https://') || HTTP_LOOPBACK_RE.test(value),
+    'must be https (http allowed only for localhost)'
+  )
+
 export const CreateUpstreamRequest = z.object({
   slug: UpstreamSlug.refine((s) => !ReservedSlugs.has(s), 'slug collides with a built-in tool'),
   displayName: z.string().min(1).max(120),
   transport: SupportedTransport,
-  url: z.string().url(),
+  url: UpstreamUrl,
   authStrategy: AuthStrategy,
   authConfig: UpstreamAuthConfig.optional(),
   enabled: z.boolean().optional()
@@ -45,7 +67,7 @@ export type CreateUpstreamRequest = z.infer<typeof CreateUpstreamRequest>
 export const UpdateUpstreamRequest = z.object({
   displayName: z.string().min(1).max(120).optional(),
   transport: SupportedTransport.optional(),
-  url: z.string().url().optional(),
+  url: UpstreamUrl.optional(),
   authStrategy: AuthStrategy.optional(),
   authConfig: UpstreamAuthConfig.optional(),
   enabled: z.boolean().optional()

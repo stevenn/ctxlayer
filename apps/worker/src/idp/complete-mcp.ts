@@ -29,9 +29,13 @@ export async function completeMcpAuthorization(
     // The KV entry expired or was double-consumed. Bounce back to
     // sign-in with a friendly error — the MCP client will see the
     // failure surfaced as a missing token and prompt re-authorize.
+    // Clear the IdP state cookie too so the user starts cleanly on
+    // the retry; the success path already clears it below.
     const url = new URL('/sign-in', env.PUBLIC_BASE_URL)
     url.searchParams.set('error', 'state_mismatch')
-    return Response.redirect(url.toString(), 302)
+    const headers = new Headers({ Location: url.toString() })
+    headers.append('Set-Cookie', clearStateCookie())
+    return new Response(null, { status: 302, headers })
   }
 
   const props: McpProps = {

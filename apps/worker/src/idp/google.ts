@@ -92,7 +92,9 @@ googleIdpRoute.get('/callback', async (c) => {
     })
   })
   if (!tokenRes.ok) {
-    console.error('google token exchange failed', tokenRes.status, await tokenRes.text())
+    // Never log the body — it can carry access_token / id_token / refresh_token
+    // on partial-success shapes, plus full IdP error metadata.
+    console.error('google token exchange failed', tokenRes.status)
     return signInErrorRedirect(c.env, 'token_exchange_failed')
   }
   const token = (await tokenRes.json()) as { id_token?: string; access_token?: string }

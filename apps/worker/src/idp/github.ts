@@ -85,7 +85,9 @@ githubIdpRoute.get('/callback', async (c) => {
     })
   })
   if (!tokenRes.ok) {
-    console.error('github token exchange failed', tokenRes.status, await tokenRes.text())
+    // Never log the body — it can carry access_token on partial-success
+    // shapes, plus full IdP error metadata.
+    console.error('github token exchange failed', tokenRes.status)
     return signInErrorRedirect(c.env, 'token_exchange_failed')
   }
   const token = (await tokenRes.json()) as { access_token?: string; error?: string }

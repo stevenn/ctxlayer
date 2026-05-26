@@ -173,7 +173,14 @@ export class UpstreamProxyRegistry {
     row: UpstreamToolRow
   ): void {
     const mangled = mangleToolName(conn.slug, row.tool_name)
-    const description = truncateDescription(`[${conn.displayName}] ${row.description ?? ''}`)
+    // Upstream-supplied descriptions are untrusted model input. Strip
+    // control characters (which can hide injected instructions or
+    // disrupt agent rendering) before forwarding. We deliberately do
+    // NOT try to detect prompt-injection content — that's the model's
+    // job; ours is to keep the wire bytes well-formed.
+    const description = truncateDescription(
+      sanitizeUntrustedText(`[${conn.displayName}] ${row.description ?? ''}`)
+    )
     let inputSchemaJson: unknown = {}
     try {
       inputSchemaJson = JSON.parse(row.input_schema)
@@ -211,7 +218,15 @@ export class UpstreamProxyRegistry {
         status = isTimeoutError(err) ? 'timeout' : 'error'
         const msg = stringifyError(err)
         respJson = msg
-        return errText(`upstream ${conn.slug} error: ${msg}`)
+        // Don't echo the raw upstream error to the agent: it can carry
+        // API keys, internal hostnames, or stack frames. Log the real
+        // message server-side; return a stable code the agent can
+        // pattern-match on.
+        console.error(
+          `[upstream-proxy] ${conn.slug}.${upstreamToolName} ${status}: ${msg}`
+        )
+        const code = status === 'timeout' ? 'upstream_timeout' : 'upstream_error'
+        return errText(`${code}: ${conn.slug}.${upstreamToolName} failed (see server logs)`)
       } finally {
         recordUsage(
           this.env,
@@ -256,6 +271,17 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
 
 function truncateDescription(s: string): string {
   return s.length > 1024 ? s.slice(0, 1023) + '…' : s
+}
+
+/**
+ * Strip C0 control characters (except tab/newline/carriage return) and
+ * the C1 range from an untrusted string before we hand it to the model
+ * or echo it back over the wire. Keeps regular punctuation, whitespace,
+ * and Unicode intact.
+ */
+function sanitizeUntrustedText(s: string): string {
+  // eslint-disable-next-line no-control-regex
+  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')
 }
 
 function stringifyError(err: unknown): string {

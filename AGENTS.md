@@ -52,9 +52,46 @@ verifies over interactive flows.
 
 - Buffering upstream MCP response bodies — pipe `ReadableStream` through.
 - Calling `console.log` with secrets, env contents, or decrypted creds.
+- **Logging IdP token-exchange response bodies** (`tokenRes.text()` etc.)
+  — they can contain access/id tokens or sensitive error meta. Log
+  status + error code only.
+- **Echoing upstream MCP error messages verbatim** through the proxy —
+  the convention is to log the real text server-side (`[upstream-proxy]
+  <slug>.<tool> …`) and return a stable code (`upstream_error` /
+  `upstream_timeout`) to the agent. See `mcp/tools-proxy.ts` for the
+  pattern.
+- **Inlining untrusted upstream text into prompts unsanitised.** Tool
+  descriptions, tool names, and tool results from third-party MCP
+  servers are model input from an untrusted source. Run model-visible
+  strings through `sanitizeUntrustedText` (in `mcp/tools-proxy.ts`)
+  to strip C0/C1 control characters.
+- **Calling `msg.retry()` for permanent errors** in a queue consumer —
+  poison messages then loop forever. Throw `PermanentError` (see
+  `queues/reindex-consumer.ts`) for failures that can't succeed on
+  redelivery; the consumer acks them.
 - Adding `process.env.X` — use the typed `Env` binding.
 - Writing comments that restate code; comment only non-obvious WHY.
 - Creating `*.md` docs that aren't asked for. Update `docs/PLAN.md` instead.
+
+## Review checklist for new endpoints
+
+Quick scan before opening a PR that adds a Hono route:
+
+- Mutation (`POST`/`PATCH`/`PUT`/`DELETE`)? → `requireCsrf` is on the
+  route. Admin mutations also need `requireAdmin` (usually via
+  `.use('*', requireAdmin)` at the router level).
+- New IdP / OAuth surface? → state cookie cleared on every completion
+  path (success, failure, and KV-expired fallback — see
+  `idp/complete-mcp.ts`).
+- New outbound `fetch`? → URL is validated (https-only at the trust
+  boundary, per `packages/shared/src/upstream-api.ts:UpstreamUrl`),
+  error responses are NOT logged with bodies.
+- New BLOB column read from D1? → coerce to `Uint8Array` at the read
+  boundary (see `db/queries/upstreams.getUserCredential`).
+- New admin-settable URL or template? → validate at the trust
+  boundary, not just when it's used.
+- New queue consumer? → classify permanent vs transient errors and ack
+  the permanent ones; never `msg.retry()` indiscriminately.
 
 ## Known gotchas (don't re-introduce)
 
