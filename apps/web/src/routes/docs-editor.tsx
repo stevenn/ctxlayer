@@ -22,7 +22,8 @@ import {
   fetchDocs,
   fetchMe,
   patchDoc,
-  putDocContent
+  putDocContent,
+  setDocLocked
 } from '../lib/api'
 import {
   BlockNoteEditor,
@@ -31,6 +32,7 @@ import {
 import { TagPane } from '../components/editor/tag-pane'
 import { SharingDialog } from './docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../lib/yjs-ws-provider'
+import { personLabel } from './docs-list'
 
 type Loaded = { doc: DocDetail; content: DocContent; me: MeResponse }
 type LoadStatus =
@@ -344,6 +346,15 @@ export function DocsEditor() {
           <CollabBadge canEdit={doc.canEdit} status={collabStatus} />
         </Group>
         <Group gap="xs">
+          {doc.canLock && (
+            <LockToggle
+              doc={doc}
+              onChanged={async () => {
+                const fresh = await fetchDoc(doc.id)
+                setStatus({ kind: 'ready', data: { ...status.data, doc: fresh } })
+              }}
+            />
+          )}
           {doc.canShare && (
             <Button variant="default" onClick={() => setSharingOpen(true)}>
               Sharing
@@ -356,6 +367,16 @@ export function DocsEditor() {
           )}
         </Group>
       </Group>
+
+      {doc.lockedAt && (
+        <Alert color="yellow" variant="light" radius="sm">
+          <Text fz="xs">
+            <strong>Locked</strong> by {personLabel(doc.lockedBy)} on{' '}
+            {formatAbsolute(doc.lockedAt)}. Content, title, and tags are read-only
+            until {doc.canLock ? 'you unlock the doc' : 'an admin or the doc creator unlocks it'}.
+          </Text>
+        </Alert>
+      )}
 
       {/* Title spans full width, sits right above the content. */}
       {editingTitle ? (
@@ -482,6 +503,58 @@ export function DocsEditor() {
         />
       )}
     </Stack>
+  )
+}
+
+// ----- Lock toggle --------------------------------------------------------
+
+/**
+ * Header button surface for the per-doc lock. Lock + unlock both call
+ * the same PUT endpoint; the backend audits both. We confirm with
+ * window.confirm on lock so an accidental click doesn't freeze
+ * everyone mid-edit.
+ */
+function LockToggle({
+  doc,
+  onChanged
+}: {
+  doc: DocDetail
+  onChanged: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const locked = !!doc.lockedAt
+
+  async function toggle() {
+    if (busy) return
+    if (!locked) {
+      if (
+        !window.confirm(
+          `Lock "${doc.title}"? Content, title, and tags become read-only for everyone (including you) until you unlock.`
+        )
+      ) {
+        return
+      }
+    }
+    setBusy(true)
+    try {
+      await setDocLocked(doc.id, { locked: !locked })
+      await onChanged()
+    } catch (err) {
+      window.alert(`${locked ? 'Unlock' : 'Lock'} failed: ${explain(err)}`)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Button
+      variant="default"
+      onClick={toggle}
+      loading={busy}
+      color={locked ? 'yellow' : undefined}
+    >
+      {locked ? 'Unlock' : 'Lock'}
+    </Button>
   )
 }
 

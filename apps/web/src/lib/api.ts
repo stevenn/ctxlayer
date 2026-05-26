@@ -10,7 +10,10 @@ import {
   DocEditorsResponse,
   DocSummary,
   DocTags,
+  FolderRenameRequest,
+  FolderTreeResponse,
   HealthResponse,
+  SetLockedRequest,
   AdminUpstreamRow,
   AdminUserRow,
   CreateUpstreamRequest,
@@ -52,7 +55,10 @@ import type {
   DocEditorsResponse as DocEditorsResponseT,
   DocSummary as DocSummaryT,
   DocTags as DocTagsT,
+  FolderRenameRequest as FolderRenameRequestT,
+  FolderTreeResponse as FolderTreeResponseT,
   HealthResponse as HealthResponseT,
+  SetLockedRequest as SetLockedRequestT,
   MeResponse as MeResponseT,
   PasteBearerRequest as PasteBearerRequestT,
   ProductRef as ProductRefT,
@@ -210,6 +216,45 @@ export function restoreRevision(id: string, body: RestoreRequestT): Promise<{ re
     method: 'POST',
     body: JSON.stringify(RestoreRequest.parse(body))
   })
+}
+
+// ----- lock toggle --------------------------------------------------------
+
+export function setDocLocked(id: string, body: SetLockedRequestT): Promise<void> {
+  return request(`/api/docs/${encodeURIComponent(id)}/lock`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(SetLockedRequest.parse(body))
+  })
+}
+
+// ----- folders ------------------------------------------------------------
+
+const FolderTreeResponseSchema = FolderTreeResponse
+
+export function fetchFolders(signal?: AbortSignal): Promise<FolderTreeResponseT> {
+  return request('/api/folders', (b) => FolderTreeResponseSchema.parse(b), { signal })
+}
+
+export function renameFolder(body: FolderRenameRequestT): Promise<{ moved: number; ids: string[] }> {
+  return request(
+    '/api/folders',
+    (b) => z.object({ moved: z.number(), ids: z.array(z.string()) }).parse(b),
+    {
+      method: 'PATCH',
+      body: JSON.stringify(FolderRenameRequest.parse(body))
+    }
+  )
+}
+
+export function deleteFolder(path: string): Promise<void> {
+  // The backend takes a base64url-encoded path so the leading "/"
+  // doesn't tangle with route parsing.
+  const enc = base64UrlEncode(path)
+  return request(`/api/folders/${enc}`, () => undefined, { method: 'DELETE' })
+}
+
+function base64UrlEncode(s: string): string {
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 // ----- per-doc ACL --------------------------------------------------------
