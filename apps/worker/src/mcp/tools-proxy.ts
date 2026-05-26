@@ -182,9 +182,14 @@ export class UpstreamProxyRegistry {
     }
     const converted = jsonSchemaToZod(inputSchemaJson)
     const inputSchema = converted.shape ?? converted.zod
+    // Close over the real upstream tool name from the cache row. The
+    // mangled name we expose to the agent can drop the redundant
+    // `${slug}-` prefix (see `mangleToolName`), so `unmangleToolName`
+    // would no longer round-trip — we rely on `row.tool_name` here
+    // instead. Sanity-check the mangled name shape only.
+    const upstreamToolName = row.tool_name
     const handler = async (args: unknown) => {
-      const unmangled = unmangleToolName(mangled)
-      if (!unmangled) return errText(`bad tool name: ${mangled}`)
+      if (!unmangleToolName(mangled)) return errText(`bad tool name: ${mangled}`)
       const client = this.clients.get(conn.id)
       if (!client) return errText(`upstream ${conn.slug} not connected`)
       const t0 = Date.now()
@@ -192,7 +197,7 @@ export class UpstreamProxyRegistry {
       let status: 'ok' | 'error' | 'timeout' = 'ok'
       let respJson = ''
       try {
-        const result = await client.callTool(unmangled.toolName, args)
+        const result = await client.callTool(upstreamToolName, args)
         respJson = safeJson(result.content ?? null)
         if (result.isError) status = 'error'
         return {
