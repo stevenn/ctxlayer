@@ -27,9 +27,11 @@ import {
   deleteFolder,
   fetchDocs,
   fetchFolders,
+  patchDoc,
   putDocContent,
   renameFolder
 } from '../lib/api'
+import { useDialogs } from '../lib/dialogs'
 
 type Status =
   | { kind: 'loading' }
@@ -38,6 +40,7 @@ type Status =
 
 export function DocsList() {
   const nav = useNavigate()
+  const dialogs = useDialogs()
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
@@ -70,34 +73,68 @@ export function DocsList() {
   }, [reload])
 
   async function onRenameFolder(oldPath: string) {
-    const next = window.prompt(`Rename folder "${oldPath}" to:`, oldPath)
+    const next = await dialogs.prompt({
+      title: 'Rename folder',
+      message: `Rename "${oldPath}" to:`,
+      defaultValue: oldPath,
+      confirmLabel: 'Rename'
+    })
     if (!next || next === oldPath) return
     try {
       const { moved } = await renameFolder({ oldPath, newPath: next })
-      window.alert(`Moved ${moved} doc${moved === 1 ? '' : 's'}.`)
+      await dialogs.alert({
+        title: 'Folder renamed',
+        message: `Moved ${moved} doc${moved === 1 ? '' : 's'}.`
+      })
       if (selectedFolder?.startsWith(oldPath)) {
         setSelectedFolder(next + selectedFolder.slice(oldPath.length))
       }
       reload()
     } catch (err) {
-      window.alert(`Rename failed: ${explain(err)}`)
+      await dialogs.alert({ title: 'Rename failed', message: explain(err) })
+    }
+  }
+
+  async function onMoveDoc(doc: DocSummary) {
+    const next = await dialogs.prompt({
+      title: 'Move doc',
+      message: `Move "${doc.title}" to a folder path (e.g. /specs/api) or leave blank for Root.`,
+      defaultValue: doc.folder ?? '',
+      placeholder: '/specs/api',
+      confirmLabel: 'Move'
+    })
+    if (next === null) return
+    const target = next.trim() === '' ? null : next.trim()
+    if (target === doc.folder) return
+    try {
+      await patchDoc(doc.id, { folder: target })
+      reload()
+    } catch (err) {
+      await dialogs.alert({ title: 'Move failed', message: explain(err) })
     }
   }
 
   async function onDeleteFolder(path: string, descendantDocCount: number) {
     if (descendantDocCount > 0) {
-      window.alert(
-        `Cannot delete: this folder has ${descendantDocCount} doc${descendantDocCount === 1 ? '' : 's'} (counting sub-folders). Move or delete them first.`
-      )
+      await dialogs.alert({
+        title: 'Folder not empty',
+        message: `This folder has ${descendantDocCount} doc${descendantDocCount === 1 ? '' : 's'} (counting sub-folders). Move or delete them first.`
+      })
       return
     }
-    if (!window.confirm(`Delete empty folder "${path}"?`)) return
+    const ok = await dialogs.confirm({
+      title: 'Delete folder',
+      message: `Delete empty folder "${path}"?`,
+      confirmLabel: 'Delete',
+      danger: true
+    })
+    if (!ok) return
     try {
       await deleteFolder(path)
       if (selectedFolder === path) setSelectedFolder(null)
       reload()
     } catch (err) {
-      window.alert(`Delete failed: ${explain(err)}`)
+      await dialogs.alert({ title: 'Delete failed', message: explain(err) })
     }
   }
 
@@ -158,7 +195,7 @@ export function DocsList() {
             folders={status.folders}
             selected={selectedFolder}
             onSelect={setSelectedFolder}
-            totalDocs={status.docs.length}
+            rootDocCount={status.docs.filter((d) => !d.folder).length}
             onRename={onRenameFolder}
             onDelete={onDeleteFolder}
           />
@@ -167,6 +204,7 @@ export function DocsList() {
             folder={selectedFolder}
             query={query}
             onOpen={(id) => nav(`/app/docs/${id}`)}
+            onMove={onMoveDoc}
           />
         </div>
       )}
@@ -198,13 +236,18 @@ interface TreeNode {
  * row per populated path; intermediate ancestors aren't necessarily
  * populated and may not appear, so we synthesise them here with zero
  * direct doc count.
+ *
+ * Root node represents "docs with no folder" — selecting a folder shows
+ * only docs directly in it, so the root is *not* a synthetic "everything"
+ * bucket. `descendantDocCount` is still tracked so the delete gate can
+ * refuse to drop a folder that has docs below it.
  */
-function buildTree(folders: FolderTreeNode[], totalDocs: number): TreeNode {
+function buildTree(folders: FolderTreeNode[], rootDocCount: number): TreeNode {
   const root: TreeNode = {
-    label: 'All docs',
+    label: 'Root',
     path: null,
-    docCount: totalDocs,
-    descendantDocCount: totalDocs,
+    docCount: rootDocCount,
+    descendantDocCount: rootDocCount,
     children: []
   }
   // Index by path for synthesised-parent lookup.
@@ -244,18 +287,18 @@ function FolderTree({
   folders,
   selected,
   onSelect,
-  totalDocs,
+  rootDocCount,
   onRename,
   onDelete
 }: {
   folders: FolderTreeNode[]
   selected: string | null
   onSelect: (path: string | null) => void
-  totalDocs: number
+  rootDocCount: number
   onRename: (path: string) => void
   onDelete: (path: string, descendantDocCount: number) => void
 }) {
-  const tree = useMemo(() => buildTree(folders, totalDocs), [folders, totalDocs])
+  const tree = useMemo(() => buildTree(folders, rootDocCount), [folders, rootDocCount])
 
   return (
     <aside
@@ -325,7 +368,7 @@ function FolderNodeRow({
         <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive ? 600 : 400 }}>
           {node.label}
           <Text component="span" fz="xs" c="dimmed" ml={6}>
-            {node.descendantDocCount}
+            {node.docCount}
           </Text>
         </Text>
         {!isRoot && node.path && (
@@ -375,40 +418,42 @@ function DocsTable({
   docs,
   folder,
   query,
-  onOpen
+  onOpen,
+  onMove
 }: {
   docs: DocSummary[]
   folder: string | null
   query: string
   onOpen: (id: string) => void
+  onMove: (doc: DocSummary) => void
 }) {
-  const inFolder = useMemo(() => {
-    if (!folder) return docs
-    // Show docs at this folder OR under any sub-folder, so navigating
-    // into a high-level folder shows everything inside.
-    return docs.filter((d) => d.folder === folder || (d.folder ?? '').startsWith(folder + '/'))
-  }, [docs, folder])
-  const filtered = useMemo(() => filterDocs(inFolder, query), [inFolder, query])
+  // A non-empty query is a global "find a doc anywhere" — it bypasses
+  // the folder filter so the user doesn't have to remember which folder
+  // a doc lives in. An empty query falls back to strict folder browse:
+  // only docs directly in the selected folder (null = Root).
+  const scoped = useMemo(() => {
+    if (query.trim()) return docs
+    return docs.filter((d) => (d.folder ?? null) === folder)
+  }, [docs, folder, query])
+  const filtered = useMemo(() => filterDocs(scoped, query), [scoped, query])
 
   if (filtered.length === 0) {
+    const where = folder ?? 'Root'
     return (
       <Text c="dimmed">
         {query
-          ? `No docs match "${query}" in ${folder ?? 'this view'}.`
-          : folder
-            ? `No docs in ${folder} yet.`
-            : 'No docs yet.'}
+          ? `No docs match "${query}" across the library.`
+          : `No docs in ${where} yet.`}
       </Text>
     )
   }
   return (
     <Stack gap={6}>
-      {(query || folder) && (
-        <Text c="dimmed" fz="xs">
-          Showing {filtered.length} of {docs.length}
-          {folder ? ` (folder ${folder})` : ''}
-        </Text>
-      )}
+      <Text c="dimmed" fz="xs">
+        {query
+          ? `Showing ${filtered.length} of ${docs.length} matching "${query}" (all folders)`
+          : `Showing ${filtered.length} in ${folder ?? 'Root'}`}
+      </Text>
       <table className="data-table">
         <thead>
           <tr>
@@ -417,6 +462,7 @@ function DocsTable({
             <th>Created by</th>
             <th>Last edited by</th>
             <th style={{ textAlign: 'right' }}>Updated</th>
+            <th style={{ width: 32 }} aria-label="Actions" />
           </tr>
         </thead>
         <tbody>
@@ -446,6 +492,18 @@ function DocsTable({
               <td className="text-muted">{personLabel(d.updatedBy ?? d.createdBy)}</td>
               <td className="text-muted" style={{ textAlign: 'right' }}>
                 {formatRelative(d.updatedAt)}
+              </td>
+              <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                <Menu shadow="md" position="bottom-end" withinPortal>
+                  <Menu.Target>
+                    <Button size="compact-xs" variant="subtle" px={6}>
+                      ⋯
+                    </Button>
+                  </Menu.Target>
+                  <Menu.Dropdown>
+                    <Menu.Item onClick={() => onMove(d)}>Move to folder…</Menu.Item>
+                  </Menu.Dropdown>
+                </Menu>
               </td>
             </tr>
           ))}

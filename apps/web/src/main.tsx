@@ -9,6 +9,7 @@ import { ColorSchemeScript, MantineProvider } from '@mantine/core'
 import '@mantine/core/styles.css'
 import { appRoutes } from './app'
 import { appTheme } from './theme'
+import { DialogProvider } from './lib/dialogs'
 import './index.css'
 
 const root = document.getElementById('root')
@@ -27,7 +28,9 @@ createRoot(root).render(
   <StrictMode>
     <ColorSchemeScript defaultColorScheme="auto" />
     <MantineProvider theme={appTheme} defaultColorScheme="auto">
-      <RouterProvider router={router} />
+      <DialogProvider>
+        <RouterProvider router={router} />
+      </DialogProvider>
     </MantineProvider>
   </StrictMode>
 )

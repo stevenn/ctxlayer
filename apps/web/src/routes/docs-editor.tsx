@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
+  ActionIcon,
   Alert,
   Badge,
   Button,
@@ -9,7 +10,8 @@ import {
   Stack,
   Text,
   TextInput,
-  Title
+  Title,
+  Tooltip
 } from '@mantine/core'
 import * as Y from 'yjs'
 import type { DocContent, DocDetail, DocSummary, MeResponse } from '@ctxlayer/shared'
@@ -32,6 +34,7 @@ import {
 import { TagPane } from '../components/editor/tag-pane'
 import { SharingDialog } from './docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../lib/yjs-ws-provider'
+import { useDialogs } from '../lib/dialogs'
 import { personLabel } from './docs-list'
 
 type Loaded = { doc: DocDetail; content: DocContent; me: MeResponse }
@@ -61,6 +64,7 @@ function userColor(userId: string): string {
 export function DocsEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const dialogs = useDialogs()
   const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
   const [collabStatus, setCollabStatus] = useState<CollabStatus>('connecting')
   const [sharingOpen, setSharingOpen] = useState(false)
@@ -260,13 +264,18 @@ export function DocsEditor() {
 
   async function onDelete() {
     if (!id || status.kind !== 'ready') return
-    if (!window.confirm(`Delete "${status.data.doc.title}"? This is reversible from revisions.`))
-      return
+    const ok = await dialogs.confirm({
+      title: 'Delete doc',
+      message: `Delete "${status.data.doc.title}"? This is reversible from revisions.`,
+      confirmLabel: 'Delete',
+      danger: true
+    })
+    if (!ok) return
     try {
       await deleteDoc(id)
       nav('/app/docs', { replace: true })
     } catch (err) {
-      window.alert(`Delete failed: ${explain(err)}`)
+      await dialogs.alert({ title: 'Delete failed', message: explain(err) })
     }
   }
 
@@ -293,13 +302,21 @@ export function DocsEditor() {
       })
       setEditingTitle(false)
     } catch (err) {
-      window.alert(`Rename failed: ${explain(err)}`)
+      await dialogs.alert({ title: 'Rename failed', message: explain(err) })
     } finally {
       setTitleSaving(false)
     }
   }
   function cancelRename() {
     setEditingTitle(false)
+  }
+
+  // Re-pull the doc detail after a side-channel mutation (lock toggle,
+  // folder move, etc.) so the rail + header reflect the new state.
+  async function refreshDoc() {
+    if (!id || status.kind !== 'ready') return
+    const fresh = await fetchDoc(id)
+    setStatus({ kind: 'ready', data: { ...status.data, doc: fresh } })
   }
 
   // Doc-link picker ------------------------------------------------------
@@ -346,15 +363,7 @@ export function DocsEditor() {
           <CollabBadge canEdit={doc.canEdit} status={collabStatus} />
         </Group>
         <Group gap="xs">
-          {doc.canLock && (
-            <LockToggle
-              doc={doc}
-              onChanged={async () => {
-                const fresh = await fetchDoc(doc.id)
-                setStatus({ kind: 'ready', data: { ...status.data, doc: fresh } })
-              }}
-            />
-          )}
+          <LockIndicator doc={doc} onChanged={refreshDoc} />
           {doc.canShare && (
             <Button variant="default" onClick={() => setSharingOpen(true)}>
               Sharing
@@ -367,16 +376,6 @@ export function DocsEditor() {
           )}
         </Group>
       </Group>
-
-      {doc.lockedAt && (
-        <Alert color="yellow" variant="light" radius="sm">
-          <Text fz="xs">
-            <strong>Locked</strong> by {personLabel(doc.lockedBy)} on{' '}
-            {formatAbsolute(doc.lockedAt)}. Content, title, and tags are read-only
-            until {doc.canLock ? 'you unlock the doc' : 'an admin or the doc creator unlocks it'}.
-          </Text>
-        </Alert>
-      )}
 
       {/* Title spans full width, sits right above the content. */}
       {editingTitle ? (
@@ -483,6 +482,9 @@ export function DocsEditor() {
                 <span>Never edited</span>
               )}
             </MetaRow>
+            <MetaRow label="Folder">
+              <FolderField doc={doc} onChanged={refreshDoc} />
+            </MetaRow>
             <MetaRow label="Slug">
               <code>{doc.slug}</code>
             </MetaRow>
@@ -506,55 +508,175 @@ export function DocsEditor() {
   )
 }
 
-// ----- Lock toggle --------------------------------------------------------
+// ----- Lock indicator -----------------------------------------------------
 
 /**
- * Header button surface for the per-doc lock. Lock + unlock both call
- * the same PUT endpoint; the backend audits both. We confirm with
- * window.confirm on lock so an accidental click doesn't freeze
- * everyone mid-edit.
+ * Padlock in the header. Renders for everyone when the doc is locked
+ * (so viewers see *why* the editor is read-only via the tooltip) and for
+ * lock-capable users when the doc is unlocked (so they can lock it).
+ * Clicking is a no-op for users without canLock — they just get the
+ * tooltip explaining the locked state. Locking asks for confirmation so
+ * an accidental click doesn't freeze everyone mid-edit.
  */
-function LockToggle({
+function LockIndicator({
   doc,
   onChanged
 }: {
   doc: DocDetail
   onChanged: () => Promise<void>
 }) {
+  const dialogs = useDialogs()
   const [busy, setBusy] = useState(false)
   const locked = !!doc.lockedAt
 
+  if (!locked && !doc.canLock) return null
+
   async function toggle() {
-    if (busy) return
+    if (busy || !doc.canLock) return
     if (!locked) {
-      if (
-        !window.confirm(
-          `Lock "${doc.title}"? Content, title, and tags become read-only for everyone (including you) until you unlock.`
-        )
-      ) {
-        return
-      }
+      const ok = await dialogs.confirm({
+        title: 'Lock doc',
+        message: `Lock "${doc.title}"? Content, title, and tags become read-only for everyone (including you) until you unlock.`,
+        confirmLabel: 'Lock'
+      })
+      if (!ok) return
     }
     setBusy(true)
     try {
       await setDocLocked(doc.id, { locked: !locked })
       await onChanged()
     } catch (err) {
-      window.alert(`${locked ? 'Unlock' : 'Lock'} failed: ${explain(err)}`)
+      await dialogs.alert({
+        title: `${locked ? 'Unlock' : 'Lock'} failed`,
+        message: explain(err)
+      })
     } finally {
       setBusy(false)
     }
   }
 
+  const tooltipLabel = locked
+    ? `Locked by ${personLabel(doc.lockedBy)} on ${formatAbsolute(doc.lockedAt!)} — ${
+        doc.canLock ? 'click to unlock' : 'an admin or the creator can unlock'
+      }`
+    : 'Lock this doc — content, title, and tags become read-only until unlocked'
+
   return (
-    <Button
-      variant="default"
-      onClick={toggle}
-      loading={busy}
-      color={locked ? 'yellow' : undefined}
+    <Tooltip label={tooltipLabel} withArrow multiline maw={280}>
+      <ActionIcon
+        variant={locked ? 'light' : 'subtle'}
+        color={locked ? 'yellow' : 'gray'}
+        size="lg"
+        onClick={toggle}
+        loading={busy}
+        style={{ cursor: doc.canLock ? 'pointer' : 'default' }}
+        aria-label={locked ? 'Locked' : 'Unlocked'}
+      >
+        {locked ? <PadlockClosedIcon /> : <PadlockOpenIcon />}
+      </ActionIcon>
+    </Tooltip>
+  )
+}
+
+function PadlockClosedIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
     >
-      {locked ? 'Unlock' : 'Lock'}
-    </Button>
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
+    </svg>
+  )
+}
+
+function PadlockOpenIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="4" y="11" width="16" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 7.5-2" />
+    </svg>
+  )
+}
+
+// ----- Folder field (right-rail) -----------------------------------------
+
+/**
+ * Click-to-move folder cell. Read-only viewers see just the path. Editors
+ * see a clickable cell that pops a prompt for the new path; empty string
+ * moves the doc back to Root. Backend validates the path shape (same
+ * FolderPath schema used at create time) and returns a 4xx on bad input,
+ * which we surface as an alert.
+ */
+function FolderField({
+  doc,
+  onChanged
+}: {
+  doc: DocDetail
+  onChanged: () => Promise<void>
+}) {
+  const dialogs = useDialogs()
+  const [busy, setBusy] = useState(false)
+  const current = doc.folder
+
+  async function move() {
+    if (busy || !doc.canEdit) return
+    const next = await dialogs.prompt({
+      title: 'Move doc',
+      message: 'Enter a folder path (e.g. /specs/api) or leave blank for Root.',
+      defaultValue: current ?? '',
+      placeholder: '/specs/api',
+      confirmLabel: 'Move'
+    })
+    if (next === null) return
+    const target = next.trim() === '' ? null : next.trim()
+    if (target === current) return
+    setBusy(true)
+    try {
+      await patchDoc(doc.id, { folder: target })
+      await onChanged()
+    } catch (err) {
+      await dialogs.alert({ title: 'Move failed', message: explain(err) })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const label = current ? <code>{current}</code> : <span>Root</span>
+
+  if (!doc.canEdit) return <div>{label}</div>
+
+  return (
+    <div
+      onClick={move}
+      style={{
+        cursor: busy ? 'progress' : 'pointer',
+        opacity: busy ? 0.6 : 1,
+        textDecoration: 'underline',
+        textDecorationStyle: 'dotted',
+        textUnderlineOffset: 3
+      }}
+      title="Click to move"
+    >
+      {label}
+    </div>
   )
 }
 
