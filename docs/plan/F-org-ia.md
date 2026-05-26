@@ -26,7 +26,10 @@ CREATE TABLE teams (
   display_name TEXT NOT NULL,
   description  TEXT,
   -- Reserved for future IdP sync: 'google:<group-email>' | 'github:<org>/<team-slug>'.
-  -- v1 ignores this field at sign-in time; admin manages members manually.
+  -- The string is stored + surfaced in the admin UI today (post-M6); the
+  -- sync logic that consumes it isn't implemented yet — manual membership
+  -- is still authoritative until then. See `managed_by_idp` (migration
+  -- 0010_team_managed_by_idp.sql).
   idp_group    TEXT,
   created_at   INTEGER NOT NULL,
   updated_at   INTEGER NOT NULL
@@ -133,8 +136,11 @@ Chunk metadata stored in Vectorize when (re)indexing a doc:
 ### F5. Admin UI additions
 
 - **`/app/admin/teams`** — CRUD; row → drawer with member table
-  (add/remove users by email; role: member|lead) plus a read-only
-  `idp_group` field reserved for future sync.
+  (add/remove users by email; role: member|lead). Editable
+  `idp_group` field + `managed_by_idp` checkbox surface the SSO/group-sync
+  prep — the sync logic that consumes them isn't shipped yet, but admins
+  can record intent now so migration to managed teams is one-step when
+  sync lands.
 - **`/app/admin/products`** — CRUD (slug, display_name, description).
 - **`/app/admin/team-products`** — a teams×products matrix with checkbox
   cells; one save per change (`PATCH /api/admin/team-products`).
@@ -204,7 +210,9 @@ When we enable it later:
   - On each sign-in for the calling user (just their groups; fast).
   - Nightly cron for full reconciliation across all `idp_group`-bound teams.
 - Direction: IdP → ctxlayer. Memberships added manually remain unless the
-  team is flipped to `managed_by_idp = true` (future column).
+  team is flipped to `managed_by_idp = true` (column shipped in migration
+  0010 post-M6; toggleable from `/app/admin/teams`). The flag is currently
+  intent-only — no sync job consumes it yet.
 
 ### F9. UX guardrails
 

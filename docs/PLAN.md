@@ -1,6 +1,6 @@
 # ctxlayer — Agent Context Layer (MCP Service on Cloudflare)
 
-## Status snapshot (2026-05-26)
+## Status snapshot (2026-05-27)
 
 | Milestone | Status | Demo / state |
 |---|---|---|
@@ -9,7 +9,8 @@
 | **M3** — Realtime collab (Yjs) | ✅ done (May 2026) | Two-tab live edit on `:5173`, deployed to workers.dev |
 | **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done (May 2026) | Claude Desktop → ctxlayer → Notion read + write via DCR/PKCE OAuth |
 | **M5** — Admin polish (users, OAuth clients, audit) | ✅ done (May 2026) | Admin Users + Audit + OAuth-clients pages; `shared_bearer`; folders + per-doc lock; real `/app/mcp-setup` |
-| **M6** — Usage pipeline + dashboards | ⏳ next | per-user/upstream charts |
+| **M6** — Usage pipeline + dashboards | ✅ done (May 2026) | Per-user/upstream calls + tokens; admin `/app/admin/usage` + user `/app/usage` with SVG line/bar chart; tiktoken consumer; daily rollups; nightly prune |
+| **Post-M6 polish** — Deferred catalogue cleared | ✅ done (May 2026) | Slug-prefix collapse in mangleToolName; `managed_by_idp` schema + admin UI; admin upstream tool drill-down (expand-row); vitest integration config + 23 D1-backed tests. Prompt-kind docs left on-demand; mcp-remote SSE spam logged as won't-fix server-side. |
 | **Later** — Stdio upstreams via Daytona | 🅿️ parked | revisit when we have a real stdio upstream to serve |
 
 - **Live**: `https://ctxlayer.stevenn-a65.workers.dev` — GitHub-only sign-in (`ALLOWED_GITHUB_USERS` + `ADMIN_EMAILS` gated).
@@ -106,7 +107,8 @@ ctxlayer/
         upstream/{daytona,sandbox-pool}.ts            †(Later — parked stdio plan)
         collab/{doc-room-do,yjs-persistence}.ts       †(M3 — currently 501 stub)
         queues/reindex-consumer.ts
-        queues/usage-consumer.ts                      †(M6)
+        queues/usage-consumer.ts                      †(M6 ✅)
+        usage/{event,tokens,record}.ts                †(M6 ✅ producer)
         crypto/aead.ts                                †(M4 — needed for user_credentials)
         rag/{markdown,chunker,embedder,index}.ts
         db/{client,migrations/*.sql,queries/*}.ts
@@ -115,8 +117,9 @@ ctxlayer/
       src/
         routes/{sign-in,docs-list,docs-editor,docs-sharing,
                 upstreams,mcp-setup,usage}.tsx
-        routes/admin/{index,teams,products,stubs}.tsx
-        components/{editor,charts}/                   # charts †(M6)
+        routes/admin/{index,teams,products,users,upstreams,
+                      audit,oauth-clients,usage}.tsx
+        components/{editor,usage}/                    # SVG usage charts (no chart-lib dep)
         lib/{api,csrf,...}.ts
   packages/
     shared/src/...                                    # types shared worker↔SPA
@@ -285,12 +288,12 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 - **Reindex consumer** ✅ unchanged; SPA's debounced `PUT /api/docs/:id/content` keeps writing BlockNote JSON revisions that the existing consumer renders → embeds → upserts.
 - **Storage**: `apps/worker/src/storage/docs-r2.ts` adds `readYjsSnapshot` / `writeYjsSnapshot`. Y.Doc bytes live alongside the JSON snapshot/revision tree; no rotation (one current binary snapshot only).
 
-## Usage tracking — 📋 M6
+## Usage tracking — ✅ M6 (May 2026)
 
-- `McpSessionDO` wraps JSON-RPC dispatch with `onRequest`/`onResponse` middleware → `env.USAGE_QUEUE.send(...)` via `ctx.waitUntil`.
-- Queue consumer (`usage-consumer.ts`, 📋 M6) batches 100, tokenizes via `js-tiktoken` (cl100k_base), inserts raw rows + upserts daily rollups.
-- Tokens are documented as **approximate** — counts are heuristic for the prompt assembly the agent does on top of these payloads.
-- Retention: `usage_events` 30 days (nightly cron prune); `usage_rollups_daily` retained indefinitely.
+- Producer wraps every MCP tool call (built-ins in `mcp/session-do.ts`, proxied in `mcp/tools-proxy.ts`) and tokenises req/resp via `js-tiktoken` cl100k_base inside `ctx.waitUntil` — tool responses never block on counting. `apps/worker/src/usage/{event,tokens,record}.ts`.
+- Queue consumer (`apps/worker/src/queues/usage-consumer.ts`) acks per-message; writes the raw `usage_events` row and UPSERTs the daily rollup in one D1 batch (`db/queries/usage.ts:writeUsageEvent`). `NULL upstream_id` (built-in) becomes `''` on the rollup PK.
+- Tokens are documented as **approximate** — `js-tiktoken cl100k_base` is the same encoder the RAG chunker uses; counts won't exactly match Claude's own tokenizer but track within a few %.
+- Retention: nightly cron `0 3 * * *` calls `pruneUsageEvents(env, 30)` (`apps/worker/src/index.ts:scheduled`); `usage_rollups_daily` retained indefinitely.
 
 ## Admin UI (`/app/admin/*`, role-gated)
 
@@ -298,7 +301,7 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 - **Upstreams** ✅ shipped (M4) — list table + drawer with Details (slug locked, all other fields editable + enabled toggle + delete), Visibility (everyone / team checklist / product checklist), Tool-cache (count + last-refreshed + "Refresh now" for `none`-auth upstreams). `+ New upstream` modal. `shared_bearer` + `user_oauth` enabled; `stdio_daytona` rejected at form validation.
 - **Users** ✅ M5 — `/app/admin/users`: table, promote/demote (last-admin guard), revoke creds, inline team-membership.
 - **Sandboxes** 🅿️ Later — live/idle/archived per user, force-destroy. Lands with the parked Daytona track, not M5.
-- **Usage** 📋 M6 — charts + tables.
+- **Usage** ✅ M6 — `/app/admin/usage`: stacked bar (req+resp tokens/day) with adaptive X-axis density, top-N tables for tools/upstreams/users, user/upstream filters.
 - **OAuth clients** ✅ M5 — `/app/admin/oauth-clients`: DCR-registered MCP clients from `OAUTH_KV`, click-through drawer with raw record.
 - **Audit log** ✅ M5 — `/app/admin/audit`: cursor-paginated tail of `audit_log` with action-prefix + actor filters.
 
@@ -309,7 +312,7 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 - `/app/admin/teams`, `/app/admin/products`, `/app/admin/upstreams` ✅.
 - `/upstreams` ✅ shipped (M4) — cards per enabled upstream: `user_bearer` shows password-input + Connect/Replace/Disconnect; `user_oauth` shows Connect-with-OAuth button (DCR + PKCE round-trip happens here, before the agent session); `none`/`shared_bearer` show an info notice. `?oauth_connected=<slug>` / `?oauth_error=<...>` flash banner on return from the callback.
 - `/mcp-setup` ✅ M5 — live `${publicBaseUrl}/mcp` snippet + per-client config blocks for Claude (web + Desktop + Code), Cursor/Windsurf/Zed/VS Code, all with one-click copy.
-- `/usage` 📋 M6 — personal stats.
+- `/usage` ✅ M6 — personal stats: own daily totals + top tools + top upstreams. Range select (7/30/90 days).
 
 ## Deployment / configuration
 
@@ -318,7 +321,7 @@ The live `wrangler.toml`, bootstrap script, and migrations are the source of tru
 - Single Worker (`name = "ctxlayer"`), Workers Assets ships the SPA from `apps/web/dist`.
 - Bindings: D1 (`DB`), KV (`OAUTH_KV`), R2 (`DOCS_BUCKET`), Vectorize (`DOCS_INDEX`), AI, two DOs (`McpSessionDO` SQLite-backed, `DocRoomDO` non-SQLite until M3), two queues (`USAGE_QUEUE`, `DOC_REINDEX_QUEUE`).
 - DO migrations collapsed to a single tag (`new_classes = ["DocRoomDO"]` + `new_sqlite_classes = ["McpSessionDO"]`) — CF's validator rejects per-tag delete+create on a fresh account (codes 10021/10074). See [docs/plan/G-conventions.md](plan/G-conventions.md) G3 for the gotchas this avoids.
-- Nightly cron `0 3 * * *` reserved for usage pruning + upstream tool-cache refresh (M6).
+- Nightly cron `0 3 * * *` shipped (M6) — calls `pruneUsageEvents(env, 30)` to drop raw events older than 30 days. Upstream tool-cache refresh still on-demand per-session (24h TTL); cron-driven catalogue refresh remains a future option if session-init cost becomes a concern.
 
 `bun run dev` provisions local HTTPS via mkcert (`.dev-tls/`) on first run; the `__Host-ctx_session` cookie requires `Secure` so HTTPS is mandatory even locally. See [docs/plan/G-conventions.md](plan/G-conventions.md) G11–G12 for cookie + cert details.
 
@@ -347,7 +350,8 @@ Each milestone is independently deployable and demoable.
   - **Phase 4**: admin OAuth-clients viewer at `/app/admin/oauth-clients` — read-only listing of every DCR-registered MCP client from `OAUTH_KV` via `getOAuthApi(opts, env).listClients()`. Hoisted `OAuthProvider` options into `apps/worker/src/oauth/provider-config.ts` so the live provider and the admin helpers share one definition.
   - **Side features bundled** (motivated by dogfooding while M5 was in-flight): folder organisation for docs (`path-on-doc`, no separate folders table — empty folders cannot exist by construction); per-doc lock (`canLock` ACL; padlock icon + tooltip; backend gate in one D1 predicate); modal-dialog replacement for `window.confirm`/`alert`/`prompt` (`apps/web/src/lib/dialogs.tsx`); doc-move UI (editor right-rail + list-row `⋯` menu).
   - *(Sandboxes admin pane moved to the parked Daytona track.)*
-- **M6 — Usage pipeline + dashboards (1 wk)** 📋: usage queue + tiktoken consumer + rollups, admin usage dashboard, user usage page, cron prune. Demo: charts showing per-user/per-upstream calls + tokens.
+- **M6 — Usage pipeline + dashboards** ✅ closed May 2026: usage producer (`apps/worker/src/usage/{event,tokens,record}.ts`) wraps every MCP tool call (built-ins + proxied) and counts bytes + tiktoken-cl100k_base tokens inside `ctx.waitUntil`. Consumer (`apps/worker/src/queues/usage-consumer.ts`) writes raw `usage_events` + UPSERTs `usage_rollups_daily` in one D1 batch. Admin (`/app/admin/usage`) + user (`/app/usage`) dashboards with inline-SVG stacked-bar (no chart-lib dep), adaptive X-axis density per period, top-N tables. Nightly cron `0 3 * * *` prunes raw events older than 30d; rollups stay indefinitely.
+- **Post-M6 deferred-catalogue sweep** ✅ closed May 2026: addressed every non-Daytona deferred item from the audit. Tool double-prefix collapsed (`mangleToolName` strips redundant `${slug}-` so `notion__notion-search` → `notion__search`). `managed_by_idp` schema + admin UI for SSO/group-sync prep (no sync logic yet — column reserved). Admin upstream tool drill-down (expand-row showing cached tools with agent-visible mangled name). Real-D1 integration tests via `@cloudflare/vitest-pool-workers` — 23 tests covering rollup math, doc-ACL gates, audit-log pagination, runnable via `bun --filter='@ctxlayer/worker' run test:int`. *(Dropped: prompt-kind docs via `prompts/list` — on-demand only. Won't-fix: mcp-remote SSE-disconnect spam — server-side intercept too invasive for a cosmetic client log; track upstream.)*
 - **Later — Stdio upstreams via Daytona** 🅿️: revive when a real stdio MCP upstream is on the roadmap. Picks up `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, the snapshot baking pipeline, env-var substitution, `sandbox_sessions` reconcile + nightly cron, Daytona-specific error codes (`-32002`/`-32003`), admin Sandboxes pane with force-destroy, and the `MAX_SANDBOXES_PER_USER` quota. Full recipe in [B](plan/B-daytona-stdio.md).
 
 ## Patterns to mirror from mcp-front (and what to skip)
@@ -402,7 +406,7 @@ Each milestone is independently deployable and demoable.
 - **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per ~5s debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
 - **M4** ✅ **CLOSED May 2026**: Admin · Upstreams → register Notion (`https://mcp.notion.com/mcp`, transport `streamable_http`, auth `user_oauth`) → Visibility → Everyone signed in. User on `/upstreams` → **Connect with OAuth** → DCR + PKCE redirect to Notion → consent → back to `/upstreams?oauth_connected=notion`. Admin UI shows non-zero `toolsCount` after the auto-warm. Claude Desktop wired via `mcp-remote` shim (`NODE_EXTRA_CA_CERTS=$(mkcert -CAROOT)/rootCA.pem` for local-https trust): `list_upstreams` reports `connected: true, toolsCount: 16`; `notion__notion-search`, `notion__notion-fetch`, `notion__notion-create-pages` all return real data; page successfully created in Notion through the proxy. Sealed creds never logged. Visibility query correctly hides upstreams from users not in the granted team/product.
 - **M5** ✅ **CLOSED May 2026**: Admin · Users page CRUD smoke green (promote/demote with last-admin guard, revoke creds); admin OAuth clients listing at `/app/admin/oauth-clients` reflects `OAUTH_KV` contents (Claude Desktop / Cursor / Claude Web registrations all visible); admin Audit log at `/app/admin/audit` shows role changes, credential revocations, doc locks/unlocks, folder rename/delete with action-prefix + actor filters; `shared_bearer` upstreams accept admin-set token and every user sees `connected: true` without per-user setup; `/app/mcp-setup` serves live per-client connection snippets with copy-to-clipboard. Bundled side features: folder organisation + per-doc lock + modal-dialog system + doc-move UI shipped end-to-end.
-- **M6**: Drive synthetic load (script that opens MCP session + calls 100 tools), confirm `usage_events` populated and `usage_rollups_daily` reflects totals; verify tiktoken counts ≈ OpenAI tokenizer for spot-checked payloads.
+- **M6** ✅ **CLOSED May 2026**: end-to-end usage-pipeline verified against the deployed worker. Claude Desktop invocation of `search_docs` (two calls — default-scope no-match + `scope:"all"` 2-hit) → `usage_events` rows landed with `req_tokens=9/13`, `resp_tokens=20/3030`; daily rollup totals matched the SPA dashboard reading of 3050 response tokens exactly. Inline-SVG chart fills page width; X-axis density adapts to the 7/30/90/180-day selector. 23 D1-backed integration tests (`bun run test:int`) pin rollup math + doc-ACL + audit pagination.
 
 ## Deep-dive index
 

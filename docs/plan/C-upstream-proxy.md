@@ -36,6 +36,7 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
 | Upstream tool name contains `__` | Escape upstream side to `_~_`, unescape on dispatch. Documented as a reserved separator. |
 | Upstream slug starts with a digit or contains `-` | MCP tool names allow `[a-zA-Z0-9_-]`; we restrict slugs to `[a-z][a-z0-9_]*` (≤24 chars) at admin form validation. |
 | Two upstreams export the same tool name | Each is namespaced; collision impossible after mangling. `list_upstreams` and `search_docs` are reserved as built-ins; admins cannot create a slug = built-in name. |
+| Upstream namespaces its own tools with its slug (e.g. Notion ships `notion-search`) | `mangleToolName` drops a leading `${slug}-` or `${slug}_` so the surfaced name becomes `notion__search` instead of `notion__notion-search`. Dispatch site closes over `row.tool_name` from the catalogue cache (not over `unmangleToolName`'s output) so the asymmetric collapse is safe — see `apps/worker/src/mcp/tools-proxy.ts:registerTool`. Rule lives in `packages/shared/src/tool-name.ts:collapseSlugPrefix` so the admin SPA tool-browser computes the same name. |
 | Tool description >1024 chars | Truncated with `…` to keep client UIs sane. |
 | Upstream renames a tool between catalogue refreshes | Old name disappears from next `tools/list`; outstanding `tools/call` returns `{code:-32601, message:"tool no longer available"}`. |
 

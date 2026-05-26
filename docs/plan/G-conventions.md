@@ -117,9 +117,11 @@ gotchas the rest of the build should respect.
 - **All effects use `AbortController`.** Cleanup aborts in-flight
   fetches so StrictMode double-invokes and unmount races don't leak
   state.
-- **Admin nav items have matching routes from M1.** Even M5 admin
-  pages render a "coming in M5" stub Route so clicks don't silently
-  bounce to `/app/docs`.
+- **Admin nav items always have matching routes.** Every admin page
+  reachable from the sidebar is mounted in `app.tsx`. Before M5/M6
+  shipped, the unimplemented ones rendered "coming in MN" stubs from
+  `routes/admin/stubs.tsx`; that file is gone post-M6 — all admin
+  pages are real now.
 
 ### G9. Smoke and seed scripts
 

@@ -31,14 +31,14 @@ Three layers, all runnable as `bun run test`, `bun run test:int`, `bun run test:
 
 | Layer | Runner | Scope | When |
 |---|---|---|---|
-| Unit | Vitest | Pure functions (chunker, token estimator, allowlist, namespacing, AES-GCM wrapper). ≤200ms per file. | Every change, every PR. |
-| Integration | Vitest + `@cloudflare/vitest-pool-workers` | Worker handlers + DOs against Miniflare. Includes OAuth happy/sad paths with a fake IdP, MCP `initialize`/`tools/list`/`tools/call`, DocRoom Yjs sync, queue consumer behaviour, mock-Daytona sandbox lifecycle. | Every PR + nightly. |
-| End-to-end | Playwright | SPA sign-in, doc edit (two browsers), upstream connect, MCP setup, admin CRUD. Runs against a `wrangler versions deploy` preview URL. | PR + before promote-to-prod. |
+| Unit | Vitest (node env) | Pure functions (chunker, token estimator, allowlist, namespacing, AES-GCM wrapper). 106 tests, ≤500ms total. Live under `apps/worker/src/**/*.test.ts`. | Every change, every PR (`bun run test`). |
+| Integration | Vitest + `@cloudflare/vitest-pool-workers` against a real D1 (miniflare-backed) | Query-layer coverage: usage rollup math, doc-ACL gates, audit-log pagination. Migrations applied via `applyD1Migrations` in a `setupFiles` hook; per-test isolated storage rolls back inserts. 23 tests, ~600ms. Live under `apps/worker/test/integration/`. | Locally + nightly (`bun run test:int`). Not in `bun run verify` to keep that fast. |
+| End-to-end | Playwright | SPA sign-in, doc edit (two browsers), upstream connect, MCP setup, admin CRUD. Runs against a `wrangler versions deploy` preview URL. | 🚧 not yet wired; the `test:e2e` script is a stub. |
 
-Special harnesses:
-- `tests/fixtures/fake-idp/` — minimal OIDC issuer + GitHub-shaped API for Google and GitHub allowlist tests. No external dependency.
-- `tests/fixtures/fake-upstream-mcp/` — a tiny in-process MCP server (Streamable HTTP) that the integration tests register as an upstream. Verifies proxy + namespacing + error surfacing end-to-end.
-- `tests/fixtures/mock-daytona/` — express server speaking Daytona's REST API shape; sandbox state machine is purely in-memory. Lets integration tests cover the stdio path without any container runtime.
+Special harnesses (planned, not all shipped):
+- `tests/fixtures/fake-idp/` — minimal OIDC issuer + GitHub-shaped API for Google and GitHub allowlist tests. No external dependency. 🚧 not yet built.
+- `tests/fixtures/fake-upstream-mcp/` — a tiny in-process MCP server (Streamable HTTP) that the integration tests register as an upstream. Verifies proxy + namespacing + error surfacing end-to-end. 🚧 not yet built.
+- `tests/fixtures/mock-daytona/` — express server speaking Daytona's REST API shape; sandbox state machine is purely in-memory. Lets integration tests cover the stdio path without any container runtime. 🅿️ parked with the Daytona track.
 
 ### E4. CI/CD
 
