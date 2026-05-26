@@ -11,7 +11,8 @@ import {
   AdminTeams,
   AdminProducts,
   AdminUsage,
-  AdminAudit
+  AdminAudit,
+  AdminOAuthClients
 } from './routes/admin'
 import { Shell } from './components/shell'
 
@@ -38,6 +39,7 @@ export function appRoutes() {
         <Route path="admin/products" element={<AdminProducts />} />
         <Route path="admin/usage" element={<AdminUsage />} />
         <Route path="admin/audit" element={<AdminAudit />} />
+        <Route path="admin/oauth-clients" element={<AdminOAuthClients />} />
       </Route>
       <Route path="*" element={<Navigate to="/app/docs" replace />} />
     </>

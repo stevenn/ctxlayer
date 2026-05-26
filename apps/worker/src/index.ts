@@ -15,6 +15,7 @@ import { teamsRoute, productsRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
 import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
 import { adminAuditRoute } from './api/admin-audit'
+import { adminOAuthClientsRoute } from './api/admin-oauth-clients'
 import { adminUpstreamsRoute } from './api/admin-upstreams'
 import { adminUsersRoute } from './api/admin-users'
 import { upstreamsRoute } from './api/upstreams'
@@ -27,6 +28,7 @@ import { githubIdpRoute } from './idp/github'
 import { handleAuthorize } from './oauth/authorize-page'
 import { handleCollabUpgrade } from './collab/upgrade'
 import { McpSessionDO } from './mcp/session-do'
+import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 
@@ -58,6 +60,7 @@ app.route('/api/admin/team-products', adminTeamProductsRoute)
 app.route('/api/admin/upstreams', adminUpstreamsRoute)
 app.route('/api/admin/users', adminUsersRoute)
 app.route('/api/admin/audit', adminAuditRoute)
+app.route('/api/admin/oauth-clients', adminOAuthClientsRoute)
 
 // User-facing upstream connections (paste-bearer, list visible). Lives
 // at /api/upstreams to mirror the SPA route at /upstreams.
@@ -97,20 +100,12 @@ app.notFound((c) => c.json({ error: 'not_found', path: c.req.path }, 404))
 // OAuthProvider wraps the worker's fetch. It implements /oauth/token,
 // /oauth/register, /.well-known/oauth-authorization-server, and gates
 // /mcp + /sse on a valid bearer token. Everything else falls through
-// to the Hono app (default handler). The McpSessionDO's `serve` /
-// `serveSSE` helpers return ExportedHandler-shaped wrappers that
-// route the request to a DO instance per session.
-const oauthProvider = new OAuthProvider<Env>({
-  apiHandlers: {
-    '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }),
-    '/sse': McpSessionDO.serveSSE('/sse', { binding: 'MCP_SESSION_DO' })
-  },
-  defaultHandler: { fetch: app.fetch as ExportedHandler<Env>['fetch'] },
-  authorizeEndpoint: '/oauth/authorize',
-  tokenEndpoint: '/oauth/token',
-  clientRegistrationEndpoint: '/oauth/register',
-  scopesSupported: ['mcp']
-})
+// to the Hono app (default handler). Provider options live in
+// `oauth/provider-config.ts` so admin tooling can construct a
+// read-only `OAuthHelpers` against the identical config.
+const oauthProvider = new OAuthProvider<Env>(
+  oauthProviderOptions({ fetch: app.fetch as ExportedHandler<Env>['fetch'] })
+)
 
 const worker: ExportedHandler<Env> = {
   fetch: (req, env, ctx) => oauthProvider.fetch(req, env, ctx),

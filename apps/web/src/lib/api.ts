@@ -17,6 +17,7 @@ import {
   AdminUpstreamRow,
   AdminUserRow,
   AuditLogResponse,
+  OAuthClientsResponse,
   CreateUpstreamRequest,
   MeResponse,
   UpdateUserRoleRequest,
@@ -41,6 +42,7 @@ import type {
   AdminUpstreamRow as AdminUpstreamRowT,
   AdminUserRow as AdminUserRowT,
   AuditLogResponse as AuditLogResponseT,
+  OAuthClientsResponse as OAuthClientsResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
@@ -501,6 +503,25 @@ export function adminPatchUserRole(
     method: 'PATCH',
     body: JSON.stringify(UpdateUserRoleRequest.parse(body))
   })
+}
+
+// ----- admin oauth clients ------------------------------------------------
+
+export interface FetchAdminOAuthClientsOpts {
+  cursor?: string
+  limit?: number
+}
+
+export function fetchAdminOAuthClients(
+  opts: FetchAdminOAuthClientsOpts = {},
+  signal?: AbortSignal
+): Promise<OAuthClientsResponseT> {
+  const params = new URLSearchParams()
+  if (opts.cursor) params.set('cursor', opts.cursor)
+  if (opts.limit) params.set('limit', String(opts.limit))
+  const qs = params.toString()
+  const path = qs ? `/api/admin/oauth-clients?${qs}` : '/api/admin/oauth-clients'
+  return request(path, (b) => OAuthClientsResponse.parse(b), { signal })
 }
 
 // ----- admin audit --------------------------------------------------------
