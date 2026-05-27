@@ -12,7 +12,9 @@ import {
   AdminProducts,
   AdminUsage,
   AdminAudit,
-  AdminOAuthClients
+  AdminOAuthClients,
+  AdminSkills,
+  AdminSkillEditor
 } from './routes/admin'
 import { Shell } from './components/shell'
 
@@ -40,6 +42,8 @@ export function appRoutes() {
         <Route path="admin/usage" element={<AdminUsage />} />
         <Route path="admin/audit" element={<AdminAudit />} />
         <Route path="admin/oauth-clients" element={<AdminOAuthClients />} />
+        <Route path="admin/skills" element={<AdminSkills />} />
+        <Route path="admin/skills/:id/edit" element={<AdminSkillEditor />} />
       </Route>
       <Route path="*" element={<Navigate to="/app/docs" replace />} />
     </>

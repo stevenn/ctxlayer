@@ -1,0 +1,253 @@
+/**
+ * Skills REST surface. Reads are open to any signed-in user (filtered
+ * to `status='published'` for non-admins); writes are admin-only.
+ *
+ * Status gating happens here, not in the query layer: callers ask for
+ * what they want and the route decides whether to filter. Keeps the
+ * predicate co-located with the auth context.
+ */
+
+import { Hono } from 'hono'
+import {
+  CreateSkillRequest,
+  DocContent,
+  SkillTags,
+  UpdateSkillRequest,
+  type SkillAttachmentRef,
+  type SkillDetail,
+  type SkillRevisionSummary,
+  type SkillSummary
+} from '@ctxlayer/shared'
+import type { Env } from '../env'
+import { requireAdmin, requireUser, type AuthedVariables } from '../auth/middleware'
+import { requireCsrf } from '../auth/csrf'
+import {
+  createSkill,
+  getSkillById,
+  getSkillRevision,
+  listPublishedSkills,
+  listSkillRevisions,
+  listSkillsForAdmin,
+  patchSkill,
+  recordSkillRevision,
+  softDeleteSkill,
+  type SkillRevisionRow,
+  type SkillWithUsersRow
+} from '../db/queries/skills'
+import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
+import { listTagsForSkill, replaceTagsForSkill } from '../db/queries/skill-tags'
+import { readRevision, readSnapshot, writeRevisionAndSnapshot } from '../storage/skills-r2'
+import { audit } from '../audit/log'
+
+const CONTENT_MAX_BYTES = 2 * 1024 * 1024
+
+export const skillsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
+skillsRoute.use('*', requireUser)
+skillsRoute.use('*', requireCsrf)
+
+skillsRoute.get('/', async (c) => {
+  const role = c.get('user').role
+  const status = c.req.query('status') as
+    | 'draft'
+    | 'published'
+    | 'archived'
+    | 'all'
+    | undefined
+  const rows =
+    role === 'admin'
+      ? await listSkillsForAdmin(c.env, { status })
+      : await listPublishedSkills(c.env)
+  const body: SkillSummary[] = rows.map(toSummary)
+  return c.json(body)
+})
+
+skillsRoute.post('/', requireAdmin, async (c) => {
+  const parsed = CreateSkillRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const { userId } = c.get('user')
+  try {
+    const row = await createSkill(c.env, { ...parsed.data, createdBy: userId })
+    await audit(c.env, { actorId: userId, action: 'skill.create', target: row.id })
+    return c.json({ id: row.id, slug: row.slug }, 201)
+  } catch (err) {
+    if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
+    throw err
+  }
+})
+
+skillsRoute.get('/:id', async (c) => {
+  const id = c.req.param('id')
+  const row = await getSkillById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role))
+    return c.json({ error: 'not_found' }, 404)
+  const [attachments, tags] = await Promise.all([
+    listAttachmentsForSkill(c.env, id),
+    listTagsForSkill(c.env, id)
+  ])
+  const body: SkillDetail = {
+    ...toSummary(row),
+    triggerText: row.trigger_text,
+    currentRevId: row.current_rev_id,
+    attachments: attachments.map(toAttachmentRef),
+    tags
+  }
+  return c.json(body)
+})
+
+skillsRoute.patch('/:id', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const parsed = UpdateSkillRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  try {
+    await patchSkill(c.env, id, parsed.data)
+    await audit(c.env, { actorId: c.get('user').userId, action: 'skill.patch', target: id })
+    return new Response(null, { status: 204 })
+  } catch (err) {
+    if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
+    throw err
+  }
+})
+
+skillsRoute.delete('/:id', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  await softDeleteSkill(c.env, id)
+  await audit(c.env, { actorId: c.get('user').userId, action: 'skill.delete', target: id })
+  return new Response(null, { status: 204 })
+})
+
+skillsRoute.get('/:id/content', async (c) => {
+  const id = c.req.param('id')
+  const row = await getSkillById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role))
+    return c.json({ error: 'not_found' }, 404)
+  const content = (await readSnapshot(c.env, id)) ?? { blocks: [] }
+  return c.json(content)
+})
+
+skillsRoute.put('/:id/content', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  const { userId } = c.get('user')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const raw = await c.req.arrayBuffer()
+  if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
+  const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const revisionId = newRevisionId()
+  const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
+  await recordSkillRevision(c.env, {
+    skillId: id,
+    revisionId,
+    authorId: userId,
+    r2Key: put.key,
+    byteSize: put.byteSize,
+    contentHash: put.contentHash
+  })
+  return c.json({ revisionId, byteSize: put.byteSize, contentHash: put.contentHash })
+})
+
+skillsRoute.get('/:id/revisions', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const rows = await listSkillRevisions(c.env, id)
+  const body: SkillRevisionSummary[] = rows.map(toRevisionSummary)
+  return c.json(body)
+})
+
+skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  const rev = c.req.param('rev')
+  if (!(await getSkillRevision(c.env, id, rev))) return c.json({ error: 'not_found' }, 404)
+  const content = await readRevision(c.env, id, rev)
+  if (!content) return c.json({ error: 'not_found' }, 404)
+  return c.json(content)
+})
+
+// Inline /:id/tags endpoints; tags model is small enough not to
+// warrant a separate router file.
+skillsRoute.get('/:id/tags', async (c) => {
+  const id = c.req.param('id')
+  const row = await getSkillById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role))
+    return c.json({ error: 'not_found' }, 404)
+  const tags = await listTagsForSkill(c.env, id)
+  return c.json(tags)
+})
+
+skillsRoute.put('/:id/tags', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const parsed = SkillTags.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  await replaceTagsForSkill(c.env, id, parsed.data)
+  return new Response(null, { status: 204 })
+})
+
+// ----- helpers ------------------------------------------------------------
+
+function isVisibleToCaller(row: SkillWithUsersRow, role: string): boolean {
+  if (role === 'admin') return true
+  return row.status === 'published'
+}
+
+function toSummary(row: SkillWithUsersRow): SkillSummary {
+  return {
+    id: row.id,
+    slug: row.slug,
+    title: row.title,
+    description: row.description,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    isStale: row.is_stale === 1,
+    createdBy: row.created_by
+      ? {
+          id: row.created_by,
+          email: row.created_by_email ?? '',
+          name: row.created_by_name
+        }
+      : null,
+    updatedBy: row.updated_by_id
+      ? {
+          id: row.updated_by_id,
+          email: row.updated_by_email ?? '',
+          name: row.updated_by_name
+        }
+      : null
+  }
+}
+
+function toRevisionSummary(row: SkillRevisionRow): SkillRevisionSummary {
+  return {
+    id: row.id,
+    authorId: row.author_id,
+    createdAt: row.created_at,
+    byteSize: row.byte_size,
+    contentHash: row.content_hash
+  }
+}
+
+function toAttachmentRef(row: {
+  upstream_id: string
+  upstream_slug: string
+  tool_name: string
+}): SkillAttachmentRef {
+  return {
+    upstreamId: row.upstream_id,
+    upstreamSlug: row.upstream_slug,
+    toolName: row.tool_name
+  }
+}
+
+function newRevisionId(): string {
+  return crypto.randomUUID().replace(/-/g, '')
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /UNIQUE constraint failed/i.test(msg)
+}

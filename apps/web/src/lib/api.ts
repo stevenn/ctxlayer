@@ -1,11 +1,15 @@
 import {
   AddEditorRequest,
   AddTeamMemberRequest,
+  AttachDocRequest,
+  AttachSkillRequest,
   ConfigResponse,
   CreateDocRequest,
   CreateProductRequest,
+  CreateSkillRequest,
   CreateTeamRequest,
   DocContent,
+  DocAttachmentRef,
   DocDetail,
   DocEditorsResponse,
   DocSummary,
@@ -14,6 +18,12 @@ import {
   FolderTreeResponse,
   HealthResponse,
   SetLockedRequest,
+  SkillAttachmentRef,
+  SkillDetail,
+  SkillExportResponse,
+  SkillRevisionSummary,
+  SkillSummary,
+  SkillTags,
   AdminUpstreamRow,
   AdminUserRow,
   AdminUsageResponse,
@@ -27,6 +37,7 @@ import {
   ProductRef,
   RefreshToolsResponse,
   ReplaceVisibilityRequest,
+  UpdateSkillRequest,
   UpstreamToolsResponse,
   UpdateUpstreamRequest,
   RevisionSummary,
@@ -46,13 +57,17 @@ import type {
   AdminUpstreamRow as AdminUpstreamRowT,
   AdminUserRow as AdminUserRowT,
   AdminUsageResponse as AdminUsageResponseT,
+  AttachDocRequest as AttachDocRequestT,
+  AttachSkillRequest as AttachSkillRequestT,
   AuditLogResponse as AuditLogResponseT,
   OAuthClientsResponse as OAuthClientsResponseT,
   UsageResponse as UsageResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
+  CreateSkillRequest as CreateSkillRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
   UpstreamToolsResponse as UpstreamToolsResponseT,
   ReplaceVisibilityRequest as ReplaceVisibilityRequestT,
+  UpdateSkillRequest as UpdateSkillRequestT,
   UpdateUpstreamRequest as UpdateUpstreamRequestT,
   UpdateUserRoleRequest as UpdateUserRoleRequestT,
   AddEditorRequest as AddEditorRequestT,
@@ -61,6 +76,7 @@ import type {
   CreateDocRequest as CreateDocRequestT,
   CreateProductRequest as CreateProductRequestT,
   CreateTeamRequest as CreateTeamRequestT,
+  DocAttachmentRef as DocAttachmentRefT,
   DocContent as DocContentT,
   DocDetail as DocDetailT,
   DocEditorsResponse as DocEditorsResponseT,
@@ -70,6 +86,12 @@ import type {
   FolderTreeResponse as FolderTreeResponseT,
   HealthResponse as HealthResponseT,
   SetLockedRequest as SetLockedRequestT,
+  SkillAttachmentRef as SkillAttachmentRefT,
+  SkillDetail as SkillDetailT,
+  SkillExportResponse as SkillExportResponseT,
+  SkillRevisionSummary as SkillRevisionSummaryT,
+  SkillSummary as SkillSummaryT,
+  SkillTags as SkillTagsT,
   MeResponse as MeResponseT,
   PasteBearerRequest as PasteBearerRequestT,
   ProductRef as ProductRefT,
@@ -653,6 +675,153 @@ export function deleteUpstreamCredentials(upstreamId: string): Promise<void> {
     () => undefined,
     { method: 'DELETE' }
   )
+}
+
+// ----- skills (M7a) -------------------------------------------------------
+
+const SkillList = z.array(SkillSummary)
+const CreateSkillResult = z.object({ id: z.string(), slug: z.string() })
+const SkillRevisionList = z.array(SkillRevisionSummary)
+const SkillAttachmentList = z.array(SkillAttachmentRef)
+const DocAttachmentList = z.array(DocAttachmentRef)
+
+export interface FetchSkillsOpts {
+  status?: 'draft' | 'published' | 'archived' | 'all'
+}
+
+export function fetchSkills(
+  opts: FetchSkillsOpts = {},
+  signal?: AbortSignal
+): Promise<SkillSummaryT[]> {
+  const qs = opts.status ? `?status=${encodeURIComponent(opts.status)}` : ''
+  return request(`/api/skills${qs}`, (b) => SkillList.parse(b), { signal })
+}
+
+export function fetchSkill(id: string, signal?: AbortSignal): Promise<SkillDetailT> {
+  return request(`/api/skills/${encodeURIComponent(id)}`, (b) => SkillDetail.parse(b), {
+    signal
+  })
+}
+
+export function createSkill(
+  input: CreateSkillRequestT
+): Promise<{ id: string; slug: string }> {
+  return request('/api/skills', (b) => CreateSkillResult.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateSkillRequest.parse(input))
+  })
+}
+
+export function patchSkill(id: string, patch: UpdateSkillRequestT): Promise<void> {
+  return request(`/api/skills/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateSkillRequest.parse(patch))
+  })
+}
+
+export function deleteSkill(id: string): Promise<void> {
+  return request(`/api/skills/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' })
+}
+
+export function fetchSkillContent(id: string, signal?: AbortSignal): Promise<DocContentT> {
+  return request(`/api/skills/${encodeURIComponent(id)}/content`, (b) => DocContent.parse(b), {
+    signal
+  })
+}
+
+export function putSkillContent(
+  id: string,
+  content: DocContentT
+): Promise<{ revisionId: string; byteSize: number; contentHash: string }> {
+  return request(
+    `/api/skills/${encodeURIComponent(id)}/content`,
+    (b) => z.object({ revisionId: z.string(), byteSize: z.number(), contentHash: z.string() }).parse(b),
+    {
+      method: 'PUT',
+      body: JSON.stringify(DocContent.parse(content))
+    }
+  )
+}
+
+export function fetchSkillRevisions(
+  id: string,
+  signal?: AbortSignal
+): Promise<SkillRevisionSummaryT[]> {
+  return request(
+    `/api/skills/${encodeURIComponent(id)}/revisions`,
+    (b) => SkillRevisionList.parse(b),
+    { signal }
+  )
+}
+
+export function fetchSkillTags(id: string, signal?: AbortSignal): Promise<SkillTagsT> {
+  return request(`/api/skills/${encodeURIComponent(id)}/tags`, (b) => SkillTags.parse(b), {
+    signal
+  })
+}
+
+export function putSkillTags(id: string, tags: SkillTagsT): Promise<void> {
+  return request(`/api/skills/${encodeURIComponent(id)}/tags`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(SkillTags.parse(tags))
+  })
+}
+
+// ----- attachments (M7a) --------------------------------------------------
+
+export function fetchSkillAttachments(
+  skillId: string,
+  signal?: AbortSignal
+): Promise<SkillAttachmentRefT[]> {
+  const qs = new URLSearchParams({ skillId })
+  return request(`/api/skill-attachments?${qs}`, (b) => SkillAttachmentList.parse(b), {
+    signal
+  })
+}
+
+export function attachSkill(input: AttachSkillRequestT): Promise<void> {
+  return request('/api/skill-attachments', () => undefined, {
+    method: 'POST',
+    body: JSON.stringify(AttachSkillRequest.parse(input))
+  })
+}
+
+export function detachSkill(input: AttachSkillRequestT): Promise<void> {
+  return request('/api/skill-attachments', () => undefined, {
+    method: 'DELETE',
+    body: JSON.stringify(AttachSkillRequest.parse(input))
+  })
+}
+
+export function fetchDocAttachments(
+  docId: string,
+  signal?: AbortSignal
+): Promise<DocAttachmentRefT[]> {
+  const qs = new URLSearchParams({ docId })
+  return request(`/api/doc-attachments?${qs}`, (b) => DocAttachmentList.parse(b), {
+    signal
+  })
+}
+
+export function attachDoc(input: AttachDocRequestT): Promise<void> {
+  return request('/api/doc-attachments', () => undefined, {
+    method: 'POST',
+    body: JSON.stringify(AttachDocRequest.parse(input))
+  })
+}
+
+export function detachDoc(input: AttachDocRequestT): Promise<void> {
+  return request('/api/doc-attachments', () => undefined, {
+    method: 'DELETE',
+    body: JSON.stringify(AttachDocRequest.parse(input))
+  })
+}
+
+// CLI-only typically; the SPA might surface this for "preview the
+// SKILL.md the CLI will write". Available for both roles since it's
+// just a transformation of published skills.
+export function fetchSkillsExport(signal?: AbortSignal): Promise<SkillExportResponseT> {
+  return request('/api/skills/export', (b) => SkillExportResponse.parse(b), { signal })
 }
 
 // Silence unused warning for the VOID schema export — keeping it

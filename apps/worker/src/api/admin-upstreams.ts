@@ -38,6 +38,9 @@ import {
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { seal } from '../crypto/aead'
 import { audit } from '../audit/log'
+import { listSkillsForUpstream } from '../db/queries/skill-attachments'
+import { listDocsForUpstream } from '../db/queries/doc-attachments'
+import { groupAttachmentsForTools } from './upstreams-attachments'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -157,15 +160,26 @@ adminUpstreamsRoute.get('/:id/tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  const tools = await listCachedTools(c.env, id)
+  // Admin view sees drafts as well as published; non-admin user route
+  // (api/upstreams.ts) only sees published.
+  const [tools, skillAtt, docAtt] = await Promise.all([
+    listCachedTools(c.env, id),
+    listSkillsForUpstream(c.env, id, { includeDrafts: true }),
+    listDocsForUpstream(c.env, id)
+  ])
+  const bundle = groupAttachmentsForTools(skillAtt, docAtt)
   return c.json({
     upstreamId: id,
     slug: row.slug,
+    attachedSkills: bundle.whole.skills,
+    attachedDocs: bundle.whole.docs,
     tools: tools.map((t) => ({
       toolName: t.tool_name,
       description: t.description,
       inputSchema: safeParse(t.input_schema),
-      cachedAt: t.cached_at
+      cachedAt: t.cached_at,
+      attachedSkills: bundle.byTool.get(t.tool_name)?.skills ?? [],
+      attachedDocs: bundle.byTool.get(t.tool_name)?.docs ?? []
     }))
   })
 })

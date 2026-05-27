@@ -19,6 +19,11 @@ import { adminOAuthClientsRoute } from './api/admin-oauth-clients'
 import { adminUpstreamsRoute } from './api/admin-upstreams'
 import { adminUsersRoute } from './api/admin-users'
 import { adminUsageRoute } from './api/admin-usage'
+import { skillsRoute } from './api/skills'
+import { skillAttachmentsRoute } from './api/skill-attachments'
+import { skillsExportRoute } from './api/skills-export'
+import { skillsDraftContextRoute } from './api/skills-draft-context'
+import { docAttachmentsRoute } from './api/doc-attachments'
 import { usageRoute } from './api/usage'
 import { upstreamsRoute } from './api/upstreams'
 import {
@@ -55,6 +60,15 @@ app.route('/api/docs', docsRoute)
 app.route('/api/docs', docSharingRoute)
 app.route('/api/docs', docTagsRoute)
 app.route('/api/folders', foldersRoute)
+// Skills + attachments (M7a). Reads are open to any signed-in user;
+// writes are admin-only (per-route requireAdmin inside the routers).
+// Mount /export FIRST so it doesn't get captured by /:id matching in
+// skillsRoute.
+app.route('/api/skills/export', skillsExportRoute)
+app.route('/api/skills/draft-context', skillsDraftContextRoute)
+app.route('/api/skills', skillsRoute)
+app.route('/api/skill-attachments', skillAttachmentsRoute)
+app.route('/api/doc-attachments', docAttachmentsRoute)
 // Admin REST. All inner routes gate on requireAdmin so non-admins
 // hitting these endpoints get 403, not 401.
 app.route('/api/admin/teams', adminTeamsRoute)

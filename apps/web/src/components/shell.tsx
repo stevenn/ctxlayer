@@ -27,6 +27,7 @@ const PRIMARY_NAV: NavSpec[] = [
 
 const ADMIN_NAV: NavSpec[] = [
   { to: '/app/admin/upstreams', label: 'Upstreams' },
+  { to: '/app/admin/skills', label: 'Skills', matches: (p) => p.startsWith('/app/admin/skills') },
   { to: '/app/admin/users', label: 'Users' },
   { to: '/app/admin/teams', label: 'Teams' },
   { to: '/app/admin/products', label: 'Products' },
@@ -41,6 +42,7 @@ const TITLES: Record<string, string> = {
   '/app/mcp-setup': 'MCP setup',
   '/app/usage': 'Usage',
   '/app/admin/upstreams': 'Admin · Upstreams',
+  '/app/admin/skills': 'Admin · Skills',
   '/app/admin/users': 'Admin · Users',
   '/app/admin/teams': 'Admin · Teams',
   '/app/admin/products': 'Admin · Products',

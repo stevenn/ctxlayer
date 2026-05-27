@@ -33,6 +33,8 @@ import {
   type UpstreamServerRow,
   type UpstreamToolRow
 } from '../db/queries/upstreams'
+import { listSkillsForUpstream } from '../db/queries/skill-attachments'
+import { listDocsForUpstream } from '../db/queries/doc-attachments'
 import { UpstreamHttpClient } from '../upstream/http-client'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
@@ -49,6 +51,12 @@ export interface ListUpstreamsEntry {
   connected: boolean
   toolsCount: number
   requiresAuth?: 'user_bearer' | 'shared_bearer' | 'user_oauth' | 'none'
+  // M7a: whole-upstream attachments (tool_name='' rows in
+  // skill_attachments / doc_attachments). Per-tool attachments surface
+  // on /api/upstreams/:id/tools instead. Default empty arrays so MCP
+  // clients can rely on the field being present.
+  attached_skills: Array<{ slug: string; title: string }>
+  attached_docs: Array<{ slug: string; title: string }>
 }
 
 export class UpstreamProxyRegistry {
@@ -125,13 +133,27 @@ export class UpstreamProxyRegistry {
         ? !!(await getUserCredential(env, userId, row.id))
         : true
       const toolsCount = await countToolsForUpstream(env, row.id)
+      // Whole-upstream attachments only (tool_name = ''); per-tool
+      // attachments surface via /api/upstreams/:id/tools.
+      const [skillAtt, docAtt] = await Promise.all([
+        listSkillsForUpstream(env, row.id),
+        listDocsForUpstream(env, row.id)
+      ])
+      const attached_skills = skillAtt
+        .filter((s) => s.tool_name === '')
+        .map((s) => ({ slug: s.slug, title: s.title }))
+      const attached_docs = docAtt
+        .filter((d) => d.tool_name === '')
+        .map((d) => ({ slug: d.slug, title: d.title }))
       out.push({
         slug: row.slug,
         displayName: row.display_name,
         transport: row.transport,
         connected,
         toolsCount,
-        requiresAuth: row.auth_strategy
+        requiresAuth: row.auth_strategy,
+        attached_skills,
+        attached_docs
       })
     }
     return out

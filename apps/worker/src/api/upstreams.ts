@@ -23,7 +23,10 @@ import {
   listUserUpstreamSummaries,
   upsertUserCredential
 } from '../db/queries/upstreams'
+import { listSkillsForUpstream } from '../db/queries/skill-attachments'
+import { listDocsForUpstream } from '../db/queries/doc-attachments'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
+import { groupAttachmentsForTools, type AttachmentBundle } from './upstreams-attachments'
 
 export const upstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 upstreamsRoute.use('*', requireUser)
@@ -45,15 +48,24 @@ upstreamsRoute.get('/:id/tools', async (c) => {
   const visible = await listUpstreamsVisibleToUser(c.env, userId)
   const row = visible.find((r) => r.id === id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  const tools = await listCachedTools(c.env, id)
+  const [tools, skillAtt, docAtt] = await Promise.all([
+    listCachedTools(c.env, id),
+    listSkillsForUpstream(c.env, id),
+    listDocsForUpstream(c.env, id)
+  ])
+  const bundle: AttachmentBundle = groupAttachmentsForTools(skillAtt, docAtt)
   return c.json({
     upstreamId: id,
     slug: row.slug,
+    attachedSkills: bundle.whole.skills,
+    attachedDocs: bundle.whole.docs,
     tools: tools.map((t) => ({
       toolName: t.tool_name,
       description: t.description,
       inputSchema: safeParse(t.input_schema),
-      cachedAt: t.cached_at
+      cachedAt: t.cached_at,
+      attachedSkills: bundle.byTool.get(t.tool_name)?.skills ?? [],
+      attachedDocs: bundle.byTool.get(t.tool_name)?.docs ?? []
     }))
   })
 })

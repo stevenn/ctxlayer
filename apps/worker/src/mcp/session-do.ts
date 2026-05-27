@@ -23,6 +23,7 @@ import { renderBlocksToMarkdown } from '../rag/markdown'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
 import { UpstreamProxyRegistry } from './tools-proxy'
+import { registerSkillMcp } from './skill-mcp'
 import { recordUsage } from '../usage/record'
 
 const SEARCH_K_DEFAULT = 8
@@ -233,6 +234,12 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           }
         })
     )
+
+    // ----- skill MCP surface (M7a) -----
+    // list_skills + get_skill tools + mcp://ctxlayer/skills/{slug}
+    // resource template. Extracted to mcp/skill-mcp.ts to keep this
+    // file focused on session lifecycle.
+    registerSkillMcp(this.server, this.env, rec)
 
     // ----- doc resources: mcp://ctxlayer/docs/{id} -----
     // The MCP `ResourceTemplate` lets the SDK expand `{id}` into the

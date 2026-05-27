@@ -148,6 +148,22 @@ export const RefreshToolsResponse = z.object({
 })
 export type RefreshToolsResponse = z.infer<typeof RefreshToolsResponse>
 
+// Skill / doc references that surface on the upstream and per-tool
+// rows when M7a attachments are present. `slug` is the SKILL.md /
+// doc slug (the URL-safe id); `name` / `title` is the human display
+// label rendered next to the chip. Both arrays default to empty.
+export const AttachedSkillRef = z.object({
+  slug: z.string(),
+  title: z.string()
+})
+export type AttachedSkillRef = z.infer<typeof AttachedSkillRef>
+
+export const AttachedDocRef = z.object({
+  slug: z.string(),
+  title: z.string()
+})
+export type AttachedDocRef = z.infer<typeof AttachedDocRef>
+
 // One cached tool as exposed to the admin tool-browser. Surfaces the
 // upstream-side name (the real one called over the wire), the
 // description shown to agents, and the parsed input schema. The
@@ -158,14 +174,22 @@ export const UpstreamToolSummary = z.object({
   toolName: z.string(),
   description: z.string().nullable(),
   inputSchema: z.unknown(),
-  cachedAt: z.number().int()
+  cachedAt: z.number().int(),
+  // M7a additions; empty arrays when no attachments exist.
+  attachedSkills: z.array(AttachedSkillRef).default([]),
+  attachedDocs: z.array(AttachedDocRef).default([])
 })
 export type UpstreamToolSummary = z.infer<typeof UpstreamToolSummary>
 
 export const UpstreamToolsResponse = z.object({
   upstreamId: z.string(),
   slug: UpstreamSlug,
-  tools: z.array(UpstreamToolSummary)
+  tools: z.array(UpstreamToolSummary),
+  // Whole-upstream attachments (tool_name='' rows in skill_attachments
+  // / doc_attachments). Surface on the upstream row itself, not on any
+  // specific tool. Empty arrays when no attachments exist.
+  attachedSkills: z.array(AttachedSkillRef).default([]),
+  attachedDocs: z.array(AttachedDocRef).default([])
 })
 export type UpstreamToolsResponse = z.infer<typeof UpstreamToolsResponse>
 

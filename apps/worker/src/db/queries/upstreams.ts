@@ -287,6 +287,11 @@ export interface UpstreamToolRow {
   description: string | null
   input_schema: string
   cached_at: number
+  // M8: catalogue staleness tracking. NULL on rows cached before the
+  // 0012 migration; populated on subsequent refreshes.
+  input_schema_hash: string | null
+  last_schema_change_at: number | null
+  last_diff_summary: string | null
 }
 
 export interface CatalogueTool {
@@ -297,7 +302,8 @@ export interface CatalogueTool {
 
 export async function listCachedTools(env: Env, upstreamId: string): Promise<UpstreamToolRow[]> {
   const res = await env.DB.prepare(
-    `SELECT upstream_id, tool_name, description, input_schema, cached_at
+    `SELECT upstream_id, tool_name, description, input_schema, cached_at,
+            input_schema_hash, last_schema_change_at, last_diff_summary
      FROM upstream_tools WHERE upstream_id = ?1
      ORDER BY tool_name`
   )
@@ -325,9 +331,16 @@ export async function countToolsForUpstream(env: Env, upstreamId: string): Promi
 }
 
 /**
- * Replace the entire tool cache for an upstream in one batch — the
- * authoritative `tools/list` is what just came back from the upstream,
- * so any stale rows must go.
+ * Replace the entire tool cache for an upstream — the authoritative
+ * `tools/list` is what just came back. M8: also computes
+ * input_schema_hash per tool and bumps last_schema_change_at when the
+ * hash differs from the previously cached value. Skills attached to a
+ * tool whose hash changed are reported as stale at read time
+ * (apps/worker/src/db/queries/skills.ts).
+ *
+ * Implementation: read current hashes first, then DELETE + INSERT in
+ * one batch. We INSERT with the right `last_schema_change_at` for each
+ * row inline, so post-batch reads see consistent values.
  */
 export async function replaceCachedTools(
   env: Env,
@@ -335,15 +348,112 @@ export async function replaceCachedTools(
   tools: CatalogueTool[]
 ): Promise<number> {
   const now = Math.floor(Date.now() / 1000)
+
+  // Snapshot prior hashes + change timestamps so we can decide whether
+  // a given tool's hash changed and what to preserve.
+  const prior = await env.DB.prepare(
+    `SELECT tool_name, input_schema, input_schema_hash, last_schema_change_at
+     FROM upstream_tools WHERE upstream_id = ?1`
+  )
+    .bind(upstreamId)
+    .all<{
+      tool_name: string
+      input_schema: string
+      input_schema_hash: string | null
+      last_schema_change_at: number | null
+    }>()
+  const priorByName = new Map(
+    (prior.results ?? []).map((r) => [
+      r.tool_name,
+      {
+        rawSchema: r.input_schema,
+        hash: r.input_schema_hash,
+        lastChangeAt: r.last_schema_change_at
+      }
+    ])
+  )
+
+  // Compute hash + diff per tool (lazy import to keep cold-start lean).
+  const { canonicalHash, summariseDiff } = await import('../../upstream/schema-diff')
+  type Prepared = {
+    toolName: string
+    description: string | null
+    schemaJson: string
+    schemaHash: string
+    lastChangeAt: number | null
+    diffSummary: string | null
+  }
+  const prepared: Prepared[] = []
+  for (const t of tools) {
+    const schemaJson = JSON.stringify(t.inputSchema ?? {})
+    const schemaHash = await canonicalHash(t.inputSchema ?? {})
+    const priorRow = priorByName.get(t.toolName)
+    if (!priorRow) {
+      // New tool: record the hash; leave last_schema_change_at NULL
+      // (first sight isn't a "change" — there's nothing to diff
+      // against).
+      prepared.push({
+        toolName: t.toolName,
+        description: t.description ?? null,
+        schemaJson,
+        schemaHash,
+        lastChangeAt: null,
+        diffSummary: null
+      })
+      continue
+    }
+    if (priorRow.hash === schemaHash) {
+      // Unchanged: preserve the prior change timestamp + summary.
+      prepared.push({
+        toolName: t.toolName,
+        description: t.description ?? null,
+        schemaJson,
+        schemaHash,
+        lastChangeAt: priorRow.lastChangeAt,
+        diffSummary: null
+      })
+      continue
+    }
+    // Changed (or first time we're computing hashes for an existing
+    // row — priorRow.hash is NULL pre-migration). Compute a summary
+    // and bump the timestamp.
+    let oldSchema: unknown = {}
+    try {
+      oldSchema = JSON.parse(priorRow.rawSchema)
+    } catch {
+      /* swallow */
+    }
+    const summary = summariseDiff(oldSchema, t.inputSchema ?? {})
+    prepared.push({
+      toolName: t.toolName,
+      description: t.description ?? null,
+      schemaJson,
+      schemaHash,
+      lastChangeAt: now,
+      diffSummary: summary
+    })
+  }
+
   const stmts: D1PreparedStatement[] = [
     env.DB.prepare(`DELETE FROM upstream_tools WHERE upstream_id = ?1`).bind(upstreamId)
   ]
-  for (const t of tools) {
+  for (const p of prepared) {
     stmts.push(
       env.DB.prepare(
-        `INSERT INTO upstream_tools (upstream_id, tool_name, description, input_schema, cached_at)
-         VALUES (?1, ?2, ?3, ?4, ?5)`
-      ).bind(upstreamId, t.toolName, t.description ?? null, JSON.stringify(t.inputSchema ?? {}), now)
+        `INSERT INTO upstream_tools
+           (upstream_id, tool_name, description, input_schema, cached_at,
+            input_schema_hash, last_schema_change_at, last_diff_summary)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+      ).bind(
+        upstreamId,
+        p.toolName,
+        p.description,
+        p.schemaJson,
+        now,
+        p.schemaHash,
+        p.lastChangeAt,
+        p.diffSummary
+      )
     )
   }
   await env.DB.batch(stmts)
