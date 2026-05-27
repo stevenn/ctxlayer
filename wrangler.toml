@@ -8,6 +8,13 @@ compatibility_date = "2026-04-01"
 #   DCR-registered clients without re-fetching from internal IPs.
 compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
+# Workers Logs: stream console.log + invocation metadata to the
+# Cloudflare dashboard (Workers → ctxlayer → Logs). Required for
+# debugging anything that doesn't surface via /smoke.
+[observability.logs]
+enabled = true
+invocation_logs = true
+
 # SPA shipped from this Worker. The `dist` directory is produced by
 # `bun run build:web`; `scripts/ensure-dist.mjs` lays down a placeholder
 # index.html on cold checkouts so `wrangler dev` and `wrangler deploy`
