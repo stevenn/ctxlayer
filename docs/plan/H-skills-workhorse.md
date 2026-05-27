@@ -1,8 +1,14 @@
 # H — Skills & the context workhorse (M7+ direction)
 
 > Strategic plan written 2026-05-26 for the next phase after M6 closed.
-> Status: approved direction, not yet implementation. Refine before
-> opening M7.
+> Status: approved direction. Detailed per-milestone implementation
+> designs live under [`docs/plan/H/`](./H/):
+>
+> - [`H/00-implementation-state.md`](./H/00-implementation-state.md) — current-state snapshot the designs cite
+> - [`H/M7a-worker.md`](./H/M7a-worker.md) — schema, queries, REST, MCP additions
+> - [`H/M7b-spa.md`](./H/M7b-spa.md) — admin/skills page, per-skill editor, attach UI
+> - [`H/M7c-cli.md`](./H/M7c-cli.md) — `@ctxlayer/cli` npm package (login + pull)
+> - [`H/M8-drafting.md`](./H/M8-drafting.md) — catalogue diff, `draft-skill` CLI command, schema linter
 
 ## Context
 
@@ -55,7 +61,7 @@ as a doc kind would have meant carrying skill-only fields as nullables
 on every doc row and special-casing every doc query — the wrong
 trade-off.
 
-**Schema sketch** (new migration `0008_skills.sql`):
+**Schema sketch** (new migration `0011_skills.sql`):
 
 ```sql
 CREATE TABLE skills (
@@ -333,7 +339,7 @@ validation cycles.
 
 Sub-deliverables, all in one milestone:
 
-- **M7a (worker)**: `0008_skills.sql` migration, queries
+- **M7a (worker)**: `0011_skills.sql` migration, queries
   (`db/queries/skills.ts`, `db/queries/skill-attachments.ts`,
   `db/queries/doc-attachments.ts`), REST namespace
   (`api/skills.ts`, `api/skill-attachments.ts`,
@@ -439,7 +445,7 @@ embedding-based discovery is a backstop, not the main path.
 
 ## Critical files & touchpoints (M7)
 
-- `apps/worker/src/db/migrations/0008_skills.sql` — new.
+- `apps/worker/src/db/migrations/0011_skills.sql` — new.
 - `apps/worker/src/db/queries/skills.ts`,
   `skill-attachments.ts`, `doc-attachments.ts` — new.
 - `apps/worker/src/api/skills.ts`,
