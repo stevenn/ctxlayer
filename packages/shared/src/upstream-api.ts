@@ -175,6 +175,11 @@ export const UpstreamToolSummary = z.object({
   description: z.string().nullable(),
   inputSchema: z.unknown(),
   cachedAt: z.number().int(),
+  // M8: timestamp of the last detected input_schema change; null if
+  // never changed (or pre-migration row). Drives the stale annotation
+  // on per-tool rows alongside attached_skills.
+  lastSchemaChangeAt: z.number().int().nullable().optional(),
+  lastDiffSummary: z.string().nullable().optional(),
   // M7a additions; empty arrays when no attachments exist.
   attachedSkills: z.array(AttachedSkillRef).default([]),
   attachedDocs: z.array(AttachedDocRef).default([])

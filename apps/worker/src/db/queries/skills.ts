@@ -22,6 +22,7 @@ export interface SkillRow {
   status: 'draft' | 'published' | 'archived'
   current_rev_id: string | null
   r2_snapshot: string | null
+  drafter_meta: string | null
   created_by: string | null
   created_at: number
   updated_at: number
@@ -42,7 +43,7 @@ export interface SkillWithUsersRow extends SkillRow {
 
 const SELECT_SKILL_WITH_USERS = `
   SELECT s.id, s.slug, s.title, s.description, s.trigger_text, s.status,
-         s.current_rev_id, s.r2_snapshot, s.created_by,
+         s.current_rev_id, s.r2_snapshot, s.drafter_meta, s.created_by,
          s.created_at, s.updated_at, s.deleted_at,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
@@ -139,6 +140,7 @@ export interface CreateSkillInput {
   description: string
   triggerText?: string
   status?: 'draft' | 'published' | 'archived'
+  drafterMeta?: unknown
   createdBy: string
 }
 
@@ -146,6 +148,10 @@ export interface CreateSkillInput {
  * Create a new skill. Slug collision retry mirrors createDoc — slugify
  * the title if no slug supplied, append a random suffix on UNIQUE
  * violation (up to 3 retries). Status defaults to 'draft'.
+ *
+ * `drafterMeta` is an opaque JSON value persisted alongside the row;
+ * used by the CLI `draft-skill` command to record model + version +
+ * context inputs. Null/undefined for manually-authored skills.
  */
 export async function createSkill(env: Env, input: CreateSkillInput): Promise<SkillRow> {
   const id = newId()
@@ -153,21 +159,35 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
   const baseSlug = input.slug ?? slugifySkill(input.title)
   const status = input.status ?? 'draft'
   const triggerText = input.triggerText ?? ''
+  const drafterMetaJson =
+    input.drafterMeta !== undefined && input.drafterMeta !== null
+      ? JSON.stringify(input.drafterMeta)
+      : null
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomSuffix()}`
     try {
       await env.DB.prepare(
         `INSERT INTO skills
-           (id, slug, title, description, trigger_text, status,
+           (id, slug, title, description, trigger_text, status, drafter_meta,
             created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)`
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`
       )
-        .bind(id, slug, input.title, input.description, triggerText, status, input.createdBy, now)
+        .bind(
+          id,
+          slug,
+          input.title,
+          input.description,
+          triggerText,
+          status,
+          drafterMetaJson,
+          input.createdBy,
+          now
+        )
         .run()
       const row = await env.DB.prepare(
         `SELECT id, slug, title, description, trigger_text, status,
-                current_rev_id, r2_snapshot, created_by,
+                current_rev_id, r2_snapshot, drafter_meta, created_by,
                 created_at, updated_at, deleted_at
          FROM skills WHERE id = ?1`
       )

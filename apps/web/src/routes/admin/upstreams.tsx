@@ -17,8 +17,11 @@ import {
 } from '@mantine/core'
 import type {
   AdminUpstreamRow,
+  AttachedDocRef,
+  AttachedSkillRef,
   AuthStrategy,
   ProductRef,
+  SkillSummary,
   SupportedTransport,
   TeamRef,
   UpstreamToolSummary,
@@ -35,14 +38,18 @@ import {
   adminPutSharedCredentials,
   adminPutUpstreamVisibility,
   adminRefreshUpstreamTools,
+  attachSkill,
+  detachSkill,
   deleteUpstreamCredentials,
   fetchAdminUpstream,
   fetchAdminUpstreams,
   fetchAdminUpstreamTools,
   fetchProducts,
+  fetchSkills,
   fetchTeams,
   putUpstreamCredentials
 } from '../../lib/api'
+import { useDialogs } from '../../lib/dialogs'
 
 const TRANSPORT_OPTIONS: { value: SupportedTransport; label: string }[] = [
   { value: 'streamable_http', label: 'Streamable HTTP (current MCP spec)' },
@@ -85,7 +92,12 @@ const AUTH_OPTIONS: {
 
 type ToolsState =
   | { kind: 'loading' }
-  | { kind: 'ready'; tools: UpstreamToolSummary[] }
+  | {
+      kind: 'ready'
+      tools: UpstreamToolSummary[]
+      attachedSkills: AttachedSkillRef[]
+      attachedDocs: AttachedDocRef[]
+    }
   | { kind: 'error'; message: string }
 
 export function AdminUpstreams() {
@@ -133,7 +145,12 @@ export function AdminUpstreams() {
           (resp) =>
             setToolsByUpstream((cur) => {
               const m = new Map(cur)
-              m.set(id, { kind: 'ready', tools: resp.tools })
+              m.set(id, {
+                kind: 'ready',
+                tools: resp.tools,
+                attachedSkills: resp.attachedSkills,
+                attachedDocs: resp.attachedDocs
+              })
               return m
             }),
           (err) =>
@@ -259,7 +276,29 @@ export function AdminUpstreams() {
                     <tr style={{ background: 'var(--bg-surface)' }}>
                       <td />
                       <td colSpan={6} style={{ padding: '8px 12px' }}>
-                        <ToolsExpansion slug={u.slug} state={tools} />
+                        <ToolsExpansion
+                          upstreamId={u.id}
+                          slug={u.slug}
+                          state={tools}
+                          onAttachmentsChanged={() => {
+                            void fetchAdminUpstreamTools(u.id).then(
+                              (resp) =>
+                                setToolsByUpstream((cur) => {
+                                  const m = new Map(cur)
+                                  m.set(u.id, {
+                                    kind: 'ready',
+                                    tools: resp.tools,
+                                    attachedSkills: resp.attachedSkills,
+                                    attachedDocs: resp.attachedDocs
+                                  })
+                                  return m
+                                }),
+                              () => {
+                                /* swallow — chips just won't update */
+                              }
+                            )
+                          }}
+                        />
                       </td>
                     </tr>
                   )}
@@ -1169,12 +1208,18 @@ function ExpandChevron({ open }: { open: boolean }) {
  * server, so the value here matches exactly what the model sees.
  */
 function ToolsExpansion({
+  upstreamId,
   slug,
-  state
+  state,
+  onAttachmentsChanged
 }: {
+  upstreamId: string
   slug: string
   state: ToolsState | undefined
+  onAttachmentsChanged: () => void
 }) {
+  const [attachOpen, setAttachOpen] = useState<{ toolName: string } | null>(null)
+
   if (!state || state.kind === 'loading') {
     return (
       <Text c="dimmed" fz="xs">
@@ -1189,38 +1234,247 @@ function ToolsExpansion({
       </Alert>
     )
   }
-  if (state.tools.length === 0) {
-    return (
-      <Text c="dimmed" fz="xs">
-        No tools cached yet. Open the upstream drawer and click <strong>Refresh tools</strong>{' '}
-        to populate.
-      </Text>
-    )
-  }
   return (
-    <table className="data-table" style={{ marginTop: 0 }}>
-      <thead>
-        <tr>
-          <th style={{ width: '22%' }}>Agent-visible name</th>
-          <th style={{ width: '18%' }}>Upstream tool</th>
-          <th>Description</th>
-        </tr>
-      </thead>
-      <tbody>
-        {state.tools.map((t) => (
-          <tr key={t.toolName}>
-            <td>
-              <code style={{ fontSize: 11 }}>{mangleToolName(slug, t.toolName)}</code>
-            </td>
-            <td className="text-muted">
-              <code style={{ fontSize: 11 }}>{t.toolName}</code>
-            </td>
-            <td className="text-muted" style={{ fontSize: 12 }}>
-              {t.description ?? <span style={{ opacity: 0.5 }}>—</span>}
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
+    <>
+      {/* Whole-upstream attachments (tool_name='') */}
+      {(state.attachedSkills.length > 0 ||
+        state.attachedDocs.length > 0 ||
+        true) && (
+        <Group justify="space-between" align="flex-start" mb="xs">
+          <div style={{ minWidth: 0 }}>
+            <Text fz="xs" fw={600} c="dimmed" mb={4}>
+              Attached to this upstream (whole upstream)
+            </Text>
+            {state.attachedSkills.length === 0 && state.attachedDocs.length === 0 ? (
+              <Text fz="xs" c="dimmed">
+                No skills or docs attached to the upstream root.
+              </Text>
+            ) : (
+              <Group gap={6}>
+                {state.attachedSkills.map((s) => (
+                  <Badge
+                    key={`s-${s.slug}`}
+                    color="violet"
+                    variant="light"
+                    size="sm"
+                    title={`Skill: ${s.title}`}
+                  >
+                    🧠 {s.title}
+                  </Badge>
+                ))}
+                {state.attachedDocs.map((d) => (
+                  <Badge
+                    key={`d-${d.slug}`}
+                    color="blue"
+                    variant="light"
+                    size="sm"
+                    title={`Doc: ${d.title}`}
+                  >
+                    📄 {d.title}
+                  </Badge>
+                ))}
+              </Group>
+            )}
+          </div>
+          <Button size="xs" variant="default" onClick={() => setAttachOpen({ toolName: '' })}>
+            Attach skill
+          </Button>
+        </Group>
+      )}
+
+      {state.tools.length === 0 ? (
+        <Text c="dimmed" fz="xs">
+          No tools cached yet. Open the upstream drawer and click <strong>Refresh tools</strong>{' '}
+          to populate.
+        </Text>
+      ) : (
+        <table className="data-table" style={{ marginTop: 0 }}>
+          <thead>
+            <tr>
+              <th style={{ width: '20%' }}>Agent-visible name</th>
+              <th style={{ width: '16%' }}>Upstream tool</th>
+              <th>Description</th>
+              <th style={{ width: '24%' }}>Attached / schema</th>
+              <th style={{ width: 80 }}></th>
+            </tr>
+          </thead>
+          <tbody>
+            {state.tools.map((t) => (
+              <tr key={t.toolName}>
+                <td>
+                  <code style={{ fontSize: 11 }}>{mangleToolName(slug, t.toolName)}</code>
+                </td>
+                <td className="text-muted">
+                  <code style={{ fontSize: 11 }}>{t.toolName}</code>
+                </td>
+                <td className="text-muted" style={{ fontSize: 12 }}>
+                  {t.description ?? <span style={{ opacity: 0.5 }}>—</span>}
+                </td>
+                <td>
+                  <Stack gap={2}>
+                    <Group gap={4}>
+                      {t.attachedSkills.map((s) => (
+                        <Badge
+                          key={`ts-${s.slug}`}
+                          color="violet"
+                          variant="light"
+                          size="xs"
+                          title={`Skill: ${s.title}`}
+                        >
+                          🧠 {s.title}
+                        </Badge>
+                      ))}
+                      {t.attachedDocs.map((d) => (
+                        <Badge
+                          key={`td-${d.slug}`}
+                          color="blue"
+                          variant="light"
+                          size="xs"
+                          title={`Doc: ${d.title}`}
+                        >
+                          📄 {d.title}
+                        </Badge>
+                      ))}
+                    </Group>
+                    {t.lastSchemaChangeAt ? (
+                      <Text
+                        fz={10}
+                        c="yellow"
+                        title={t.lastDiffSummary ?? undefined}
+                      >
+                        ⚠ schema changed {relativeTime(t.lastSchemaChangeAt)}
+                      </Text>
+                    ) : null}
+                  </Stack>
+                </td>
+                <td>
+                  <Button
+                    size="xs"
+                    variant="subtle"
+                    onClick={() => setAttachOpen({ toolName: t.toolName })}
+                  >
+                    Attach
+                  </Button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {attachOpen && (
+        <UpstreamSkillAttachModal
+          upstreamId={upstreamId}
+          upstreamSlug={slug}
+          toolName={attachOpen.toolName}
+          onClose={() => setAttachOpen(null)}
+          onAttached={() => {
+            setAttachOpen(null)
+            onAttachmentsChanged()
+          }}
+        />
+      )}
+    </>
   )
+}
+
+// ----- Upstream-anchored skill attach modal ------------------------------
+
+function UpstreamSkillAttachModal({
+  upstreamId,
+  upstreamSlug,
+  toolName,
+  onClose,
+  onAttached
+}: {
+  upstreamId: string
+  upstreamSlug: string
+  toolName: string
+  onClose: () => void
+  onAttached: () => void
+}) {
+  const [skills, setSkills] = useState<SkillSummary[] | null>(null)
+  const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchSkills({ status: 'all' })
+      .then((rows) => !cancelled && setSkills(rows))
+      .catch((err) => !cancelled && setError(explain(err)))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const options = useMemo(
+    () =>
+      (skills ?? []).map((s) => ({
+        value: s.id,
+        label: `${s.title}${s.status !== 'published' ? ` (${s.status})` : ''}`
+      })),
+    [skills]
+  )
+
+  async function submit() {
+    if (!selectedSkillId) return
+    setBusy(true)
+    setError(null)
+    try {
+      await attachSkill({
+        skillId: selectedSkillId,
+        upstreamId,
+        toolName: toolName || undefined
+      })
+      onAttached()
+    } catch (err) {
+      setError(explain(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  const target = toolName
+    ? `${upstreamSlug}.${toolName}`
+    : `${upstreamSlug} (whole upstream)`
+  return (
+    <Modal opened onClose={onClose} title={`Attach skill to ${target}`} size="md">
+      <Stack gap="md">
+        {error && (
+          <Alert color="red" variant="light" radius="sm">
+            {error}
+          </Alert>
+        )}
+        <Select
+          label="Skill"
+          placeholder={skills ? 'Pick a skill…' : 'Loading…'}
+          data={options}
+          value={selectedSkillId}
+          onChange={setSelectedSkillId}
+          searchable
+          disabled={!skills || busy}
+        />
+        <Group justify="flex-end">
+          <Button variant="default" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!selectedSkillId}>
+            Attach
+          </Button>
+        </Group>
+      </Stack>
+    </Modal>
+  )
+}
+
+function relativeTime(ts: number | null | undefined): string {
+  if (!ts) return ''
+  const now = Math.floor(Date.now() / 1000)
+  const delta = now - ts
+  if (delta < 60) return `${delta}s ago`
+  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
+  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
+  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
+  return new Date(ts * 1000).toLocaleDateString()
 }

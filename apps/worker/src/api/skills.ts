@@ -38,6 +38,7 @@ import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { listTagsForSkill, replaceTagsForSkill } from '../db/queries/skill-tags'
 import { readRevision, readSnapshot, writeRevisionAndSnapshot } from '../storage/skills-r2'
 import { audit } from '../audit/log'
+import { lintSkillBody } from '../skills/schema-linter'
 
 const CONTENT_MAX_BYTES = 2 * 1024 * 1024
 
@@ -66,8 +67,29 @@ skillsRoute.post('/', requireAdmin, async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   const { userId } = c.get('user')
   try {
-    const row = await createSkill(c.env, { ...parsed.data, createdBy: userId })
-    await audit(c.env, { actorId: userId, action: 'skill.create', target: row.id })
+    const { content, ...meta } = parsed.data
+    const row = await createSkill(c.env, { ...meta, createdBy: userId })
+    // If the caller supplied an initial body (CLI draft-skill does),
+    // persist a first revision now so the skill isn't empty on first
+    // read.
+    if (content) {
+      const revisionId = newRevisionId()
+      const put = await writeRevisionAndSnapshot(c.env, row.id, revisionId, content)
+      await recordSkillRevision(c.env, {
+        skillId: row.id,
+        revisionId,
+        authorId: userId,
+        r2Key: put.key,
+        byteSize: put.byteSize,
+        contentHash: put.contentHash
+      })
+    }
+    await audit(c.env, {
+      actorId: userId,
+      action: 'skill.create',
+      target: row.id,
+      meta: { draftedBy: parsed.data.drafterMeta ? 'cli' : 'manual' }
+    })
     return c.json({ id: row.id, slug: row.slug }, 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -90,7 +112,8 @@ skillsRoute.get('/:id', async (c) => {
     triggerText: row.trigger_text,
     currentRevId: row.current_rev_id,
     attachments: attachments.map(toAttachmentRef),
-    tags
+    tags,
+    drafterMeta: parseDrafterMeta(row.drafter_meta)
   }
   return c.json(body)
 })
@@ -146,7 +169,21 @@ skillsRoute.put('/:id/content', requireAdmin, async (c) => {
     byteSize: put.byteSize,
     contentHash: put.contentHash
   })
-  return c.json({ revisionId, byteSize: put.byteSize, contentHash: put.contentHash })
+  // Schema-reference linter runs after save. Warning-only — findings
+  // ride along but don't block. Lint failures themselves never fail
+  // the save (skill body is already persisted).
+  let lintFindings: Awaited<ReturnType<typeof lintSkillBody>> = []
+  try {
+    lintFindings = await lintSkillBody(c.env, id, parsed.data)
+  } catch (err) {
+    console.error('skill linter failed (non-fatal):', err)
+  }
+  return c.json({
+    revisionId,
+    byteSize: put.byteSize,
+    contentHash: put.contentHash,
+    lintFindings
+  })
 })
 
 skillsRoute.get('/:id/revisions', requireAdmin, async (c) => {
@@ -245,6 +282,20 @@ function toAttachmentRef(row: {
 
 function newRevisionId(): string {
   return crypto.randomUUID().replace(/-/g, '')
+}
+
+/**
+ * Decode the JSON blob stored in skills.drafter_meta. Returns null if
+ * the column is empty or unparseable so the SPA can render the
+ * "Drafted by …" line conditionally without crashing on bad data.
+ */
+function parseDrafterMeta(s: string | null): unknown | null {
+  if (!s) return null
+  try {
+    return JSON.parse(s)
+  } catch {
+    return null
+  }
 }
 
 function isUniqueViolation(err: unknown): boolean {

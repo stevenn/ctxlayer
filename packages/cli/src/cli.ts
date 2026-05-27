@@ -11,6 +11,7 @@ import { loginCommand } from './commands/login'
 import { pullCommand } from './commands/pull'
 import { whoamiCommand } from './commands/whoami'
 import { logoutCommand } from './commands/logout'
+import { draftSkillCommand } from './commands/draft-skill'
 import { CtxlayerError, isDebug } from './errors'
 
 const program = new Command()
@@ -53,6 +54,26 @@ program
   .description('Remove the local credentials file.')
   .action(async () => {
     await logoutCommand()
+  })
+
+program
+  .command('draft-skill')
+  .description(
+    'Draft a new skill via your local Claude Code CLI. ' +
+      'Fetches the org context for the upstream from ctxlayer, ' +
+      'shells `claude -p`, and posts the result as a status=draft skill.'
+  )
+  .argument('<upstream>', 'Upstream slug (e.g. linear, datadog, github)')
+  .option('--tool <name>', 'Focus on a specific tool on that upstream')
+  .option('--prompt <text>', 'Freeform operator request for the drafter')
+  .option('--no-save', 'Render the draft locally without posting to ctxlayer')
+  .action(async (upstream: string, opts: { tool?: string; prompt?: string; noSave?: boolean }) => {
+    await draftSkillCommand({
+      upstream,
+      tool: opts.tool,
+      prompt: opts.prompt,
+      noSave: opts.noSave
+    })
   })
 
 async function main() {

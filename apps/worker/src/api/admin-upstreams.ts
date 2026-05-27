@@ -178,6 +178,8 @@ adminUpstreamsRoute.get('/:id/tools', async (c) => {
       description: t.description,
       inputSchema: safeParse(t.input_schema),
       cachedAt: t.cached_at,
+      lastSchemaChangeAt: t.last_schema_change_at,
+      lastDiffSummary: t.last_diff_summary,
       attachedSkills: bundle.byTool.get(t.tool_name)?.skills ?? [],
       attachedDocs: bundle.byTool.get(t.tool_name)?.docs ?? []
     }))

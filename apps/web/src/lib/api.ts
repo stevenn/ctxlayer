@@ -19,6 +19,7 @@ import {
   HealthResponse,
   SetLockedRequest,
   SkillAttachmentRef,
+  SkillContentSaveResult,
   SkillDetail,
   SkillExportResponse,
   SkillRevisionSummary,
@@ -87,6 +88,7 @@ import type {
   HealthResponse as HealthResponseT,
   SetLockedRequest as SetLockedRequestT,
   SkillAttachmentRef as SkillAttachmentRefT,
+  SkillContentSaveResult as SkillContentSaveResultT,
   SkillDetail as SkillDetailT,
   SkillExportResponse as SkillExportResponseT,
   SkillRevisionSummary as SkillRevisionSummaryT,
@@ -732,10 +734,10 @@ export function fetchSkillContent(id: string, signal?: AbortSignal): Promise<Doc
 export function putSkillContent(
   id: string,
   content: DocContentT
-): Promise<{ revisionId: string; byteSize: number; contentHash: string }> {
+): Promise<SkillContentSaveResultT> {
   return request(
     `/api/skills/${encodeURIComponent(id)}/content`,
-    (b) => z.object({ revisionId: z.string(), byteSize: z.number(), contentHash: z.string() }).parse(b),
+    (b) => SkillContentSaveResult.parse(b),
     {
       method: 'PUT',
       body: JSON.stringify(DocContent.parse(content))

@@ -59,7 +59,11 @@ export const SkillDetail = SkillSummary.extend({
   triggerText: z.string(),
   currentRevId: z.string().nullish(),
   attachments: z.array(SkillAttachmentRef),
-  tags: SkillTags
+  tags: SkillTags,
+  // M8: opaque JSON blob set by the drafting flow (CLI's draft-skill
+  // command). Null for manually-authored skills. Shape validated via
+  // DrafterMeta in draft-context-types.ts when the SPA reads it.
+  drafterMeta: z.unknown().nullable()
 })
 export type SkillDetail = z.infer<typeof SkillDetail>
 
@@ -70,7 +74,17 @@ export const CreateSkillRequest = z.object({
   title: z.string().min(1).max(200),
   description: z.string().min(1).max(500),
   triggerText: z.string().max(500).optional(),
-  status: SkillStatus.optional()
+  status: SkillStatus.optional(),
+  // M8: opaque drafter metadata bag set by the CLI's draft-skill
+  // command. Unparsed at the API boundary so additive fields don't
+  // require schema bumps; the SPA validates shape on read.
+  drafterMeta: z.unknown().optional(),
+  // M8: BlockNote body to persist alongside the create (so the
+  // drafting CLI doesn't need a follow-up PUT /content roundtrip).
+  // If omitted, skill starts with an empty body.
+  content: z
+    .object({ blocks: z.array(z.unknown()) })
+    .optional()
 })
 export type CreateSkillRequest = z.infer<typeof CreateSkillRequest>
 
@@ -113,3 +127,21 @@ export const SkillRevisionSummary = z.object({
   contentHash: z.string()
 })
 export type SkillRevisionSummary = z.infer<typeof SkillRevisionSummary>
+
+// M8: schema-reference linter finding. Server-side warning, never
+// blocks save. SPA renders as a yellow strip above the editor.
+export const SkillLintFinding = z.object({
+  kind: z.enum(['unknown_upstream', 'unknown_tool']),
+  reference: z.string(),
+  upstreamSlug: z.string().nullable(),
+  toolName: z.string().nullable()
+})
+export type SkillLintFinding = z.infer<typeof SkillLintFinding>
+
+export const SkillContentSaveResult = z.object({
+  revisionId: z.string(),
+  byteSize: z.number(),
+  contentHash: z.string(),
+  lintFindings: z.array(SkillLintFinding)
+})
+export type SkillContentSaveResult = z.infer<typeof SkillContentSaveResult>

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Stack, Text, Title } from '@mantine/core'
-import type { SkillDetail } from '@ctxlayer/shared'
+import type { SkillDetail, SkillLintFinding } from '@ctxlayer/shared'
 import {
   ApiError,
   ApiSchemaError,
@@ -33,6 +33,7 @@ export function AdminSkillEditor() {
   const [initialBlocks, setInitialBlocks] = useState<unknown[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' })
+  const [lintFindings, setLintFindings] = useState<SkillLintFinding[]>([])
   const dirtyRef = useRef(false)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -57,8 +58,9 @@ export function AdminSkillEditor() {
     dirtyRef.current = false
     setSaveState({ kind: 'saving' })
     try {
-      await putSkillContent(skillId, { blocks })
+      const res = await putSkillContent(skillId, { blocks })
       setSaveState({ kind: 'saved', at: Date.now() })
+      setLintFindings(res.lintFindings)
     } catch (err) {
       // Re-flag dirty so the next idle attempt retries.
       dirtyRef.current = true
@@ -134,6 +136,25 @@ export function AdminSkillEditor() {
           </Button>
         </Group>
       </Group>
+
+      {lintFindings.length > 0 && (
+        <Alert color="yellow" variant="light" radius="sm">
+          <div style={{ fontWeight: 500, marginBottom: 4 }}>
+            ⚠ Schema linter found references that don't exist on attached upstreams
+          </div>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {lintFindings.map((f, i) => (
+              <li key={i} style={{ fontSize: 12 }}>
+                <code>{f.reference}</code> — {f.kind}
+                {f.upstreamSlug ? ` (${f.upstreamSlug}${f.toolName ? `.${f.toolName}` : ''})` : ''}
+              </li>
+            ))}
+          </ul>
+          <div style={{ fontSize: 11, opacity: 0.7, marginTop: 4 }}>
+            Warning only — your save succeeded.
+          </div>
+        </Alert>
+      )}
 
       <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
         <BlockNoteEditor

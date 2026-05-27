@@ -25,6 +25,7 @@ import { getUpstreamBySlug, listCachedTools } from '../db/queries/upstreams'
 import { listPublishedSkills } from '../db/queries/skills'
 import { readSnapshot } from '../storage/skills-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
+import { buildUsageAggregates, findRelatedDocs } from '../skills/draft-context-bundle'
 
 export const skillsDraftContextRoute = new Hono<{
   Bindings: Env
@@ -51,14 +52,27 @@ skillsDraftContextRoute.get('/', async (c) => {
     return c.json({ error: 'tool_not_found' }, 404)
   }
 
+  const userId = c.get('user').userId
   const styleSkillRows = (await listPublishedSkills(c.env)).slice(0, 2)
-  const styleSkills = await Promise.all(
-    styleSkillRows.map(async (row) => {
-      const content = await readSnapshot(c.env, row.id)
-      const bodyMd = content ? renderBlocksToMarkdown(content.blocks) : ''
-      return { slug: row.slug, title: row.title, bodyMd }
+  const [styleSkills, relatedDocs, usageAggregates] = await Promise.all([
+    Promise.all(
+      styleSkillRows.map(async (row) => {
+        const content = await readSnapshot(c.env, row.id)
+        const bodyMd = content ? renderBlocksToMarkdown(content.blocks) : ''
+        return { slug: row.slug, title: row.title, bodyMd }
+      })
+    ),
+    findRelatedDocs(c.env, {
+      upstreamSlug: upstream.slug,
+      toolName: focus?.tool_name
+    }),
+    buildUsageAggregates(c.env, {
+      userId,
+      upstreamId: upstream.id,
+      upstreamSlug: upstream.slug,
+      toolName: focus?.tool_name
     })
-  )
+  ])
 
   const bundle: DraftContextBundle = {
     upstream: {
@@ -75,8 +89,8 @@ skillsDraftContextRoute.get('/', async (c) => {
         }
       : null,
     allTools: cachedTools.map((t) => ({ name: t.tool_name, description: t.description })),
-    relatedDocs: [],
-    usageAggregates: null,
+    relatedDocs,
+    usageAggregates,
     styleSkills,
     operatorPrompt,
     generatedAt: Math.floor(Date.now() / 1000)
