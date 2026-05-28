@@ -14,6 +14,9 @@
 
 import {
   CreateSkillRequest,
+  collapseSlugPrefix,
+  mangleToolName,
+  unmangleToolName,
   type DraftContextBundle,
   type SkillExportEntry,
   type SkillExportResponse
@@ -103,8 +106,12 @@ async function handleDraftContext(env: Env, url: URL, userId: string): Promise<R
   }
 
   const cachedTools = await listCachedTools(env, upstream.id)
+  // Accept the tool reference in any of the three forms the operator
+  // might know about: raw upstream name (`notion-search`), collapsed
+  // form (`search`), or fully mangled (`notion__search`). All three
+  // resolve to the same cached row.
   const focus =
-    toolName !== undefined ? cachedTools.find((t) => t.tool_name === toolName) ?? null : null
+    toolName !== undefined ? resolveCachedTool(cachedTools, upstream.slug, toolName) : null
   if (toolName !== undefined && !focus) {
     return jsonError('tool_not_found', 404)
   }
@@ -235,4 +242,42 @@ function safeJsonParse(s: string): unknown {
   } catch {
     return {}
   }
+}
+
+/**
+ * Resolve an operator-supplied tool reference to a cached row. The
+ * operator may pass the raw upstream name (`notion-search`), the
+ * post-collapse form they see in the UI (`search`), or the fully
+ * mangled agent-callable name (`notion__search`). Tries each in turn.
+ */
+function resolveCachedTool<T extends { tool_name: string }>(
+  rows: T[],
+  upstreamSlug: string,
+  reference: string
+): T | null {
+  // 1. Exact raw match.
+  const exact = rows.find((r) => r.tool_name === reference)
+  if (exact) return exact
+  // 2. Mangled form supplied — split and match the upstream side.
+  const unmangled = unmangleToolName(reference)
+  if (unmangled && unmangled.slug === upstreamSlug) {
+    // The unmangled toolName might be the collapsed form (`search`) or
+    // the raw form (`notion-search`); try collapse-aware compare on each
+    // cached row.
+    const fromMangled = rows.find(
+      (r) =>
+        r.tool_name === unmangled.toolName ||
+        collapseSlugPrefix(upstreamSlug, r.tool_name) === unmangled.toolName
+    )
+    if (fromMangled) return fromMangled
+  }
+  // 3. Collapse-form match: reference is the short name, cached row has
+  //    the slug-prefixed variant (e.g. ref=`search`, row=`notion-search`).
+  const collapsed = rows.find(
+    (r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference
+  )
+  if (collapsed) return collapsed
+  // 4. Last-ditch: the operator may have re-applied the mangle by hand.
+  const remangled = rows.find((r) => mangleToolName(upstreamSlug, r.tool_name) === reference)
+  return remangled ?? null
 }

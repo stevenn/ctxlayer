@@ -18,7 +18,12 @@
  */
 
 import { Hono } from 'hono'
-import type { DraftContextBundle } from '@ctxlayer/shared'
+import {
+  collapseSlugPrefix,
+  mangleToolName,
+  unmangleToolName,
+  type DraftContextBundle
+} from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { getUpstreamBySlug, listCachedTools } from '../db/queries/upstreams'
@@ -46,8 +51,10 @@ skillsDraftContextRoute.get('/', async (c) => {
   }
 
   const cachedTools = await listCachedTools(c.env, upstream.id)
+  // Tolerate raw / collapsed / mangled forms — see cli-skills-export.ts's
+  // resolveCachedTool helper for the rationale (same problem the CLI hit).
   const focus =
-    toolName !== undefined ? cachedTools.find((t) => t.tool_name === toolName) ?? null : null
+    toolName !== undefined ? resolveCachedTool(cachedTools, upstream.slug, toolName) : null
   if (toolName !== undefined && !focus) {
     return c.json({ error: 'tool_not_found' }, 404)
   }
@@ -104,4 +111,28 @@ function safeJsonParse(s: string): unknown {
   } catch {
     return {}
   }
+}
+
+function resolveCachedTool<T extends { tool_name: string }>(
+  rows: T[],
+  upstreamSlug: string,
+  reference: string
+): T | null {
+  const exact = rows.find((r) => r.tool_name === reference)
+  if (exact) return exact
+  const unmangled = unmangleToolName(reference)
+  if (unmangled && unmangled.slug === upstreamSlug) {
+    const fromMangled = rows.find(
+      (r) =>
+        r.tool_name === unmangled.toolName ||
+        collapseSlugPrefix(upstreamSlug, r.tool_name) === unmangled.toolName
+    )
+    if (fromMangled) return fromMangled
+  }
+  const collapsed = rows.find(
+    (r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference
+  )
+  if (collapsed) return collapsed
+  const remangled = rows.find((r) => mangleToolName(upstreamSlug, r.tool_name) === reference)
+  return remangled ?? null
 }
