@@ -277,7 +277,12 @@ export class UpstreamProxyRegistry {
       cb: (args: unknown) => unknown
     ) => unknown)(
       mangled,
-      { title: row.tool_name, description, inputSchema },
+      // title = mangled so the human-facing label matches the
+      // agent-callable name (and surfaces the upstream slug). Falls
+      // out of the same `<slug>__<tool>` rule the admin upstreams
+      // page's "Agent-visible name" column uses, after the redundant-
+      // prefix collapse (`notion__search`, not `notion__notion-search`).
+      { title: mangled, description, inputSchema },
       handler
     )
   }
