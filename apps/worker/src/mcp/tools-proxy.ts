@@ -39,6 +39,7 @@ import { UpstreamHttpClient } from '../upstream/http-client'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
+import { formatUpstreamError, newCorrelationId } from './upstream-error'
 import { recordUsage } from '../usage/record'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
@@ -240,15 +241,23 @@ export class UpstreamProxyRegistry {
         status = isTimeoutError(err) ? 'timeout' : 'error'
         const msg = stringifyError(err)
         respJson = msg
-        // Don't echo the raw upstream error to the agent: it can carry
-        // API keys, internal hostnames, or stack frames. Log the real
-        // message server-side; return a stable code the agent can
-        // pattern-match on.
+        // Don't echo the raw upstream error verbatim — it can carry
+        // API keys, internal hostnames, or stack frames. Sanitise via
+        // `formatUpstreamError` (URL/Bearer/IP/stack-frame strip +
+        // 200-char cap) and tag with a correlation id so admins can
+        // grep the full server-side log when an operator asks.
+        const refId = newCorrelationId()
         console.error(
-          `[upstream-proxy] ${conn.slug}.${upstreamToolName} ${status}: ${msg}`
+          `[upstream-proxy] [ref=${refId}] ${conn.slug}.${upstreamToolName} ${status}: ${msg}`
         )
-        const code = status === 'timeout' ? 'upstream_timeout' : 'upstream_error'
-        return errText(`${code}: ${conn.slug}.${upstreamToolName} failed (see server logs)`)
+        const { userMessage } = formatUpstreamError({
+          slug: conn.slug,
+          toolName: upstreamToolName,
+          status,
+          rawMessage: msg,
+          refId
+        })
+        return errText(userMessage)
       } finally {
         recordUsage(
           this.env,
