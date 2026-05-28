@@ -35,6 +35,8 @@ run_worker_first = [
   "/mcp/*",
   "/sse",
   "/sse/*",
+  "/cli",
+  "/cli/*",
   "/oauth/*",
   "/idp/*",
   "/collab/*",
