@@ -428,19 +428,31 @@ function SkillDrawer({
       onChanged()
     }, 'Status change')
 
-  const remove = () =>
-    withBusy(async () => {
-      const ok = await dialogs.confirm({
+  const remove = () => {
+    // Close the drawer FIRST so the confirm dialog isn't visually
+    // stacked on top of the slide-out. The dialog then has the page's
+    // attention. If the operator cancels, the drawer stays closed —
+    // they can re-click the row to reopen. Trade-off accepted; the
+    // alternative (modal-over-drawer) was distracting.
+    onClose()
+    void dialogs
+      .confirm({
         title: 'Delete skill?',
-        message: 'Soft-deletes the skill. Body + revisions remain in storage; admins can no longer find it via the SPA.',
+        message:
+          'Soft-deletes the skill. Body + revisions remain in storage; admins can no longer find it via the SPA.',
         confirmLabel: 'Delete',
         danger: true
       })
-      if (!ok) return
-      await deleteSkill(skillId)
-      onChanged()
-      onClose()
-    }, 'Delete')
+      .then(async (ok) => {
+        if (!ok) return
+        try {
+          await deleteSkill(skillId)
+          onChanged()
+        } catch (err) {
+          await dialogs.alert({ title: 'Delete failed', message: explain(err) })
+        }
+      })
+  }
 
   if (!detail && !error) {
     return (

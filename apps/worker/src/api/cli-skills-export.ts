@@ -146,12 +146,17 @@ async function handleDraftContext(env: Env, url: URL, userId: string): Promise<R
     focusTool: focus
       ? {
           name: focus.tool_name,
+          mangledName: mangleToolName(upstream.slug, focus.tool_name),
           description: focus.description,
           inputSchema: safeJsonParse(focus.input_schema),
           lastSchemaChangeAt: focus.last_schema_change_at
         }
       : null,
-    allTools: cachedTools.map((t) => ({ name: t.tool_name, description: t.description })),
+    allTools: cachedTools.map((t) => ({
+      name: t.tool_name,
+      mangledName: mangleToolName(upstream.slug, t.tool_name),
+      description: t.description
+    })),
     relatedDocs,
     usageAggregates,
     styleSkills,

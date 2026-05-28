@@ -7,7 +7,7 @@
  * which guidance is missing. Versioned alongside the CLI release;
  * historical drafts carry the prompt version via drafterMeta.
  */
-export const DRAFTER_PROMPT_VERSION = 'v1'
+export const DRAFTER_PROMPT_VERSION = 'v2'
 
 export const DRAFTER_SYSTEM_PROMPT = `You are drafting a "skill" for ctxlayer — an org-aware operating
 manual the agent loads on demand when working with a specific MCP
@@ -41,9 +41,12 @@ Body guidance:
 - Lead with a short paragraph naming the scenario and the outcome.
 - Then a numbered list of concrete steps (call tool X with these
   args, then tool Y with these args).
-- Reference attached tools by their mangled MCP name
-  (\`<upstream_slug>__<tool_name>\`) so the agent can call them
-  directly.
+- Reference attached tools by their **\`mangledName\` field from the
+  bundle** — use it verbatim, in backticks (e.g. \`notion__search\`,
+  not \`notion-search\` and not \`notion__notion-search\`). Do not
+  reconstruct the mangled name yourself from \`name\` — ctxlayer
+  applies a slug-prefix collapse rule and only \`mangledName\` is
+  the actually-callable form.
 - Include org-specific conventions you can derive from the styleSkills
   or operatorPrompt (team IDs, labels, status names).
 - Keep total body under 500 lines. Brevity > completeness.

@@ -52,18 +52,19 @@ export async function lintSkillBody(
   const attachedByUpstreamSlug = new Map<string, string>()
   for (const a of attachments) attachedByUpstreamSlug.set(a.upstream_slug, a.upstream_id)
 
-  // Pre-load cached tool lists for each attached upstream once.
+  // Pre-load cached tool lists for each attached upstream once. We
+  // index the POST-COLLAPSE name only — that's what the agent-callable
+  // mangled form (mangleToolName) puts after the `${slug}__` prefix.
+  // Indexing the raw name as well would let `notion__notion-search`
+  // pass the linter, but no such tool is registered with the MCP
+  // server (it's registered as `notion__search` after collapse), so
+  // the agent would fail to call it.
   const toolsBySlug = new Map<string, Set<string>>()
   await Promise.all(
     Array.from(attachedByUpstreamSlug.entries()).map(async ([slug, upstreamId]) => {
       const rows = await listCachedTools(env, upstreamId)
-      // Index BOTH the raw upstream_tools.tool_name and the
-      // post-collapse name (what surfaces in the mangled form).
       const set = new Set<string>()
-      for (const r of rows) {
-        set.add(r.tool_name)
-        set.add(collapseSlugPrefix(slug, r.tool_name))
-      }
+      for (const r of rows) set.add(collapseSlugPrefix(slug, r.tool_name))
       toolsBySlug.set(slug, set)
     })
   )

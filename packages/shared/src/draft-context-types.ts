@@ -17,7 +17,13 @@ export const DraftContextUpstream = z.object({
 })
 
 export const DraftContextTool = z.object({
+  // Raw upstream tool name (as cached on `upstream_tools.tool_name`).
   name: z.string(),
+  // Agent-callable name. ALWAYS use this verbatim in skill bodies —
+  // it's the same string the model uses to call the tool over MCP,
+  // after our slug-prefix collapse rule. The model otherwise tends
+  // to guess wrong (e.g. notion__notion-search instead of notion__search).
+  mangledName: z.string(),
   description: z.string().nullable(),
   inputSchema: z.unknown(),
   lastSchemaChangeAt: z.number().int().nullable()
@@ -31,6 +37,8 @@ export const DraftContextStyleSkill = z.object({
 
 export const DraftContextLightTool = z.object({
   name: z.string(),
+  // Agent-callable name; see DraftContextTool.mangledName.
+  mangledName: z.string(),
   description: z.string().nullable()
 })
 
