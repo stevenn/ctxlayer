@@ -33,11 +33,34 @@ const SEARCH_K_MAX = 50
 const SEARCH_OVERSHOOT = 3
 const VECTORIZE_TOPK_MAX = 100
 
+/**
+ * Server-level usage hint surfaced to the agent via MCP's
+ * `initialize.instructions`. Most MCP clients (Claude.ai, Claude
+ * Code, Cursor) thread this into the model's context so it knows
+ * how to reason about ctxlayer's surface alongside any proxied
+ * upstream's tools. Keep it terse — it ships on every connect.
+ */
+const SERVER_INSTRUCTIONS = `ctxlayer is your org's curated context layer. Alongside the proxied upstream tools (mangled as \`<upstream-slug>__<tool>\`), it exposes:
+
+- \`list_my_context\` — your team / product scopes + the upstreams visible to you.
+- \`list_upstreams\` — visible upstreams with their cached tool counts AND any \`attached_skills\` / \`attached_docs\` (procedural playbooks + reference docs the org has curated for that upstream).
+- \`list_skills\` — every published skill, each carrying \`attached_to: [{ upstream_slug, tool_name }]\`.
+- \`get_skill\` / resource \`mcp://ctxlayer/skills/{slug}\` — the skill body (markdown playbook).
+- \`get_doc\` / \`search_docs\` / resource \`mcp://ctxlayer/docs/{id}\` — the doc library with semantic search.
+
+**When the user's request touches an upstream tool, follow this discovery order before calling:**
+
+1. Call \`list_upstreams\` once per session to see the inventory. Note the \`attached_skills\` on the relevant upstream — those are your org's "how we do X with this service" playbooks.
+2. If an attached skill looks relevant, read it via \`get_skill\` BEFORE calling the upstream tool. Skills typically encode team IDs, label conventions, status-name choices, and prefer-this-tool-over-that-one guidance the schema alone doesn't show.
+3. Per-tool attachments (visible in skill.attached_to with a non-null \`tool_name\`) are narrower; consult those when about to call that specific tool.
+
+Skills are reference material, not auto-loaded — you decide when to fetch one. Reading an attached skill is cheap (one short markdown body) and often saves a round of upstream calls.`
+
 export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
-  server = new McpServer({
-    name: 'ctxlayer',
-    version: '0.1.0'
-  })
+  server = new McpServer(
+    { name: 'ctxlayer', version: '0.1.0' },
+    { instructions: SERVER_INSTRUCTIONS }
+  )
 
   private upstreamProxy: UpstreamProxyRegistry | null = null
 
