@@ -100,6 +100,21 @@ export async function bumpLastSeen(env: Env, id: string): Promise<void> {
   await env.DB.prepare(`UPDATE users SET last_seen_at = ?1 WHERE id = ?2`).bind(now, id).run()
 }
 
+/**
+ * Lean (id, email, name) list of every user. Used by aggregations
+ * that need to walk all users — e.g. the admin OAuth-clients page
+ * fans `listUserGrants` out over this set to attribute clients to
+ * the users who authorised them.
+ */
+export async function listUserRefs(
+  env: Env
+): Promise<Array<{ id: string; email: string; name: string | null }>> {
+  const res = await env.DB.prepare(
+    `SELECT id, email, name FROM users ORDER BY LOWER(email)`
+  ).all<{ id: string; email: string; name: string | null }>()
+  return res.results ?? []
+}
+
 // ----- admin Users page ---------------------------------------------------
 
 /**

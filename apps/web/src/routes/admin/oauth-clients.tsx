@@ -12,7 +12,7 @@ import {
   Title,
   Tooltip
 } from '@mantine/core'
-import type { OAuthClientRow } from '@ctxlayer/shared'
+import type { OAuthClientRow, OAuthClientUserRef } from '@ctxlayer/shared'
 import { ApiError, ApiSchemaError, fetchAdminOAuthClients } from '../../lib/api'
 
 /**
@@ -154,6 +154,7 @@ export function AdminOAuthClients() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Client id</th>
+                <th>Users</th>
                 <th>Redirects</th>
                 <th style={{ textAlign: 'right' }}>Registered</th>
               </tr>
@@ -167,6 +168,9 @@ export function AdminOAuthClients() {
                   </td>
                   <td className="text-muted">
                     <code style={{ fontSize: 11 }}>{truncateMiddle(c.clientId, 22)}</code>
+                  </td>
+                  <td className="text-muted">
+                    <UsersCell users={c.users} />
                   </td>
                   <td className="text-muted">
                     <RedirectCell uris={c.redirectUris} />
@@ -264,6 +268,30 @@ function ClientDrawer({
           <KV k="Contacts" v={listOrDash(client.contacts)} />
         </Section>
 
+        <Section title="Authorised users">
+          {client.users.length === 0 ? (
+            <Text fz="xs" c="dimmed">
+              No ctxlayer user has authorised this client yet.
+            </Text>
+          ) : (
+            <Stack gap={4}>
+              {client.users.map((u) => (
+                <Group key={u.userId} gap="xs" wrap="nowrap" align="baseline">
+                  <Text fz="sm" style={{ minWidth: 0 }}>
+                    {u.name ? `${u.name} ` : ''}
+                    <Text component="span" c="dimmed" fz="xs">
+                      &lt;{u.email}&gt;
+                    </Text>
+                  </Text>
+                  <Text fz="xs" c="dimmed">
+                    granted {relativeTime(u.grantedAt)}
+                  </Text>
+                </Group>
+              ))}
+            </Stack>
+          )}
+        </Section>
+
         <Section title="Raw record">
           <Code block style={{ fontSize: 11, whiteSpace: 'pre-wrap' }}>
             {raw}
@@ -282,6 +310,39 @@ function ClientTypeBadge({ method }: { method: string }) {
     <Badge size="sm" color={isPublic ? 'cyan' : 'violet'} variant="light">
       {isPublic ? 'public' : 'confidential'}
     </Badge>
+  )
+}
+
+function UsersCell({ users }: { users: OAuthClientUserRef[] }) {
+  if (users.length === 0) {
+    return (
+      <Text component="span" fz="xs" c="dimmed">
+        none
+      </Text>
+    )
+  }
+  const first = users[0]!
+  const label = first.name || first.email
+  if (users.length === 1) {
+    return (
+      <Tooltip label={`Granted ${absDateTime(first.grantedAt)}`} withArrow>
+        <span>{label}</span>
+      </Tooltip>
+    )
+  }
+  const rest = users
+    .slice(1)
+    .map((u) => `• ${u.name || u.email} (granted ${relativeTime(u.grantedAt)})`)
+    .join('\n')
+  return (
+    <Tooltip multiline maw={320} label={`Also:\n${rest}`} withArrow>
+      <span>
+        {label}
+        <Text component="span" fz="xs" c="dimmed" ml={6}>
+          +{users.length - 1}
+        </Text>
+      </span>
+    </Tooltip>
   )
 }
 
