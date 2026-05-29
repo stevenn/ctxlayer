@@ -13,7 +13,8 @@ import {
   Switch,
   Text,
   TextInput,
-  Title
+  Title,
+  Tooltip
 } from '@mantine/core'
 import type {
   AdminUpstreamRow,
@@ -1337,13 +1338,20 @@ function ToolsExpansion({
                       ))}
                     </Group>
                     {t.lastSchemaChangeAt ? (
-                      <Text
-                        fz={10}
-                        c="yellow"
-                        title={t.lastDiffSummary ?? undefined}
+                      <Tooltip
+                        label={
+                          t.lastDiffSummary ??
+                          'Schema hash changed but no per-property diff was recorded for this refresh.'
+                        }
+                        multiline
+                        maw={360}
+                        withArrow
+                        position="top-start"
                       >
-                        ⚠ schema changed {relativeTime(t.lastSchemaChangeAt)}
-                      </Text>
+                        <Text fz={10} c="yellow" style={{ cursor: 'help' }}>
+                          ⚠ schema changed {relativeTime(t.lastSchemaChangeAt)}
+                        </Text>
+                      </Tooltip>
                     ) : null}
                   </Stack>
                 </td>

@@ -352,7 +352,8 @@ export async function replaceCachedTools(
   // Snapshot prior hashes + change timestamps so we can decide whether
   // a given tool's hash changed and what to preserve.
   const prior = await env.DB.prepare(
-    `SELECT tool_name, input_schema, input_schema_hash, last_schema_change_at
+    `SELECT tool_name, input_schema, input_schema_hash,
+            last_schema_change_at, last_diff_summary
      FROM upstream_tools WHERE upstream_id = ?1`
   )
     .bind(upstreamId)
@@ -361,6 +362,7 @@ export async function replaceCachedTools(
       input_schema: string
       input_schema_hash: string | null
       last_schema_change_at: number | null
+      last_diff_summary: string | null
     }>()
   const priorByName = new Map(
     (prior.results ?? []).map((r) => [
@@ -368,7 +370,8 @@ export async function replaceCachedTools(
       {
         rawSchema: r.input_schema,
         hash: r.input_schema_hash,
-        lastChangeAt: r.last_schema_change_at
+        lastChangeAt: r.last_schema_change_at,
+        diffSummary: r.last_diff_summary
       }
     ])
   )
@@ -403,20 +406,39 @@ export async function replaceCachedTools(
       continue
     }
     if (priorRow.hash === schemaHash) {
-      // Unchanged: preserve the prior change timestamp + summary.
+      // Unchanged: preserve BOTH the prior change timestamp AND the
+      // prior diff summary. Nulling the summary here (as the
+      // pre-2026-05-29 code did) made the SPA hover disappear on the
+      // very next no-change refresh — operators would see "schema
+      // changed Xh ago" with no tooltip explaining what changed.
       prepared.push({
         toolName: t.toolName,
         description: t.description ?? null,
         schemaJson,
         schemaHash,
         lastChangeAt: priorRow.lastChangeAt,
-        diffSummary: null
+        diffSummary: priorRow.diffSummary
       })
       continue
     }
-    // Changed (or first time we're computing hashes for an existing
-    // row — priorRow.hash is NULL pre-migration). Compute a summary
-    // and bump the timestamp.
+    if (priorRow.hash === null) {
+      // First refresh after the 0012 migration on a row that existed
+      // pre-migration. We don't have a prior hash to compare against,
+      // so this isn't a "change" we can honestly attribute. Record
+      // the new hash but leave the change timestamp + summary
+      // untouched (NULL). The next genuine change will set both.
+      prepared.push({
+        toolName: t.toolName,
+        description: t.description ?? null,
+        schemaJson,
+        schemaHash,
+        lastChangeAt: priorRow.lastChangeAt,
+        diffSummary: priorRow.diffSummary
+      })
+      continue
+    }
+    // Real change: hashes differ AND we have a real prior hash to
+    // compare against. Diff + bump.
     let oldSchema: unknown = {}
     try {
       oldSchema = JSON.parse(priorRow.rawSchema)

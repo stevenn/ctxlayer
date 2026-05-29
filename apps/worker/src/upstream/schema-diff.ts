@@ -6,9 +6,40 @@
  * different, persist the new hash + bump `last_schema_change_at` +
  * write a short human-readable `last_diff_summary`.
  *
- * Canonicalisation = JSON.stringify with sorted keys, so semantically-
- * equal schemas with reshuffled keys don't trigger spurious diffs.
+ * Goal: only changes that genuinely affect the agent's *contract*
+ * with the tool should trip the hash. Cosmetic edits to descriptions,
+ * key reorderings, and semantically-equal alternative encodings
+ * (`type: 'X'` vs `['X']`) MUST hash the same — otherwise admins get
+ * spurious "schema changed" warnings on every documentation tweak.
  */
+
+/**
+ * Fields that don't affect what data the tool accepts/returns. Removed
+ * before hashing so a description rewording doesn't trip the diff.
+ * `default` stays — even though it doesn't affect *validation*, it
+ * affects observed agent behaviour (the agent might assume the
+ * default's value), so a default change is contractually meaningful.
+ */
+const COSMETIC_KEYS = new Set([
+  'title',
+  'description',
+  'examples',
+  'example',
+  '$comment',
+  '$id',
+  '$schema',
+  'readOnly',
+  'writeOnly',
+  'deprecated',
+  'markdownDescription'
+])
+
+/**
+ * JSON-Schema fields whose elements form a set (order is semantically
+ * irrelevant). Sorted before hashing so `required: ['a','b']` and
+ * `required: ['b','a']` produce identical hashes.
+ */
+const SET_LIKE_ARRAYS = new Set(['required', 'enum'])
 
 export async function canonicalHash(schema: unknown): Promise<string> {
   const canon = canonicalise(schema)
@@ -21,17 +52,46 @@ export async function canonicalHash(schema: unknown): Promise<string> {
 }
 
 /**
- * Stringified-with-sorted-keys variant of JSON.stringify. Stable
- * across key ordering. Arrays preserve order (which is semantically
- * significant in JSON-Schema's `required` array; preserving order
- * means added/removed entries are detected by hash change).
+ * Recursively canonicalise a JSON-Schema-ish value into a stable
+ * string. Visible for testing.
  */
-function canonicalise(v: unknown): string {
+export function canonicalise(v: unknown, parentKey?: string): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v)
-  if (Array.isArray(v)) return '[' + v.map(canonicalise).join(',') + ']'
+  if (Array.isArray(v)) {
+    // Sort set-like arrays so element reordering doesn't trip the hash.
+    const items =
+      parentKey && SET_LIKE_ARRAYS.has(parentKey) ? [...v].sort(stableCompare) : v
+    return '[' + items.map((x) => canonicalise(x)).join(',') + ']'
+  }
   const obj = v as Record<string, unknown>
-  const keys = Object.keys(obj).sort()
-  return '{' + keys.map((k) => JSON.stringify(k) + ':' + canonicalise(obj[k])).join(',') + '}'
+  // 1. Drop cosmetic keys.
+  // 2. Normalize `type: ['X']` → `type: 'X'` (single-element type arrays
+  //    are JSON-Schema-equivalent to bare strings; presenting them
+  //    differently is just an encoding choice).
+  const entries: Array<[string, unknown]> = []
+  for (const [k, raw] of Object.entries(obj)) {
+    if (COSMETIC_KEYS.has(k)) continue
+    let val: unknown = raw
+    if (k === 'type' && Array.isArray(raw) && raw.length === 1) {
+      val = raw[0]
+    }
+    entries.push([k, val])
+  }
+  // 3. Sort keys for deterministic ordering.
+  entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+  return (
+    '{' +
+    entries
+      .map(([k, val]) => JSON.stringify(k) + ':' + canonicalise(val, k))
+      .join(',') +
+    '}'
+  )
+}
+
+function stableCompare(a: unknown, b: unknown): number {
+  const as = canonicalise(a)
+  const bs = canonicalise(b)
+  return as < bs ? -1 : as > bs ? 1 : 0
 }
 
 /**
