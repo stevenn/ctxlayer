@@ -16,6 +16,11 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker-provider.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
+import type {
+  UpstreamCallResult,
+  UpstreamCatalogueTool,
+  UpstreamClient
+} from './upstream-client'
 
 /**
  * tools/list is metadata — keep it on a tight fail-fast cap so a hung
@@ -41,19 +46,13 @@ export const UPSTREAM_MAX_CALL_TIMEOUT_MS = 300_000
 const CLIENT_NAME = 'ctxlayer'
 const CLIENT_VERSION = '0.1.0'
 
-export interface UpstreamCatalogueTool {
-  toolName: string
-  description: string | null
-  inputSchema: unknown
-}
+// `UpstreamCatalogueTool` / `UpstreamCallResult` / `UpstreamClient` now
+// live in `upstream-client.ts` (the transport-agnostic surface).
+// Re-export the result/catalogue types here so existing importers of
+// http-client keep working.
+export type { UpstreamCatalogueTool, UpstreamCallResult } from './upstream-client'
 
-export interface UpstreamCallResult {
-  content: unknown
-  isError?: boolean
-  structuredContent?: unknown
-}
-
-export class UpstreamHttpClient {
+export class UpstreamHttpClient implements UpstreamClient {
   private client: Client | null = null
   private connecting: Promise<Client> | null = null
 

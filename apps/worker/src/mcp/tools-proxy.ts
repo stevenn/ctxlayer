@@ -35,7 +35,10 @@ import {
 } from '../db/queries/upstreams'
 import { listSkillsForUpstream } from '../db/queries/skill-attachments'
 import { listDocsForUpstream } from '../db/queries/doc-attachments'
-import { UpstreamHttpClient } from '../upstream/http-client'
+import {
+  createUpstreamClient,
+  type UpstreamClient
+} from '../upstream/upstream-client'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
@@ -62,7 +65,7 @@ export interface ListUpstreamsEntry {
 
 export class UpstreamProxyRegistry {
   /** upstream_id → live MCP Client */
-  private clients = new Map<string, UpstreamHttpClient>()
+  private clients = new Map<string, UpstreamClient>()
 
   constructor(
     private readonly env: Env,
@@ -85,7 +88,7 @@ export class UpstreamProxyRegistry {
       const bearer = await this.resolveBearer(row, conn)
       if (conn.authStrategy !== 'none' && bearer === null) continue
 
-      const client = new UpstreamHttpClient(conn, bearer)
+      const client = createUpstreamClient(conn, bearer)
       const tools = await this.ensureCatalogue(conn, client)
       if (tools.length === 0) {
         // Empty even after refresh — log and skip; user sees built-ins only.
@@ -171,7 +174,7 @@ export class UpstreamProxyRegistry {
 
   private async ensureCatalogue(
     conn: UpstreamConnection,
-    client: UpstreamHttpClient
+    client: UpstreamClient
   ): Promise<UpstreamToolRow[]> {
     const cachedAt = await getToolsCachedAt(this.env, conn.id)
     const stale =

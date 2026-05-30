@@ -33,7 +33,10 @@ describe('toUpstreamConnection', () => {
     expect(conn.transport).toBe('sse')
   })
 
-  it('rejects the parked stdio_daytona transport', () => {
+  it('rejects an unsupported transport', () => {
+    // A row carrying any transport the worker cannot dial (legacy or forged)
+    // must never be returned as a dialable connection. `stdio_daytona` is
+    // used here only as an example of such a value.
     expect(() => toUpstreamConnection(baseRow({ transport: 'stdio_daytona' }))).toThrow(
       /unsupported_transport:stdio_daytona/
     )

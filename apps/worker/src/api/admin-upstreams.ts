@@ -2,10 +2,10 @@
  * Admin REST for `upstream_servers`, `upstream_visibility`, and the
  * cached `upstream_tools` catalogue.
  *
- * Stdio-via-Daytona transports are intentionally rejected at this
- * layer — `SupportedTransport` already narrows the request enum, and
+ * Only remote HTTP transports are dialable — `SupportedTransport`
+ * narrows the request enum to streamable_http|sse, and
  * we double-check before writing to D1 so a forged payload can't
- * sneak `stdio_daytona` into the CHECK constraint.
+ * sneak an unsupported transport into the CHECK constraint.
  */
 
 import { Hono } from 'hono'

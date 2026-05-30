@@ -153,6 +153,3 @@ ALLOWED_GITHUB_ORG = ""              # e.g. "acme-inc" (org slug)
 # logins / admin emails don't get committed); in local dev `.dev.vars`
 # supplies them. Declaring an empty default would block `wrangler
 # secret put` with code 10053 ("binding name already in use").
-DAYTONA_API_URL = "https://app.daytona.io/api"
-DAYTONA_DEFAULT_IDLE_SECONDS = "600"
-MAX_SANDBOXES_PER_USER = "5"

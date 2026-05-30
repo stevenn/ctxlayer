@@ -4,9 +4,10 @@ Agent context layer — an MCP service on Cloudflare that:
 
 - serves curated org docs (Markdown, with Vectorize-backed RAG search) as MCP
   resources and a `search_docs` tool;
-- proxies other MCP servers (HTTP/SSE natively today; stdio via Daytona
-  Cloud is designed but parked), centralising per-user credentials sealed
-  at rest;
+- proxies other MCP servers (HTTP/SSE natively; a stdio MCP server is
+  supported via bring-your-own-bridge — run your own stdio↔HTTP bridge and
+  register its URL as a `streamable_http` upstream), centralising per-user
+  credentials sealed at rest;
 - exposes a React + Vite SPA for self-onboarding, BlockNote + Yjs
   collaborative markdown editing, admin upstream management, and (later)
   usage analytics.
@@ -26,7 +27,7 @@ into the M1 scaffold live in `docs/plan/G-conventions.md`.
 | **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done | AES-GCM creds, MCP SDK Client for Streamable HTTP / SSE, namespaced tool aggregation, JSON-Schema → Zod schema preservation, full admin UI for upstreams, user `/upstreams` page with paste-bearer + OAuth. **Validated end-to-end against Notion MCP via Claude Desktop** — search, fetch, create-page. |
 | **M5** — Admin polish | ✅ done | Admin Users (promote/demote + revoke creds), `shared_bearer` storage, admin Audit log viewer (`/app/admin/audit`), admin OAuth-clients viewer (`/app/admin/oauth-clients`), real `/app/mcp-setup` with per-client snippets. Bundled side features: folder organisation for docs, per-doc lock, modal-dialog system, doc-move UI |
 | **M6** — Usage pipeline + dashboards | ✅ done | Per-user/upstream call + token charts, tiktoken consumer, daily rollups, admin + user usage pages |
-| **Later** — Stdio upstreams via Daytona | 🅿️ parked | Revisit when a real stdio upstream is in scope |
+| **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
 
 ## Quickstart (contributors hacking on ctxlayer)
 
@@ -259,7 +260,6 @@ Optional / later:
 - `SENTRY_DSN_WORKER` — error reporting (leave unset to disable).
 - `CI_SMOKE_OAUTH_CLIENT_ID` / `_SECRET` — only for CI smoke runs that
   drive an inbound MCP OAuth handshake.
-- `DAYTONA_API_KEY` — only for the parked stdio-upstream track.
 
 ### 4. Custom domain (recommended over workers.dev)
 
@@ -399,6 +399,5 @@ apps/worker/      Cloudflare Worker — Hono routes, MCP server, OAuth provider,
 apps/web/         React SPA — Vite, BlockNote editor, admin pages, /upstreams
 packages/shared/  Zod schemas + types shared between worker and SPA
 docs/             PLAN.md + topic deep-dives under docs/plan/
-infra/            (parked) Daytona snapshot Dockerfiles for the stdio track
 scripts/          Bootstrap, dev-TLS, smoke, seed
 ```

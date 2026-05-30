@@ -6,17 +6,17 @@
  * - User endpoints (visible list + paste-bearer credentials) live under
  *   `/api/upstreams/*`.
  *
- * `stdio_daytona` is intentionally absent from `UpstreamTransport` until
- * the Daytona track ships — see docs/plan/B-daytona-stdio.md.
+ * A stdio MCP server is supported via the bring-your-own-bridge model: the
+ * operator runs a stdio<->HTTP bridge and registers the resulting HTTP URL
+ * as a normal `streamable_http` upstream. There is therefore no dedicated
+ * stdio transport.
  */
 import { z } from 'zod'
 import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
 
-// The wider `UpstreamTransport` from mcp-types still includes
-// `stdio_daytona` for the `list_upstreams()` MCP tool result shape.
-// At the REST request layer we narrow to what M4 actually supports;
-// admin POST/PATCH validate against this narrower set.
+// Remote HTTP transports are the only dialable kinds; admin POST/PATCH
+// validate against this set. Matches `UpstreamTransport` from mcp-types.
 export const SupportedTransport = z.enum(['streamable_http', 'sse'])
 export type SupportedTransport = z.infer<typeof SupportedTransport>
 

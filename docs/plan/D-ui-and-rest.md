@@ -27,7 +27,6 @@
 /app/admin/upstreams        -> CRUD upstreams
 /app/admin/users            -> users list + role mgmt
 /app/admin/usage            -> dashboards
-/app/admin/sandboxes        -> live + archived sandboxes
 /app/admin/oauth-clients    -> issued MCP clients
 /app/admin/audit            -> audit log tail
 /app/admin/docs             -> same as user docs + delete + rename
@@ -82,7 +81,7 @@ Connect your tools
 └────────────────────────────────────────┘
 ┌─ GitHub (stdio) ────────────── [PAT] ─┐  ┌─ Filesystem ─────────── [Shared]─┐
 │ Status: Not connected                  │  │ Configured by admin (read-only) │
-│ Sandbox: starts on first use           │  │ Status: Available to everyone   │
+│ Via operator-run HTTP bridge           │  │ Status: Available to everyone   │
 │ [ ghp_____________________ ] [Save]   │  └─────────────────────────────────┘
 └────────────────────────────────────────┘
 ```
@@ -115,20 +114,18 @@ Auth:        OAuth (preferred) or paste a token
 ### D3. Admin screens
 
 **`/app/admin/upstreams`** — sortable list, columns: Slug, Name, Transport, Auth strategy, Users connected, Last call. Row click → edit modal:
-- Common fields: slug, display_name, transport (`streamable_http`|`sse`|`stdio_daytona`), enabled toggle.
+- Common fields: slug, display_name, transport (`streamable_http`|`sse`), enabled toggle.
 - Conditional fields by transport:
   - `streamable_http`/`sse`: URL.
-  - `stdio_daytona`: snapshotId picker (lists snapshots from `infra/daytona-snapshots/`), startCommand, bridgePort (default 8080), envTemplate JSON editor, idleTimeoutSeconds.
 - Conditional fields by auth strategy:
   - `shared_bearer`: bearer input (encrypted on save).
   - `user_oauth`: client_id, client_secret, authorize_url, token_url, scopes (space-separated).
-- Buttons: "Test connection" (transport check; for stdio, briefly create a no-credential probe sandbox and call `tools/list`), "Refresh tool cache".
+- Buttons: "Test connection" (transport check + `tools/list`), "Refresh tool cache".
 
 **`/app/admin/users`** — table: avatar, email, IdP, role, last seen, 30d calls, connected upstreams count. Row click → drawer with promote/demote, revoke all credentials, force sign-out (deletes their OAuth tokens from `OAUTH_KV`).
 
 **`/app/admin/usage`** — date-range picker, group-by selector (user | upstream | tool), line + stacked bar + top-N tables. Drill-down link from any row to a filtered view. Underlying queries hit `usage_rollups_daily`.
 
-**`/app/admin/sandboxes`** — live table from Daytona API joined with `sandbox_sessions`. Columns: User, Upstream, State (running/idle/archived), Started, Last active, Cost-est. Force-destroy button per row, bulk destroy for an upstream.
 
 **`/app/admin/oauth-clients`** — list of issued OAuth clients (reads `OAUTH_KV`). Columns: client_id, registered, last used, redirect URIs, owner_user_id. Revoke purges tokens for that client.
 
@@ -178,8 +175,6 @@ POST   /api/admin/users/:id/credentials/revoke_all -> 204
 POST   /api/admin/users/:id/sessions/revoke -> 204
 
 GET    /api/admin/usage?...                 -> series + tables
-GET    /api/admin/sandboxes                 -> live joined view
-DELETE /api/admin/sandboxes/:sandboxId      -> 204 (force destroy via Daytona)
 
 GET    /api/admin/oauth-clients             -> rows from OAUTH_KV
 POST   /api/admin/oauth-clients/:id/revoke  -> 204

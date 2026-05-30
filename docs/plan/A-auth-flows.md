@@ -174,7 +174,7 @@ Admin pastes once in `/app/admin/upstreams` edit form. Stored in `upstream_serve
 | User upstream OAuth tokens | `user_credentials` | per upstream policy | AES-GCM, `ENCRYPTION_KEY` |
 | Admin shared bearer | `upstream_servers.auth_config` | until admin rotates | AES-GCM, `ENCRYPTION_KEY` |
 | Upstream OAuth client secret | `upstream_servers.auth_config` | until admin rotates | AES-GCM, `ENCRYPTION_KEY` |
-| `ENCRYPTION_KEY`, IdP secrets, `DAYTONA_API_KEY` | wrangler secrets | rotated by ops | yes (CF secret) |
+| `ENCRYPTION_KEY`, IdP secrets | wrangler secrets | rotated by ops | yes (CF secret) |
 
 ---
 

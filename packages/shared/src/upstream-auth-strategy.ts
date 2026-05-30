@@ -31,19 +31,8 @@ const OauthAuthConfig = z
   })
   .passthrough()
 
-const StdioDaytonaConfig = z.object({
-  snapshotId: z.string(),
-  startCommand: z.string(),
-  bridgePort: z.number().int().positive().default(8080),
-  envTemplate: z.record(z.string(), z.string()).default({}),
-  idleTimeoutSeconds: z.number().int().positive().default(600),
-  perUser: z.literal(true).default(true),
-  warmOnSessionStart: z.boolean().default(false)
-})
-
 export const UpstreamAuthConfig = z.object({
   http: HttpAuthConfig.optional(),
-  oauth: OauthAuthConfig.optional(),
-  stdio: StdioDaytonaConfig.optional()
+  oauth: OauthAuthConfig.optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>

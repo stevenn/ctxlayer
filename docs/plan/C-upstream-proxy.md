@@ -1,9 +1,10 @@
 # Upstream proxy mechanics — deep dive
 
 > **M4 scope (2026-05-25).** M4 ships **HTTP/SSE upstreams only**. Anything
-> marked 🅿️ below — Daytona sandbox wake/create paths, sandbox-quota error
-> codes, the `stdio_daytona` row in `list_upstreams()` — is parked alongside
-> [B](B-daytona-stdio.md) until a real stdio MCP upstream is on the roadmap.
+> A stdio MCP server is reached by registering an operator-run stdio↔HTTP
+> bridge as a normal `streamable_http` upstream — see [B](B-stdio-bridge.md).
+> There is no dedicated stdio transport, sandbox lifecycle, or quota in
+> ctxlayer.
 
 ### C1. `tools/list` aggregation algorithm
 
@@ -45,11 +46,8 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
 | Path | Sync work in tool/call hot path |
 |---|---|
 | First `tools/call` to upstream `notion__create_page` (HTTP) | DNS + TLS + MCP `initialize` + tool dispatch. ~150-400ms warm; ~600ms cold. Acceptable. |
-| 🅿️ First `tools/call` for `github_stdio__create_issue` (Daytona) | Sandbox wake (~150-300ms if existing) OR create (~500-1500ms cold) + supergateway start + tool dispatch. Cold path can exceed 1s; mitigated by snapshot pre-baking + concurrent sandbox start triggered by a hint on `tools/list` (see below). |
 | Subsequent calls within session | Re-use Client. ~30-80ms. |
-| 🅿️ Subsequent calls after Daytona auto-stop | Wake (~150-300ms) — cheap. |
 
-🅿️ Optimisation (parked with the Daytona track): when a session opens, kick off a `ctx.waitUntil` that starts (not creates) sandboxes for any stdio upstream the user has credentials for. Doesn't block `initialize`, but the first real tool/call usually finds the sandbox already running. Disabled by default; opt-in per upstream (`auth_config.warmOnSessionStart=true`) to avoid spending sandbox-seconds when the agent never actually uses that upstream.
 
 ### C4. Error surface taxonomy
 
@@ -60,8 +58,6 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
 | Upstream timeout (60s wall) | `{code:-32603, message:"Upstream {slug} timed out"}` |
 | Upstream HTTP 5xx / connection refused | `{code:-32603, message:"Upstream {slug} unavailable: <category>"}` (category in `data.category`) |
 | Credential refresh failed (e.g. revoked refresh token) | `{code:-32001, message:"Reauthenticate {slug}: visit https://.../upstreams"}` |
-| 🅿️ Daytona create failed (quota) | `{code:-32002, message:"Sandbox quota exceeded; ask admin"}` |
-| 🅿️ Daytona create failed (snapshot missing) | `{code:-32003, message:"Upstream {slug} not provisioned"}` (admin error) |
 | Circuit breaker open | `{code:-32004, message:"Upstream {slug} temporarily disabled"}` |
 
 `-3200x` codes are within MCP's reserved server-error range and clients pass them through.
@@ -98,9 +94,10 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
   { "slug": "linear",  "displayName": "Linear",  "transport": "streamable_http",
     "connected": false, "requiresAuth": "user_oauth",
     "connectUrl": "https://ctx.acme.com/app/upstreams?upstream=linear" },
-  // 🅿️ parked — only emitted once the Daytona track ships:
-  { "slug": "github_stdio", "displayName": "GitHub (stdio)", "transport": "stdio_daytona",
-    "connected": true, "sandboxState": "idle" }
+  // a stdio MCP server fronted by an operator-run bridge appears as a
+  // normal streamable_http upstream:
+  { "slug": "github_stdio", "displayName": "GitHub (stdio)", "transport": "streamable_http",
+    "connected": true }
 ]
 ```
 

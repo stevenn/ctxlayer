@@ -1,6 +1,9 @@
 import { z } from 'zod'
 
-export const UpstreamTransport = z.enum(['streamable_http', 'sse', 'stdio_daytona'])
+// Both transports are remote HTTP. A stdio MCP server is supported by running
+// an operator-managed stdio<->HTTP bridge and registering it as a
+// `streamable_http` upstream pointing at that bridge.
+export const UpstreamTransport = z.enum(['streamable_http', 'sse'])
 export type UpstreamTransport = z.infer<typeof UpstreamTransport>
 
 export const UpstreamConnected = z.object({
@@ -11,8 +14,7 @@ export const UpstreamConnected = z.object({
   toolsCount: z.number().optional(),
   lastCalledAt: z.number().nullable().optional(),
   requiresAuth: z.string().optional(),
-  connectUrl: z.string().url().optional(),
-  sandboxState: z.enum(['starting', 'running', 'idle', 'archived', 'destroyed']).optional()
+  connectUrl: z.string().url().optional()
 })
 export type UpstreamConnected = z.infer<typeof UpstreamConnected>
 

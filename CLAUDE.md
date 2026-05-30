@@ -5,7 +5,7 @@ serves curated docs (with RAG over Vectorize), proxies upstream MCP servers
 with centralised per-user credentials, and exposes a React SPA for self
 onboarding + collaborative markdown editing + admin/usage analytics.
 
-The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/plan/`** (A: auth, B: Daytona, C: upstream proxy, D: UI+REST, E: dev environment, F: org IA, G: conventions). Read PLAN.md first; pull in a deep-dive when the topic comes up.
+The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/plan/`** (A: auth, B: stdio bridge, C: upstream proxy, D: UI+REST, E: dev environment, F: org IA, G: conventions). Read PLAN.md first; pull in a deep-dive when the topic comes up.
 
 ## What runs where
 
@@ -25,9 +25,11 @@ The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/pl
   (`apps/worker/src/mcp/session-do.ts`).
 - Per-doc realtime collab → Durable Object `DocRoomDO`
   (`apps/worker/src/collab/doc-room-do.ts`).
-- Stdio upstreams run as Daytona Cloud sandboxes per `(user, upstream)`,
-  fronted by a stdio↔HTTP bridge (`supergateway`). HTTP/SSE upstreams are
-  proxied directly. See `apps/worker/src/upstream/daytona.ts` (M4).
+- HTTP/SSE upstreams are proxied directly through the generic
+  `UpstreamClient` interface (`apps/worker/src/upstream/*.ts`). Stdio MCP
+  servers are not run by ctxlayer: the operator fronts them with their own
+  stdio↔HTTP bridge (e.g. `supergateway`) and registers the resulting HTTP
+  URL as an ordinary `streamable_http` upstream (bring-your-own-bridge).
 - All sensitive material is sealed with AES-GCM via `crypto/aead.ts`.
 
 ## How a Claude session should work in this repo
@@ -38,7 +40,6 @@ The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/pl
    - `/smoke` — deploy a preview + hit smoke endpoints + print a status table.
    - `/migrate` — apply pending D1 migrations.
    - `/seed` — load fixture upstreams + docs into local D1.
-   - `/snapshot <slug>` — rebuild a single Daytona snapshot (M4+).
    - `/deploy:preview` — deploy a versioned preview and print the URL.
 3. Before pushing: `bun run verify` (typecheck + tests + smoke).
 
@@ -200,12 +201,15 @@ Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
   rollups via the `ctxlayer-usage` queue consumer, admin + user
   usage pages with period-adaptive bar charts, nightly cron prunes
   `usage_events` older than 30d.
-- **Later (parked)**: stdio upstreams via Daytona.
-  `apps/worker/src/upstream/{daytona,sandbox-pool}.ts` and the
-  snapshot baking pipeline stay unwritten until a real stdio MCP
-  upstream is in scope. The `stdio_daytona` literal in the 0001
-  CHECK constraint and the `sandbox_sessions` table are inert
-  reservations. Recipe: `docs/plan/B-daytona-stdio.md`.
+- **Stdio upstreams (bring-your-own-bridge)**: ctxlayer does not run or
+  sandbox stdio MCP servers. The operator runs their own stdio↔HTTP bridge
+  (e.g. `supergateway`) and registers its HTTP URL as a normal
+  `streamable_http` upstream; per-user creds use the existing
+  `user_bearer` / `user_oauth` strategies. The proxy is built around a
+  generic `UpstreamClient` interface so future transports can slot in. The
+  old vendor-specific stdio transport literal (0001 CHECK constraint) and the
+  unused sandbox-sessions table are dropped by migration `0013`.
+  Recipe: `docs/plan/B-stdio-bridge.md`.
 
 **Local dev** (sign-in, docs CRUD, sharing, tags, admin pages):
 

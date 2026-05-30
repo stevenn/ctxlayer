@@ -11,7 +11,7 @@
 | **M5** — Admin polish (users, OAuth clients, audit) | ✅ done (May 2026) | Admin Users + Audit + OAuth-clients pages; `shared_bearer`; folders + per-doc lock; real `/app/mcp-setup` |
 | **M6** — Usage pipeline + dashboards | ✅ done (May 2026) | Per-user/upstream calls + tokens; admin `/app/admin/usage` + user `/app/usage` with SVG line/bar chart; tiktoken consumer; daily rollups; nightly prune |
 | **Post-M6 polish** — Deferred catalogue cleared | ✅ done (May 2026) | Slug-prefix collapse in mangleToolName; `managed_by_idp` schema + admin UI; admin upstream tool drill-down (expand-row); vitest integration config + 23 D1-backed tests. Prompt-kind docs left on-demand; mcp-remote SSE spam logged as won't-fix server-side. |
-| **Later** — Stdio upstreams via Daytona | 🅿️ parked | revisit when we have a real stdio upstream to serve |
+| **Stdio upstreams** — bring-your-own-bridge | ✅ supported | run your own stdio↔HTTP bridge, register it as a `streamable_http` upstream |
 
 - **Live**: `https://ctxlayer.stevenn-a65.workers.dev` — GitHub-only sign-in (`ALLOWED_GITHUB_USERS` + `ADMIN_EMAILS` gated).
 - **Local dev**: `bun run dev` boots straight through. For sign-in / collab WS at `https://localhost:5173` (Vite HMR), also put `PUBLIC_BASE_URL=https://localhost:8787` in `.dev.vars` (the worker's Origin check has a localhost carve-out, but the IdP redirect URI is derived from PUBLIC_BASE_URL).
@@ -31,13 +31,13 @@ Building **ctxlayer**, a remote MCP server that:
 **Locked-in choices** (from clarifying questions):
 - Single-org per deployment (no multi-tenant complexity).
 - Identity: **Google Workspace + GitHub** with org/domain allowlist.
-- Upstream transports: **Streamable HTTP / SSE natively** on Workers. Stdio via Daytona Cloud is designed (deep-dive [B](plan/B-daytona-stdio.md)) but **parked** — no real stdio upstream in scope yet.
+- Upstream transports: **Streamable HTTP / SSE natively** on Workers. A stdio MCP server is supported via **bring-your-own-bridge** — the operator fronts it with their own stdio↔HTTP bridge and registers the HTTP URL as a `streamable_http` upstream (deep-dive [B](plan/B-stdio-bridge.md)). ctxlayer runs no sandboxes.
 - **Vectorize-backed RAG** for curated docs (chunked + embedded via Workers AI `@cf/baai/bge-base-en-v1.5`).
 - Usage tracking: bytes + **approximate tokens via tiktoken** (WASM in the queue consumer).
 - Editor: **BlockNote** (Notion-style, Tiptap-based, Yjs collab built in).
 - Single Worker hosts both the API/MCP endpoints and the React SPA (Workers Assets).
 
-**Why Daytona is the future-stdio plan (parked)**: Workers cannot spawn subprocesses (no `child_process` even with `nodejs_compat` — `workerd` is a V8-isolate sandbox without POSIX). When a real stdio MCP upstream lands, Daytona is the chosen offload — sub-90ms sandbox creation, TypeScript SDK callable from a Worker, public HTTP/WS proxy URLs, snapshot templates, auto-stop lifecycle. Until then we ship HTTP/SSE only and keep `apps/worker/src/upstream/daytona.ts` unwritten. The `stdio_daytona` transport literal in the `upstream_servers` CHECK constraint and the `sandbox_sessions` table are inert reservations from migration `0001`.
+**Why stdio is bring-your-own-bridge**: Workers cannot spawn subprocesses (no `child_process` even with `nodejs_compat` — `workerd` is a V8 isolate without POSIX), so ctxlayer never hosts a stdio MCP server itself. Instead the operator runs their own stdio↔HTTP bridge (e.g. `supergateway`) on infrastructure they control and registers its HTTPS URL as an ordinary `streamable_http` upstream; per-user creds use the existing `user_bearer` / `user_oauth` strategies. The proxy is built around a generic `UpstreamClient` interface so future transports can slot in. The old vendor-specific stdio transport literal and the unused sandbox-sessions table are dropped by migration `0013`. See deep-dive [B](plan/B-stdio-bridge.md).
 
 **Inspiration**: [stainless-api/mcp-front](https://github.com/stainless-api/mcp-front). Reuse patterns (per-service auth strategies, encrypted creds at rest, audience-scoped tokens, OAuth gateway). Do not reuse code (Go, ELv2-licensed).
 
@@ -72,14 +72,14 @@ Building **ctxlayer**, a remote MCP server that:
                                                             (Notion, Linear,
                                                              internal)
 
-   (Future / parked) stdio upstreams would land via Daytona Cloud
-   sandboxes per (user × upstream) with an in-sandbox stdio↔HTTP
-   bridge — see docs/plan/B-daytona-stdio.md.
+   Stdio upstreams: the operator runs their own stdio↔HTTP bridge
+   (e.g. supergateway) and registers its HTTPS URL as a normal
+   streamable_http upstream — see docs/plan/B-stdio-bridge.md.
 ```
 
 ### Key flows
 - **MCP tool call (HTTP/SSE upstream)** *(M4)*: agent → `/mcp` → OAuth-validated → `McpSessionDO` resolves namespace `notion__create_page` → lazy-connects `UpstreamClient` with decrypted user credentials → streams response → `waitUntil` enqueues a usage event.
-- **MCP tool call (stdio upstream via Daytona)** *(parked — Later)*: agent → `/mcp` → resolves `github_stdio__create_issue` → `daytona.getOrCreateSandbox(...)` → sandbox runs stdio MCP server behind a stdio↔HTTP bridge → `UpstreamClient` opens HTTP → streams response → activity-refresh resets idle timer.
+- **MCP tool call (stdio upstream via bring-your-own-bridge)**: agent → `/mcp` → resolves `github_stdio__create_issue` → `UpstreamClient` opens HTTP to the operator-run bridge's `streamable_http` URL → streams response → `waitUntil` enqueues a usage event. ctxlayer treats it like any HTTP upstream.
 - **Doc edit** *(M3)*: SPA opens WebSocket to `/collab/:id` → `DocRoomDO` (one per doc) loads Y.Doc from R2 → BlockNote↔Yjs sync → debounced (5s idle / 30s max) snapshot to R2 + revision row in D1 + enqueue reindex.
 - **Reindex** *(shipped)*: queue consumer renders blocks → markdown, chunks (~512 tokens, 64 overlap, heading-aware), embeds via Workers AI, upserts into Vectorize keyed `${docId}:${chunkIdx}`. Orphan cleanup via `chunk_count` tracking when revisions shrink.
 
@@ -104,7 +104,6 @@ ctxlayer/
         mcp/session-do.ts       # McpAgent + built-in tools
         mcp/{tools-proxy,upstream-client}.ts          †(M4)
         upstream/http-client.ts                       †(M4 — Streamable HTTP / SSE)
-        upstream/{daytona,sandbox-pool}.ts            †(Later — parked stdio plan)
         collab/{doc-room-do,yjs-persistence}.ts       †(M3 — currently 501 stub)
         queues/reindex-consumer.ts
         queues/usage-consumer.ts                      †(M6 ✅)
@@ -148,32 +147,18 @@ CREATE TABLE users (
 CREATE TABLE upstream_servers (
   id TEXT PRIMARY KEY, slug TEXT NOT NULL UNIQUE,  -- used in tool namespace
   display_name TEXT NOT NULL,
-  transport TEXT NOT NULL,                    -- 'streamable_http' | 'sse' (M4) | 'stdio_daytona' (parked)
-  url TEXT,                                   -- NULL for stdio_daytona (resolved from sandbox)
+  transport TEXT NOT NULL,                    -- 'streamable_http' | 'sse'
+  url TEXT,                                   -- upstream MCP endpoint (HTTPS)
   auth_strategy TEXT NOT NULL,                -- 'none'|'shared_bearer'|'user_bearer'|'user_oauth'
   auth_config TEXT NOT NULL,                  -- JSON; see below
   enabled INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
 );
--- M4 only writes rows with transport in ('streamable_http','sse').
--- The 'stdio_daytona' literal stays in the CHECK constraint for forward
--- compatibility; admin form validation rejects it until Daytona ships.
--- (Future) auth_config for stdio_daytona additionally carries:
---   { snapshotId, startCommand, bridgePort,
---     envTemplate: { "GITHUB_TOKEN": "${creds.access_token}", ... },
---     idleTimeoutSeconds, perUser: true }
-
--- sandbox_sessions: reserved table from 0001, no rows written until the
--- Daytona track ships. Plan: docs/plan/B-daytona-stdio.md.
-CREATE TABLE sandbox_sessions (
-  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  upstream_id TEXT NOT NULL REFERENCES upstream_servers(id) ON DELETE CASCADE,
-  sandbox_id TEXT NOT NULL,
-  state TEXT NOT NULL,                        -- 'starting'|'running'|'idle'|'archived'|'destroyed'
-  last_active_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-  PRIMARY KEY (user_id, upstream_id)
-);
+-- Transport is one of ('streamable_http','sse'). A stdio MCP server is
+-- reached by registering an operator-run stdio↔HTTP bridge as a normal
+-- 'streamable_http' upstream — see docs/plan/B-stdio-bridge.md. The old
+-- vendor-specific stdio transport literal and the unused sandbox-sessions
+-- table are dropped by migration 0013.
 
 CREATE TABLE upstream_tools (                  -- cached catalogue
   upstream_id TEXT NOT NULL REFERENCES upstream_servers(id) ON DELETE CASCADE,
@@ -266,7 +251,7 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 ### Dynamic proxied tools — ✅ M4
 - For each enabled upstream where the caller has access via `upstream_visibility` AND is credentialed (or strategy is `none`), expose cached `upstream_tools` rows as `${slug}__${upstreamToolName}`. `__` in upstream tool names escapes to `_~_`. JSON-Schema → Zod conversion (`mcp/json-schema-to-zod.ts`) preserves descriptions + types so the SDK re-emits a faithful schema to MCP clients.
 
-## Upstream proxy mechanics — ✅ M4 (HTTP/SSE shipped; Daytona stdio parked)
+## Upstream proxy mechanics — ✅ M4 (HTTP/SSE shipped)
 
 Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy.md)):
 - Per-session `UpstreamProxyRegistry` (`apps/worker/src/mcp/tools-proxy.ts`) hydrates on `McpSessionDO.init()`; built-ins never force a connect.
@@ -274,7 +259,7 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 - `user_oauth` outbound: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider`. DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + context → `OAUTH_KV`, sealed token bundle → `user_credentials` (kind=`oauth`). Routes at `apps/worker/src/api/upstream-oauth.ts`.
 - Catalogue cache in `upstream_tools`; populates via post-OAuth `ctx.waitUntil` + session-init `ensureCatalogue` for stale rows. Admin "Refresh now" available for `none`-strategy upstreams.
 - D1 BLOB normalization at the trust boundary in `db/queries/upstreams.getUserCredential` — D1 returns BLOBs in a shape SubtleCrypto rejects; we coerce to `Uint8Array` before handing to `aead.open`.
-- Stdio upstreams via Daytona — designed in [docs/plan/B-daytona-stdio.md](plan/B-daytona-stdio.md) but **parked until a real stdio upstream is in scope**. The sandbox lifecycle / pool / nightly reconcile work all moves to that future track.
+- Stdio upstreams via bring-your-own-bridge — front the stdio MCP server with your own stdio↔HTTP bridge and register its HTTPS URL as a `streamable_http` upstream. ctxlayer runs no sandbox lifecycle. See [docs/plan/B-stdio-bridge.md](plan/B-stdio-bridge.md).
 
 ## Collaborative editor — ✅ M3 (shipped May 2026)
 
@@ -298,9 +283,8 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 ## Admin UI (`/app/admin/*`, role-gated)
 
 - **Teams / Products / Team↔Product matrix** ✅ shipped (M2b/2).
-- **Upstreams** ✅ shipped (M4) — list table + drawer with Details (slug locked, all other fields editable + enabled toggle + delete), Visibility (everyone / team checklist / product checklist), Tool-cache (count + last-refreshed + "Refresh now" for `none`-auth upstreams). `+ New upstream` modal. `shared_bearer` + `user_oauth` enabled; `stdio_daytona` rejected at form validation.
+- **Upstreams** ✅ shipped (M4) — list table + drawer with Details (slug locked, all other fields editable + enabled toggle + delete), Visibility (everyone / team checklist / product checklist), Tool-cache (count + last-refreshed + "Refresh now" for `none`-auth upstreams). `+ New upstream` modal. `shared_bearer` + `user_oauth` enabled. Transport is `streamable_http` or `sse`.
 - **Users** ✅ M5 — `/app/admin/users`: table, promote/demote (last-admin guard), revoke creds, inline team-membership.
-- **Sandboxes** 🅿️ Later — live/idle/archived per user, force-destroy. Lands with the parked Daytona track, not M5.
 - **Usage** ✅ M6 — `/app/admin/usage`: stacked bar (req+resp tokens/day) with adaptive X-axis density, top-N tables for tools/upstreams/users, user/upstream filters.
 - **OAuth clients** ✅ M5 — `/app/admin/oauth-clients`: DCR-registered MCP clients from `OAUTH_KV`, click-through drawer with raw record.
 - **Audit log** ✅ M5 — `/app/admin/audit`: cursor-paginated tail of `audit_log` with action-prefix + actor filters.
@@ -335,13 +319,13 @@ Each milestone is independently deployable and demoable.
 - **M4 — Upstream proxy: HTTP/SSE bearer + OAuth (shipped May 2026)** ✅:
   - `crypto/aead.ts` (AES-GCM seal/open keyed by `ENCRYPTION_KEY`, `key_version` ready for rotation).
   - `apps/worker/src/upstream/http-client.ts`: lazy `@modelcontextprotocol/sdk` Client per `(session, upstream)` for Streamable HTTP + SSE; decrypts `user_credentials` just-in-time; 60s `AbortController` wall cap; streams responses without buffering.
-  - `apps/worker/src/mcp/{tools-proxy,tool-name,json-schema-to-zod}.ts`: aggregate `upstream_tools` rows into `tools/list` with `${slug}__${tool}` namespacing (escape `__` → `_~_`); JSON-Schema → Zod converter so the SDK emits a faithful schema back to the client; route `tools/call` by prefix; per-upstream error taxonomy minus the sandbox-specific codes.
-  - `apps/worker/src/api/admin-upstreams.ts` + `apps/web/src/routes/admin/upstreams.tsx`: full admin REST + UI — list, create/edit drawer, visibility checklist (everyone/team/product), tool-cache view with refresh, delete. Slugs immutable. Form validation rejects `transport = 'stdio_daytona'`.
+  - `apps/worker/src/mcp/{tools-proxy,tool-name,json-schema-to-zod}.ts`: aggregate `upstream_tools` rows into `tools/list` with `${slug}__${tool}` namespacing (escape `__` → `_~_`); JSON-Schema → Zod converter so the SDK emits a faithful schema back to the client; route `tools/call` by prefix; per-upstream error taxonomy.
+  - `apps/worker/src/api/admin-upstreams.ts` + `apps/web/src/routes/admin/upstreams.tsx`: full admin REST + UI — list, create/edit drawer, visibility checklist (everyone/team/product), tool-cache view with refresh, delete. Slugs immutable. Transport is `streamable_http` or `sse`.
   - Catalogue cache: `client.listTools()` on first successful connect → write `upstream_tools`; session-start refresh inside `ensureCatalogue` for stale rows; post-credential-paste auto-warm via `ctx.waitUntil` so `toolsCount` populates immediately.
   - SPA `/upstreams`: cards per enabled upstream — `user_bearer` paste-token, `user_oauth` connect-with-OAuth button, `none`/`shared_bearer` info notice. `?oauth_connected=` / `?oauth_error=` banner round-trip from the callback.
   - **`user_oauth` flow (pulled forward from original M5 plan)**: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider` — DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + flow context → `OAUTH_KV` (10 min TTL), sealed `{access_token, refresh_token, expires_at}` JSON → `user_credentials` with `kind='oauth'` (no migration). Routes: `GET /api/upstreams/:id/oauth/start` (per-user) → `auth()` → 302 to captured authorize URL or back to SPA when already AUTHORIZED; `GET /api/upstreams/oauth/callback` (global path, single redirect_uri per deployment) → state-keyed lookup → SDK exchange → catalogue warm.
   - Demo (closed May 2026): admin registers Notion via `/app/admin/upstreams` → user connects via OAuth on `/upstreams` (DCR + PKCE round-trip to `mcp.notion.com`) → Claude Desktop (via `mcp-remote`) calls `notion__notion-search`, `notion__notion-fetch`, `notion__notion-create-pages` end-to-end. 16 tools cached. Page successfully created in Notion through the proxy chain.
-  - **Out of scope (parked until a real stdio upstream is needed)**: `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, `sandbox_sessions` writes, Daytona snapshot baking, env-var template substitution, idle-timeout reconcile cron, the admin Sandboxes pane. Recipe preserved in [B](plan/B-daytona-stdio.md).
+  - **Stdio upstreams**: not run by ctxlayer — covered by bring-your-own-bridge (operator runs a stdio↔HTTP bridge and registers its HTTPS URL as a `streamable_http` upstream). No sandbox lifecycle, no snapshot baking. See [B](plan/B-stdio-bridge.md).
   - **Deferred bits that slipped to M5 (now resolved)**: `shared_bearer` storage shipped in M5 phase 2. Tool double-prefix collapsed in `mangleToolName` (post-M6: `notion__notion-search` → `notion__search`; see `apps/worker/src/mcp/tool-name.ts:collapseSlugPrefix`). `mcp-remote`'s SSE-disconnect spam on idle is **won't-fix server-side**: the agents SDK doesn't expose an SSE-stream hook for keepalive comments, and intercepting would require pulling `/sse` out of OAuthProvider `apiHandlers` and rewrapping the response — too invasive for a cosmetic client-side log issue (tool calls are POSTs and unaffected). Track upstream if mcp-remote or agents SDK adds a fix.
 - **M5 — Admin polish + shared_bearer (1 wk)** ✅ closed May 2026: shipped in four phases:
   - **Phase 1**: append-only `audit_log` helper (`apps/worker/src/audit/log.ts`) + admin Users page at `/app/admin/users` — promote/demote (with last-admin guard), revoke all stored credentials, team-membership inline, IdP + role + last-seen.
@@ -349,10 +333,9 @@ Each milestone is independently deployable and demoable.
   - **Phase 3**: admin Audit-log viewer at `/app/admin/audit` — `GET /api/admin/audit` cursor-paginated read of the `audit_log` table, joined to `users` for actor email. Filters by action prefix + actor id; row click opens drawer with pretty-printed `meta` JSON. Per-prefix colored action badges. Same commit replaced the M2-era `/app/mcp-setup` stub with the real connection guide (Claude web/Desktop/Code, Cursor/Windsurf/Zed/VS Code) — URL pulled live from `/api/config` so it works on localhost dev and workers.dev.
   - **Phase 4**: admin OAuth-clients viewer at `/app/admin/oauth-clients` — read-only listing of every DCR-registered MCP client from `OAUTH_KV` via `getOAuthApi(opts, env).listClients()`. Hoisted `OAuthProvider` options into `apps/worker/src/oauth/provider-config.ts` so the live provider and the admin helpers share one definition.
   - **Side features bundled** (motivated by dogfooding while M5 was in-flight): folder organisation for docs (`path-on-doc`, no separate folders table — empty folders cannot exist by construction); per-doc lock (`canLock` ACL; padlock icon + tooltip; backend gate in one D1 predicate); modal-dialog replacement for `window.confirm`/`alert`/`prompt` (`apps/web/src/lib/dialogs.tsx`); doc-move UI (editor right-rail + list-row `⋯` menu).
-  - *(Sandboxes admin pane moved to the parked Daytona track.)*
 - **M6 — Usage pipeline + dashboards** ✅ closed May 2026: usage producer (`apps/worker/src/usage/{event,tokens,record}.ts`) wraps every MCP tool call (built-ins + proxied) and counts bytes + tiktoken-cl100k_base tokens inside `ctx.waitUntil`. Consumer (`apps/worker/src/queues/usage-consumer.ts`) writes raw `usage_events` + UPSERTs `usage_rollups_daily` in one D1 batch. Admin (`/app/admin/usage`) + user (`/app/usage`) dashboards with inline-SVG stacked-bar (no chart-lib dep), adaptive X-axis density per period, top-N tables. Nightly cron `0 3 * * *` prunes raw events older than 30d; rollups stay indefinitely.
-- **Post-M6 deferred-catalogue sweep** ✅ closed May 2026: addressed every non-Daytona deferred item from the audit. Tool double-prefix collapsed (`mangleToolName` strips redundant `${slug}-` so `notion__notion-search` → `notion__search`). `managed_by_idp` schema + admin UI for SSO/group-sync prep (no sync logic yet — column reserved). Admin upstream tool drill-down (expand-row showing cached tools with agent-visible mangled name). Real-D1 integration tests via `@cloudflare/vitest-pool-workers` — 23 tests covering rollup math, doc-ACL gates, audit-log pagination, runnable via `bun --filter='@ctxlayer/worker' run test:int`. *(Dropped: prompt-kind docs via `prompts/list` — on-demand only. Won't-fix: mcp-remote SSE-disconnect spam — server-side intercept too invasive for a cosmetic client log; track upstream.)*
-- **Later — Stdio upstreams via Daytona** 🅿️: revive when a real stdio MCP upstream is on the roadmap. Picks up `apps/worker/src/upstream/{daytona,sandbox-pool}.ts`, the snapshot baking pipeline, env-var substitution, `sandbox_sessions` reconcile + nightly cron, Daytona-specific error codes (`-32002`/`-32003`), admin Sandboxes pane with force-destroy, and the `MAX_SANDBOXES_PER_USER` quota. Full recipe in [B](plan/B-daytona-stdio.md).
+- **Post-M6 deferred-catalogue sweep** ✅ closed May 2026: addressed every deferred item from the audit. Tool double-prefix collapsed (`mangleToolName` strips redundant `${slug}-` so `notion__notion-search` → `notion__search`). `managed_by_idp` schema + admin UI for SSO/group-sync prep (no sync logic yet — column reserved). Admin upstream tool drill-down (expand-row showing cached tools with agent-visible mangled name). Real-D1 integration tests via `@cloudflare/vitest-pool-workers` — 23 tests covering rollup math, doc-ACL gates, audit-log pagination, runnable via `bun --filter='@ctxlayer/worker' run test:int`. *(Dropped: prompt-kind docs via `prompts/list` — on-demand only. Won't-fix: mcp-remote SSE-disconnect spam — server-side intercept too invasive for a cosmetic client log; track upstream.)*
+- **Stdio upstreams (bring-your-own-bridge)** ✅: a stdio MCP server is reached by running your own stdio↔HTTP bridge (e.g. `supergateway`) and registering its HTTPS URL as a `streamable_http` upstream. ctxlayer manages no sandboxes, snapshots, or quotas. The proxy's generic `UpstreamClient` interface leaves room for future transports. Full write-up in [B](plan/B-stdio-bridge.md).
 
 ## Patterns to mirror from mcp-front (and what to skip)
 
@@ -365,19 +348,14 @@ Each milestone is independently deployable and demoable.
 - `slug__tool` namespacing across upstreams.
 
 **Diverge:**
-- Stdio transport — mcp-front spawns subprocesses directly; ctxlayer's plan is to offload to Daytona Cloud sandboxes per (user, upstream) with an in-sandbox stdio↔HTTP bridge (parked until a real stdio upstream is in scope).
+- Stdio transport — mcp-front spawns subprocesses directly; ctxlayer instead expects the operator to run their own stdio↔HTTP bridge and register its HTTPS URL as a `streamable_http` upstream (bring-your-own-bridge). The Worker never spawns processes.
 - mcp-front's Go runtime and ELv2 licensing — pick our own license freely.
 
 ## Risks / known unknowns
 
 - **MCP spec churn**: pin `@modelcontextprotocol/sdk` and `agents`; support both Streamable HTTP and SSE today; revisit when SSE fully deprecates.
 
-**Parked (re-evaluate when the Daytona track is revived):**
-- **Daytona cost scaling**: per-user × per-stdio-upstream active sandboxes. Mitigations: aggressive `idleTimeoutSeconds`, `MAX_SANDBOXES_PER_USER` quota enforced at provision time, admin UI showing live sandbox count + cost-per-day projection. Re-evaluate with real usage data.
-- **Daytona vendor lock-in**: `apps/worker/src/upstream/daytona.ts` is intended as a single file with a narrow interface (`getOrReadySandbox`, `refreshActivity`, `destroy`, `list`) so swapping to E2B / Northflank / self-hosted Daytona later is a one-file change.
-- **Daytona availability dependence**: if Daytona Cloud is down, stdio upstreams are down. HTTP upstreams remain unaffected. Surface in admin UI status panel; add a circuit breaker after N consecutive sandbox-create failures.
-- **Sandbox snapshot drift**: stdio MCP servers update frequently; snapshots go stale. Build `bun run rebuild-snapshot:<slug>`, surface pinned package version in admin UI.
-- **Credential exposure inside sandbox**: tokens flow as env vars into the container. Disable interactive shells on production snapshots; restrict `DAYTONA_API_KEY` scope; per-user sandboxes bound the blast radius.
+- **Stdio bridge is operator-owned**: a bring-your-own-bridge stdio upstream is only as available, secure, and up-to-date as the host the operator runs it on. ctxlayer treats it as an ordinary HTTP upstream — bridge uptime, the stdio server's package version, and credential handling inside the bridge are the operator's responsibility, outside ctxlayer's blast radius.
 - **OAuth UX from inside the agent**: handled by doing all `user_oauth` connection in the SPA before the agent session — flag prominently in `/mcp-setup`.
 - **Vectorize cost/limits**: 5M vectors/index is plenty for org-scale corpora; cache `search_docs` results in KV by query hash if it becomes hot.
 - **Workers CPU/wall limits**: streaming responses avoid CPU pressure; enforce 60s wall cap on a single upstream call.
@@ -413,7 +391,7 @@ Each milestone is independently deployable and demoable.
 Topic-specific deep-dives live under [`docs/plan/`](plan/) so this file stays browsable:
 
 - [A — Auth flows (inbound + outbound)](plan/A-auth-flows.md) — DCR, paste-bearer fallback, SPA session, allowlist enforcement, `user_bearer` / `user_oauth` / `shared_bearer` outbound, token & secret matrix.
-- [B — Daytona stdio bridge](plan/B-daytona-stdio.md) 🅿️ *parked* — snapshot Dockerfile pattern, baking pipeline, env-var substitution, sandbox lifecycle, keep-alive, per-user vs pooled, fallback, cost projection. Revive when a real stdio MCP upstream is in scope.
+- [B — Stdio via external HTTP bridge](plan/B-stdio-bridge.md) — bring-your-own-bridge model: operator runs a stdio↔HTTP bridge (e.g. supergateway), exposes Streamable HTTP, registers it as a normal `streamable_http` upstream; per-user creds via the existing strategies; no ctxlayer-managed sandbox lifecycle.
 - [C — Upstream proxy mechanics](plan/C-upstream-proxy.md) — `tools/list` aggregation, namespacing edge cases, lazy connect cost analysis, error taxonomy, streaming, subrequest accounting, concurrent calls, `list_upstreams()` shape.
 - [D — UI surface + REST endpoints](plan/D-ui-and-rest.md) — sitemap, user screens, admin screens, role gating, full REST catalogue.
 - [E — Dev environment](plan/E-dev-environment.md) — cloud-native session bootstrap, local dev DX, test harness, CI/CD, mobile/chat-driven workflow, module conventions, observability, env vars summary, onboarding checklist.

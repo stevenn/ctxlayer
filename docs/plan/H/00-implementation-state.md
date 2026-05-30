@@ -20,7 +20,7 @@ Actual files under `apps/worker/src/db/migrations/`:
 
 | File | Purpose |
 |---|---|
-| `0001_init.sql` | users, upstream_servers, upstream_tools, user_credentials, sandbox_sessions, audit_log, usage_events |
+| `0001_init.sql` | users, upstream_servers, upstream_tools, user_credentials, audit_log, usage_events (the unused sandbox-sessions table is dropped by migration `0013`) |
 | `0002_docs.sql` | documents, doc_revisions |
 | `0003_usage.sql` | usage_rollups_daily |
 | `0004_org_ia.sql` | teams, products, team_members, team_products, upstream_visibility, doc_tags |
@@ -283,4 +283,4 @@ app.route('/api/skills/export', skillsExportRoute);    // M7c CLI pull endpoint
 - **M9+** is content milestones (connector kits) — H covers; nothing
   to design here.
 - **M11** (search over skills) — deferred behind real-volume signal.
-- **Daytona / stdio upstreams** — parked, unrelated.
+- **Stdio upstreams** — bring-your-own-bridge (register an operator-run stdio↔HTTP bridge as a `streamable_http` upstream); no ctxlayer-managed sandboxes. Unrelated to skills work.

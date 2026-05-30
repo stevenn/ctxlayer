@@ -12,7 +12,6 @@ The repo is built to be operated **primarily from cloud Claude sessions (includi
 - **`.claude/commands/*`** custom slash commands tuned for this project:
   - `/migrate` — apply pending D1 migrations to the local + dev environment, print diff.
   - `/seed` — load fixture upstreams + docs into local D1 for demos.
-  - `/snapshot <slug>` — rebuild a single Daytona snapshot.
   - `/deploy:preview` — wrangler versions deploy + post preview URL to the conversation.
   - `/smoke` — runs the cross-cutting smoke harness (see E5) and prints a status table.
 
@@ -21,8 +20,6 @@ The repo is built to be operated **primarily from cloud Claude sessions (includi
 - `bun run dev` starts:
   - Vite dev server for the SPA on `:5173`.
   - `wrangler dev --persist-to .wrangler/state` for the Worker on `:8787` with **Miniflare** local emulation: D1 (sqlite file), KV (sqlite), R2 (filesystem), Queues (in-memory), Durable Objects.
-  - A small `mock-daytona` process on `:9000` (Node) implementing the subset of Daytona's API we use, backed by `docker run` locally. Toggled by env `DAYTONA_API_URL=http://localhost:9000`.
-- `bun run dev:no-daytona` — same but with the Daytona client stubbed to "stdio upstreams disabled" (useful when Docker isn't around, e.g. cloud sessions without privileged containers).
 - `.dev.vars.example` checked in with placeholders; `.dev.vars` gitignored. `bun run setup` copies the example and prompts for the secrets you need (or accepts a `--non-interactive` flag for cloud sessions to use sensible test defaults).
 
 ### E3. Test harness (cloud + local parity)
@@ -38,16 +35,14 @@ Three layers, all runnable as `bun run test`, `bun run test:int`, `bun run test:
 Special harnesses (planned, not all shipped):
 - `tests/fixtures/fake-idp/` — minimal OIDC issuer + GitHub-shaped API for Google and GitHub allowlist tests. No external dependency. 🚧 not yet built.
 - `tests/fixtures/fake-upstream-mcp/` — a tiny in-process MCP server (Streamable HTTP) that the integration tests register as an upstream. Verifies proxy + namespacing + error surfacing end-to-end. 🚧 not yet built.
-- `tests/fixtures/mock-daytona/` — express server speaking Daytona's REST API shape; sandbox state machine is purely in-memory. Lets integration tests cover the stdio path without any container runtime. 🅿️ parked with the Daytona track.
 
 ### E4. CI/CD
 
 - **GitHub Actions** workflows:
   - `pr.yml`: install → typecheck → lint → unit + integration tests → `wrangler versions deploy --preview` → post preview URL as PR comment.
   - `main.yml`: same as PR + E2E against preview → on green, `wrangler deploy` to production environment.
-  - `snapshots-nightly.yml`: runs `infra/daytona-snapshots/build-and-push.ts`, opens a PR if any snapshot's pinned package version drifted.
   - `prune.yml` (cron): clears old `usage_events`, archives stale `doc_revisions` to R2.
-- **Branch model**: trunk-based on `main`, every change goes through a PR with preview deploy. Wrangler "environments" (`preview`, `production`) bind to different D1 databases and Daytona organisations.
+- **Branch model**: trunk-based on `main`, every change goes through a PR with preview deploy. Wrangler "environments" (`preview`, `production`) bind to different D1 databases.
 
 ### E5. Mobile / chat-driven workflow
 
@@ -84,7 +79,7 @@ To keep AI agents (and humans) productive at scale:
 ### E8. New env vars / secrets summary
 
 Added by Section E:
-- Vars: `MOCK_DAYTONA_URL` (only set in `wrangler dev`), `SENTRY_DSN_WORKER`, `SENTRY_DSN_WEB`, `LOGPUSH_ENABLED`.
+- Vars: `SENTRY_DSN_WORKER`, `SENTRY_DSN_WEB`, `LOGPUSH_ENABLED`.
 - Secrets: `CI_SMOKE_OAUTH_CLIENT_ID`, `CI_SMOKE_OAUTH_CLIENT_SECRET`.
 
 ### E9. Onboarding checklist (target: a new team member productive in 1 hour, including via mobile)

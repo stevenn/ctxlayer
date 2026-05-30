@@ -56,8 +56,9 @@ function parseAuthConfig(json: string): UpstreamAuthConfig {
 
 export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection {
   if (row.transport !== 'streamable_http' && row.transport !== 'sse') {
-    // Parked transports (e.g. 'stdio_daytona') should not surface to
-    // M4 callers. Treat as disabled.
+    // Only http/sse transports are supported. Any other transport value
+    // (a legacy or forged DB row) must not surface to the proxy as a
+    // dialable connection. Throwing keeps it out of the M4 callers.
     throw new Error(`unsupported_transport:${row.transport}`)
   }
   return {
@@ -187,7 +188,7 @@ export async function patchUpstream(
 
 export async function deleteUpstream(env: Env, id: string): Promise<void> {
   // CASCADE removes upstream_visibility + upstream_tools + user_credentials
-  // + sandbox_sessions rows that reference this upstream.
+  // rows that reference this upstream.
   await env.DB.prepare(`DELETE FROM upstream_servers WHERE id = ?1`).bind(id).run()
 }
 
@@ -674,8 +675,8 @@ export async function listUserCredentialedUpstreamIds(
 /**
  * Hydrate an `AdminUpstreamRow` from an upstream id. Joins visibility +
  * cached tool count + cached_at + the calling admin's connection
- * status. Returns null when the row is missing or has a parked
- * (`stdio_daytona`) transport.
+ * status. Returns null when the row is missing or carries an
+ * unsupported (non-http/sse) transport.
  *
  * `currentUserConnected` lets the admin drawer show "you are
  * connected" / "you are not connected" badges and gate the Refresh

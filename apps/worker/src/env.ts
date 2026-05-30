@@ -12,9 +12,6 @@ export interface Env {
   ALLOWED_GITHUB_ORG: string
   ALLOWED_GITHUB_USERS: string
   ADMIN_EMAILS: string
-  DAYTONA_API_URL: string
-  DAYTONA_DEFAULT_IDLE_SECONDS: string
-  MAX_SANDBOXES_PER_USER: string
 
   // Secrets (.dev.vars locally, `wrangler secret put` in deploys)
   GOOGLE_CLIENT_ID: string
@@ -23,7 +20,6 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string
   ENCRYPTION_KEY: string
   SESSION_COOKIE_SECRET: string
-  DAYTONA_API_KEY: string
   SENTRY_DSN_WORKER?: string
 
   // Resource bindings
