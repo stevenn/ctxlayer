@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import { OAuthProvider } from '@cloudflare/workers-oauth-provider'
+import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { Env, QueueName } from './env'
 import { healthRoute } from './api/health'
 import { meRoute } from './api/me'
@@ -39,6 +39,7 @@ import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
+import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -138,9 +139,11 @@ const worker: ExportedHandler<Env> = {
     for (const msg of batch.messages) msg.retry()
   },
   async scheduled(_controller, env, ctx) {
-    // Nightly cron (`0 3 * * *`). Prune raw usage_events older than
-    // 30 days (rollups stay forever). Wrapped in waitUntil so a slow
-    // D1 delete can't time out the trigger.
+    // Nightly cron (`0 3 * * *`). Each task is independent and wrapped
+    // in its own try/catch + waitUntil so a slow/failed one can't time
+    // out the trigger or starve the others.
+
+    // 1. Prune raw usage_events older than 30 days (rollups stay forever).
     ctx.waitUntil(
       (async () => {
         try {
@@ -149,6 +152,29 @@ const worker: ExportedHandler<Env> = {
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
+        }
+      })()
+    )
+
+    // 2. Prune abandoned DCR client registrations: public, zero-grant,
+    // older than 1 day (the loopback-OAuth retry detritus). Fail-closed
+    // if the grant index is incomplete — see oauth/prune-clients.ts.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+          const r = await pruneOrphanOAuthClients(env, helpers, { olderThanDays: 1 })
+          if (r.skippedIncompleteIndex) {
+            console.warn('[cron] oauth-client prune skipped: grant index incomplete')
+          } else {
+            console.log(
+              `[cron] pruned ${r.deleted}/${r.orphans} orphan oauth clients ` +
+                `(scanned ${r.scanned}, ${r.failed} delete failures)`
+            )
+          }
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          console.error(`[cron] oauth-client prune failed: ${m}`)
         }
       })()
     )

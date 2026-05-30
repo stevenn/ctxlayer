@@ -30,6 +30,7 @@ import {
   AdminUsageResponse,
   AuditLogResponse,
   OAuthClientsResponse,
+  OAuthClientsPruneResponse,
   UsageResponse,
   CreateUpstreamRequest,
   MeResponse,
@@ -62,6 +63,7 @@ import type {
   AttachSkillRequest as AttachSkillRequestT,
   AuditLogResponse as AuditLogResponseT,
   OAuthClientsResponse as OAuthClientsResponseT,
+  OAuthClientsPruneResponse as OAuthClientsPruneResponseT,
   UsageResponse as UsageResponseT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   CreateSkillRequest as CreateSkillRequestT,
@@ -606,6 +608,14 @@ export function fetchAdminOAuthClients(
   const qs = params.toString()
   const path = qs ? `/api/admin/oauth-clients?${qs}` : '/api/admin/oauth-clients'
   return request(path, (b) => OAuthClientsResponse.parse(b), { signal })
+}
+
+export function pruneAdminOAuthClients(): Promise<OAuthClientsPruneResponseT> {
+  return request(
+    '/api/admin/oauth-clients/prune',
+    (b) => OAuthClientsPruneResponse.parse(b),
+    { method: 'POST' }
+  )
 }
 
 // ----- admin audit --------------------------------------------------------

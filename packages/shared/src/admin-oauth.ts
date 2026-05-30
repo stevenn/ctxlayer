@@ -56,3 +56,19 @@ export const OAuthClientsResponse = z.object({
   nextCursor: z.string().nullable()
 })
 export type OAuthClientsResponse = z.infer<typeof OAuthClientsResponse>
+
+/**
+ * Result of the admin-triggered orphan-client prune (same policy the
+ * nightly cron runs). `skippedIncompleteIndex` is true when the prune
+ * declined to delete anything because the per-user grant index could
+ * not be read in full (fail-closed — see oauth/prune-clients.ts).
+ */
+export const OAuthClientsPruneResponse = z.object({
+  scanned: z.number().int(),
+  orphans: z.number().int(),
+  deleted: z.number().int(),
+  failed: z.number().int(),
+  skippedIncompleteIndex: z.boolean(),
+  deletedIds: z.array(z.string())
+})
+export type OAuthClientsPruneResponse = z.infer<typeof OAuthClientsPruneResponse>

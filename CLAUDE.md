@@ -112,7 +112,12 @@ Full rationale in `docs/plan/G-conventions.md`.
 - **SQLite/D1**: no expressions allowed in `PRIMARY KEY`. Use a `''`
   sentinel on `NOT NULL` columns and a partial `UNIQUE INDEX` for
   "at most one nullable-value row" invariants. Every enum-shaped column
-  has a matching `CHECK (col IN (...))`.
+  has a matching `CHECK (col IN (...))`. **Never rebuild a *referenced
+  parent* table relying on `PRAGMA foreign_keys=OFF`** — that pragma
+  no-ops inside D1's migration transaction, so `DROP TABLE` cascades and
+  wipes child rows (0013 silently nuked `upstream_visibility` grants +
+  creds + cached tools this way). Snapshot children → swap parent →
+  restore. Full rule in `docs/plan/G-conventions.md` §G1.
 - **Workers Assets SPA fallback**: lives in `[assets]
   not_found_handling = "single-page-application"`, NOT in a hand-rolled
   `app.notFound`. `run_worker_first` lists both bare and glob forms

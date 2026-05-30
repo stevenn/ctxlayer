@@ -20,6 +20,33 @@ gotchas the rest of the build should respect.
   `usage_events.status`, `team_members.role`, `doc_tags.tag_kind`,
   `upstream_visibility.scope_kind`. Keeps ad-hoc `wrangler d1 execute`
   edits from inserting values the SPA can't render.
+- **`PRAGMA foreign_keys=OFF` does NOT work inside a D1 migration.**
+  D1 runs each migration file in an implicit transaction, and
+  `PRAGMA foreign_keys` can only be toggled when no transaction is
+  open — so the statement silently no-ops and FK enforcement stays
+  ON. This bit us in `0013`: the textbook table-rebuild of the
+  *referenced parent* `upstream_servers` (`CREATE _new` → copy →
+  `DROP` old → rename) relied on that pragma to stop the `DROP` from
+  cascading. It didn't: `DROP TABLE` with FKs on runs an implicit
+  `DELETE` that fires `ON DELETE CASCADE` on every child, wiping
+  `upstream_tools`, `user_credentials`, `upstream_visibility`
+  (the "everyone" grants), `upstream_shared_credentials`, and the
+  `*_attachments`. (`usage_events` survived — its `upstream_id` has
+  no FK.) **Rules for any future rebuild of a table that other tables
+  reference:**
+  1. Prefer NOT rebuilding a referenced parent at all. A CHECK can
+     only be changed by rebuild, but consider whether app-layer
+     validation suffices instead of tightening the DB CHECK.
+  2. If you must rebuild a parent, snapshot every cascading child
+     into a plain holding table first, do the parent swap, then
+     re-insert the children (parent ids are preserved, so the FKs
+     resolve). `defer_foreign_keys=on` is valid inside a txn but only
+     defers the *violation check* — it does NOT suppress the cascade
+     *action*, so snapshots are mandatory, not optional.
+  3. Enumerate children by grepping `REFERENCES <table>(` across ALL
+     migrations — do not trust a hand-written list in a comment
+     (0013's comment both included a non-child, `usage_events`, and
+     would have missed nothing only by luck).
 
 ### G2. Cloudflare Workers Assets
 
