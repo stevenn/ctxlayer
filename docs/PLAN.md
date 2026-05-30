@@ -1,6 +1,6 @@
 # ctxlayer — Agent Context Layer (MCP Service on Cloudflare)
 
-## Status snapshot (2026-05-27)
+## Status snapshot (2026-05-30)
 
 | Milestone | Status | Demo / state |
 |---|---|---|
@@ -263,14 +263,20 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 
 ## Collaborative editor — ✅ M3 (shipped May 2026)
 
-- **SPA**: `@blocknote/react` + `@blocknote/core` with the Yjs collab extension. ✅ Editor builds a per-doc `Y.Doc` + `CollabWSProvider` inside a StrictMode-safe effect; awareness-leader election (lowest clientID) decides which tab fires the REST autosave so concurrent tabs share one revision per ~5s debounce window. Connection status badge replaces the old dirty/Save UI.
+- **SPA**: `@blocknote/react` + `@blocknote/core` with the Yjs collab extension. ✅ Editor builds a per-doc `Y.Doc` + `CollabWSProvider` inside a StrictMode-safe effect; awareness-leader election (lowest clientID) decides which tab fires the REST autosave so concurrent tabs share one revision per debounce window. A connection-status badge ("Live" / "Reconnecting" / "Offline") sits alongside the save UI.
+- **Save UX (2026-05-30)**: explicit **Save** + **Discard** buttons and a navigation guard, with autosave demoted to a background crash-insurance net. Shared `apps/web/src/components/editor/save-controls.tsx` (`SaveBadge` / `SaveControls` / `LeaveGuard`) is used by both the doc editor and the skill editor.
+  - The user-facing "saved" state tracks **explicit** saves only: an explicit Save clears the dirty flag and advances the discard baseline (badge → `saved`), while a background autosave only flips the badge to `autosaved` and leaves the nav guard armed. So the user always makes an explicit Save / Discard / Cancel decision before leaving.
+  - **Discard** reverts the editor to the baseline (the content as opened, or the last explicit Save). On docs this propagates to every collaborator in the room via Yjs `replaceBlocks`; on skills it's a local revert + save.
+  - **Nav guard**: `useBlocker` (in-app navigation; requires the data router in `main.tsx`) + `beforeunload` (tab close / refresh). While dirty, in-app navigation pops a Save & leave / Discard & leave / Cancel modal and only proceeds if the save succeeds.
+  - **Autosave reliability fix** (the original "autosave not working reliably" report): a 15s per-request timeout (`AbortSignal.timeout`) so a hung `PUT /content` can no longer wedge the in-flight guard indefinitely; failures now surface on the badge instead of only `console.error`.
+  - Idle debounce unified at **3s** via the shared `SAVE_IDLE_MS`; docs keep their separate 30s max-coalesce window (tied to the DO snapshot cadence).
 - **Transport**: WebSocket to `/collab/:docId`. Pre-upgrade auth: session cookie + `getDocById` existence + same-origin via `util/origin.ts` (localhost carve-out for Vite HMR). CSRF intentionally not required on the upgrade — the DO never accepts state-changing HTTP, only WebSocket frames tagged read-only or read-write via per-socket attachment.
 - **`DocRoomDO`**:
   - WebSocket Hibernation API (`acceptWebSocket` + `webSocketMessage` / `webSocketClose` / `webSocketError`).
   - Lazy-loads `docs/{id}/yjs/snapshot.bin` from R2 on construct / post-eviction wake; immediately sends `syncStep1` to every still-attached socket so peers re-send unflushed in-memory updates.
   - Broadcasts sync + awareness frames via `ctx.getWebSockets()`.
   - **Snapshot on every applied update**, coalesced through a single in-flight write (latest-wins) and held alive via `ctx.waitUntil`. The original "alarm-debounced flush" plan was wrong under hibernation — alarms fire on a fresh instance with stale R2 state. Details in [M3-prep.md D-M3.1 + D-M3.2](plan/M3-prep.md).
-- **Reindex consumer** ✅ unchanged; SPA's debounced `PUT /api/docs/:id/content` keeps writing BlockNote JSON revisions that the existing consumer renders → embeds → upserts.
+- **Reindex consumer** ✅ unchanged; SPA's debounced `PUT /api/docs/:id/content` (autosave + explicit Save) keeps writing BlockNote JSON revisions that the existing consumer renders → embeds → upserts.
 - **Storage**: `apps/worker/src/storage/docs-r2.ts` adds `readYjsSnapshot` / `writeYjsSnapshot`. Y.Doc bytes live alongside the JSON snapshot/revision tree; no rotation (one current binary snapshot only).
 
 ## Usage tracking — ✅ M6 (May 2026)
@@ -292,7 +298,7 @@ Shipped (full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy
 ## User UI
 
 - `/sign-in` ✅ — GitHub (Google supported but disabled in this deploy).
-- `/app/docs` ✅ — tree/list + BlockNote editor with Yjs realtime collab.
+- `/app/docs` ✅ — tree/list + BlockNote editor with Yjs realtime collab, explicit Save/Discard + unsaved-changes nav guard.
 - `/app/admin/teams`, `/app/admin/products`, `/app/admin/upstreams` ✅.
 - `/upstreams` ✅ shipped (M4) — cards per enabled upstream: `user_bearer` shows password-input + Connect/Replace/Disconnect; `user_oauth` shows Connect-with-OAuth button (DCR + PKCE round-trip happens here, before the agent session); `none`/`shared_bearer` show an info notice. `?oauth_connected=<slug>` / `?oauth_error=<...>` flash banner on return from the callback.
 - `/mcp-setup` ✅ M5 — live `${publicBaseUrl}/mcp` snippet + per-client config blocks for Claude (web + Desktop + Code), Cursor/Windsurf/Zed/VS Code, all with one-click copy.
@@ -381,7 +387,8 @@ Each milestone is independently deployable and demoable.
   11. Wire Claude (Web or Desktop): `{"mcpServers": {"ctxlayer": {"url": "https://<URL>/mcp"}}}`. For Claude Web that's claude.ai → Settings → Connectors → Add custom. Claude triggers DCR + `/oauth/authorize` → IdP chooser → back.
   12. In Claude: `whoami`, `list_my_context`, `get_doc({id: ...})`, `search_docs({query: "..."})` — all return real data. Note: admin role doesn't grant team membership; use `scope: "all"`, or add yourself to a team via `/app/admin/teams`.
   13. Shrink the doc; next reindex deletes the orphan vectors via `chunk_count` tracking (migration `0006`); `list-vectors` drops to the new count with no stragglers above.
-- **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per ~5s debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
+- **M3** ✅ **CLOSED May 2026**: Two browser tabs on `/app/docs/:id` mirror keystrokes within ~100ms (Live badge green). Closing both tabs + reopening rehydrates from `docs/{id}/yjs/snapshot.bin` in R2. REST autosave fires once per debounce from the awareness-leader tab — `doc_revisions` grows monotonically with no double-rows per window. Read-only viewers (no `canEditDoc`) connect but writes are silently dropped. `search_docs` reflects edits within ~30s on the deployed worker. Local dev verified on `https://localhost:5173` (Vite HMR); production smoke-confirmed on workers.dev (incl. `/collab/:docId` returning 426 for non-WS GETs).
+  - **Save-UX follow-up (2026-05-30, deployed)**: explicit Save/Discard + nav guard added to the doc and skill editors (see [Collaborative editor](#collaborative-editor--m3-shipped-may-2026)). Static verification only (typecheck + 143 unit tests + prod endpoint probe at 200); the interactive flows (badge transitions, leave-prompt, cross-tab discard propagation, hung-save timeout) were exercised in local dev, not yet click-tested on the deployed worker.
 - **M4** ✅ **CLOSED May 2026**: Admin · Upstreams → register Notion (`https://mcp.notion.com/mcp`, transport `streamable_http`, auth `user_oauth`) → Visibility → Everyone signed in. User on `/upstreams` → **Connect with OAuth** → DCR + PKCE redirect to Notion → consent → back to `/upstreams?oauth_connected=notion`. Admin UI shows non-zero `toolsCount` after the auto-warm. Claude Desktop wired via `mcp-remote` shim (`NODE_EXTRA_CA_CERTS=$(mkcert -CAROOT)/rootCA.pem` for local-https trust): `list_upstreams` reports `connected: true, toolsCount: 16`; `notion__notion-search`, `notion__notion-fetch`, `notion__notion-create-pages` all return real data; page successfully created in Notion through the proxy. Sealed creds never logged. Visibility query correctly hides upstreams from users not in the granted team/product.
 - **M5** ✅ **CLOSED May 2026**: Admin · Users page CRUD smoke green (promote/demote with last-admin guard, revoke creds); admin OAuth clients listing at `/app/admin/oauth-clients` reflects `OAUTH_KV` contents (Claude Desktop / Cursor / Claude Web registrations all visible); admin Audit log at `/app/admin/audit` shows role changes, credential revocations, doc locks/unlocks, folder rename/delete with action-prefix + actor filters; `shared_bearer` upstreams accept admin-set token and every user sees `connected: true` without per-user setup; `/app/mcp-setup` serves live per-client connection snippets with copy-to-clipboard. Bundled side features: folder organisation + per-doc lock + modal-dialog system + doc-move UI shipped end-to-end.
 - **M6** ✅ **CLOSED May 2026**: end-to-end usage-pipeline verified against the deployed worker. Claude Desktop invocation of `search_docs` (two calls — default-scope no-match + `scope:"all"` 2-hit) → `usage_events` rows landed with `req_tokens=9/13`, `resp_tokens=20/3030`; daily rollup totals matched the SPA dashboard reading of 3050 response tokens exactly. Inline-SVG chart fills page width; X-axis density adapts to the 7/30/90/180-day selector. 23 D1-backed integration tests (`bun run test:int`) pin rollup math + doc-ACL + audit pagination.
