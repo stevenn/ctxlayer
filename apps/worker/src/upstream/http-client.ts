@@ -6,8 +6,9 @@
  * Streamable HTTP is the default; SSE is the fallback for servers that
  * have not migrated yet. Both share the same MCP Client surface.
  *
- * Per-request 60s wall cap is enforced via `RequestOptions.timeout`,
- * which the SDK forwards to its internal `AbortController`.
+ * Per-call timeouts are enforced via `RequestOptions` — a base inactivity
+ * window plus a hard `maxTotalTimeout` ceiling — which the SDK forwards to
+ * its internal `AbortController`. See the constants below.
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
@@ -16,7 +17,27 @@ import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker-provider.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
 
-export const UPSTREAM_CALL_TIMEOUT_MS = 60_000
+/**
+ * tools/list is metadata — keep it on a tight fail-fast cap so a hung
+ * upstream can't stall session bootstrap or Refresh-tools.
+ */
+export const UPSTREAM_LIST_TIMEOUT_MS = 60_000
+
+/**
+ * Base per-call inactivity window. Raised from the original flat 60s:
+ * some upstream tools (e.g. Driver's `gather_task_context`) advertise
+ * 1-3 min runtimes, and a 60s cap timed every one of them out. This is
+ * the ceiling for an upstream that goes *silent* (emits no progress).
+ */
+export const UPSTREAM_CALL_TIMEOUT_MS = 150_000
+
+/**
+ * Absolute ceiling regardless of progress. When an upstream DOES stream
+ * progress notifications, `resetTimeoutOnProgress` keeps the inactivity
+ * window alive on each ping — but a call can never exceed this hard cap.
+ */
+export const UPSTREAM_MAX_CALL_TIMEOUT_MS = 300_000
+
 const CLIENT_NAME = 'ctxlayer'
 const CLIENT_VERSION = '0.1.0'
 
@@ -86,7 +107,7 @@ export class UpstreamHttpClient {
 
   async listTools(): Promise<UpstreamCatalogueTool[]> {
     const client = await this.ensureConnected()
-    const res = await client.listTools(undefined, { timeout: UPSTREAM_CALL_TIMEOUT_MS })
+    const res = await client.listTools(undefined, { timeout: UPSTREAM_LIST_TIMEOUT_MS })
     return (res.tools ?? []).map((t) => ({
       toolName: t.name,
       description: t.description ?? null,
@@ -99,7 +120,16 @@ export class UpstreamHttpClient {
     const res = await client.callTool(
       { name, arguments: (args ?? {}) as Record<string, unknown> },
       undefined,
-      { timeout: UPSTREAM_CALL_TIMEOUT_MS }
+      {
+        timeout: UPSTREAM_CALL_TIMEOUT_MS,
+        // Passing onprogress makes the SDK request progress notifications
+        // (it sends a progressToken); resetTimeoutOnProgress then keeps a
+        // long-but-alive call from tripping the inactivity window. The
+        // callback body is a no-op — we only want the keep-alive effect.
+        onprogress: () => {},
+        resetTimeoutOnProgress: true,
+        maxTotalTimeout: UPSTREAM_MAX_CALL_TIMEOUT_MS
+      }
     )
     return {
       content: res.content,
