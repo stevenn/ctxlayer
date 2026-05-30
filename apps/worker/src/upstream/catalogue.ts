@@ -20,7 +20,7 @@ import {
   toUpstreamConnection,
   type UpstreamConnection
 } from '../db/queries/upstreams'
-import { UpstreamHttpClient } from './http-client'
+import { createUpstreamClient } from './upstream-client'
 
 export interface CatalogueRefreshOk {
   ok: true
@@ -65,7 +65,7 @@ export async function refreshCatalogueForConnection(
   if (conn.authStrategy !== 'none' && !bearerToken) {
     return { ok: false, reason: 'no_credentials' }
   }
-  const client = new UpstreamHttpClient(conn, bearerToken)
+  const client = createUpstreamClient(conn, bearerToken)
   try {
     const tools = await client.listTools()
     const cachedAt = await replaceCachedTools(env, conn.id, tools)
