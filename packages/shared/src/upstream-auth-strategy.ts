@@ -31,8 +31,29 @@ const OauthAuthConfig = z
   })
   .passthrough()
 
+// Per-upstream resilience overrides. All optional — absent fields fall
+// back to the module-level defaults in `upstream/http-client.ts`. Stored
+// in the same `auth_config` JSON column, so no DB migration is needed.
+// Values are milliseconds. The admin REST handler clamps them to a hard
+// ceiling at the trust boundary (one slow upstream blocks the serial
+// McpSessionDO, so an unbounded override would freeze the whole session).
+const UpstreamTimeouts = z.object({
+  // Base inactivity window per tools/call (silent-upstream wall clock).
+  callMs: z.number().int().positive().optional(),
+  // Absolute ceiling per tools/call regardless of progress pings.
+  maxCallMs: z.number().int().positive().optional(),
+  // Fail-fast cap for tools/list.
+  listMs: z.number().int().positive().optional()
+})
+export type UpstreamTimeouts = z.infer<typeof UpstreamTimeouts>
+
 export const UpstreamAuthConfig = z.object({
   http: HttpAuthConfig.optional(),
-  oauth: OauthAuthConfig.optional()
+  oauth: OauthAuthConfig.optional(),
+  timeouts: UpstreamTimeouts.optional(),
+  // Per-upstream response-size cap in bytes (overrides the global
+  // default). Oversized tools/call results degrade to a truncation
+  // notice rather than nuking the agent's context.
+  maxResponseBytes: z.number().int().positive().optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>

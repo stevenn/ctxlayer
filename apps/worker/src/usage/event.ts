@@ -24,6 +24,10 @@ export const UsageEventMsg = z.object({
   reqTokens: z.number().int().min(0),
   respTokens: z.number().int().min(0),
   latencyMs: z.number().int().min(0),
-  status: z.enum(['ok', 'error', 'timeout'])
+  status: z.enum(['ok', 'error', 'timeout']),
+  // WI-5: set when the proxy replaced an oversized response with a
+  // truncation notice. Optional with a default so messages enqueued
+  // before this field existed still parse on the consumer.
+  truncated: z.boolean().default(false)
 })
 export type UsageEventMsg = z.infer<typeof UsageEventMsg>

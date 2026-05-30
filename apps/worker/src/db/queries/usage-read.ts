@@ -36,6 +36,8 @@ export interface TopToolRow {
   reqTokens: number
   respTokens: number
   errors: number
+  timeouts: number
+  truncations: number
 }
 
 export interface TopUpstreamRow {
@@ -46,6 +48,8 @@ export interface TopUpstreamRow {
   reqTokens: number
   respTokens: number
   errors: number
+  timeouts: number
+  truncations: number
 }
 
 export interface TopUserRow {
@@ -123,7 +127,9 @@ export async function topTools(env: Env, scope: UsageScope, limit = 10): Promise
            SUM(calls)       AS calls,
            SUM(req_tokens)  AS req_tokens,
            SUM(resp_tokens) AS resp_tokens,
-           SUM(errors)      AS errors
+           SUM(errors)      AS errors,
+           SUM(timeouts)    AS timeouts,
+           SUM(truncations) AS truncations
     FROM usage_rollups_daily
     ${where}
     GROUP BY tool, upstream_id
@@ -139,6 +145,8 @@ export async function topTools(env: Env, scope: UsageScope, limit = 10): Promise
       req_tokens: number
       resp_tokens: number
       errors: number
+      timeouts: number
+      truncations: number
     }>()
   return (results ?? []).map((r) => ({
     tool: r.tool,
@@ -146,7 +154,9 @@ export async function topTools(env: Env, scope: UsageScope, limit = 10): Promise
     calls: r.calls ?? 0,
     reqTokens: r.req_tokens ?? 0,
     respTokens: r.resp_tokens ?? 0,
-    errors: r.errors ?? 0
+    errors: r.errors ?? 0,
+    timeouts: r.timeouts ?? 0,
+    truncations: r.truncations ?? 0
   }))
 }
 
@@ -163,7 +173,9 @@ export async function topUpstreams(
            SUM(u.calls)       AS calls,
            SUM(u.req_tokens)  AS req_tokens,
            SUM(u.resp_tokens) AS resp_tokens,
-           SUM(u.errors)      AS errors
+           SUM(u.errors)      AS errors,
+           SUM(u.timeouts)    AS timeouts,
+           SUM(u.truncations) AS truncations
     FROM usage_rollups_daily u
     LEFT JOIN upstream_servers us ON us.id = u.upstream_id
     ${where}
@@ -181,6 +193,8 @@ export async function topUpstreams(
       req_tokens: number
       resp_tokens: number
       errors: number
+      timeouts: number
+      truncations: number
     }>()
   return (results ?? []).map((r) => ({
     upstreamId: r.upstream_id ?? '',
@@ -189,7 +203,9 @@ export async function topUpstreams(
     calls: r.calls ?? 0,
     reqTokens: r.req_tokens ?? 0,
     respTokens: r.resp_tokens ?? 0,
-    errors: r.errors ?? 0
+    errors: r.errors ?? 0,
+    timeouts: r.timeouts ?? 0,
+    truncations: r.truncations ?? 0
   }))
 }
 

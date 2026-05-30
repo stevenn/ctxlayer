@@ -50,6 +50,8 @@ import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
 import { recordUsage } from '../usage/record'
+import { byteLength } from '../usage/tokens'
+import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
@@ -294,11 +296,27 @@ export class UpstreamProxyRegistry {
       const t0 = Date.now()
       const reqJson = safeJson(args)
       let status: 'ok' | 'error' | 'timeout' = 'ok'
+      let truncated = false
       let respJson = ''
       try {
         const result = await client.callTool(upstreamToolName, args)
         respJson = safeJson(result.content ?? null)
         if (result.isError) status = 'error'
+        // Response-size guardrail (WI-4). An oversized upstream payload
+        // (e.g. Driver's whole-repo get_code_map ≈ 1.4 MB) would nuke the
+        // agent's context and waste the usage tokeniser. Replace it with a
+        // structured truncation notice. Applied on the assembled result —
+        // the SDK materialises `content` in memory today; if true streaming
+        // passthrough lands, move this to a byte-counter in the stream.
+        const respBytes = byteLength(respJson)
+        const cap = conn.authConfig.maxResponseBytes ?? UPSTREAM_MAX_RESPONSE_BYTES
+        if (!result.isError && respBytes > cap) {
+          truncated = true
+          const notice = truncationNotice(conn.slug, upstreamToolName, respBytes, cap)
+          // Record the short notice (not the megabyte blob) for usage.
+          respJson = notice
+          return { isError: false, content: [{ type: 'text' as const, text: notice }] }
+        }
         return {
           isError: !!result.isError,
           content: Array.isArray(result.content)
@@ -339,7 +357,8 @@ export class UpstreamProxyRegistry {
             reqJson,
             respJson,
             latencyMs: Date.now() - t0,
-            status
+            status,
+            truncated
           }
         )
       }
@@ -434,4 +453,19 @@ function safeJson(v: unknown): string {
 
 function errText(msg: string) {
   return { isError: true, content: [{ type: 'text' as const, text: msg }] }
+}
+
+/**
+ * Structured notice substituted for an upstream response that exceeded
+ * the relay size cap (WI-4). Generic scope hint — we don't know each
+ * tool's pagination params, so we name the common levers. First-party
+ * text (no upstream input), so no sanitisation needed.
+ */
+function truncationNotice(slug: string, tool: string, bytes: number, cap: number): string {
+  return (
+    `[ctxlayer] The response from ${slug}.${tool} was ${bytes} bytes, over the ` +
+    `${cap}-byte relay cap, and was withheld to protect the agent's context. ` +
+    `Re-run with a narrower scope (e.g. a path, directory, depth, or page/limit ` +
+    `argument) so the tool returns a smaller payload.`
+  )
 }

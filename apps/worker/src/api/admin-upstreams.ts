@@ -36,6 +36,7 @@ import {
   refreshCatalogueForConnection
 } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
+import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
 import { seal } from '../crypto/aead'
 import { audit } from '../audit/log'
 import { listSkillsForUpstream } from '../db/queries/skill-attachments'
@@ -73,7 +74,7 @@ adminUpstreamsRoute.post('/', async (c) => {
       transport: input.transport,
       url: input.url,
       authStrategy: input.authStrategy,
-      authConfig: input.authConfig ?? {},
+      authConfig: clampTimeouts(input.authConfig) ?? {},
       enabled: input.enabled ?? true
     })
     // For unauth (`none`) upstreams there's nothing to wait for —
@@ -119,7 +120,10 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
   if (!parsed.success) {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   }
-  await patchUpstream(c.env, id, parsed.data)
+  await patchUpstream(c.env, id, {
+    ...parsed.data,
+    authConfig: clampTimeouts(parsed.data.authConfig)
+  })
   return new Response(null, { status: 204 })
 })
 
@@ -292,6 +296,29 @@ adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
   })
   return new Response(null, { status: 204 })
 })
+
+/**
+ * Defensive clamp on per-upstream timeout overrides before they hit D1.
+ * A 150-300s call blocks the serial McpSessionDO for that whole window
+ * (docs/plan/I-upstream-resilience.md §I5.1), so no upstream may opt into
+ * a window longer than the platform-safe hard cap. The client re-clamps
+ * on read; this just keeps the persisted values honest for the admin UI.
+ */
+function clampTimeouts(
+  cfg: UpdateUpstreamRequest['authConfig']
+): UpdateUpstreamRequest['authConfig'] {
+  if (!cfg?.timeouts) return cfg
+  const clamp = (v: number | undefined) =>
+    v === undefined ? undefined : Math.min(v, UPSTREAM_TIMEOUT_CLAMP_MS)
+  return {
+    ...cfg,
+    timeouts: {
+      callMs: clamp(cfg.timeouts.callMs),
+      maxCallMs: clamp(cfg.timeouts.maxCallMs),
+      listMs: clamp(cfg.timeouts.listMs)
+    }
+  }
+}
 
 function isUniqueViolation(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)

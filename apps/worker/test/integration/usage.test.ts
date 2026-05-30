@@ -27,6 +27,7 @@ function event(overrides: Partial<UsageEventMsg> = {}): UsageEventMsg {
     respTokens: 5,
     latencyMs: 7,
     status: 'ok',
+    truncated: false,
     ...overrides
   }
 }

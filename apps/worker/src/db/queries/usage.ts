@@ -19,6 +19,8 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
   const upstreamForRaw = e.upstreamId ?? null
   const upstreamForRollup = e.upstreamId ?? ''
   const isError = e.status === 'error' || e.status === 'timeout' ? 1 : 0
+  const isTimeout = e.status === 'timeout' ? 1 : 0
+  const isTruncated = e.truncated ? 1 : 0
 
   // Single batched D1 transaction so we don't half-write on consumer
   // retry (the raw row and the rollup must move together).
@@ -27,8 +29,8 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
       `INSERT INTO usage_events
          (id, ts, user_id, session_id, upstream_id, tool,
           req_bytes, resp_bytes, req_tokens, resp_tokens,
-          latency_ms, status)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)`
+          latency_ms, status, truncated)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)`
     ).bind(
       e.id,
       e.ts,
@@ -41,20 +43,24 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
       e.reqTokens,
       e.respTokens,
       e.latencyMs,
-      e.status
+      e.status,
+      isTruncated
     ),
     env.DB.prepare(
       `INSERT INTO usage_rollups_daily
          (day, user_id, upstream_id, tool,
-          calls, req_bytes, resp_bytes, req_tokens, resp_tokens, errors)
-       VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9)
+          calls, req_bytes, resp_bytes, req_tokens, resp_tokens,
+          errors, timeouts, truncations)
+       VALUES (?1, ?2, ?3, ?4, 1, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
        ON CONFLICT(day, user_id, upstream_id, tool) DO UPDATE SET
          calls       = calls       + 1,
          req_bytes   = req_bytes   + excluded.req_bytes,
          resp_bytes  = resp_bytes  + excluded.resp_bytes,
          req_tokens  = req_tokens  + excluded.req_tokens,
          resp_tokens = resp_tokens + excluded.resp_tokens,
-         errors      = errors      + excluded.errors`
+         errors      = errors      + excluded.errors,
+         timeouts    = timeouts    + excluded.timeouts,
+         truncations = truncations + excluded.truncations`
     ).bind(
       day,
       e.userId,
@@ -64,7 +70,9 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
       e.respBytes,
       e.reqTokens,
       e.respTokens,
-      isError
+      isError,
+      isTimeout,
+      isTruncated
     )
   ])
 }

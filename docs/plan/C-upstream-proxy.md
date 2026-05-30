@@ -55,7 +55,8 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
 |---|---|
 | Upstream returns JSON-RPC error | Passed through verbatim, `code` preserved. |
 | Upstream returns `result` with `isError:true` | Passed through verbatim. |
-| Upstream timeout (60s wall) | `{code:-32603, message:"Upstream {slug} timed out"}` |
+| Upstream timeout (150s base / 300s hard, per-upstream `authConfig.timeouts`) | sanitised text `upstream_timeout: {slug}.{tool} … (ref=…)` via `formatUpstreamError` (not a JSON-RPC `-32603`) |
+| Oversized response (> cap; 256 KB default, per-upstream `authConfig.maxResponseBytes`) | sanitised truncation notice; `usage_events.truncated` flagged |
 | Upstream HTTP 5xx / connection refused | `{code:-32603, message:"Upstream {slug} unavailable: <category>"}` (category in `data.category`) |
 | Credential refresh failed (e.g. revoked refresh token) | `{code:-32001, message:"Reauthenticate {slug}: visit https://.../upstreams"}` |
 | Circuit breaker open | `{code:-32004, message:"Upstream {slug} temporarily disabled"}` |
@@ -73,7 +74,8 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
   })
   ```
 - CPU time consumed only while bytes are flowing through. Idle wait (TCP read) is wall time, not CPU.
-- A 60s `AbortController` wraps the upstream fetch; on abort we send a final `{error: -32603, timeout: true}` frame.
+- The MCP SDK's per-call `AbortController` enforces a 150s base inactivity window (rearmed by upstream `notifications/progress`) and a 300s hard ceiling, both overridable per-upstream via `authConfig.timeouts`; on expiry the agent gets a sanitised `upstream_timeout: … (ref=…)` message. The Durable Object request wall-clock limit gating any higher cap is unverified — see docs/plan/I-upstream-resilience.md §I9.
+- Response-size guardrail (WI-4): the SDK's `callTool` currently materialises `content` in memory, so a 256 KB default cap (per-upstream `authConfig.maxResponseBytes`) is applied on the assembled result in `tools-proxy.ts`; oversized payloads degrade to a truncation notice rather than being forwarded verbatim. If true streaming passthrough lands, the cap moves to a byte-counter in the stream.
 
 ### C6. Subrequest accounting
 

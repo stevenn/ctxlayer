@@ -202,10 +202,10 @@ function AdminUsageBody({
         <UserTable rows={data.topUsers} />
       </Panel>
       <Panel title="Top tools">
-        <ToolTable rows={data.topTools} />
+        <ToolTable rows={data.topTools} showResilience />
       </Panel>
       <Panel title="Top upstreams">
-        <UpstreamTable rows={data.topUpstreams} />
+        <UpstreamTable rows={data.topUpstreams} showResilience />
       </Panel>
     </Stack>
   )

@@ -195,7 +195,8 @@ export function Panel({
 }
 
 export function ToolTable({
-  rows
+  rows,
+  showResilience = false
 }: {
   rows: Array<{
     tool: string
@@ -204,7 +205,11 @@ export function ToolTable({
     reqTokens: number
     respTokens: number
     errors: number
+    timeouts: number
+    truncations: number
   }>
+  // Admin-only: surface the WI-5 timeout / truncation counts.
+  showResilience?: boolean
 }) {
   if (rows.length === 0) {
     return (
@@ -222,6 +227,8 @@ export function ToolTable({
           <th style={{ textAlign: 'right' }}>Req tokens</th>
           <th style={{ textAlign: 'right' }}>Resp tokens</th>
           <th style={{ textAlign: 'right' }}>Errors</th>
+          {showResilience && <th style={{ textAlign: 'right' }}>Timeouts</th>}
+          {showResilience && <th style={{ textAlign: 'right' }}>Truncated</th>}
         </tr>
       </thead>
       <tbody>
@@ -248,6 +255,19 @@ export function ToolTable({
             >
               {r.errors.toLocaleString()}
             </td>
+            {showResilience && (
+              <td
+                className={r.timeouts > 0 ? undefined : 'text-muted'}
+                style={{ textAlign: 'right', color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined }}
+              >
+                {r.timeouts.toLocaleString()}
+              </td>
+            )}
+            {showResilience && (
+              <td className="text-muted" style={{ textAlign: 'right' }}>
+                {r.truncations.toLocaleString()}
+              </td>
+            )}
           </tr>
         ))}
       </tbody>
@@ -256,7 +276,8 @@ export function ToolTable({
 }
 
 export function UpstreamTable({
-  rows
+  rows,
+  showResilience = false
 }: {
   rows: Array<{
     upstreamId: string
@@ -266,7 +287,11 @@ export function UpstreamTable({
     reqTokens: number
     respTokens: number
     errors: number
+    timeouts: number
+    truncations: number
   }>
+  // Admin-only: surface the WI-5 timeout / truncation counts.
+  showResilience?: boolean
 }) {
   if (rows.length === 0) {
     return (
@@ -284,6 +309,8 @@ export function UpstreamTable({
           <th style={{ textAlign: 'right' }}>Req tokens</th>
           <th style={{ textAlign: 'right' }}>Resp tokens</th>
           <th style={{ textAlign: 'right' }}>Errors</th>
+          {showResilience && <th style={{ textAlign: 'right' }}>Timeouts</th>}
+          {showResilience && <th style={{ textAlign: 'right' }}>Truncated</th>}
         </tr>
       </thead>
       <tbody>
@@ -306,6 +333,19 @@ export function UpstreamTable({
             >
               {r.errors.toLocaleString()}
             </td>
+            {showResilience && (
+              <td
+                className={r.timeouts > 0 ? undefined : 'text-muted'}
+                style={{ textAlign: 'right', color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined }}
+              >
+                {r.timeouts.toLocaleString()}
+              </td>
+            )}
+            {showResilience && (
+              <td className="text-muted" style={{ textAlign: 'right' }}>
+                {r.truncations.toLocaleString()}
+              </td>
+            )}
           </tr>
         ))}
       </tbody>

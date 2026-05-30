@@ -25,6 +25,9 @@ export interface RecordUsageArgs {
   respJson: string
   latencyMs: number
   status: 'ok' | 'error' | 'timeout'
+  // True when the proxy replaced an oversized response with a truncation
+  // notice (WI-4). Optional so built-in tool call sites need not pass it.
+  truncated?: boolean
 }
 
 export function recordUsage(
@@ -47,7 +50,8 @@ export function recordUsage(
           reqTokens: tokenCount(args.reqJson),
           respTokens: tokenCount(args.respJson),
           latencyMs: args.latencyMs,
-          status: args.status
+          status: args.status,
+          truncated: args.truncated ?? false
         }
         await env.USAGE_QUEUE.send(msg)
       } catch (err) {
