@@ -33,8 +33,14 @@ import {
   type UpstreamServerRow,
   type UpstreamToolRow
 } from '../db/queries/upstreams'
-import { listSkillsForUpstream } from '../db/queries/skill-attachments'
-import { listDocsForUpstream } from '../db/queries/doc-attachments'
+import {
+  listSkillsForUpstream,
+  type SkillForUpstreamRow
+} from '../db/queries/skill-attachments'
+import {
+  listDocsForUpstream,
+  type DocForUpstreamRow
+} from '../db/queries/doc-attachments'
 import {
   createUpstreamClient,
   type UpstreamClient
@@ -100,8 +106,53 @@ export class UpstreamProxyRegistry {
         continue
       }
       this.clients.set(conn.id, client)
-      for (const t of tools) this.registerTool(server, conn, t)
+      // Per-tool attachment pointers (tool_name != ''). Fetched once per
+      // upstream, then sliced per tool — whole-upstream attachments
+      // (tool_name = '') are skipped here; they surface in the server
+      // `instructions` via `upstreamGuidance` instead.
+      const [attSkills, attDocs] = await Promise.all([
+        listSkillsForUpstream(this.env, conn.id),
+        listDocsForUpstream(this.env, conn.id)
+      ])
+      const pointers = perToolPointers(attSkills, attDocs)
+      for (const t of tools) {
+        this.registerTool(server, conn, t, pointers.get(t.tool_name) ?? [])
+      }
     }
+  }
+
+  /**
+   * Builds the dynamic tail of the MCP server `instructions`: one line
+   * per visible upstream that carries a *whole-upstream* skill/doc
+   * attachment (tool_name = ''), naming each so the agent reads the org
+   * playbook before its first call. Returns '' when nothing is attached.
+   * The slugs are org-curated (kebab-case, first-party) — unlike upstream
+   * tool descriptions they are not untrusted input, so no sanitisation.
+   */
+  static async upstreamGuidance(env: Env, userId: string): Promise<string> {
+    const rows = await listUpstreamsVisibleToUser(env, userId)
+    const lines: string[] = []
+    for (const row of rows) {
+      const [skills, docs] = await Promise.all([
+        listSkillsForUpstream(env, row.id),
+        listDocsForUpstream(env, row.id)
+      ])
+      const refs = [
+        ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\` (get_skill)`),
+        ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\` (get_doc)`)
+      ]
+      if (refs.length > 0) {
+        lines.push(`- \`${row.slug}\`: consult ${refs.join(', ')} before using its tools.`)
+      }
+    }
+    if (lines.length === 0) return ''
+    return (
+      '\n\n**Org playbooks attached to your upstreams — read these BEFORE the ' +
+      "first call to the named upstream's tools. They encode required conventions " +
+      "(label/status names, formatting rules, prefer-this-tool guidance) the tool " +
+      'schemas do not show:**\n' +
+      lines.join('\n')
+    )
   }
 
   async close(): Promise<void> {
@@ -199,7 +250,8 @@ export class UpstreamProxyRegistry {
   private registerTool(
     server: McpServer,
     conn: UpstreamConnection,
-    row: UpstreamToolRow
+    row: UpstreamToolRow,
+    pointers: string[] = []
   ): void {
     const mangled = mangleToolName(conn.slug, row.tool_name)
     // Upstream-supplied descriptions are untrusted model input. Strip
@@ -207,9 +259,20 @@ export class UpstreamProxyRegistry {
     // disrupt agent rendering) before forwarding. We deliberately do
     // NOT try to detect prompt-injection content — that's the model's
     // job; ours is to keep the wire bytes well-formed.
-    const description = truncateDescription(
+    let description = truncateDescription(
       sanitizeUntrustedText(`[${conn.displayName}] ${row.description ?? ''}`)
     )
+    // Append org-curated per-tool attachment pointers. These are
+    // first-party (slug strings we control), not upstream input, so they
+    // need no sanitisation. Truncate the base description first to
+    // reserve room — the pointer is the binding guidance and must
+    // survive the 1024-char cap even when the upstream blurb is long.
+    if (pointers.length > 0) {
+      const suffix = `\n\n[ctxlayer] Org convention applies — consult ${pointers.join(
+        ', '
+      )} before using this tool.`
+      description = truncateDescription(description, 1024 - suffix.length) + suffix
+    }
     let inputSchemaJson: unknown = {}
     try {
       inputSchemaJson = JSON.parse(row.input_schema)
@@ -311,8 +374,31 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
   }
 }
 
-function truncateDescription(s: string): string {
-  return s.length > 1024 ? s.slice(0, 1023) + '…' : s
+function truncateDescription(s: string, max = 1024): string {
+  return s.length > max ? s.slice(0, max - 1) + '…' : s
+}
+
+/**
+ * Group per-tool attachment pointers by upstream tool name. Skips
+ * whole-upstream rows (tool_name = '') — those go into the server
+ * `instructions` via `UpstreamProxyRegistry.upstreamGuidance`, not onto
+ * individual tools. Skills and docs are merged into one ordered list per
+ * tool so a tool can carry both.
+ */
+function perToolPointers(
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): Map<string, string[]> {
+  const out = new Map<string, string[]>()
+  const add = (toolName: string, ref: string) => {
+    if (toolName === '') return
+    const arr = out.get(toolName) ?? []
+    arr.push(ref)
+    out.set(toolName, arr)
+  }
+  for (const s of skills) add(s.tool_name, `skill \`${s.slug}\` (get_skill)`)
+  for (const d of docs) add(d.tool_name, `doc \`${d.slug}\` (get_doc)`)
+  return out
 }
 
 /**

@@ -65,6 +65,34 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
   private upstreamProxy: UpstreamProxyRegistry | null = null
 
   async init(): Promise<void> {
+    const userId = this.props?.userId
+
+    // Per-session server `instructions`: the static base + any
+    // *whole-upstream* skill/doc attachments named explicitly. Those
+    // attachments (e.g. the "linear-practices" doc) encode org
+    // conventions the upstream tool schemas don't show; naming them
+    // here means the agent sees the obligation on connect instead of
+    // having to discover it via `list_upstreams` + a follow-up fetch.
+    // Per-tool attachments ride on the individual tool's description
+    // instead (see `UpstreamProxyRegistry.registerTool`). Built before
+    // any tool registers because the SDK reads `instructions` when it
+    // answers `initialize`, which happens after `init()` returns — and
+    // the `McpAgent` constructor never touches `this.server`, so the
+    // eagerly-built instance is safe to replace here.
+    if (userId) {
+      try {
+        const guidance = await UpstreamProxyRegistry.upstreamGuidance(this.env, userId)
+        if (guidance) {
+          this.server = new McpServer(
+            { name: 'ctxlayer', version: '0.1.0' },
+            { instructions: SERVER_INSTRUCTIONS + guidance }
+          )
+        }
+      } catch (err) {
+        console.error('server-instructions guidance build failed:', err)
+      }
+    }
+
     // Usage-recording wrapper for built-in tools (upstreamId = null).
     // Returns the inner result untouched; records bytes/tokens/latency
     // + 'ok' / 'error' status (from `isError` flag) on every call.
@@ -287,7 +315,6 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // a failure here must not block built-ins (search_docs / get_doc) from
     // serving. Each upstream's own listTools/callTool errors are caught
     // inside the registry; we only need to guard the enumeration itself.
-    const userId = this.props?.userId
     if (userId) {
       try {
         this.upstreamProxy = new UpstreamProxyRegistry(
