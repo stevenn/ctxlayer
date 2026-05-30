@@ -93,6 +93,28 @@ export async function getDocById(env: Env, id: string): Promise<DocumentWithUser
   return row ?? null
 }
 
+export async function getDocBySlug(env: Env, slug: string): Promise<DocumentWithUsersRow | null> {
+  const row = await env.DB.prepare(
+    `${SELECT_DOC_WITH_USERS}
+     WHERE d.slug = ?1 AND d.deleted_at IS NULL`
+  )
+    .bind(slug)
+    .first<DocumentWithUsersRow>()
+  return row ?? null
+}
+
+/**
+ * Resolve a doc by id first, then by slug. MCP surfaces (`get_doc`,
+ * doc resources) accept either because `list_upstreams.attached_docs`
+ * exposes both — an agent shouldn't have to know which it's holding.
+ */
+export async function getDocByIdOrSlug(
+  env: Env,
+  ref: string
+): Promise<DocumentWithUsersRow | null> {
+  return (await getDocById(env, ref)) ?? (await getDocBySlug(env, ref))
+}
+
 /**
  * Set the cached chunk_count after a successful reindex. Called by the
  * queue consumer so the next reindex knows how many chunks the

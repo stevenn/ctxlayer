@@ -16,7 +16,7 @@ import { McpAgent } from 'agents/mcp'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Env, McpProps } from '../env'
-import { getDocById, listDocs } from '../db/queries/docs'
+import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
@@ -175,15 +175,15 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       'get_doc',
       {
         title: 'Get document',
-        description: 'Returns the markdown for a doc by id.',
+        description: 'Returns the markdown for a doc by id or slug.',
         inputSchema: { id: z.string().min(1) }
       },
       (args) =>
         rec('get_doc', args, async () => {
           const { id } = args
-          const doc = await getDocById(this.env, id)
+          const doc = await getDocByIdOrSlug(this.env, id)
           if (!doc) return errText(`doc not found: ${id}`)
-          const content = await readSnapshot(this.env, id)
+          const content = await readSnapshot(this.env, doc.id)
           const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
           return {
             content: [
@@ -316,11 +316,11 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         if (!id) {
           return { contents: [{ uri: uri.toString(), text: 'missing doc id' }] }
         }
-        const doc = await getDocById(this.env, id)
+        const doc = await getDocByIdOrSlug(this.env, id)
         if (!doc) {
           return { contents: [{ uri: uri.toString(), text: `doc not found: ${id}` }] }
         }
-        const content = await readSnapshot(this.env, id)
+        const content = await readSnapshot(this.env, doc.id)
         const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
         return {
           contents: [

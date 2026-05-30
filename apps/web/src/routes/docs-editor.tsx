@@ -264,9 +264,26 @@ export function DocsEditor() {
       if (maxTimer == null) maxTimer = window.setTimeout(save, SAVE_MAX_MS)
     }
 
+    // Flush on tab hide/close too — a React unmount covers in-app
+    // navigation, but pagehide/visibilitychange cover closing or
+    // refreshing the tab, where the debounce would otherwise be lost.
+    // (The server DO also reconciles snapshot.json from the Y.Doc, so
+    // this is belt-and-suspenders — it keeps the explicit revision +
+    // search reindex current rather than waiting for the next edit.)
+    const flushOnHide = () => {
+      if (dirty && !inFlight) void save()
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flushOnHide()
+    }
+    window.addEventListener('pagehide', flushOnHide)
+    document.addEventListener('visibilitychange', onVisibility)
+
     doc.on('update', onUpdate)
     return () => {
       doc.off('update', onUpdate)
+      window.removeEventListener('pagehide', flushOnHide)
+      document.removeEventListener('visibilitychange', onVisibility)
       if (idleTimer) clearTimeout(idleTimer)
       if (maxTimer) clearTimeout(maxTimer)
       // Best-effort final save so the last keystroke isn't lost.

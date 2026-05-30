@@ -73,6 +73,39 @@ export async function readSnapshot(env: Env, docId: string): Promise<DocContent 
   return parse(await obj.arrayBuffer())
 }
 
+/** Content hash of the current snapshot (from R2 metadata), or null. */
+export async function readSnapshotHash(env: Env, docId: string): Promise<string | null> {
+  const head = await env.DOCS_BUCKET.head(snapshotKey(docId))
+  return head?.customMetadata?.contentHash ?? null
+}
+
+/** Stable content hash for a DocContent body. */
+export async function hashContent(content: DocContent): Promise<string> {
+  return sha256Hex(serialize(content))
+}
+
+/**
+ * Write ONLY the materialised snapshot (no new revision). Used by the
+ * collab DO to reconcile `snapshot.json` from the authoritative Y.Doc so
+ * MCP `get_doc` / `GET /content` reflect collab edits even when the
+ * client REST autosave never fired (e.g. a locked, never-REST-saved
+ * doc). Revisions stay owned by the explicit save path; this only keeps
+ * the read snapshot truthful.
+ */
+export async function writeMaterializedSnapshot(
+  env: Env,
+  docId: string,
+  content: DocContent
+): Promise<string> {
+  const body = serialize(content)
+  const contentHash = await sha256Hex(body)
+  await env.DOCS_BUCKET.put(snapshotKey(docId), body, {
+    httpMetadata: { contentType: CONTENT_TYPE },
+    customMetadata: { contentHash }
+  })
+  return contentHash
+}
+
 /** Load a specific revision. Returns null if missing (e.g. R2 pruned). */
 export async function readRevision(
   env: Env,

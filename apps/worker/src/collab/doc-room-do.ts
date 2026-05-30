@@ -34,7 +34,14 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import type { Env } from '../env'
 import { isDocLocked } from '../db/queries/docs'
-import { readYjsSnapshot, writeYjsSnapshot } from '../storage/docs-r2'
+import {
+  readYjsSnapshot,
+  writeYjsSnapshot,
+  readSnapshotHash,
+  writeMaterializedSnapshot,
+  hashContent
+} from '../storage/docs-r2'
+import { yDocToBlocks } from './yjs-blocks'
 
 // How long to trust the cached lock state for. Long enough to amortise
 // the D1 read across rapid Yjs frames, short enough that a lock applied
@@ -65,6 +72,14 @@ export class DocRoomDO extends DurableObject<Env> {
   // bytes win when the current write completes.
   private writeInFlight: Promise<void> | null = null
   private writePending: Uint8Array | null = null
+
+  // Materialised-snapshot (snapshot.json) reconciliation. The DO is the
+  // authority that keeps the blocks snapshot — what MCP get_doc /
+  // search / GET /content read — in step with the live Y.Doc, instead
+  // of trusting the best-effort client REST autosave. We skip the write
+  // when the rendered content hasn't changed.
+  private lastMaterialisedHash: string | null = null
+  private materialisedHashLoaded = false
 
   // Lock-state cache so we don't D1-read on every Yjs frame. The
   // upgrade handler already tags new sockets read-only when the doc
@@ -242,9 +257,51 @@ export class DocRoomDO extends DurableObject<Env> {
     this.doc = doc
     this.awareness = awareness
 
+    // Reconcile the materialised snapshot from the freshly-loaded Y.Doc.
+    // Heals docs whose blocks snapshot drifted from the collab state
+    // (e.g. a doc edited then locked before the client autosave flushed)
+    // the next time anyone opens them. Backgrounded so it can't delay
+    // the first message.
+    this.ctx.waitUntil(this.materialiseSnapshot())
+
     // Post-eviction resync: ask each still-attached socket for any
     // updates they applied locally but never made it to R2.
     this.broadcast(encodeSyncStep1(doc), undefined)
+  }
+
+  /**
+   * Render the live Y.Doc to BlockNote blocks and write `snapshot.json`
+   * when it differs from what's already there. This is the server-side
+   * source of truth for the materialised body; the client REST autosave
+   * (which also writes revisions) is now belt-and-suspenders.
+   */
+  private async materialiseSnapshot(): Promise<void> {
+    if (!this.doc || !this.docId) return
+    let blocks: unknown[]
+    try {
+      blocks = yDocToBlocks(this.doc)
+    } catch (err) {
+      console.error('doc-room-do: yjs->blocks decode failed', err)
+      return
+    }
+    const content = { blocks }
+    let hash: string
+    try {
+      hash = await hashContent(content)
+    } catch {
+      return
+    }
+    if (!this.materialisedHashLoaded) {
+      this.lastMaterialisedHash = await readSnapshotHash(this.env, this.docId).catch(() => null)
+      this.materialisedHashLoaded = true
+    }
+    if (hash === this.lastMaterialisedHash) return
+    try {
+      await writeMaterializedSnapshot(this.env, this.docId, content)
+      this.lastMaterialisedHash = hash
+    } catch (err) {
+      console.error('doc-room-do: materialised snapshot write failed', err)
+    }
   }
 
   private broadcast(msg: Uint8Array, skip: unknown): void {
@@ -282,6 +339,10 @@ export class DocRoomDO extends DurableObject<Env> {
           await new Promise((r) => setTimeout(r, 500))
         }
       }
+      // Keep the read-facing blocks snapshot in step with the Yjs state
+      // we just persisted. Coalesced with the queue, so at most one
+      // decode+write per drain regardless of keystroke rate.
+      await this.materialiseSnapshot()
     } finally {
       this.writeInFlight = null
     }

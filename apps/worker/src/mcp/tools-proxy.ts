@@ -60,7 +60,10 @@ export interface ListUpstreamsEntry {
   // on /api/upstreams/:id/tools instead. Default empty arrays so MCP
   // clients can rely on the field being present.
   attached_skills: Array<{ slug: string; title: string }>
-  attached_docs: Array<{ slug: string; title: string }>
+  // `id` is the canonical doc id `get_doc` expects; `slug` is the
+  // human-friendly handle. Both are emitted so the discovery chain
+  // (list_upstreams → get_doc) works without a second lookup.
+  attached_docs: Array<{ id: string; slug: string; title: string }>
 }
 
 export class UpstreamProxyRegistry {
@@ -148,7 +151,7 @@ export class UpstreamProxyRegistry {
         .map((s) => ({ slug: s.slug, title: s.title }))
       const attached_docs = docAtt
         .filter((d) => d.tool_name === '')
-        .map((d) => ({ slug: d.slug, title: d.title }))
+        .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
       out.push({
         slug: row.slug,
         displayName: row.display_name,
