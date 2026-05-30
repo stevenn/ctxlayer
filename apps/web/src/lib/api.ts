@@ -233,13 +233,17 @@ export function fetchDocContent(id: string, signal?: AbortSignal): Promise<DocCo
   })
 }
 
+// `signal` lets callers attach a timeout (AbortSignal.timeout) so a hung
+// request can't wedge the autosave's in-flight guard indefinitely.
 export function putDocContent(
   id: string,
-  content: DocContentT
+  content: DocContentT,
+  signal?: AbortSignal
 ): Promise<{ revisionId: string; byteSize: number; contentHash: string }> {
   return request(`/api/docs/${encodeURIComponent(id)}/content`, (b) => PutContentResult.parse(b), {
     method: 'PUT',
-    body: JSON.stringify(DocContent.parse(content))
+    body: JSON.stringify(DocContent.parse(content)),
+    signal
   })
 }
 
@@ -743,14 +747,16 @@ export function fetchSkillContent(id: string, signal?: AbortSignal): Promise<Doc
 
 export function putSkillContent(
   id: string,
-  content: DocContentT
+  content: DocContentT,
+  signal?: AbortSignal
 ): Promise<SkillContentSaveResultT> {
   return request(
     `/api/skills/${encodeURIComponent(id)}/content`,
     (b) => SkillContentSaveResult.parse(b),
     {
       method: 'PUT',
-      body: JSON.stringify(DocContent.parse(content))
+      body: JSON.stringify(DocContent.parse(content)),
+      signal
     }
   )
 }

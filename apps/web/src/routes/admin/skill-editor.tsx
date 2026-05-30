@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { Alert, Badge, Button, Group, Stack, Text, Title } from '@mantine/core'
+import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core'
 import type { SkillDetail, SkillLintFinding } from '@ctxlayer/shared'
 import {
   ApiError,
@@ -14,8 +14,16 @@ import {
   BlockNoteEditor,
   type BlockNoteEditorHandle
 } from '../../components/editor/blocknote-editor'
+import {
+  LeaveGuard,
+  SAVE_IDLE_MS,
+  SaveControls,
+  type SaveState
+} from '../../components/editor/save-controls'
 
-const SAVE_IDLE_MS = 2_000
+// Hard ceiling on a single save request so a hung connection can't leave
+// the editor stuck "saving…" forever — the abort surfaces as an error.
+const SAVE_TIMEOUT_MS = 15_000
 
 /**
  * Per-skill body editor. Simpler than docs-editor.tsx:
@@ -33,9 +41,13 @@ export function AdminSkillEditor() {
   const [initialBlocks, setInitialBlocks] = useState<unknown[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' })
+  const [dirty, setDirty] = useState(false)
   const [lintFindings, setLintFindings] = useState<SkillLintFinding[]>([])
   const dirtyRef = useRef(false)
   const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Content of the last explicit save (or the doc as loaded). "Discard"
+  // reverts to this; autosave does NOT advance it.
+  const baselineRef = useRef<unknown[]>([])
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -44,6 +56,7 @@ export function AdminSkillEditor() {
         if (ctrl.signal.aborted) return
         setDetail(d)
         setInitialBlocks(content.blocks)
+        baselineRef.current = content.blocks
       })
       .catch((err) => {
         if (!ctrl.signal.aborted) setError(explain(err))
@@ -51,42 +64,70 @@ export function AdminSkillEditor() {
     return () => ctrl.abort()
   }, [skillId])
 
-  const save = useCallback(async () => {
-    if (!dirtyRef.current) return
-    if (!editorRef.current) return
-    const blocks = editorRef.current.getBlocks()
-    dirtyRef.current = false
-    setSaveState({ kind: 'saving' })
-    try {
-      const res = await putSkillContent(skillId, { blocks })
-      setSaveState({ kind: 'saved', at: Date.now() })
-      setLintFindings(res.lintFindings)
-    } catch (err) {
-      // Re-flag dirty so the next idle attempt retries.
-      dirtyRef.current = true
-      setSaveState({ kind: 'error', message: explain(err) })
-    }
-  }, [skillId])
+  // The single save path. `explicit` distinguishes a user Save/Discard
+  // (clears the dirty state + advances the discard baseline, badge ->
+  // "saved") from a background autosave (badge -> "autosaved", nav guard
+  // stays armed). Returns true on success so the leave-guard can proceed.
+  const doSave = useCallback(
+    async (explicit: boolean): Promise<boolean> => {
+      if (!editorRef.current) return false
+      const blocks = editorRef.current.getBlocks()
+      setSaveState({ kind: 'saving' })
+      try {
+        const res = await putSkillContent(
+          skillId,
+          { blocks },
+          AbortSignal.timeout(SAVE_TIMEOUT_MS)
+        )
+        if (explicit) {
+          baselineRef.current = blocks
+          dirtyRef.current = false
+          setDirty(false)
+          setSaveState({ kind: 'saved' })
+        } else if (dirtyRef.current) {
+          setSaveState({ kind: 'autosaved' })
+        }
+        setLintFindings(res.lintFindings)
+        return true
+      } catch (err) {
+        // Re-flag dirty so the next idle attempt retries.
+        dirtyRef.current = true
+        setSaveState({ kind: 'error', message: explain(err) })
+        return false
+      }
+    },
+    [skillId]
+  )
+
+  // Stable explicit-save wrapper for the Save button + leave guard.
+  const saveExplicit = useCallback(() => doSave(true), [doSave])
+
+  const discard = useCallback(async (): Promise<boolean> => {
+    editorRef.current?.replaceBlocks(baselineRef.current)
+    return doSave(true)
+  }, [doSave])
 
   const scheduleSave = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     idleTimerRef.current = setTimeout(() => {
-      void save()
+      if (dirtyRef.current) void doSave(false)
     }, SAVE_IDLE_MS)
-  }, [save])
+  }, [doSave])
 
   // Flush on unmount so a quick edit-then-navigate doesn't lose work.
   useEffect(
     () => () => {
       if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
-      if (dirtyRef.current) void save()
+      if (dirtyRef.current) void doSave(false)
     },
-    [save]
+    [doSave]
   )
 
   const onChange = useCallback(() => {
     dirtyRef.current = true
-    setSaveState({ kind: 'dirty' })
+    setDirty(true)
+    // Dedupe so a burst of keystrokes doesn't re-render once already dirty.
+    setSaveState((prev) => (prev.kind === 'dirty' ? prev : { kind: 'dirty' }))
     scheduleSave()
   }, [scheduleSave])
 
@@ -121,7 +162,7 @@ export function AdminSkillEditor() {
           </Text>
         </div>
         <Group gap="xs">
-          <SaveBadge state={saveState} />
+          <SaveControls state={saveState} dirty={dirty} onSave={saveExplicit} onDiscard={discard} />
           <StatusButton skillId={skillId} current={detail.status} onChanged={async () => {
             const fresh = await fetchSkill(skillId).catch(() => null)
             if (fresh) setDetail(fresh)
@@ -164,6 +205,8 @@ export function AdminSkillEditor() {
           onChange={onChange}
         />
       </div>
+
+      <LeaveGuard dirty={dirty} onSave={saveExplicit} onDiscard={discard} />
     </Stack>
   )
 }
@@ -200,44 +243,6 @@ function StatusButton({
     >
       {label}
     </Button>
-  )
-}
-
-// ----- save-state badge --------------------------------------------------
-
-type SaveState =
-  | { kind: 'idle' }
-  | { kind: 'dirty' }
-  | { kind: 'saving' }
-  | { kind: 'saved'; at: number }
-  | { kind: 'error'; message: string }
-
-function SaveBadge({ state }: { state: SaveState }) {
-  if (state.kind === 'idle') return null
-  if (state.kind === 'dirty')
-    return (
-      <Badge color="yellow" variant="light">
-        unsaved
-      </Badge>
-    )
-  if (state.kind === 'saving')
-    return (
-      <Badge color="blue" variant="light">
-        saving…
-      </Badge>
-    )
-  if (state.kind === 'saved') {
-    const seconds = Math.floor((Date.now() - state.at) / 1000)
-    return (
-      <Badge color="green" variant="light">
-        saved {seconds}s ago
-      </Badge>
-    )
-  }
-  return (
-    <Badge color="red" variant="light" title={state.message}>
-      save failed
-    </Badge>
   )
 }
 

@@ -43,6 +43,12 @@ import {
   BlockNoteEditor,
   type BlockNoteEditorHandle
 } from '../components/editor/blocknote-editor'
+import {
+  LeaveGuard,
+  SAVE_IDLE_MS,
+  SaveControls,
+  type SaveState
+} from '../components/editor/save-controls'
 import { TagPane } from '../components/editor/tag-pane'
 import { SharingDialog } from './docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../lib/yjs-ws-provider'
@@ -59,10 +65,14 @@ type LinkResolver = (link: { label: string; href: string } | null) => void
 
 const COLLAB_FRAGMENT = 'document-store'
 
-// Debounced autosave windows — match the DO's flush cadence so users
-// perceive one consistent "save heartbeat" across REST + Yjs snapshot.
-const SAVE_IDLE_MS = 5_000
+// Idle debounce is shared with the skill editor (SAVE_IDLE_MS). The
+// max-coalesce window is doc-specific — it caps how long continuous typing
+// can defer a REST revision, matched to the DO's Yjs-snapshot cadence.
 const SAVE_MAX_MS = 30_000
+// Hard ceiling on a single autosave/save request. Without it a hung
+// connection wedges the autosave's in-flight guard forever (the bug
+// behind "autosave not working reliably"). On abort we surface an error.
+const SAVE_TIMEOUT_MS = 15_000
 
 // Stable per-user cursor color. HSL hue derived from a fast 32-bit
 // hash of the userId, full saturation, mid lightness.
@@ -80,6 +90,19 @@ export function DocsEditor() {
   const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
   const [collabStatus, setCollabStatus] = useState<CollabStatus>('connecting')
   const [sharingOpen, setSharingOpen] = useState(false)
+
+  // Explicit-save state. `dirty` = edited since the last Save click (or
+  // since open); it drives the badge + the navigation guard. Autosave
+  // persists in the background but does NOT clear this — only an explicit
+  // Save (or Discard) does. `baselineRef` holds the content Discard
+  // reverts to.
+  const [saveState, setSaveState] = useState<SaveState>({ kind: 'idle' })
+  const [dirty, setDirty] = useState(false)
+  const dirtyRef = useRef(false)
+  const baselineRef = useRef<unknown[]>([])
+  // True only while we programmatically reseed the editor (legacy
+  // migration), so those synthetic Y.Doc updates don't mark the doc dirty.
+  const seedingRef = useRef(false)
 
   // Inline title rename state.
   const [editingTitle, setEditingTitle] = useState(false)
@@ -118,6 +141,7 @@ export function DocsEditor() {
     ]).then(
       ([doc, content, me]) => {
         if (ctrl.signal.aborted) return
+        baselineRef.current = content.blocks
         setStatus({ kind: 'ready', data: { doc, content, me } })
       },
       (err) => {
@@ -206,7 +230,11 @@ export function DocsEditor() {
       const localID = collab.doc.clientID
       const ids = [...collab.provider.awareness.getStates().keys()]
       if (ids.length > 0 && Math.min(...ids) !== localID) return
+      // Seeding is not a user edit — suppress dirty marking around it.
+      seedingRef.current = true
       editorRef.current?.replaceBlocks(blocks)
+      baselineRef.current = blocks
+      seedingRef.current = false
     }, 400)
     return () => clearTimeout(t)
   }, [collabStatus, collab, status])
@@ -246,10 +274,16 @@ export function DocsEditor() {
       dirty = false
       inFlight = true
       try {
-        await putDocContent(id, { blocks })
+        await putDocContent(id, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
+        // Autosave persisted. Surface it as "autosaved" WITHOUT clearing
+        // the user-facing dirty state — the nav guard stays armed until an
+        // explicit Save. Skip if the user already saved in the meantime.
+        if (dirtyRef.current) setSaveState({ kind: 'autosaved' })
       } catch (err) {
-        // Re-mark dirty so the next change triggers another attempt.
+        // Re-mark dirty so the next change triggers another attempt, and
+        // surface the failure instead of swallowing it in the console.
         dirty = true
+        setSaveState({ kind: 'error', message: explain(err) })
         console.error('collab autosave failed', err)
       } finally {
         inFlight = false
@@ -262,6 +296,14 @@ export function DocsEditor() {
       if (idleTimer != null) clearTimeout(idleTimer)
       idleTimer = window.setTimeout(save, SAVE_IDLE_MS)
       if (maxTimer == null) maxTimer = window.setTimeout(save, SAVE_MAX_MS)
+      // Mark the user-facing unsaved state. It stays set (nav guard armed)
+      // until an explicit Save/Discard; autosave only flips the badge to
+      // "autosaved". Dedupe via functional update so we don't re-render on
+      // every keystroke once already showing "unsaved".
+      if (seedingRef.current) return
+      dirtyRef.current = true
+      setDirty(true)
+      setSaveState((prev) => (prev.kind === 'dirty' ? prev : { kind: 'dirty' }))
     }
 
     // Flush on tab hide/close too — a React unmount covers in-app
@@ -291,6 +333,33 @@ export function DocsEditor() {
     }
   }, [collab, id, status])
 
+  // Explicit Save — runs on this tab regardless of leader election (the
+  // user clicked Save here). Advances the Discard baseline on success.
+  const saveNow = useCallback(async (): Promise<boolean> => {
+    if (!id || !editorRef.current) return false
+    const blocks = editorRef.current.getBlocks()
+    setSaveState({ kind: 'saving' })
+    try {
+      await putDocContent(id, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
+      baselineRef.current = blocks
+      dirtyRef.current = false
+      setDirty(false)
+      setSaveState({ kind: 'saved' })
+      return true
+    } catch (err) {
+      setSaveState({ kind: 'error', message: explain(err) })
+      return false
+    }
+  }, [id])
+
+  // Discard — revert the editor to the baseline. replaceBlocks emits Yjs
+  // updates, so the revert propagates to every collaborator in the room;
+  // the follow-up save persists it as the new current revision.
+  const discard = useCallback(async (): Promise<boolean> => {
+    editorRef.current?.replaceBlocks(baselineRef.current)
+    return saveNow()
+  }, [saveNow])
+
   async function onDelete() {
     if (!id || status.kind !== 'ready') return
     const ok = await dialogs.confirm({
@@ -302,6 +371,9 @@ export function DocsEditor() {
     if (!ok) return
     try {
       await deleteDoc(id)
+      // Deleting supersedes any unsaved edits — drop the guard before nav.
+      dirtyRef.current = false
+      setDirty(false)
       nav('/app/docs', { replace: true })
     } catch (err) {
       await dialogs.alert({ title: 'Delete failed', message: explain(err) })
@@ -392,6 +464,14 @@ export function DocsEditor() {
           <CollabBadge canEdit={doc.canEdit} status={collabStatus} />
         </Group>
         <Group gap="xs">
+          {doc.canEdit && (
+            <SaveControls
+              state={saveState}
+              dirty={dirty}
+              onSave={saveNow}
+              onDiscard={discard}
+            />
+          )}
           <LockIndicator doc={doc} onChanged={refreshDoc} />
           {doc.canShare && (
             <Button variant="default" onClick={() => setSharingOpen(true)}>
@@ -535,6 +615,8 @@ export function DocsEditor() {
           onPick={(pick) => closeLinkPicker(pick)}
         />
       )}
+
+      <LeaveGuard dirty={dirty} onSave={saveNow} onDiscard={discard} />
     </Stack>
   )
 }
