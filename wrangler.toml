@@ -139,6 +139,11 @@ local_protocol = "https"
 
 [vars]
 PUBLIC_BASE_URL = "https://ctxlayer.stevenn-a65.workers.dev"
+# Build provenance, surfaced on /api/version + /api/health. Empty by
+# default (local dev / a bare `wrangler deploy`); the `deploy` script
+# overrides both with `--var` from `git rev-parse` + a UTC timestamp.
+GIT_SHA = ""
+BUILT_AT = ""
 # Google sign-in is enabled if EITHER allowlist is set. A user passes
 # the allowlist when their id_token.hd matches ALLOWED_GOOGLE_HD OR
 # their email is in ALLOWED_GOOGLE_EMAILS. Both empty disables Google.

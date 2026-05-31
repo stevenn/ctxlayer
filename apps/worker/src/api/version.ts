@@ -6,8 +6,8 @@ export const versionRoute = new Hono<{ Bindings: Env }>()
 
 versionRoute.get('/', (c) => {
   const body: VersionResponse = {
-    gitSha: '',
-    builtAt: ''
+    gitSha: c.env.GIT_SHA ?? '',
+    builtAt: c.env.BUILT_AT ?? ''
   }
   return c.json(body)
 })

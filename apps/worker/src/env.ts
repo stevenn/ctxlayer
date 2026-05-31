@@ -12,6 +12,10 @@ export interface Env {
   ALLOWED_GITHUB_ORG: string
   ALLOWED_GITHUB_USERS: string
   ADMIN_EMAILS: string
+  // Build provenance, injected by the `deploy` script via `--var`.
+  // Empty in local dev / a bare `wrangler deploy`.
+  GIT_SHA: string
+  BUILT_AT: string
 
   // Secrets (.dev.vars locally, `wrangler secret put` in deploys)
   GOOGLE_CLIENT_ID: string

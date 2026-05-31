@@ -17,8 +17,8 @@ healthRoute.get('/', async (c) => {
 
   const body: HealthResponse = {
     ok: checks.every((c) => c.ok),
-    version: '0.0.0',
-    builtAt: '',
+    version: c.env.GIT_SHA || '0.0.0',
+    builtAt: c.env.BUILT_AT ?? '',
     dependencies: checks
   }
   return c.json(body, body.ok ? 200 : 503)
