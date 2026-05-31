@@ -140,7 +140,15 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
         // it with the incoming blocks is the v0.51-supported way to swap
         // the entire doc programmatically. Casts because BlockNote types
         // the second arg with the editor's resolved schema generics.
-        core.replaceBlocks(core.document, blocks as Parameters<typeof core.replaceBlocks>[1])
+        //
+        // A document must always hold at least one block: replacing with an
+        // empty list deletes the last block and leaves an invalid zero-block
+        // doc, which makes the ProseMirror transaction throw. Discarding to
+        // an empty baseline (e.g. on a freshly-created doc, whose snapshot is
+        // `{ blocks: [] }`) must therefore land a single empty paragraph, not
+        // nothing — otherwise Discard / Discard & leave throw and no-op.
+        const next = (blocks as unknown[]).length > 0 ? blocks : [{ type: 'paragraph' }]
+        core.replaceBlocks(core.document, next as Parameters<typeof core.replaceBlocks>[1])
       },
       getBlocks() {
         return (editor as unknown as BlockNoteEditorCore).document as unknown[]

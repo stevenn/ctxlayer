@@ -420,7 +420,15 @@ export function DocsEditor() {
   // updates, so the revert propagates to every collaborator in the room;
   // the follow-up save persists it as the new current revision.
   const discard = useCallback(async (): Promise<boolean> => {
-    editorRef.current?.replaceBlocks(baselineRef.current)
+    try {
+      editorRef.current?.replaceBlocks(baselineRef.current)
+    } catch (err) {
+      // A failed revert must surface as an error, not throw — the leave
+      // guard awaits this boolean and would otherwise hang open with no
+      // feedback (and the inline Discard button would silently no-op).
+      setSaveState({ kind: 'error', message: explain(err) })
+      return false
+    }
     return saveNow()
   }, [saveNow])
 

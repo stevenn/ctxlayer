@@ -103,7 +103,15 @@ export function AdminSkillEditor() {
   const saveExplicit = useCallback(() => doSave(true), [doSave])
 
   const discard = useCallback(async (): Promise<boolean> => {
-    editorRef.current?.replaceBlocks(baselineRef.current)
+    try {
+      editorRef.current?.replaceBlocks(baselineRef.current)
+    } catch (err) {
+      // A failed revert must surface as an error, not throw — the leave
+      // guard awaits this boolean and would otherwise hang open with no
+      // feedback (and the inline Discard button would silently no-op).
+      setSaveState({ kind: 'error', message: explain(err) })
+      return false
+    }
     return doSave(true)
   }, [doSave])
 
