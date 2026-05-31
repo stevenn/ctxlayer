@@ -107,10 +107,18 @@ any of these on a new endpoint or proxy hop is a regression.
   uses). When adding a new mutation to an admin router, double-check
   the CSRF gate is present on that specific route.
 - **`listDocs` returns every non-deleted doc to every signed-in user
-  by design.** This is the org-IA "open-read" stance — tags filter
-  `search_docs` defaults but do not gate reads. Do NOT add per-doc
-  read-ACL on top without confirming with the operator; the upstream
-  proxy is the gated-execution surface, not docs.
+  by design.** This is the org-IA "open-read" stance — docs are
+  readable org-wide; tags organize and narrow, they do not gate reads.
+  **Search follows the same stance: `search_docs` + `/api/search`
+  default to open-read (all docs).** `effectiveScope(undefined)` →
+  `all: true`; an explicit `scope: { teams, products }` NARROWS
+  (intersected with the caller's reachable set, no escalation) but
+  nothing is hidden by default. (This replaced the old scoped-by-default
+  search, which hid team/product-tagged docs from anyone not in that
+  team/product — a solo operator in no team saw almost nothing. See
+  commit 2c83665.) Do NOT add per-doc read-ACL on top without confirming
+  with the operator; the upstream proxy is the gated-execution surface,
+  not docs.
 
 ## Architectural gotchas baked into M1
 
