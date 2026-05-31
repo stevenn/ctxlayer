@@ -2,7 +2,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { getDocById, updateChunkCount } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
-import { readRevision } from '../storage/docs-r2'
+import { readRevision, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 import { chunkMarkdown } from '../rag/chunker'
 import { embed } from '../rag/embedder'
@@ -26,7 +26,11 @@ import { upsertChunks } from '../rag/index'
  */
 const ReindexMessage = z.object({
   docId: z.string().min(1),
-  revisionId: z.string().min(1)
+  revisionId: z.string().min(1),
+  // 'git' ⇒ the doc's canonical body is raw markdown in R2
+  // (docs/{docId}/source.md), chunked directly. Absent ⇒ ordinary doc
+  // whose body is the BlockNote revision rendered to markdown.
+  source: z.literal('git').optional()
 })
 
 /**
@@ -57,7 +61,7 @@ export async function reindexConsumer(
       continue
     }
     try {
-      await handle(env, parsed.data.docId, parsed.data.revisionId)
+      await handle(env, parsed.data)
       msg.ack()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -103,33 +107,48 @@ export async function reindexConsumer(
   }
 }
 
-async function handle(env: Env, docId: string, revisionId: string): Promise<void> {
+async function handle(
+  env: Env,
+  msg: { docId: string; revisionId: string; source?: 'git' }
+): Promise<void> {
+  const { docId, revisionId } = msg
   const doc = await getDocById(env, docId)
   if (!doc) {
     console.log('reindex-consumer: doc gone; skipping', { docId, revisionId })
     return
   }
-  const content = await readRevision(env, docId, revisionId)
-  if (!content) {
-    console.log('reindex-consumer: revision body missing; skipping', { docId, revisionId })
-    return
-  }
 
   let markdown: string
-  try {
-    markdown = renderBlocksToMarkdown(content.blocks)
-  } catch (err) {
-    // Permanent: bad block shape will trip on every redelivery. Log a
-    // sample so the offending block is identifiable from the queue
-    // log, then mark the failure permanent so the consumer drops the
-    // message instead of looping it.
-    console.error('reindex-consumer: markdown render failed', {
-      docId,
-      revisionId,
-      blockCount: Array.isArray(content.blocks) ? content.blocks.length : 'not-an-array',
-      sample: safeSample(content.blocks)
-    })
-    throw new PermanentError('markdown render failed', { cause: err })
+  if (msg.source === 'git') {
+    // Git-synced doc: canonical body is raw markdown in R2. No blocks
+    // render (and no PermanentError path — there's nothing to mis-shape).
+    const src = await readSourceMarkdown(env, docId)
+    if (src === null) {
+      console.log('reindex-consumer: git source.md missing; skipping', { docId, revisionId })
+      return
+    }
+    markdown = src
+  } else {
+    const content = await readRevision(env, docId, revisionId)
+    if (!content) {
+      console.log('reindex-consumer: revision body missing; skipping', { docId, revisionId })
+      return
+    }
+    try {
+      markdown = renderBlocksToMarkdown(content.blocks)
+    } catch (err) {
+      // Permanent: bad block shape will trip on every redelivery. Log a
+      // sample so the offending block is identifiable from the queue
+      // log, then mark the failure permanent so the consumer drops the
+      // message instead of looping it.
+      console.error('reindex-consumer: markdown render failed', {
+        docId,
+        revisionId,
+        blockCount: Array.isArray(content.blocks) ? content.blocks.length : 'not-an-array',
+        sample: safeSample(content.blocks)
+      })
+      throw new PermanentError('markdown render failed', { cause: err })
+    }
   }
   if (!markdown) {
     // Empty body — nothing to embed. M2c's delete-by-docId-prefix will

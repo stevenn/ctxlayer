@@ -111,6 +111,10 @@ queue = "ctxlayer-usage"
 binding = "DOC_REINDEX_QUEUE"
 queue = "ctxlayer-reindex"
 
+[[queues.producers]]
+binding = "GIT_SYNC_QUEUE"
+queue = "ctxlayer-git-sync"
+
 [[queues.consumers]]
 queue = "ctxlayer-usage"
 max_batch_size = 100
@@ -121,8 +125,19 @@ queue = "ctxlayer-reindex"
 max_batch_size = 10
 max_batch_timeout = 30
 
+# Git mirror sync. One message per source per run; the consumer walks
+# the repo tree, imports changed *.md, and enqueues reindex. Small batch
+# + generous timeout because a single source can touch many files.
+[[queues.consumers]]
+queue = "ctxlayer-git-sync"
+max_batch_size = 5
+max_batch_timeout = 30
+
 [triggers]
-crons = ["0 3 * * *"]  # nightly: prune usage_events, refresh upstream_tools
+# Nightly (03:00): prune usage_events + orphan oauth clients.
+# Hourly: git-sync due-check — enqueues shared_bearer sources whose
+# sync_interval has elapsed (see the scheduled handler in index.ts).
+crons = ["0 3 * * *", "0 * * * *"]
 
 # Local HTTPS for dev. mkcert-generated cert lives in .dev-tls/ (gitignored);
 # `scripts/setup-dev-tls.mjs` runs as the `predev` hook on both worker and

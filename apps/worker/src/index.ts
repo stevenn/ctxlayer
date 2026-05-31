@@ -10,6 +10,8 @@ import { docsRoute } from './api/docs'
 import { docSharingRoute } from './api/doc-sharing'
 import { docTagsRoute } from './api/doc-tags'
 import { foldersRoute } from './api/folders'
+import { searchRoute } from './api/search'
+import { gitDocsRoute, gitSourcesUserRoute } from './api/git'
 import { usersRoute } from './api/users'
 import { teamsRoute, productsRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
@@ -17,6 +19,7 @@ import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products
 import { adminAuditRoute } from './api/admin-audit'
 import { adminOAuthClientsRoute } from './api/admin-oauth-clients'
 import { adminUpstreamsRoute } from './api/admin-upstreams'
+import { adminGitSourcesRoute } from './api/admin-git-sources'
 import { adminUsersRoute } from './api/admin-users'
 import { adminUsageRoute } from './api/admin-usage'
 import { skillsRoute } from './api/skills'
@@ -38,8 +41,11 @@ import { McpSessionDO } from './mcp/session-do'
 import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
+import { gitSyncConsumer } from './queues/git-sync-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
+import { listEnabledGitSources } from './db/queries/git-sources'
+import { isGitSyncDue } from './git/sync'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -60,7 +66,14 @@ app.route('/api/products', productsRoute)
 app.route('/api/docs', docsRoute)
 app.route('/api/docs', docSharingRoute)
 app.route('/api/docs', docTagsRoute)
+// Per-doc git status + write-back (PR). Disjoint subpaths (/:id/git*).
+app.route('/api/docs', gitDocsRoute)
+// Per-user git credential connect (PAT) for write-back authorship.
+app.route('/api/git-sources', gitSourcesUserRoute)
 app.route('/api/folders', foldersRoute)
+// Semantic search over the doc library (RAG). Shares its core with the
+// MCP `search_docs` tool via rag/search.ts.
+app.route('/api/search', searchRoute)
 // Skills + attachments (M7a). Reads are open to any signed-in user;
 // writes are admin-only (per-route requireAdmin inside the routers).
 // Mount /export FIRST so it doesn't get captured by /:id matching in
@@ -76,6 +89,7 @@ app.route('/api/admin/teams', adminTeamsRoute)
 app.route('/api/admin/products', adminProductsRoute)
 app.route('/api/admin/team-products', adminTeamProductsRoute)
 app.route('/api/admin/upstreams', adminUpstreamsRoute)
+app.route('/api/admin/git-sources', adminGitSourcesRoute)
 app.route('/api/admin/users', adminUsersRoute)
 app.route('/api/admin/audit', adminAuditRoute)
 app.route('/api/admin/oauth-clients', adminOAuthClientsRoute)
@@ -135,10 +149,38 @@ const worker: ExportedHandler<Env> = {
     const queue = batch.queue as QueueName
     if (queue === 'ctxlayer-usage') return usageConsumer(batch, env, ctx)
     if (queue === 'ctxlayer-reindex') return reindexConsumer(batch, env, ctx)
+    if (queue === 'ctxlayer-git-sync') return gitSyncConsumer(batch, env, ctx)
     console.error(`unknown queue: ${batch.queue}`)
     for (const msg of batch.messages) msg.retry()
   },
-  async scheduled(_controller, env, ctx) {
+  async scheduled(controller, env, ctx) {
+    // Hourly cron (`0 * * * *`): git-sync due-check. Enqueue one message
+    // per enabled shared_bearer source whose sync_interval has elapsed.
+    // (user_* read strategies have no token without an interactive user,
+    // so unattended sync only applies to shared_bearer sources.)
+    if (controller.cron === '0 * * * *') {
+      ctx.waitUntil(
+        (async () => {
+          try {
+            const sources = await listEnabledGitSources(env)
+            const nowSec = Math.floor(controller.scheduledTime / 1000)
+            let queued = 0
+            for (const s of sources) {
+              if (s.read_strategy !== 'shared_bearer') continue
+              if (!isGitSyncDue(s.sync_interval, s.last_synced_at, nowSec)) continue
+              await env.GIT_SYNC_QUEUE.send({ sourceId: s.id })
+              queued++
+            }
+            console.log(`[cron] git-sync: queued ${queued}/${sources.length} source(s)`)
+          } catch (err) {
+            const m = err instanceof Error ? err.message : String(err)
+            console.error(`[cron] git-sync due-check failed: ${m}`)
+          }
+        })()
+      )
+      return
+    }
+
     // Nightly cron (`0 3 * * *`). Each task is independent and wrapped
     // in its own try/catch + waitUntil so a slow/failed one can't time
     // out the trigger or starve the others.

@@ -34,6 +34,7 @@ export interface Env {
   AI: Ai
   USAGE_QUEUE: Queue
   DOC_REINDEX_QUEUE: Queue
+  GIT_SYNC_QUEUE: Queue
   MCP_SESSION_DO: DurableObjectNamespace
   DOC_ROOM_DO: DurableObjectNamespace
   ASSETS: Fetcher
@@ -55,4 +56,4 @@ export interface McpProps extends Record<string, unknown> {
   role: 'user' | 'admin'
 }
 
-export type QueueName = 'ctxlayer-usage' | 'ctxlayer-reindex'
+export type QueueName = 'ctxlayer-usage' | 'ctxlayer-reindex' | 'ctxlayer-git-sync'

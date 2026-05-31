@@ -18,6 +18,7 @@ import {
   type BlockNoteEditorOptions
 } from '@blocknote/core'
 import { useMantineColorScheme } from '@mantine/core'
+import { slugifyHeading } from '@ctxlayer/shared'
 import type * as Y from 'yjs'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
@@ -55,6 +56,17 @@ export interface BlockNoteEditorProps {
 export interface BlockNoteEditorHandle {
   replaceBlocks(blocks: unknown[]): void
   getBlocks(): unknown[]
+  /** Current document rendered to markdown (BlockNote's lossy export). */
+  getMarkdown(): Promise<string>
+  /**
+   * Scroll to (and briefly highlight) the heading whose slugified path
+   * matches `anchor` (e.g. "api-guidelines/auth/tokens"). Used by search
+   * deep-links (?section=). Returns true if a heading was found and
+   * scrolled to; false if no match (caller should fail soft — leave the
+   * doc at the top). Tries a full ancestor-path match first, then falls
+   * back to the deepest segment alone.
+   */
+  scrollToHeadingPath(anchor: string): boolean
 }
 
 /**
@@ -85,6 +97,7 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
             : undefined
       }
   const editor = useCreateBlockNote(editorOptions)
+  const hostRef = useRef<HTMLDivElement | null>(null)
 
   useImperativeHandle(
     ref,
@@ -99,6 +112,20 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       },
       getBlocks() {
         return (editor as unknown as BlockNoteEditorCore).document as unknown[]
+      },
+      getMarkdown() {
+        const core = editor as unknown as BlockNoteEditorCore
+        // BlockNote types this as sync in this version; wrap so the
+        // handle stays Promise-shaped (it has been async in others).
+        return Promise.resolve(core.blocksToMarkdownLossy(core.document))
+      },
+      scrollToHeadingPath(anchor) {
+        const host = hostRef.current
+        if (!host || !anchor) return false
+        const blocks = (editor as unknown as BlockNoteEditorCore).document as unknown[]
+        const blockId = findHeadingBlockId(blocks, anchor)
+        if (!blockId) return false
+        return flashBlock(host, blockId)
       }
     }),
     [editor]
@@ -118,7 +145,6 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
   // wrapper rather than relying on a ProseMirror keymap because
   // BlockNote already maps Esc to "close menus"; deferring one tick
   // lets that fire first, then we drop focus to leave edit mode.
-  const hostRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     const host = hostRef.current
     if (!host) return
@@ -239,6 +265,74 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
  * ProseMirror selection survives the modal opening/closing because
  * focus moving to a DOM modal does not mutate the editor's state.
  */
+// ----- heading deep-link resolution --------------------------------------
+
+type AnyBlock = {
+  id?: string
+  type?: string
+  props?: { level?: number }
+  content?: unknown
+  children?: unknown
+}
+
+/** Flatten a block's inline content into plain text (text + nested links). */
+function blockPlainText(block: AnyBlock): string {
+  const content = block.content
+  if (!Array.isArray(content)) return ''
+  let out = ''
+  for (const item of content as Array<Record<string, unknown>>) {
+    if (typeof item?.text === 'string') out += item.text
+    else if (Array.isArray(item?.content)) {
+      for (const sub of item.content as Array<Record<string, unknown>>) {
+        if (typeof sub?.text === 'string') out += sub.text
+      }
+    }
+  }
+  return out
+}
+
+/**
+ * Walk the block tree in document order, maintaining a heading-level
+ * stack (the same construction the server-side chunker uses), and find
+ * the heading whose slugified ancestor-path matches `anchor`. Falls back
+ * to the deepest path segment alone when no full path matches.
+ */
+function findHeadingBlockId(blocks: unknown[], anchor: string): string | null {
+  const lastSeg = anchor.split('/').pop() ?? anchor
+  const stack: { level: number; slug: string }[] = []
+  let matchId: string | null = null
+  let fallbackId: string | null = null
+
+  const visit = (raw: unknown) => {
+    if (matchId) return
+    const block = raw as AnyBlock
+    if (block?.type === 'heading' && typeof block.id === 'string') {
+      const level = Number(block.props?.level) || 1
+      const slug = slugifyHeading(blockPlainText(block))
+      while (stack.length && stack[stack.length - 1]!.level >= level) stack.pop()
+      stack.push({ level, slug })
+      const path = stack.map((s) => s.slug).filter(Boolean).join('/')
+      if (path === anchor) matchId = block.id
+      else if (!fallbackId && slug && slug === lastSeg) fallbackId = block.id
+    }
+    if (Array.isArray(block?.children)) block.children.forEach(visit)
+  }
+  blocks.forEach(visit)
+  return matchId ?? fallbackId
+}
+
+/** Scroll a block (by its rendered data-id) into view and flash it. */
+function flashBlock(host: HTMLElement, blockId: string): boolean {
+  const escaped =
+    typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(blockId) : blockId
+  const el = host.querySelector(`[data-id="${escaped}"]`)
+  if (!el) return false
+  el.scrollIntoView({ block: 'start', behavior: 'smooth' })
+  el.classList.add('ctx-section-flash')
+  window.setTimeout(() => el.classList.remove('ctx-section-flash'), 2000)
+  return true
+}
+
 function DocLinkToolbarButton({
   resolveRef
 }: {

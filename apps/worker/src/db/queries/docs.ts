@@ -131,7 +131,10 @@ export interface CreateDocInput {
   slug?: string
   kind?: 'doc' | 'prompt'
   folder?: string | null
-  createdBy: string
+  // Nullable: git-synced docs created by a source whose creator was
+  // later deleted (ON DELETE SET NULL) carry no author. The column is
+  // nullable + FK; binding null is valid.
+  createdBy: string | null
 }
 
 /**

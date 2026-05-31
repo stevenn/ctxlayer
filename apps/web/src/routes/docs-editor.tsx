@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import {
   ActionIcon,
   Alert,
@@ -7,6 +7,7 @@ import {
   Button,
   Group,
   Modal,
+  PasswordInput,
   Stack,
   Text,
   TextInput,
@@ -14,11 +15,13 @@ import {
   Tooltip
 } from '@mantine/core'
 import * as Y from 'yjs'
+import { useCreateBlockNote } from '@blocknote/react'
 import type {
   DocAttachmentRef,
   DocContent,
   DocDetail,
   DocSummary,
+  GitDocStatus,
   MeResponse,
   UserUpstreamSummary
 } from '@ctxlayer/shared'
@@ -31,12 +34,16 @@ import {
   fetchDoc,
   fetchDocAttachments,
   fetchDocContent,
+  fetchDocGitSource,
+  fetchDocGitStatus,
   fetchDocs,
   fetchMe,
   fetchUpstreams,
   fetchUserUpstreamTools,
   patchDoc,
+  proposeGitPullRequest,
   putDocContent,
+  putGitUserCredential,
   setDocLocked
 } from '../lib/api'
 import {
@@ -86,6 +93,7 @@ function userColor(userId: string): string {
 export function DocsEditor() {
   const { id } = useParams<{ id: string }>()
   const nav = useNavigate()
+  const [searchParams] = useSearchParams()
   const dialogs = useDialogs()
   const [status, setStatus] = useState<LoadStatus>({ kind: 'loading' })
   const [collabStatus, setCollabStatus] = useState<CollabStatus>('connecting')
@@ -129,22 +137,54 @@ export function DocsEditor() {
   const [collab, setCollab] = useState<CollabBundle | null>(null)
   const editorRef = useRef<BlockNoteEditorHandle | null>(null)
 
+  // Git origin (null = ordinary doc). Drives the right-rail Git panel.
+  const [gitStatus, setGitStatus] = useState<GitDocStatus | null>(null)
+  // Headless BlockNote instance used only to parse a git doc's raw
+  // markdown → blocks on first open (git docs store markdown, not a
+  // blocks snapshot). Never rendered.
+  const parser = useCreateBlockNote()
+
   // Initial fetch: doc detail + current REST content (used to seed Yjs
   // for docs created before M3) + current user (for awareness label).
+  // For git docs with no blocks snapshot yet, parse the canonical
+  // source.md into blocks here so the editor seeds from it.
   useEffect(() => {
     if (!id) return
     const ctrl = new AbortController()
-    Promise.all([
-      fetchDoc(id, ctrl.signal),
-      fetchDocContent(id, ctrl.signal),
-      fetchMe(ctrl.signal)
-    ]).then(
-      ([doc, content, me]) => {
+    void (async () => {
+      try {
+        const [doc, content, me] = await Promise.all([
+          fetchDoc(id, ctrl.signal),
+          fetchDocContent(id, ctrl.signal),
+          fetchMe(ctrl.signal)
+        ])
         if (ctrl.signal.aborted) return
-        baselineRef.current = content.blocks
-        setStatus({ kind: 'ready', data: { doc, content, me } })
-      },
-      (err) => {
+        let gs: GitDocStatus | null = null
+        try {
+          gs = await fetchDocGitStatus(id, ctrl.signal)
+        } catch (e) {
+          // 404 = not a git doc; anything else is unexpected but
+          // non-fatal for opening the editor.
+          if (!(e instanceof ApiError && e.status === 404)) {
+            console.warn('git status fetch failed', e)
+          }
+        }
+        let effective = content
+        if (gs && content.blocks.length === 0) {
+          try {
+            const { markdown } = await fetchDocGitSource(id, ctrl.signal)
+            if (markdown.trim()) {
+              effective = { blocks: parser.tryParseMarkdownToBlocks(markdown) as unknown[] }
+            }
+          } catch {
+            // fall back to an empty editor
+          }
+        }
+        if (ctrl.signal.aborted) return
+        baselineRef.current = effective.blocks
+        setGitStatus(gs)
+        setStatus({ kind: 'ready', data: { doc, content: effective, me } })
+      } catch (err) {
         if (ctrl.signal.aborted) return
         if (err instanceof ApiError && err.status === 404) {
           setStatus({ kind: 'error', message: 'This doc does not exist or was deleted.' })
@@ -152,9 +192,9 @@ export function DocsEditor() {
         }
         setStatus({ kind: 'error', message: explain(err) })
       }
-    )
+    })()
     return () => ctrl.abort()
-  }, [id])
+  }, [id, parser])
 
   // Build Y.Doc + provider once we know the doc + user. Owning
   // construction inside the effect (rather than useMemo) guarantees
@@ -238,6 +278,30 @@ export function DocsEditor() {
     }, 400)
     return () => clearTimeout(t)
   }, [collabStatus, collab, status])
+
+  // Deep-link to a section: search results link to ?section=<anchor>.
+  // After collab connects + the doc renders, scroll to the matching
+  // heading and flash it. Fail soft — if the heading was renamed/removed
+  // (or the content hasn't synced yet) we leave the doc at the top. A few
+  // staggered attempts cover the gap between 'connected' and content
+  // landing; the first success wins and we don't retry on that anchor.
+  const sectionScrolledRef = useRef<string | null>(null)
+  const section = searchParams.get('section')
+  useEffect(() => {
+    if (!section || collabStatus !== 'connected') return
+    if (sectionScrolledRef.current === section) return
+    let done = false
+    const timers = [400, 1000, 1800].map((ms) =>
+      window.setTimeout(() => {
+        if (done) return
+        if (editorRef.current?.scrollToHeadingPath(section)) {
+          done = true
+          sectionScrolledRef.current = section
+        }
+      }, ms)
+    )
+    return () => timers.forEach(clearTimeout)
+  }, [section, collabStatus])
 
   // Autosave: any local Y.Doc update kicks the debounce. The save
   // call is gated on awareness-leader election so concurrent tabs
@@ -420,6 +484,15 @@ export function DocsEditor() {
     setStatus({ kind: 'ready', data: { ...status.data, doc: fresh } })
   }
 
+  const refreshGitStatus = useCallback(async () => {
+    if (!id) return
+    try {
+      setGitStatus(await fetchDocGitStatus(id))
+    } catch {
+      /* keep the current status on a transient failure */
+    }
+  }, [id])
+
   // Doc-link picker ------------------------------------------------------
   const resolveDocLink = useCallback(() => {
     return new Promise<{ label: string; href: string } | null>((resolve) => {
@@ -574,6 +647,16 @@ export function DocsEditor() {
             fontSize: 12
           }}
         >
+          {gitStatus && (
+            <GitPanel
+              status={gitStatus}
+              docId={doc.id}
+              canEdit={doc.canEdit}
+              getMarkdown={() => editorRef.current?.getMarkdown() ?? Promise.resolve('')}
+              onRefresh={refreshGitStatus}
+            />
+          )}
+
           <TagPane docId={doc.id} canEdit={doc.canEdit} />
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
@@ -618,6 +701,151 @@ export function DocsEditor() {
 
       <LeaveGuard dirty={dirty} onSave={saveNow} onDiscard={discard} />
     </Stack>
+  )
+}
+
+// ----- Git panel (right rail) ---------------------------------------------
+
+/**
+ * Right-rail panel for git-synced docs: repo deep-link, sync state, open
+ * PR, and a "propose change" button that converts the live editor to
+ * markdown and opens/refreshes a write-back PR. Optionally connect a
+ * personal token so the commit is authored as you.
+ */
+function GitPanel({
+  status,
+  docId,
+  canEdit,
+  getMarkdown,
+  onRefresh
+}: {
+  status: GitDocStatus
+  docId: string
+  canEdit: boolean
+  getMarkdown: () => Promise<string>
+  onRefresh: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState<string | null>(null)
+  const [token, setToken] = useState('')
+  const [connectOpen, setConnectOpen] = useState(false)
+
+  const stateColor =
+    status.syncState === 'conflict'
+      ? 'red'
+      : status.syncState === 'pr_open'
+        ? 'blue'
+        : status.syncState === 'local_edits'
+          ? 'yellow'
+          : 'green'
+
+  async function propose() {
+    setBusy(true)
+    setMsg(null)
+    try {
+      const md = await getMarkdown()
+      const res = await proposeGitPullRequest(docId, md)
+      setMsg(
+        res.outcome === 'noop'
+          ? 'No changes vs the synced version.'
+          : res.outcome === 'opened'
+            ? 'Pull request opened.'
+            : 'Pull request updated.'
+      )
+      await onRefresh()
+    } catch (err) {
+      setMsg(explain(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function connect() {
+    if (!token.trim()) return
+    setBusy(true)
+    setMsg(null)
+    try {
+      await putGitUserCredential(status.gitSourceId, token.trim())
+      setToken('')
+      setConnectOpen(false)
+      setMsg('Token connected — your commits will be authored as you.')
+    } catch (err) {
+      setMsg(explain(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+      <div
+        style={{
+          fontSize: 10,
+          fontWeight: 600,
+          textTransform: 'uppercase',
+          letterSpacing: '0.06em',
+          color: 'var(--text-dim)',
+          marginBottom: 6
+        }}
+      >
+        Git · {status.provider}
+      </div>
+      <Stack gap={6}>
+        <Text fz="xs" c="dimmed">
+          <code>{status.sourceSlug}</code> · {status.branch}
+        </Text>
+        <a href={status.webUrl} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+          View source on {status.provider} ↗
+        </a>
+        <Group gap={6}>
+          <Text fz="xs" c="dimmed">
+            State
+          </Text>
+          <Badge size="xs" variant="light" color={stateColor}>
+            {status.syncState ?? 'clean'}
+          </Badge>
+        </Group>
+        {status.pr && (
+          <a href={status.pr.url} target="_blank" rel="noreferrer" style={{ fontSize: 12 }}>
+            PR #{status.pr.providerPrId} ({status.pr.state}) ↗
+          </a>
+        )}
+        {msg && (
+          <Alert color="gray" variant="light" radius="sm" p={6}>
+            <Text fz="xs">{msg}</Text>
+          </Alert>
+        )}
+        {canEdit && (
+          <Button size="xs" variant="default" onClick={propose} loading={busy}>
+            Propose change (open PR)
+          </Button>
+        )}
+        {canEdit && !connectOpen && (
+          <Button size="compact-xs" variant="subtle" onClick={() => setConnectOpen(true)}>
+            Connect a personal token…
+          </Button>
+        )}
+        {canEdit && connectOpen && (
+          <Stack gap={4}>
+            <PasswordInput
+              size="xs"
+              placeholder="Personal access token (repo write)…"
+              value={token}
+              onChange={(e) => setToken(e.currentTarget.value)}
+              disabled={busy}
+            />
+            <Group justify="flex-end" gap={4}>
+              <Button size="compact-xs" variant="subtle" onClick={() => setConnectOpen(false)}>
+                Cancel
+              </Button>
+              <Button size="compact-xs" onClick={connect} disabled={!token.trim() || busy}>
+                Connect
+              </Button>
+            </Group>
+          </Stack>
+        )}
+      </Stack>
+    </div>
   )
 }
 

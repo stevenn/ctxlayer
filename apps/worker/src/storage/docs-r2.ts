@@ -20,9 +20,40 @@ import type { DocContent } from '@ctxlayer/shared'
 
 export const CONTENT_TYPE = 'application/json; charset=utf-8'
 export const YJS_CONTENT_TYPE = 'application/octet-stream'
+export const MARKDOWN_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 
 export function snapshotKey(docId: string): string {
   return `docs/${docId}/snapshot.json`
+}
+
+/**
+ * Canonical raw markdown for git-synced docs. Source of truth for these
+ * docs (the BlockNote blocks snapshot is derived, materialised lazily in
+ * the browser on first open). The reindex consumer chunks this directly
+ * for RAG, skipping the lossy blocks→markdown render.
+ */
+export function sourceMarkdownKey(docId: string): string {
+  return `docs/${docId}/source.md`
+}
+
+export async function writeSourceMarkdown(
+  env: Env,
+  docId: string,
+  markdown: string
+): Promise<{ contentHash: string; byteSize: number }> {
+  const body = new TextEncoder().encode(markdown)
+  const contentHash = await sha256Hex(body)
+  await env.DOCS_BUCKET.put(sourceMarkdownKey(docId), body, {
+    httpMetadata: { contentType: MARKDOWN_CONTENT_TYPE },
+    customMetadata: { contentHash }
+  })
+  return { contentHash, byteSize: body.byteLength }
+}
+
+export async function readSourceMarkdown(env: Env, docId: string): Promise<string | null> {
+  const obj = await env.DOCS_BUCKET.get(sourceMarkdownKey(docId))
+  if (!obj) return null
+  return obj.text()
 }
 
 export function revisionKey(docId: string, revisionId: string): string {

@@ -419,3 +419,23 @@ table:hover .bn-table-cell-handle {
 .info-strip dd {
   margin: 0;
 }
+
+/*
+ * Transient highlight applied by the editor when a search deep-link
+ * (?section=<anchor>) scrolls to a heading block. Added for ~2s then
+ * removed; the transition fades it back out.
+ */
+.ctx-section-flash {
+  animation: ctx-section-flash 2s ease-out;
+  border-radius: var(--radius-sm);
+}
+@keyframes ctx-section-flash {
+  0% {
+    background-color: color-mix(in srgb, var(--accent) 32%, transparent);
+    box-shadow: -6px 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  }
+  100% {
+    background-color: transparent;
+    box-shadow: -6px 0 0 transparent;
+  }
+}

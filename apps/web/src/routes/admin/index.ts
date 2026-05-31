@@ -3,6 +3,7 @@
 export { AdminTeams } from './teams'
 export { AdminProducts } from './products'
 export { AdminUpstreams } from './upstreams'
+export { AdminGitSources } from './git-sources'
 export { AdminUsers } from './users'
 export { AdminAudit } from './audit'
 export { AdminOAuthClients } from './oauth-clients'

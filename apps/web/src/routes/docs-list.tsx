@@ -32,6 +32,7 @@ import {
   renameFolder
 } from '../lib/api'
 import { useDialogs } from '../lib/dialogs'
+import { DocSearch } from '../components/search/doc-search'
 
 type Status =
   | { kind: 'loading' }
@@ -144,14 +145,6 @@ export function DocsList() {
         <Title order={2} fz={20} fw={600} style={{ whiteSpace: 'nowrap' }}>
           Docs library
         </Title>
-        <TextInput
-          placeholder="Filter by title, slug, creator…"
-          value={query}
-          onChange={(e) => setQuery(e.currentTarget.value)}
-          size="sm"
-          style={{ flex: 1, maxWidth: 360 }}
-          aria-label="Filter docs"
-        />
         <Menu shadow="md" position="bottom-end" withinPortal>
           <Menu.Target>
             <Button>+ New doc</Button>
@@ -163,51 +156,66 @@ export function DocsList() {
         </Menu>
       </Group>
 
-      {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
+      {/* Semantic search is the hero. When idle it renders the browse
+          view (folder tree + table) passed as children; running a search
+          replaces it with ranked, deep-linked results. */}
+      <DocSearch>
+        {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
-      {status.kind === 'error' && (
-        <Stack gap="xs">
-          <Alert color="red" variant="light" radius="sm">
-            {status.message}
-          </Alert>
-          <Button variant="default" onClick={() => reload()} w={120}>
-            Retry
-          </Button>
-        </Stack>
-      )}
+        {status.kind === 'error' && (
+          <Stack gap="xs">
+            <Alert color="red" variant="light" radius="sm">
+              {status.message}
+            </Alert>
+            <Button variant="default" onClick={() => reload()} w={120}>
+              Retry
+            </Button>
+          </Stack>
+        )}
 
-      {status.kind === 'ready' && status.docs.length === 0 && (
-        <Text c="dimmed">
-          No docs yet. Click <strong>+ New doc</strong> to create the first one.
-        </Text>
-      )}
+        {status.kind === 'ready' && status.docs.length === 0 && (
+          <Text c="dimmed">
+            No docs yet. Click <strong>+ New doc</strong> to create the first one.
+          </Text>
+        )}
 
-      {status.kind === 'ready' && status.docs.length > 0 && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '220px minmax(0, 1fr)',
-            gap: 24,
-            alignItems: 'start'
-          }}
-        >
-          <FolderTree
-            folders={status.folders}
-            selected={selectedFolder}
-            onSelect={setSelectedFolder}
-            rootDocCount={status.docs.filter((d) => !d.folder).length}
-            onRename={onRenameFolder}
-            onDelete={onDeleteFolder}
-          />
-          <DocsTable
-            docs={status.docs}
-            folder={selectedFolder}
-            query={query}
-            onOpen={(id) => nav(`/app/docs/${id}`)}
-            onMove={onMoveDoc}
-          />
-        </div>
-      )}
+        {status.kind === 'ready' && status.docs.length > 0 && (
+          <Stack gap="sm">
+            <TextInput
+              placeholder="Quick filter by title, slug, creator…"
+              value={query}
+              onChange={(e) => setQuery(e.currentTarget.value)}
+              size="xs"
+              style={{ maxWidth: 360 }}
+              aria-label="Quick filter docs"
+            />
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: '220px minmax(0, 1fr)',
+                gap: 24,
+                alignItems: 'start'
+              }}
+            >
+              <FolderTree
+                folders={status.folders}
+                selected={selectedFolder}
+                onSelect={setSelectedFolder}
+                rootDocCount={status.docs.filter((d) => !d.folder).length}
+                onRename={onRenameFolder}
+                onDelete={onDeleteFolder}
+              />
+              <DocsTable
+                docs={status.docs}
+                folder={selectedFolder}
+                query={query}
+                onOpen={(id) => nav(`/app/docs/${id}`)}
+                onMove={onMoveDoc}
+              />
+            </div>
+          </Stack>
+        )}
+      </DocSearch>
 
       <BlankDocModal
         opened={createOpen}

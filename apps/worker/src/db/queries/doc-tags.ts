@@ -70,6 +70,31 @@ export async function replaceTagsForDoc(
 }
 
 /**
+ * Set the sole product tag on a doc (used by git sync: a synced doc's
+ * product is owned by its source). Replaces only `product`-kind tags —
+ * team / topic tags the user added are left intact. `productId === null`
+ * just clears product tags. Single batch.
+ */
+export async function setDocProductTag(
+  env: Env,
+  docId: string,
+  productId: string | null
+): Promise<void> {
+  const stmts: D1PreparedStatement[] = [
+    env.DB.prepare(`DELETE FROM doc_tags WHERE doc_id = ?1 AND tag_kind = 'product'`).bind(docId)
+  ]
+  if (productId) {
+    stmts.push(
+      env.DB.prepare(
+        `INSERT INTO doc_tags (doc_id, tag_kind, tag_value) VALUES (?1, 'product', ?2)
+         ON CONFLICT (doc_id, tag_kind, tag_value) DO NOTHING`
+      ).bind(docId, productId)
+    )
+  }
+  await env.DB.batch(stmts)
+}
+
+/**
  * Resolve the (team_ids, product_ids) a user has access to. Powers
  * the `search_docs` Vectorize filter (Section F3) and `list_my_context`.
  * Product access is transitive via team_products.

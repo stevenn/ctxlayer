@@ -20,19 +20,16 @@ import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
-import { embed } from '../rag/embedder'
-import type { ChunkMetadata } from '../rag/index'
+import {
+  searchChunks,
+  effectiveScope,
+  SEARCH_K_DEFAULT,
+  SEARCH_K_MAX
+} from '../rag/search'
 import { UpstreamProxyRegistry } from './tools-proxy'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
-
-const SEARCH_K_DEFAULT = 8
-const SEARCH_K_MAX = 50
-// Overshoot the topK so post-filter has headroom when many chunks
-// don't match the user's scope. Cap at Vectorize's max (currently 100).
-const SEARCH_OVERSHOOT = 3
-const VECTORIZE_TOPK_MAX = 100
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
 // USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
@@ -259,36 +256,15 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           const { query, k, scope } = args
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
-          const limit = k ?? SEARCH_K_DEFAULT
 
-          // Embed the query (one-element batch).
-          const { vectors } = await embed(this.env, [query])
-          const qvec = vectors[0]
-          if (!qvec) return errText('embedding_failed')
-
-          // Resolve the caller's effective scope.
+          // Shared retrieval core (also backs REST /api/search). Resolve
+          // the caller's effective scope, then embed → Vectorize → filter.
           const userScope = await resolveUserScope(this.env, userId)
           const effective = effectiveScope(scope, userScope)
-
-          // Overshoot topK to give post-filter room, capped at Vectorize's max.
-          const topK = Math.min(limit * SEARCH_OVERSHOOT, VECTORIZE_TOPK_MAX)
-          const result = await this.env.DOCS_INDEX.query(qvec, {
-            topK,
-            returnMetadata: 'all'
+          const matches = await searchChunks(this.env, [query], {
+            k: k ?? SEARCH_K_DEFAULT,
+            effective
           })
-
-          const matches = (result.matches ?? [])
-            .map((m) => ({ ...m, metadata: m.metadata as unknown as ChunkMetadata }))
-            .filter((m) => passesScope(m.metadata, effective))
-            .slice(0, limit)
-            .map((m) => ({
-              docId: m.metadata.docId,
-              chunkIdx: m.metadata.chunkIdx,
-              title: m.metadata.title,
-              headings: m.metadata.headings,
-              score: m.score,
-              snippet: truncate(m.metadata.text, 600)
-            }))
 
           return {
             content: [{ type: 'text', text: JSON.stringify({ matches }, null, 2) }]
@@ -420,42 +396,6 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 }
 
 // ----- helpers ------------------------------------------------------------
-
-interface EffectiveScope {
-  teams: string[]
-  products: string[]
-  includeGlobal: boolean
-  /** When true, skip all metadata filtering. */
-  all: boolean
-}
-
-function effectiveScope(
-  scope: 'all' | { teams?: string[]; products?: string[] } | undefined,
-  user: { teams: string[]; products: string[] }
-): EffectiveScope {
-  if (scope === 'all') return { teams: [], products: [], includeGlobal: true, all: true }
-  if (!scope) {
-    return { teams: user.teams, products: user.products, includeGlobal: true, all: false }
-  }
-  // Intersect supplied scope with user's reachable set so a caller
-  // can't escalate. Asked but not allowed → silently dropped.
-  const teams = (scope.teams ?? user.teams).filter((t) => user.teams.includes(t))
-  const products = (scope.products ?? user.products).filter((p) => user.products.includes(p))
-  return { teams, products, includeGlobal: true, all: false }
-}
-
-function passesScope(m: ChunkMetadata, scope: EffectiveScope): boolean {
-  if (scope.all) return true
-  if (scope.includeGlobal && m.is_global) return true
-  if (m.tag_teams.some((t) => scope.teams.includes(t))) return true
-  if (m.tag_products.some((p) => scope.products.includes(p))) return true
-  return false
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s
-  return s.slice(0, n - 1) + '…'
-}
 
 function errText(msg: string) {
   return { isError: true, content: [{ type: 'text' as const, text: msg }] }

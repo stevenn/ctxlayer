@@ -7,6 +7,7 @@ import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
 import {
   AdminUpstreams,
+  AdminGitSources,
   AdminUsers,
   AdminTeams,
   AdminProducts,
@@ -36,6 +37,7 @@ export function appRoutes() {
         <Route path="mcp-setup" element={<McpSetup />} />
         <Route path="usage" element={<Usage />} />
         <Route path="admin/upstreams" element={<AdminUpstreams />} />
+        <Route path="admin/git-sources" element={<AdminGitSources />} />
         <Route path="admin/users" element={<AdminUsers />} />
         <Route path="admin/teams" element={<AdminTeams />} />
         <Route path="admin/products" element={<AdminProducts />} />

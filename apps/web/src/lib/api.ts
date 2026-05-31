@@ -44,6 +44,15 @@ import {
   UpdateUpstreamRequest,
   RevisionSummary,
   RestoreRequest,
+  SearchRequest,
+  SearchResponse,
+  AdminGitSourceRow,
+  CreateGitSourceRequest,
+  UpdateGitSourceRequest,
+  GitSetCredentialRequest,
+  GitDocStatus,
+  CreatePullRequestRequest,
+  CreatePullRequestResult,
   AdminTeamRow,
   TeamMemberRow,
   TeamProductsAssignment,
@@ -101,6 +110,13 @@ import type {
   ProductRef as ProductRefT,
   RevisionSummary as RevisionSummaryT,
   RestoreRequest as RestoreRequestT,
+  SearchRequest as SearchRequestT,
+  SearchResponse as SearchResponseT,
+  AdminGitSourceRow as AdminGitSourceRowT,
+  CreateGitSourceRequest as CreateGitSourceRequestT,
+  UpdateGitSourceRequest as UpdateGitSourceRequestT,
+  GitDocStatus as GitDocStatusT,
+  CreatePullRequestResult as CreatePullRequestResultT,
   AdminTeamRow as AdminTeamRowT,
   TeamMemberRow as TeamMemberRowT,
   TeamProductsAssignment as TeamProductsAssignmentT,
@@ -203,6 +219,114 @@ const RevisionList = z.array(RevisionSummary)
 
 export function fetchDocs(signal?: AbortSignal): Promise<DocSummaryT[]> {
   return request('/api/docs', (b) => DocList.parse(b), { signal })
+}
+
+// Semantic RAG search over the doc library. POST so the query + scope
+// ride in the body (and to match the worker's CSRF-gated route).
+export function searchDocs(
+  req: SearchRequestT,
+  signal?: AbortSignal
+): Promise<SearchResponseT> {
+  return request('/api/search', (b) => SearchResponse.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(SearchRequest.parse(req)),
+    signal
+  })
+}
+
+// ----- admin: git sources -------------------------------------------------
+
+const AdminGitSourceList = z.array(AdminGitSourceRow)
+const gitSourcePath = (id: string) => `/api/admin/git-sources/${encodeURIComponent(id)}`
+
+export function fetchAdminGitSources(signal?: AbortSignal): Promise<AdminGitSourceRowT[]> {
+  return request('/api/admin/git-sources', (b) => AdminGitSourceList.parse(b), { signal })
+}
+
+export function fetchAdminGitSource(id: string, signal?: AbortSignal): Promise<AdminGitSourceRowT> {
+  return request(gitSourcePath(id), (b) => AdminGitSourceRow.parse(b), { signal })
+}
+
+export function adminCreateGitSource(input: CreateGitSourceRequestT): Promise<AdminGitSourceRowT> {
+  return request('/api/admin/git-sources', (b) => AdminGitSourceRow.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateGitSourceRequest.parse(input))
+  })
+}
+
+export function adminPatchGitSource(id: string, patch: UpdateGitSourceRequestT): Promise<void> {
+  return request(gitSourcePath(id), () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateGitSourceRequest.parse(patch))
+  })
+}
+
+export function adminDeleteGitSource(id: string): Promise<void> {
+  return request(gitSourcePath(id), () => undefined, { method: 'DELETE' })
+}
+
+export function adminPutGitSourceVisibility(
+  id: string,
+  payload: ReplaceVisibilityRequestT
+): Promise<void> {
+  return request(`${gitSourcePath(id)}/visibility`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(ReplaceVisibilityRequest.parse(payload))
+  })
+}
+
+export function adminPutGitSharedCredential(id: string, body: { token: string }): Promise<void> {
+  return request(`${gitSourcePath(id)}/shared-credentials`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(GitSetCredentialRequest.parse(body))
+  })
+}
+
+export function adminDeleteGitSharedCredential(id: string): Promise<void> {
+  return request(`${gitSourcePath(id)}/shared-credentials`, () => undefined, { method: 'DELETE' })
+}
+
+export function adminSyncGitSource(id: string): Promise<void> {
+  return request(`${gitSourcePath(id)}/sync`, () => undefined, { method: 'POST' })
+}
+
+// ----- per-doc git status / write-back ------------------------------------
+
+const GitDocSource = z.object({ markdown: z.string() })
+
+// 404 ⇒ the doc isn't git-backed; callers treat that as "no git panel".
+export function fetchDocGitStatus(id: string, signal?: AbortSignal): Promise<GitDocStatusT> {
+  return request(`/api/docs/${encodeURIComponent(id)}/git`, (b) => GitDocStatus.parse(b), { signal })
+}
+
+export function fetchDocGitSource(id: string, signal?: AbortSignal): Promise<{ markdown: string }> {
+  return request(`/api/docs/${encodeURIComponent(id)}/git/source`, (b) => GitDocSource.parse(b), {
+    signal
+  })
+}
+
+export function proposeGitPullRequest(
+  id: string,
+  markdown: string
+): Promise<CreatePullRequestResultT> {
+  return request(`/api/docs/${encodeURIComponent(id)}/git/pull-request`, (b) =>
+    CreatePullRequestResult.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreatePullRequestRequest.parse({ markdown }))
+  })
+}
+
+export function putGitUserCredential(sourceId: string, token: string): Promise<void> {
+  return request(`/api/git-sources/${encodeURIComponent(sourceId)}/credentials`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(GitSetCredentialRequest.parse({ token }))
+  })
+}
+
+export function deleteGitUserCredential(sourceId: string): Promise<void> {
+  return request(`/api/git-sources/${encodeURIComponent(sourceId)}/credentials`, () => undefined, {
+    method: 'DELETE'
+  })
 }
 
 export function createDoc(input: CreateDocRequestT): Promise<{ id: string; slug: string }> {
