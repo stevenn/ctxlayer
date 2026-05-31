@@ -54,12 +54,12 @@ describe('effectiveScope', () => {
     })
   })
 
-  it('undefined falls back to the user scope + global', () => {
+  it('undefined defaults to open-read (search every doc)', () => {
     expect(effectiveScope(undefined, user)).toEqual({
-      teams: ['t1', 't2'],
-      products: ['p1'],
+      teams: [],
+      products: [],
       includeGlobal: true,
-      all: false
+      all: true
     })
   })
 

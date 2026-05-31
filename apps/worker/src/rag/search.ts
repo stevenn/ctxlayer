@@ -35,9 +35,11 @@ import { listProducts } from '../db/queries/products'
 export const SEARCH_K_DEFAULT = 8
 export const SEARCH_K_MAX = 50
 // Overshoot topK so the scope post-filter has headroom when many chunks
-// don't match the caller's scope. Cap at Vectorize's max (currently 100).
+// don't match the caller's scope. Vectorize caps topK at 50 when
+// `returnMetadata: 'all'` — which we always pass to read chunk metadata
+// — so asking for more is a hard 40025 error (k≥17 once overshot ×3).
 const SEARCH_OVERSHOOT = 3
-const VECTORIZE_TOPK_MAX = 100
+const VECTORIZE_TOPK_MAX = 50
 const SNIPPET_MAX = 600
 // Minimum cosine score to count as a real hit — drops weak matches so a
 // vague query doesn't surface barely-related chunks. Tunable against the
@@ -63,18 +65,22 @@ export interface EffectiveScope {
 }
 
 /**
- * Resolve the requested scope against the caller's reachable set. A
- * caller can only narrow, never escalate: supplied team/product ids
- * are intersected with what they can already reach, so asked-but-not-
- * allowed ids are silently dropped.
+ * Resolve the requested scope against the caller's reachable set.
+ *
+ * Open-read stance: docs are readable by everyone (see `listDocs`), so
+ * search must not HIDE docs by default — tags organize and narrow, they
+ * don't gate reads. With no scope supplied (or `scope: 'all'`) the
+ * filter is disabled and the whole library is searchable. An explicit
+ * `{teams,products}` still NARROWS, intersected with what the caller can
+ * reach so a supplied id can only restrict, never escalate.
  */
 export function effectiveScope(
   scope: SearchScope | undefined,
   user: { teams: string[]; products: string[] }
 ): EffectiveScope {
-  if (scope === 'all') return { teams: [], products: [], includeGlobal: true, all: true }
-  if (!scope) {
-    return { teams: user.teams, products: user.products, includeGlobal: true, all: false }
+  // No scope OR explicit "all" → open-read: search every doc.
+  if (!scope || scope === 'all') {
+    return { teams: [], products: [], includeGlobal: true, all: true }
   }
   const teams = (scope.teams ?? user.teams).filter((t) => user.teams.includes(t))
   const products = (scope.products ?? user.products).filter((p) => user.products.includes(p))
@@ -186,8 +192,9 @@ export interface RunSearchInput {
 
 /**
  * REST orchestrator. Predictable baseline: embed the caller's query
- * verbatim and search their full reachable scope (an explicit request
- * scope still narrows it — that's how a clicked filter chip works). The
+ * verbatim and search open-read across the whole library by default (an
+ * explicit request scope still narrows it — that's how a clicked filter
+ * chip works). The
  * LLM runs in PARALLEL purely to surface optional `suggestedFilters`;
  * it never rewrites the query or auto-narrows results, so it can't
  * silently distort relevance (and adds no latency to retrieval).

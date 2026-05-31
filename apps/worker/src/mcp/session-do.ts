@@ -158,7 +158,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       {
         title: 'List my context',
         description:
-          'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the default search scope that `search_docs` will use when no scope is supplied.'
+          'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the reachable team/product scope (used to NARROW search; `search_docs` itself defaults to open-read across all docs).'
       },
       () =>
         rec('list_my_context', undefined, async () => {
@@ -236,7 +236,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       {
         title: 'Search docs',
         description:
-          'Semantic search over the org-curated doc library. Defaults to the caller\'s teams + products + globally-tagged docs. Pass `scope: "all"` to remove the filter, or `scope: { teams: [...], products: [...] }` to intersect with the caller\'s reachable set (no escalation).',
+          'Semantic search over the org-curated doc library. Open-read: searches ALL docs by default (docs are readable org-wide; tags narrow, they do not hide). Pass `scope: { teams: [...], products: [...] }` to narrow to docs carrying those team/product tags (intersected with the caller\'s reachable set, no escalation). `scope: "all"` is the explicit form of the default.',
         inputSchema: {
           query: z.string().min(1),
           k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),
