@@ -4,7 +4,7 @@ import { getDocById, updateChunkCount } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readRevision, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
-import { chunkMarkdown } from '../rag/chunker'
+import { chunkMarkdown, type Chunk } from '../rag/chunker'
 import { embed } from '../rag/embedder'
 import { upsertChunks } from '../rag/index'
 
@@ -159,8 +159,15 @@ async function handle(
   }
 
   const chunks = chunkMarkdown(markdown, { title: doc.title })
+  // Embed the doc title + section breadcrumb ALONG WITH each chunk's
+  // body, so the doc/section identity is part of every vector. A query
+  // that matches the title (e.g. "yuki architecture" → a doc titled
+  // "Yuki Architecture Analysis") then matches the doc's chunks
+  // semantically. The stored snippet (metadata.text) stays the raw body,
+  // so result snippets read naturally — only the embedding input carries
+  // the header.
   const [{ vectors }, tags] = await Promise.all([
-    embed(env, chunks.map((c) => c.text)),
+    embed(env, chunks.map((c) => embedInput(doc.title, c))),
     listTagsForDoc(env, docId)
   ])
   // Topic tags aren't part of the search filter today; we pass only
@@ -179,6 +186,17 @@ async function handle(
   // Cache the count for the next reindex so orphan cleanup knows
   // the previous high-water mark.
   await updateChunkCount(env, docId, chunks.length)
+}
+
+/**
+ * Compose the text we embed for a chunk: doc title + heading breadcrumb
+ * (deduped against the title) + the chunk body. Title-only / heading-
+ * only headers are dropped to nothing extra.
+ */
+function embedInput(title: string, c: Chunk): string {
+  const crumb = c.headings.filter((h) => h && h !== title).join(' › ')
+  const header = [title, crumb].filter(Boolean).join('\n')
+  return header ? `${header}\n\n${c.text}` : c.text
 }
 
 function safeSample(blocks: unknown): string {

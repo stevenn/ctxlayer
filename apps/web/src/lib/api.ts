@@ -221,6 +221,13 @@ export function fetchDocs(signal?: AbortSignal): Promise<DocSummaryT[]> {
   return request('/api/docs', (b) => DocList.parse(b), { signal })
 }
 
+// Admin: rebuild the search index for every doc (after a chunking /
+// embedding change). Returns how many reindex jobs were enqueued.
+const ReindexResult = z.object({ queued: z.number(), total: z.number() })
+export function adminReindexAllDocs(): Promise<{ queued: number; total: number }> {
+  return request('/api/admin/docs/reindex', (b) => ReindexResult.parse(b), { method: 'POST' })
+}
+
 // Semantic RAG search over the doc library. POST so the query + scope
 // ride in the body (and to match the worker's CSRF-gated route).
 export function searchDocs(

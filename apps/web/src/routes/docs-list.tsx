@@ -23,9 +23,11 @@ import type {
 import {
   ApiError,
   ApiSchemaError,
+  adminReindexAllDocs,
   createDoc,
   deleteFolder,
   fetchDocs,
+  fetchMe,
   patchDoc,
   putDocContent,
   renameFolder
@@ -61,6 +63,34 @@ export function DocsList() {
   const [query, setQuery] = useState('')
   // Selected (group, folder). null path = the group's root.
   const [selected, setSelected] = useState<FolderSelection>({ group: 'home', path: null })
+  const [isAdmin, setIsAdmin] = useState(false)
+  const [reindexing, setReindexing] = useState(false)
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchMe(ctrl.signal).then(
+      (me) => !ctrl.signal.aborted && setIsAdmin(me.role === 'admin'),
+      () => {
+        /* non-admin / unauthenticated — just hide the admin action */
+      }
+    )
+    return () => ctrl.abort()
+  }, [])
+
+  async function onReindexAll() {
+    setReindexing(true)
+    try {
+      const { queued } = await adminReindexAllDocs()
+      await dialogs.alert({
+        title: 'Reindex queued',
+        message: `Queued ${queued} doc${queued === 1 ? '' : 's'} for reindexing. Search will catch up over the next minute or two.`
+      })
+    } catch (err) {
+      await dialogs.alert({ title: 'Reindex failed', message: explain(err) })
+    } finally {
+      setReindexing(false)
+    }
+  }
 
   const reload = useCallback((signal?: AbortSignal) => {
     setStatus({ kind: 'loading' })
@@ -163,15 +193,28 @@ export function DocsList() {
         <Title order={2} fz={20} fw={600} style={{ whiteSpace: 'nowrap' }}>
           Docs library
         </Title>
-        <Menu shadow="md" position="bottom-end" withinPortal>
-          <Menu.Target>
-            <Button>+ New doc</Button>
-          </Menu.Target>
-          <Menu.Dropdown>
-            <Menu.Item onClick={() => setCreateOpen(true)}>Blank doc</Menu.Item>
-            <Menu.Item onClick={() => setImportOpen(true)}>Import markdown…</Menu.Item>
-          </Menu.Dropdown>
-        </Menu>
+        <Group gap="xs">
+          {isAdmin && (
+            <Tooltip label="Rebuild the search index for every doc" withArrow>
+              <Button
+                variant="default"
+                onClick={onReindexAll}
+                loading={reindexing}
+              >
+                Reindex search
+              </Button>
+            </Tooltip>
+          )}
+          <Menu shadow="md" position="bottom-end" withinPortal>
+            <Menu.Target>
+              <Button>+ New doc</Button>
+            </Menu.Target>
+            <Menu.Dropdown>
+              <Menu.Item onClick={() => setCreateOpen(true)}>Blank doc</Menu.Item>
+              <Menu.Item onClick={() => setImportOpen(true)}>Import markdown…</Menu.Item>
+            </Menu.Dropdown>
+          </Menu>
+        </Group>
       </Group>
 
       {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}

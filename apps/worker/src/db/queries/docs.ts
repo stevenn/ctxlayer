@@ -144,6 +144,33 @@ export async function gitDocIdsAmong(env: Env, docIds: string[]): Promise<Set<st
   return new Set((res.results ?? []).map((r) => r.id))
 }
 
+/**
+ * All non-deleted docs with just the fields the reindex-all admin action
+ * needs to enqueue a reindex (git docs go via source.md, authored docs
+ * via their current revision).
+ */
+export async function listDocsForReindex(
+  env: Env
+): Promise<
+  Array<{
+    id: string
+    current_rev_id: string | null
+    git_source_id: string | null
+    git_commit_sha: string | null
+  }>
+> {
+  const res = await env.DB.prepare(
+    `SELECT id, current_rev_id, git_source_id, git_commit_sha
+     FROM documents WHERE deleted_at IS NULL`
+  ).all<{
+    id: string
+    current_rev_id: string | null
+    git_source_id: string | null
+    git_commit_sha: string | null
+  }>()
+  return res.results ?? []
+}
+
 export interface CreateDocInput {
   title: string
   slug?: string
