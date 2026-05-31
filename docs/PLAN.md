@@ -78,8 +78,8 @@ Building **ctxlayer**, a remote MCP server that:
 ```
 
 ### Key flows
-- **MCP tool call (HTTP/SSE upstream)** *(M4)*: agent → `/mcp` → OAuth-validated → `McpSessionDO` resolves namespace `notion__create_page` → lazy-connects `UpstreamClient` with decrypted user credentials → streams response → `waitUntil` enqueues a usage event.
-- **MCP tool call (stdio upstream via bring-your-own-bridge)**: agent → `/mcp` → resolves `github_stdio__create_issue` → `UpstreamClient` opens HTTP to the operator-run bridge's `streamable_http` URL → streams response → `waitUntil` enqueues a usage event. ctxlayer treats it like any HTTP upstream.
+- **MCP tool call (HTTP/SSE upstream)** *(M4)*: agent → `/mcp` → OAuth-validated → `McpSessionDO` resolves namespace `notion__create_page` → lazy-connects `UpstreamClient` with decrypted user credentials → streams response → **stages a usage event in the DO's SQLite outbox** (`usage/outbox.ts`); an idempotent `flushUsageOutbox` alarm drains it to `USAGE_QUEUE`. (Replaced the old per-call `ctx.waitUntil(queue.send)`, whose background send was cancelled once the streaming response ended — the "waitUntil() tasks did not complete" warning — silently dropping usage rows.)
+- **MCP tool call (stdio upstream via bring-your-own-bridge)**: agent → `/mcp` → resolves `github_stdio__create_issue` → `UpstreamClient` opens HTTP to the operator-run bridge's `streamable_http` URL → streams response → stages a usage event in the DO outbox (drained on alarm, as above). ctxlayer treats it like any HTTP upstream.
 - **Doc edit** *(M3)*: SPA opens WebSocket to `/collab/:id` → `DocRoomDO` (one per doc) loads Y.Doc from R2 → BlockNote↔Yjs sync → debounced (5s idle / 30s max) snapshot to R2 + revision row in D1 + enqueue reindex.
 - **Reindex** *(shipped)*: queue consumer renders blocks → markdown, chunks (~512 tokens, 64 overlap, heading-aware), embeds via Workers AI, upserts into Vectorize keyed `${docId}:${chunkIdx}`. Orphan cleanup via `chunk_count` tracking when revisions shrink.
 
@@ -107,7 +107,7 @@ ctxlayer/
         collab/{doc-room-do,yjs-persistence}.ts       †(M3 — currently 501 stub)
         queues/reindex-consumer.ts
         queues/usage-consumer.ts                      †(M6 ✅)
-        usage/{event,tokens,record}.ts                †(M6 ✅ producer)
+        usage/{event,tokens,record,outbox}.ts         †(M6 ✅ producer; outbox = DO-staged, alarm-drained)
         crypto/aead.ts                                †(M4 — needed for user_credentials)
         rag/{markdown,chunker,embedder,index}.ts
         db/{client,migrations/*.sql,queries/*}.ts

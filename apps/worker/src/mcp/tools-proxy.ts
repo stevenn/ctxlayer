@@ -49,7 +49,7 @@ import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
-import { recordUsage } from '../usage/record'
+import type { RecordUsageArgs } from '../usage/record'
 import { byteLength } from '../usage/tokens'
 import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
 
@@ -81,7 +81,10 @@ export class UpstreamProxyRegistry {
   constructor(
     private readonly env: Env,
     private readonly userId: string,
-    private readonly waitUntil: (p: Promise<unknown>) => void,
+    // Stage a usage event into the owning DO's SQLite outbox. Awaited on
+    // the tool path (cheap: one synchronous insert + an idempotent drain
+    // schedule) so durability no longer rides a cancellable `waitUntil`.
+    private readonly stageUsage: (args: RecordUsageArgs) => Promise<void>,
     private readonly sessionId: string
   ) {}
 
@@ -346,21 +349,17 @@ export class UpstreamProxyRegistry {
         })
         return errText(userMessage)
       } finally {
-        recordUsage(
-          this.env,
-          { waitUntil: this.waitUntil },
-          {
-            userId: this.userId,
-            sessionId: this.sessionId,
-            upstreamId: conn.id,
-            tool: mangled,
-            reqJson,
-            respJson,
-            latencyMs: Date.now() - t0,
-            status,
-            truncated
-          }
-        )
+        await this.stageUsage({
+          userId: this.userId,
+          sessionId: this.sessionId,
+          upstreamId: conn.id,
+          tool: mangled,
+          reqJson,
+          respJson,
+          latencyMs: Date.now() - t0,
+          status,
+          truncated
+        })
       }
     }
     // The SDK's `registerTool` overload requires a Zod schema at the

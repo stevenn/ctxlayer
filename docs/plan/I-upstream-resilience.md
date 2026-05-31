@@ -11,6 +11,20 @@
 > truncation analytics (migration `0014_usage_resilience.sql`, surfaced on
 > `/app/admin/usage`).
 >
+> **Follow-up (2026-05-31): WI-5 usage enqueue made crash-safe.** Prod showed
+> recurring `waitUntil() tasks did not complete within the allowed time…`
+> warnings on `POST /mcp` (outcome `ok`). Root cause: the per-tool-call usage
+> enqueue was a fire-and-forget `ctx.waitUntil(USAGE_QUEUE.send(...))`; once the
+> streaming MCP response ended, the trailing send could be cancelled before it
+> settled — dropping the usage row (a slow/abandoned upstream call, e.g. Driver,
+> made it likely). Fix: tool calls now **stage** the pre-computed event in the
+> DO's own SQLite outbox synchronously (`usage/outbox.ts`), and an idempotent
+> `flushUsageOutbox` alarm drains it to the queue in its own invocation
+> (`mcp/session-do.ts`). Durability no longer rides the request's post-response
+> grace window; a cut-short drain just leaves rows for the next pass. Delivery is
+> at-least-once, so `queues/usage-consumer.ts` now acks duplicate event ids
+> (the atomic batch in `writeUsageEvent` means no double-count).
+>
 > Originally written from a live reproduction against the **Driver** upstream
 > (`driver.gather_task_context`, `driver.get_code_map`). The per-call timeout +
 > progress-keepalive machinery this doc builds on was **already shipped** (M4);

@@ -29,6 +29,15 @@ export async function usageConsumer(
       msg.ack()
     } catch (err) {
       const m = err instanceof Error ? err.message : String(err)
+      // Queues deliver at-least-once and the DO usage outbox can re-send
+      // a batch it failed to delete, so a duplicate event id is expected
+      // and benign: the raw row + rollup were written on the first pass,
+      // and the atomic batch in `writeUsageEvent` means the conflicting
+      // re-insert wrote nothing (no double-count). Ack and move on.
+      if (/UNIQUE constraint/i.test(m)) {
+        msg.ack()
+        continue
+      }
       console.error(`[usage-consumer] write failed: ${m}`)
       msg.retry()
     }

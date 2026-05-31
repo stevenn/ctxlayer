@@ -24,7 +24,8 @@ import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
 import { UpstreamProxyRegistry } from './tools-proxy'
 import { registerSkillMcp } from './skill-mcp'
-import { recordUsage } from '../usage/record'
+import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
+import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
 
 const SEARCH_K_DEFAULT = 8
 const SEARCH_K_MAX = 50
@@ -32,6 +33,14 @@ const SEARCH_K_MAX = 50
 // don't match the user's scope. Cap at Vectorize's max (currently 100).
 const SEARCH_OVERSHOOT = 3
 const VECTORIZE_TOPK_MAX = 100
+
+// Usage-outbox drain cadence. Staged usage rows are flushed to
+// USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
+// burst of tool calls in a session shares one drain (the schedule is
+// idempotent on callback). Rescheduled on a longer horizon after a
+// queue-send failure so a down queue can't spin the DO awake.
+const USAGE_DRAIN_DELAY_SECONDS = 5
+const USAGE_DRAIN_RETRY_SECONDS = 30
 
 /**
  * Server-level usage hint surfaced to the agent via MCP's
@@ -66,6 +75,12 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
   async init(): Promise<void> {
     const userId = this.props?.userId
+
+    // Usage outbox lives in this DO's own SQLite (see usage/outbox.ts).
+    // Tool calls stage rows here synchronously; `flushUsageOutbox`
+    // drains them to the queue on an alarm, so a cancelled `waitUntil`
+    // can no longer drop a usage event (the old /mcp failure mode).
+    ensureOutboxTable(this.ctx.storage.sql)
 
     // Per-session server `instructions`: the static base + any
     // *whole-upstream* skill/doc attachments named explicitly. Those
@@ -106,29 +121,24 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       const reqJson = safeJson(args)
       const userId = this.props?.userId ?? ''
       const sessionId = this.getSessionId()
-      const finalize = (respJson: string, status: 'ok' | 'error') => {
-        recordUsage(
-          this.env,
-          { waitUntil: (p) => this.ctx.waitUntil(p) },
-          {
-            userId,
-            sessionId,
-            upstreamId: null,
-            tool,
-            reqJson,
-            respJson,
-            latencyMs: Date.now() - t0,
-            status
-          }
-        )
-      }
+      const finalize = (respJson: string, status: 'ok' | 'error') =>
+        this.stageUsage({
+          userId,
+          sessionId,
+          upstreamId: null,
+          tool,
+          reqJson,
+          respJson,
+          latencyMs: Date.now() - t0,
+          status
+        })
       return exec().then(
-        (result) => {
-          finalize(safeJson(result.content), result.isError ? 'error' : 'ok')
+        async (result) => {
+          await finalize(safeJson(result.content), result.isError ? 'error' : 'ok')
           return result
         },
-        (err) => {
-          finalize(stringifyError(err), 'error')
+        async (err) => {
+          await finalize(stringifyError(err), 'error')
           throw err
         }
       )
@@ -320,7 +330,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         this.upstreamProxy = new UpstreamProxyRegistry(
           this.env,
           userId,
-          (p) => this.ctx.waitUntil(p),
+          (args) => this.stageUsage(args),
           this.getSessionId()
         )
         await this.upstreamProxy.init(this.server)
@@ -360,6 +370,52 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         }
       }
     )
+  }
+
+  /**
+   * Stage a usage event in the DO's SQLite outbox and ensure a drain is
+   * scheduled. The insert is synchronous (durable immediately); the
+   * idempotent `flushUsageOutbox` schedule coalesces a burst of tool
+   * calls into one drain. Replaces the old fire-and-forget
+   * `ctx.waitUntil(queue.send)`, whose background send was cancelled
+   * once a streaming /mcp response ended. Never throws into the tool
+   * path — a lost usage row must never break a working tool call.
+   */
+  private async stageUsage(args: RecordUsageArgs): Promise<void> {
+    try {
+      stageUsageRow(this.ctx.storage.sql, buildUsageMsg(args))
+      await this.schedule(USAGE_DRAIN_DELAY_SECONDS, 'flushUsageOutbox', undefined, {
+        idempotent: true
+      })
+    } catch (err) {
+      console.error(`[usage] stage failed for ${args.tool}: ${stringifyError(err)}`)
+    }
+  }
+
+  /**
+   * Alarm callback (dispatched by the agents SDK by method name, so it
+   * must stay public and keep this exact name). Drains staged usage
+   * rows to USAGE_QUEUE in batches, deleting only what the queue
+   * accepted, and reschedules itself while a backlog remains — on a
+   * longer horizon after a send failure so a down queue can't spin the
+   * DO awake. Rows survive a cut-short drain, so nothing is lost.
+   */
+  async flushUsageOutbox(): Promise<void> {
+    const sql = this.ctx.storage.sql
+    ensureOutboxTable(sql)
+    try {
+      const { remaining } = await drainOutbox(sql, this.env.USAGE_QUEUE)
+      if (remaining > 0) {
+        await this.schedule(USAGE_DRAIN_DELAY_SECONDS, 'flushUsageOutbox', undefined, {
+          idempotent: true
+        })
+      }
+    } catch (err) {
+      console.error(`[usage] outbox drain failed: ${stringifyError(err)}`)
+      await this.schedule(USAGE_DRAIN_RETRY_SECONDS, 'flushUsageOutbox', undefined, {
+        idempotent: true
+      })
+    }
   }
 }
 
