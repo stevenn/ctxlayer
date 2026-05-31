@@ -6,12 +6,19 @@
  * doc in the URL.
  *
  * Status flow:
- *   connecting -> connected (after syncStep1/2 round-trip handshake)
+ *   connecting -> connected (socket open; syncStep1 SENT)
  *   any        -> reconnecting (on close; exponential backoff)
  *   destroy()  -> disconnected (terminal; null awareness sent first)
  *
+ * NOTE: `connected` means the socket is open and we've sent syncStep1 —
+ * NOT that the document content has arrived. The server's syncStep2
+ * (the full initial state) lands later, and for a large doc that gap is
+ * visible: the editor is mounted but still empty. `onSynced` fires once
+ * that first syncStep2 is applied — the real "doc is loaded" signal,
+ * which the editor uses to gate its loading overlay.
+ *
  * Public surface mirrors what BlockNote / y-prosemirror's cursor
- * plugin expects: `.awareness`, `.doc`, and `.on('status', cb)`.
+ * plugin expects: `.awareness`, `.doc`, plus `.onStatus` / `.onSynced`.
  */
 
 import * as Y from 'yjs'
@@ -39,7 +46,9 @@ export class CollabWSProvider {
   private reconnectTimer: number | null = null
   private destroyed = false
   private status: CollabStatus = 'connecting'
+  private synced = false
   private readonly listeners = new Set<CollabStatusListener>()
+  private readonly syncListeners = new Set<() => void>()
   private readonly handleDocUpdate: (update: Uint8Array, origin: unknown) => void
   private readonly handleAwarenessUpdate: (
     diff: { added: number[]; updated: number[]; removed: number[] },
@@ -91,6 +100,23 @@ export class CollabWSProvider {
     this.listeners.add(cb)
     cb(this.status)
     return () => this.listeners.delete(cb)
+  }
+
+  /**
+   * Fires once the initial server sync (first syncStep2) has been
+   * applied to the local doc — i.e. the document content is fully
+   * materialized. Distinct from `connected`, which fires on socket open
+   * BEFORE the content arrives. Late subscribers are invoked immediately
+   * if sync already happened. Latches: a reconnect re-syncs but never
+   * flips back to "unsynced", so callers won't re-show a loader.
+   */
+  onSynced(cb: () => void): () => void {
+    if (this.synced) {
+      cb()
+      return () => {}
+    }
+    this.syncListeners.add(cb)
+    return () => this.syncListeners.delete(cb)
   }
 
   destroy(): void {
@@ -156,8 +182,13 @@ export class CollabWSProvider {
         case MESSAGE_SYNC: {
           const encoder = encoding.createEncoder()
           encoding.writeVarUint(encoder, MESSAGE_SYNC)
-          sync.readSyncMessage(decoder, encoder, this.doc, this)
+          const syncType = sync.readSyncMessage(decoder, encoder, this.doc, this)
           if (encoding.length(encoder) > 1) this.send(encoding.toUint8Array(encoder))
+          // syncStep2 is the server's reply to our syncStep1: it carries
+          // the full initial document state. Once applied, the doc is
+          // loaded. (Empty docs still receive a syncStep2, so this fires
+          // for them too — the loader never hangs on a blank doc.)
+          if (syncType === sync.messageYjsSyncStep2) this.markSynced()
           return
         }
         case MESSAGE_AWARENESS:
@@ -201,6 +232,19 @@ export class CollabWSProvider {
     }
     // If not open: discard. Yjs will resync on the next syncStep1
     // after reconnect.
+  }
+
+  private markSynced(): void {
+    if (this.synced) return
+    this.synced = true
+    for (const cb of this.syncListeners) {
+      try {
+        cb()
+      } catch {
+        // listener errors are not the provider's problem.
+      }
+    }
+    this.syncListeners.clear()
   }
 
   private setStatus(next: CollabStatus): void {

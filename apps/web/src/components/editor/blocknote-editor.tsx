@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, forwardRef } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FormattingToolbar,
@@ -17,7 +17,7 @@ import {
   type BlockNoteEditor as BlockNoteEditorCore,
   type BlockNoteEditorOptions
 } from '@blocknote/core'
-import { useMantineColorScheme } from '@mantine/core'
+import { Loader, useMantineColorScheme } from '@mantine/core'
 import { slugifyHeading } from '@ctxlayer/shared'
 import type * as Y from 'yjs'
 import '@blocknote/core/fonts/inter.css'
@@ -25,7 +25,18 @@ import '@blocknote/mantine/style.css'
 
 export interface CollaborationConfig {
   /** Yjs provider exposing `.awareness` (for y-prosemirror cursor plugin). */
-  provider: { awareness: unknown }
+  provider: {
+    awareness: unknown
+    /**
+     * Optional "doc fully loaded" signal: fires once the initial sync
+     * (first syncStep2) has been applied, so the editor's content is
+     * materialized. When present, the editor shows a loading overlay and
+     * blocks editing until it fires — otherwise a large doc renders empty
+     * for a beat and looks like a blank doc you can type into. Returns an
+     * unsubscribe fn. Omit (or provider lacking it) → no overlay.
+     */
+    onSynced?: (cb: () => void) => () => void
+  }
   /** Y.XmlFragment that holds the editor doc. */
   fragment: Y.XmlFragment
   /** Local user identity shown in collaborative cursors / selections. */
@@ -98,6 +109,27 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       }
   const editor = useCreateBlockNote(editorOptions)
   const hostRef = useRef<HTMLDivElement | null>(null)
+
+  // Collab load gate. In collab mode the Y.Doc starts empty and the
+  // server streams the content as a syncStep2 — for a large doc that's a
+  // visible gap where the editor looks blank. We overlay a loader and
+  // force the editor read-only until `onSynced` fires, so nobody mistakes
+  // a still-loading doc for an empty one and types into it. REST mode (no
+  // provider, or a provider without `onSynced`) never gates.
+  const provider = props.collaboration?.provider
+  const [loading, setLoading] = useState<boolean>(() => !!provider?.onSynced)
+  useEffect(() => {
+    const subscribe = provider?.onSynced
+    if (!provider || !subscribe) {
+      setLoading(false)
+      return
+    }
+    setLoading(true)
+    // Call through the provider instance so `this` is bound — onSynced
+    // reads instance state (extracting the method would detach it).
+    const off = subscribe.call(provider, () => setLoading(false))
+    return () => off?.()
+  }, [provider])
 
   useImperativeHandle(
     ref,
@@ -202,10 +234,35 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
   resolveDocLinkRef.current = props.resolveDocLink
 
   return (
-    <div ref={hostRef} style={{ height: '100%' }}>
+    <div ref={hostRef} style={{ height: '100%', position: 'relative' }}>
+      {loading && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 10,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 10,
+            // Opaque so the still-empty editor underneath doesn't read as
+            // a blank document. Also captures pointer events → no clicks
+            // reach the editor while it loads.
+            background: 'var(--bg-surface)',
+            color: 'var(--text-dim)',
+            fontSize: 13
+          }}
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <Loader size="sm" />
+          <span>Loading document…</span>
+        </div>
+      )}
       <BlockNoteView
         editor={editor}
-        editable={props.editable}
+        editable={props.editable && !loading}
         theme={resolved}
         slashMenu={false}
         formattingToolbar={false}
