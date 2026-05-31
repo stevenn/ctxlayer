@@ -12,10 +12,11 @@ Agent context layer — an MCP service on Cloudflare that:
   collaborative markdown editing, admin upstream management, and (later)
   usage analytics.
 
-The plan of record is **[`docs/PLAN.md`](docs/PLAN.md)**. Briefing for AI
-agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
-**[`AGENTS.md`](AGENTS.md)**. Architectural conventions and gotchas baked
-into the M1 scaffold live in `docs/plan/G-conventions.md`.
+The architecture & data-model reference is **[`docs/PLAN.md`](docs/PLAN.md)**
+(the milestone-driven plan that built ctxlayer is retired; PLAN.md is now a
+reference, not a roadmap). Briefing for AI agents working in this repo is
+**[`CLAUDE.md`](CLAUDE.md)** / **[`AGENTS.md`](AGENTS.md)**. Architectural
+conventions and gotchas live in `docs/plan/G-conventions.md`.
 
 ## Current state (2026-05-26)
 
@@ -125,9 +126,8 @@ provides real HTTPS for the public hostname automatically.
 
 The install has four phases: **(1)** provision Cloudflare resources,
 **(2)** configure at least one identity provider, **(3)** set deployment
-secrets, **(4)** deploy and pin to a custom domain. The full done-done
-verification checklist lives in [`docs/PLAN.md`](docs/PLAN.md) →
-**Verification plan** → **M2**.
+secrets, **(4)** deploy and pin to a custom domain. The step-by-step
+sequence is in the four numbered subsections below.
 
 ### 1. Provision Cloudflare resources
 

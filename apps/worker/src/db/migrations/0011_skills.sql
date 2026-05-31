@@ -1,5 +1,5 @@
--- M7a: skills primitive (separate from docs). See docs/plan/H/M7a-worker.md
--- for the design rationale. Skills are org-specific procedural playbooks
+-- M7a: skills primitive (separate from docs).
+-- Skills are org-specific procedural playbooks
 -- the agent loads on demand; surfaced over MCP as a `list_skills` tool +
 -- `mcp://ctxlayer/skills/{slug}` resource template, and over the CLI as
 -- SKILL.md files materialised under ~/.claude/skills/ctxlayer.

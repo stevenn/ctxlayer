@@ -1,5 +1,4 @@
 -- M8: catalogue diff tracking + drafter provenance.
--- See docs/plan/H/M8-drafting.md for the design.
 --
 -- input_schema_hash: sha256 of the canonicalised inputSchema, computed
 --   on every refresh. Lets the refresh path detect actual schema

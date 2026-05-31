@@ -3,7 +3,7 @@
  *
  * Assembles the context bundle the `ctxlayer draft-skill` CLI command
  * inlines into its `claude -p` prompt. Admin-gated; no LLM is invoked
- * on the worker. See docs/plan/H/M8-drafting.md for the design.
+ * on the worker.
  *
  * M8 v1 ships the deterministic sections only:
  *   - upstream metadata

@@ -20,7 +20,7 @@ verifies over interactive flows.
 - SQL migrations → `apps/worker/src/db/migrations/*.sql`
 - React SPA → `apps/web/src/`
 - Shared types/schemas → `packages/shared/src/`
-- Plan of record → `docs/PLAN.md`
+- Architecture reference → `docs/PLAN.md` (reference, not a roadmap)
 
 ## Module rules
 
@@ -71,7 +71,8 @@ verifies over interactive flows.
   redelivery; the consumer acks them.
 - Adding `process.env.X` — use the typed `Env` binding.
 - Writing comments that restate code; comment only non-obvious WHY.
-- Creating `*.md` docs that aren't asked for. Update `docs/PLAN.md` instead.
+- Creating `*.md` docs that aren't asked for. `docs/PLAN.md` is a reference,
+  not a maintained plan — don't treat it as a per-change changelog.
 
 ## Review checklist for new endpoints
 
@@ -96,7 +97,7 @@ Quick scan before opening a PR that adds a Hono route:
 ## Known gotchas (don't re-introduce)
 
 The M1 scaffold review surfaced ~25 fixable issues. The conventions
-that came out of it are documented in `docs/PLAN.md` **Section G**. The
+that came out of it are documented in `docs/plan/G-conventions.md`. The
 short list:
 
 - `PRIMARY KEY` cannot contain `COALESCE` or any expression in SQLite/D1.

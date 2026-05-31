@@ -5,7 +5,13 @@ serves curated docs (with RAG over Vectorize), proxies upstream MCP servers
 with centralised per-user credentials, and exposes a React SPA for self
 onboarding + collaborative markdown editing + admin/usage analytics.
 
-The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/plan/`** (A: auth, B: stdio bridge, C: upstream proxy, D: UI+REST, E: dev environment, F: org IA, G: conventions). Read PLAN.md first; pull in a deep-dive when the topic comes up.
+**`docs/PLAN.md`** is the architecture & data-model reference — *not a roadmap*. The
+milestone-driven plan that built ctxlayer (M1–M8) is retired; future work proceeds
+ad hoc, tracked in code + commits + this file, not in a larger plan. Topic deep-dives
+are under **`docs/plan/`** (A: auth, B: stdio bridge, C: upstream proxy, D: UI+REST,
+E: dev environment, F: org IA, G: conventions, I: upstream resilience). Skim
+PLAN.md for the lay of the land and pull in a deep-dive when the topic comes up —
+but trust the code first; these docs are reference, not kept in lockstep with every change.
 
 ## What runs where
 
@@ -56,7 +62,9 @@ The full plan lives at **`docs/PLAN.md`**. Topic deep-dives are under **`docs/pl
   they just `echo`. `bun --filter='*' run X` silently skips workspaces
   missing the script, so the stubs are the only thing keeping cross-cuts
   honest.
-- Don't write new docs/README files unless asked. Update `docs/PLAN.md`.
+- Don't write new docs/README files unless asked. `docs/PLAN.md` + `docs/plan/`
+  are a reference, not a maintained plan — touch them only when an architectural
+  fact they state goes stale, never as a per-change bookkeeping obligation.
 
 ## Security gotchas (from 2026-05-26 review)
 
@@ -157,55 +165,15 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 
 ## Where to start
 
-Status snapshot (full breakdown + verification checklist in `docs/PLAN.md`):
+ctxlayer is fully built and deployed to `ctxlayer.stevenn-a65.workers.dev`
+(GitHub sign-in; Google supported but off in the live deploy). Everything in
+PLAN.md is shipped: docs + RAG over Vectorize, the BlockNote/Yjs collab editor,
+the HTTP/SSE upstream proxy (incl. `user_oauth` DCR+PKCE, AES-GCM creds at rest,
+per-upstream timeouts + response-size guard), the admin pages (users / audit /
+oauth-clients / usage / upstreams), the usage pipeline, and the skills surface
+(`list_skills` / `get_skill`). For *what changed recently*, read `git log` and
+the session memory — there is no status section to keep current here.
 
-- **M1 + M2 + M3 closed (May 2026).** GitHub sign-in (Google supported
-  but off in the live deploy), per-doc ACL, BlockNote editor with
-  sharing / tags / admin teams+products, full RAG pipeline
-  (`rag/{markdown,chunker,embedder,index}.ts`, Workers AI
-  `@cf/baai/bge-base-en-v1.5`, Vectorize upsert with `chunk_count`
-  orphan cleanup), MCP server (`McpSessionDO` extends `McpAgent`)
-  registering `whoami` / `list_my_context` / `list_upstreams` /
-  `get_doc` / `search_docs`, OAuth provider mounted at `/oauth/*` +
-  `/.well-known/oauth-authorization-server` with SSR'd IdP chooser,
-  doc resources at `mcp://ctxlayer/docs/{id}`. Realtime collab via
-  `DocRoomDO` (`collab/doc-room-do.ts`) — Yjs over WS Hibernation at
-  `/collab/:docId`, per-update R2 snapshot held by `ctx.waitUntil`,
-  resync-on-wake closes the eviction window. SPA `CollabWSProvider`
-  (`apps/web/src/lib/yjs-ws-provider.ts`) wires BlockNote's collab
-  extension; awareness-leader election drives a single REST autosave
-  per ~5s debounce so concurrent tabs don't multiply revisions.
-  Shared `util/origin.ts` allowlist (localhost carve-out) lets Vite
-  HMR at `:5173` talk to wrangler at `:8787` in dev. Validated
-  end-to-end via Claude Web → real Vectorize + two-tab live edit
-  on workers.dev.
-- **M4 closed (May 2026)**: HTTP/SSE upstream proxy with the
-  `user_oauth` flow pulled forward from the original M5 plan.
-  `crypto/aead.ts` (AES-GCM at rest), `upstream/http-client.ts`
-  (MCP SDK Client per (session,upstream) with 60s wall cap),
-  `mcp/tools-proxy.ts` (namespacing + dispatch + per-session
-  registry), `mcp/json-schema-to-zod.ts` (faithful tools/list
-  re-emission), `upstream/oauth-provider.ts` (MCP SDK's
-  `OAuthClientProvider` impl — DCR + PKCE + sealed token
-  bundles), `api/admin-upstreams.ts` + `api/upstreams.ts` +
-  `api/upstream-oauth.ts`. One real gotcha worth remembering:
-  D1 returns BLOB columns in a shape SubtleCrypto rejects —
-  `db/queries/upstreams.getUserCredential` normalises to
-  `Uint8Array` at the trust boundary.
-- **M5 closed (May 2026)**: admin Users (`/app/admin/users` —
-  promote/demote + revoke creds + last-admin guard), admin
-  Audit-log viewer (`/app/admin/audit`), admin OAuth-clients
-  viewer (`/app/admin/oauth-clients` reads `OAUTH_KV` via
-  shared `oauth/provider-config.ts`), `shared_bearer` storage
-  (migration `0007`), real `/app/mcp-setup` per-client snippets.
-  Bundled side features: folder organisation for docs (path-on-doc,
-  no folders table), per-doc lock (`canLock` ACL + 423 response),
-  modal-dialog system replacing `window.confirm`, doc-move UI.
-- **M6 closed (May 2026)**: usage pipeline + dashboards. Per-tool
-  call counts, byte sizes, tiktoken-approximated tokens, daily
-  rollups via the `ctxlayer-usage` queue consumer, admin + user
-  usage pages with period-adaptive bar charts, nightly cron prunes
-  `usage_events` older than 30d.
 - **Stdio upstreams (bring-your-own-bridge)**: ctxlayer does not run or
   sandbox stdio MCP servers. The operator runs their own stdio↔HTTP bridge
   (e.g. `supergateway`) and registers its HTTP URL as a normal
@@ -250,8 +218,9 @@ and redeploy.
 
 For local dev to keep working with the prod base URL committed to
 `wrangler.toml`, put `PUBLIC_BASE_URL=https://localhost:8787` in
-`.dev.vars` to override `[vars]`. The full done-done checklist lives
-in `docs/PLAN.md` under the M2 verification entry.
+`.dev.vars` to override `[vars]`. The full production-install steps live
+in **[README.md → Deploying ctxlayer to
+production](../README.md#deploying-ctxlayer-to-production)**.
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
