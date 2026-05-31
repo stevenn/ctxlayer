@@ -37,6 +37,7 @@ export interface DocumentRow {
  * was deleted produces NULL on either join.
  */
 export interface DocumentWithUsersRow extends DocumentRow {
+  git_source_id: string | null
   created_by_email: string | null
   created_by_name: string | null
   updated_by_id: string | null
@@ -50,7 +51,7 @@ const SELECT_DOC_WITH_USERS = `
   SELECT d.id, d.title, d.slug, d.kind, d.folder, d.current_rev_id,
          d.r2_snapshot, d.created_by, d.created_at, d.updated_at,
          d.deleted_at, d.chunk_count,
-         d.locked_at, d.locked_by,
+         d.locked_at, d.locked_by, d.git_source_id,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
          ru.id    AS updated_by_id,

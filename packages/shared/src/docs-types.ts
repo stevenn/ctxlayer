@@ -64,6 +64,9 @@ export const DocSummary = z.object({
   kind: DocKind,
   // Folder path or null (= root). See FolderPath above for the format.
   folder: FolderPath.nullable(),
+  // The git source this doc is synced from, or null for authored docs.
+  // Drives the Home vs Code Docs split + the git badge in the library.
+  gitSourceId: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
   // The original author (documents.created_by joined to users).

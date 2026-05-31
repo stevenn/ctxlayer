@@ -26,7 +26,6 @@ import {
   createDoc,
   deleteFolder,
   fetchDocs,
-  fetchFolders,
   patchDoc,
   putDocContent,
   renameFolder
@@ -36,8 +35,20 @@ import { DocSearch } from '../components/search/doc-search'
 
 type Status =
   | { kind: 'loading' }
-  | { kind: 'ready'; docs: DocSummary[]; folders: FolderTreeNode[] }
+  | { kind: 'ready'; docs: DocSummary[] }
   | { kind: 'error'; message: string }
+
+// The library is split into two top-level groups: authored docs (Home)
+// and git-synced docs (Code Docs). Selection tracks which group + folder.
+type FolderGroup = 'home' | 'code'
+interface FolderSelection {
+  group: FolderGroup
+  path: string | null
+}
+
+const EMPTY_DOCS: DocSummary[] = []
+
+const isGitDoc = (d: DocSummary): boolean => d.gitSourceId != null
 
 export function DocsList() {
   const nav = useNavigate()
@@ -47,18 +58,16 @@ export function DocsList() {
   const [importOpen, setImportOpen] = useState(false)
   // Client-side filter over the list. Title / slug / creator / kind /
   // folder are all matched case-insensitively. RAG search lives behind
-  // MCP (`search_docs`) — this bar is for "find a doc I know exists".
+  // the hero box (semantic) — this bar is "find a doc I know exists".
   const [query, setQuery] = useState('')
-  // Selected folder filters the visible doc list. null = "All docs"
-  // (everything visible). The tree shows folder counts so users can
-  // see how many docs are under each folder before clicking in.
-  const [selectedFolder, setSelectedFolder] = useState<string | null>(null)
+  // Selected (group, folder). null path = the group's root.
+  const [selected, setSelected] = useState<FolderSelection>({ group: 'home', path: null })
 
   const reload = useCallback((signal?: AbortSignal) => {
     setStatus({ kind: 'loading' })
-    Promise.all([fetchDocs(signal), fetchFolders(signal)]).then(
-      ([docs, ft]) => {
-        if (!signal?.aborted) setStatus({ kind: 'ready', docs, folders: ft.folders })
+    fetchDocs(signal).then(
+      (docs) => {
+        if (!signal?.aborted) setStatus({ kind: 'ready', docs })
       },
       (err) => {
         if (signal?.aborted) return
@@ -72,6 +81,16 @@ export function DocsList() {
     reload(ctrl.signal)
     return () => ctrl.abort()
   }, [reload])
+
+  // Partition docs by origin and derive each group's folder tree
+  // client-side (the folders endpoint can't distinguish git from
+  // authored — and every folder is represented by at least one doc, so
+  // the docs list is a complete source).
+  const docs = status.kind === 'ready' ? status.docs : EMPTY_DOCS
+  const homeDocs = useMemo(() => docs.filter((d) => !isGitDoc(d)), [docs])
+  const codeDocs = useMemo(() => docs.filter(isGitDoc), [docs])
+  const homeFolders = useMemo(() => computeFolderNodes(homeDocs), [homeDocs])
+  const codeFolders = useMemo(() => computeFolderNodes(codeDocs), [codeDocs])
 
   async function onRenameFolder(oldPath: string) {
     const next = await dialogs.prompt({
@@ -87,8 +106,8 @@ export function DocsList() {
         title: 'Folder renamed',
         message: `Moved ${moved} doc${moved === 1 ? '' : 's'}.`
       })
-      if (selectedFolder?.startsWith(oldPath)) {
-        setSelectedFolder(next + selectedFolder.slice(oldPath.length))
+      if (selected.path?.startsWith(oldPath)) {
+        setSelected({ group: 'home', path: next + selected.path.slice(oldPath.length) })
       }
       reload()
     } catch (err) {
@@ -132,7 +151,7 @@ export function DocsList() {
     if (!ok) return
     try {
       await deleteFolder(path)
-      if (selectedFolder === path) setSelectedFolder(null)
+      if (selected.path === path) setSelected({ group: 'home', path: null })
       reload()
     } catch (err) {
       await dialogs.alert({ title: 'Delete failed', message: explain(err) })
@@ -197,17 +216,34 @@ export function DocsList() {
                 alignItems: 'start'
               }}
             >
-              <FolderTree
-                folders={status.folders}
-                selected={selectedFolder}
-                onSelect={setSelectedFolder}
-                rootDocCount={status.docs.filter((d) => !d.folder).length}
-                onRename={onRenameFolder}
-                onDelete={onDeleteFolder}
-              />
+              <Stack gap="sm">
+                <FolderTree
+                  group="home"
+                  rootLabel="Home"
+                  folders={homeFolders}
+                  rootDocCount={homeDocs.filter((d) => !d.folder).length}
+                  selected={selected}
+                  onSelect={setSelected}
+                  manageable
+                  onRename={onRenameFolder}
+                  onDelete={onDeleteFolder}
+                />
+                {codeDocs.length > 0 && (
+                  <FolderTree
+                    group="code"
+                    rootLabel="Code Docs"
+                    folders={codeFolders}
+                    rootDocCount={codeDocs.filter((d) => !d.folder).length}
+                    selected={selected}
+                    onSelect={setSelected}
+                    manageable={false}
+                  />
+                )}
+              </Stack>
               <DocsTable
                 docs={status.docs}
-                folder={selectedFolder}
+                group={selected.group}
+                folder={selected.path}
                 query={query}
                 onOpen={(id) => nav(`/app/docs/${id}`)}
                 onMove={onMoveDoc}
@@ -220,7 +256,7 @@ export function DocsList() {
       <BlankDocModal
         opened={createOpen}
         onClose={() => setCreateOpen(false)}
-        defaultFolder={selectedFolder}
+        defaultFolder={selected.group === 'home' ? selected.path : null}
       />
       <ImportDocModal opened={importOpen} onClose={() => setImportOpen(false)} />
     </>
@@ -250,9 +286,36 @@ interface TreeNode {
  * bucket. `descendantDocCount` is still tracked so the delete gate can
  * refuse to drop a folder that has docs below it.
  */
-function buildTree(folders: FolderTreeNode[], rootDocCount: number): TreeNode {
+/**
+ * Derive folder-tree nodes from a set of docs (one group). Every folder
+ * is represented by ≥1 doc (no empty folders exist in the storage model),
+ * so the docs list is a complete source — including ancestors, with the
+ * descendant counts the delete-gate needs.
+ */
+function computeFolderNodes(docs: DocSummary[]): FolderTreeNode[] {
+  const paths = new Set<string>()
+  for (const d of docs) {
+    if (!d.folder) continue
+    const segs = d.folder.slice(1).split('/')
+    for (let i = 1; i <= segs.length; i++) paths.add('/' + segs.slice(0, i).join('/'))
+  }
+  const nodes: FolderTreeNode[] = []
+  for (const path of paths) {
+    let docCount = 0
+    let descendantDocCount = 0
+    for (const d of docs) {
+      if (!d.folder) continue
+      if (d.folder === path) docCount++
+      if (d.folder === path || d.folder.startsWith(`${path}/`)) descendantDocCount++
+    }
+    nodes.push({ path, docCount, descendantDocCount })
+  }
+  return nodes
+}
+
+function buildTree(folders: FolderTreeNode[], rootDocCount: number, rootLabel: string): TreeNode {
   const root: TreeNode = {
-    label: 'Root',
+    label: rootLabel,
     path: null,
     docCount: rootDocCount,
     descendantDocCount: rootDocCount,
@@ -292,21 +355,30 @@ function buildTree(folders: FolderTreeNode[], rootDocCount: number): TreeNode {
 }
 
 function FolderTree({
+  group,
+  rootLabel,
   folders,
   selected,
   onSelect,
   rootDocCount,
+  manageable,
   onRename,
   onDelete
 }: {
+  group: FolderGroup
+  rootLabel: string
   folders: FolderTreeNode[]
-  selected: string | null
-  onSelect: (path: string | null) => void
+  selected: FolderSelection
+  onSelect: (sel: FolderSelection) => void
   rootDocCount: number
-  onRename: (path: string) => void
-  onDelete: (path: string, descendantDocCount: number) => void
+  manageable: boolean
+  onRename?: (path: string) => void
+  onDelete?: (path: string, descendantDocCount: number) => void
 }) {
-  const tree = useMemo(() => buildTree(folders, rootDocCount), [folders, rootDocCount])
+  const tree = useMemo(
+    () => buildTree(folders, rootDocCount, rootLabel),
+    [folders, rootDocCount, rootLabel]
+  )
 
   return (
     <aside
@@ -317,23 +389,13 @@ function FolderTree({
         background: 'var(--bg-surface)'
       }}
     >
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          padding: '4px 8px 8px'
-        }}
-      >
-        Folders
-      </div>
       <FolderNodeRow
         node={tree}
         depth={0}
+        group={group}
         selected={selected}
         onSelect={onSelect}
+        manageable={manageable}
         onRename={onRename}
         onDelete={onDelete}
       />
@@ -344,19 +406,23 @@ function FolderTree({
 function FolderNodeRow({
   node,
   depth,
+  group,
   selected,
   onSelect,
+  manageable,
   onRename,
   onDelete
 }: {
   node: TreeNode
   depth: number
-  selected: string | null
-  onSelect: (path: string | null) => void
-  onRename: (path: string) => void
-  onDelete: (path: string, descendantDocCount: number) => void
+  group: FolderGroup
+  selected: FolderSelection
+  onSelect: (sel: FolderSelection) => void
+  manageable: boolean
+  onRename?: (path: string) => void
+  onDelete?: (path: string, descendantDocCount: number) => void
 }) {
-  const isActive = node.path === selected || (node.path === null && selected === null)
+  const isActive = selected.group === group && (node.path ?? null) === (selected.path ?? null)
   const isRoot = node.path === null
 
   return (
@@ -371,15 +437,15 @@ function FolderNodeRow({
           cursor: 'pointer',
           background: isActive ? 'var(--bg-hover)' : undefined
         }}
-        onClick={() => onSelect(node.path)}
+        onClick={() => onSelect({ group, path: node.path })}
       >
-        <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive ? 600 : 400 }}>
+        <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive || isRoot ? 600 : 400 }}>
           {node.label}
           <Text component="span" fz="xs" c="dimmed" ml={6}>
             {node.docCount}
           </Text>
         </Text>
-        {!isRoot && node.path && (
+        {manageable && !isRoot && node.path && (
           <Menu shadow="md" position="bottom-end" withinPortal>
             <Menu.Target>
               <Button
@@ -392,12 +458,10 @@ function FolderNodeRow({
               </Button>
             </Menu.Target>
             <Menu.Dropdown>
-              <Menu.Item onClick={() => node.path && onRename(node.path)}>
-                Rename…
-              </Menu.Item>
+              <Menu.Item onClick={() => node.path && onRename?.(node.path)}>Rename…</Menu.Item>
               <Menu.Item
                 color="red"
-                onClick={() => node.path && onDelete(node.path, node.descendantDocCount)}
+                onClick={() => node.path && onDelete?.(node.path, node.descendantDocCount)}
               >
                 Delete…
               </Menu.Item>
@@ -410,8 +474,10 @@ function FolderNodeRow({
           key={child.path ?? '/'}
           node={child}
           depth={depth + 1}
+          group={group}
           selected={selected}
           onSelect={onSelect}
+          manageable={manageable}
           onRename={onRename}
           onDelete={onDelete}
         />
@@ -424,34 +490,36 @@ function FolderNodeRow({
 
 function DocsTable({
   docs,
+  group,
   folder,
   query,
   onOpen,
   onMove
 }: {
   docs: DocSummary[]
+  group: FolderGroup
   folder: string | null
   query: string
   onOpen: (id: string) => void
   onMove: (doc: DocSummary) => void
 }) {
-  // A non-empty query is a global "find a doc anywhere" — it bypasses
-  // the folder filter so the user doesn't have to remember which folder
-  // a doc lives in. An empty query falls back to strict folder browse:
-  // only docs directly in the selected folder (null = Root).
+  // A non-empty query is a global "find a doc anywhere" — it searches the
+  // whole library (both groups) and bypasses the folder filter. An empty
+  // query is strict browse: docs of the selected group directly in the
+  // selected folder (null path = that group's root).
   const scoped = useMemo(() => {
     if (query.trim()) return docs
-    return docs.filter((d) => (d.folder ?? null) === folder)
-  }, [docs, folder, query])
+    return docs.filter(
+      (d) => isGitDoc(d) === (group === 'code') && (d.folder ?? null) === folder
+    )
+  }, [docs, folder, query, group])
   const filtered = useMemo(() => filterDocs(scoped, query), [scoped, query])
 
+  const where = folder ?? (group === 'code' ? 'Code Docs' : 'Home')
   if (filtered.length === 0) {
-    const where = folder ?? 'Root'
     return (
       <Text c="dimmed">
-        {query
-          ? `No docs match "${query}" across the library.`
-          : `No docs in ${where} yet.`}
+        {query ? `No docs match "${query}" across the library.` : `No docs in ${where} yet.`}
       </Text>
     )
   }
@@ -459,8 +527,8 @@ function DocsTable({
     <Stack gap={6}>
       <Text c="dimmed" fz="xs">
         {query
-          ? `Showing ${filtered.length} of ${docs.length} matching "${query}" (all folders)`
-          : `Showing ${filtered.length} in ${folder ?? 'Root'}`}
+          ? `Showing ${filtered.length} of ${docs.length} matching "${query}" (whole library)`
+          : `Showing ${filtered.length} in ${where}`}
       </Text>
       <table className="data-table">
         <thead>
@@ -479,6 +547,18 @@ function DocsTable({
               <td>
                 <Group gap={6} wrap="nowrap">
                   <span style={{ fontWeight: 500 }}>{d.title}</span>
+                  {isGitDoc(d) && (
+                    <Tooltip label="Synced from a git repo">
+                      <Badge
+                        color="grape"
+                        variant="light"
+                        size="xs"
+                        leftSection={<span aria-hidden>⎇</span>}
+                      >
+                        git
+                      </Badge>
+                    </Tooltip>
+                  )}
                   {d.lockedAt !== null && (
                     <Tooltip
                       label={`Locked${d.lockedBy ? ` by ${personLabel(d.lockedBy)}` : ''}`}
@@ -502,16 +582,20 @@ function DocsTable({
                 {formatRelative(d.updatedAt)}
               </td>
               <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                <Menu shadow="md" position="bottom-end" withinPortal>
-                  <Menu.Target>
-                    <Button size="compact-xs" variant="subtle" px={6}>
-                      ⋯
-                    </Button>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <Menu.Item onClick={() => onMove(d)}>Move to folder…</Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
+                {/* Git docs are foldered by their repo path (sync-owned),
+                    so "Move to folder" only applies to authored docs. */}
+                {!isGitDoc(d) && (
+                  <Menu shadow="md" position="bottom-end" withinPortal>
+                    <Menu.Target>
+                      <Button size="compact-xs" variant="subtle" px={6}>
+                        ⋯
+                      </Button>
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <Menu.Item onClick={() => onMove(d)}>Move to folder…</Menu.Item>
+                    </Menu.Dropdown>
+                  </Menu>
+                )}
               </td>
             </tr>
           ))}
