@@ -190,8 +190,20 @@ export class GitHubProvider implements GitProviderClient {
       }
     }
     if (!res.ok && !(opts?.allow ?? []).includes(res.status)) {
-      // Status + path only — never the body.
-      console.error(`github: ${method} ${path} -> ${res.status}`)
+      // Server-side diagnostic only — never returned to the client/agent.
+      // GitHub's `message` + the permission / SSO hint headers carry no
+      // secrets (the token is never echoed) and pinpoint 403 causes:
+      // IP allow list, SAML SSO, or a missing permission.
+      const message =
+        typeof (json as { message?: unknown } | null)?.message === 'string'
+          ? (json as { message: string }).message
+          : ''
+      console.error(
+        `github: ${method} ${url} -> ${res.status}` +
+          (message ? ` :: ${message}` : '') +
+          ` [need: ${res.headers.get('x-accepted-github-permissions') ?? '-'}` +
+          ` | sso: ${res.headers.get('x-github-sso') ?? '-'}]`
+      )
       throw new Error(`github_api_error:${res.status}`)
     }
     return { status: res.status, json }
