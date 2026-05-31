@@ -1,5 +1,6 @@
 import { Navigate, Route } from 'react-router-dom'
 import { SignIn } from './routes/sign-in'
+import { SearchHome } from './routes/search-home'
 import { DocsList } from './routes/docs-list'
 import { DocsEditor } from './routes/docs-editor'
 import { Upstreams } from './routes/upstreams'
@@ -30,7 +31,8 @@ export function appRoutes() {
     <>
       <Route path="/sign-in" element={<SignIn />} />
       <Route path="/app" element={<Shell />}>
-        <Route index element={<Navigate to="/app/docs" replace />} />
+        <Route index element={<Navigate to="/app/search" replace />} />
+        <Route path="search" element={<SearchHome />} />
         <Route path="docs" element={<DocsList />} />
         <Route path="docs/:id" element={<DocsEditor />} />
         <Route path="upstreams" element={<Upstreams />} />
@@ -47,7 +49,7 @@ export function appRoutes() {
         <Route path="admin/skills" element={<AdminSkills />} />
         <Route path="admin/skills/:id/edit" element={<AdminSkillEditor />} />
       </Route>
-      <Route path="*" element={<Navigate to="/app/docs" replace />} />
+      <Route path="*" element={<Navigate to="/app/search" replace />} />
     </>
   )
 }

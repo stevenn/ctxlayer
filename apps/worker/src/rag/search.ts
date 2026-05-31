@@ -24,10 +24,11 @@ import type {
   SearchScope
 } from '@ctxlayer/shared'
 import { headingAnchor } from '@ctxlayer/shared'
+import type { SuggestedFilter } from '@ctxlayer/shared'
 import { embed } from './embedder'
 import { understandQuery, type AvailableScope } from './query-understanding'
 import { resolveUserScope } from '../db/queries/doc-tags'
-import { getDocById } from '../db/queries/docs'
+import { getDocById, gitDocIdsAmong } from '../db/queries/docs'
 import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
 
@@ -38,6 +39,10 @@ export const SEARCH_K_MAX = 50
 const SEARCH_OVERSHOOT = 3
 const VECTORIZE_TOPK_MAX = 100
 const SNIPPET_MAX = 600
+// Minimum cosine score to count as a real hit — drops weak matches so a
+// vague query doesn't surface barely-related chunks. Tunable against the
+// live index (bge-base cosine: relevant ≳ 0.6, weak ≈ 0.45-0.55).
+const SCORE_FLOOR = 0.5
 
 /** A single matching chunk, scope-filtered and ready to return. */
 export interface SearchHit {
@@ -135,19 +140,32 @@ export async function searchChunks(
     throw err
   }
 
-  // Merge across queries by chunk id, keeping the best score.
+  // Merge across queries by chunk id, keeping the best score (scope is
+  // applied below, not here, so we can let git docs bypass it).
   const best = new Map<string, { metadata: ChunkMetadata; score: number }>()
   for (const result of results) {
     for (const m of result.matches ?? []) {
       const metadata = m.metadata as unknown as ChunkMetadata
-      if (!passesScope(metadata, opts.effective)) continue
       const id = `${metadata.docId}:${metadata.chunkIdx}`
       const prev = best.get(id)
       if (!prev || m.score > prev.score) best.set(id, { metadata, score: m.score })
     }
   }
 
-  return [...best.values()]
+  const candidates = [...best.values()]
+  // Git-synced docs are always searchable regardless of their team/
+  // product tag (the tag organizes, it doesn't gate search). Resolve
+  // which candidate docs are git in one query, then keep a chunk if it's
+  // git OR passes the caller's scope.
+  const gitDocIds = await gitDocIdsAmong(env, [
+    ...new Set(candidates.map((c) => c.metadata.docId))
+  ])
+
+  return candidates
+    .filter(
+      (c) => gitDocIds.has(c.metadata.docId) || passesScope(c.metadata, opts.effective)
+    )
+    .filter((c) => c.score >= SCORE_FLOOR)
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.k)
     .map(({ metadata, score }) => ({
@@ -167,13 +185,12 @@ export interface RunSearchInput {
 }
 
 /**
- * REST orchestrator: understand the query (LLM, best-effort) → resolve
- * scope → retrieve over the rewritten query + expansions → group by doc
- * → wrap in the interpretation envelope.
- *
- * Scope precedence: an explicit request scope always wins; otherwise the
- * LLM-extracted team/product filters apply (still intersected with the
- * caller's reachable set by `effectiveScope`, so they can't escalate).
+ * REST orchestrator. Predictable baseline: embed the caller's query
+ * verbatim and search their full reachable scope (an explicit request
+ * scope still narrows it — that's how a clicked filter chip works). The
+ * LLM runs in PARALLEL purely to surface optional `suggestedFilters`;
+ * it never rewrites the query or auto-narrows results, so it can't
+ * silently distort relevance (and adds no latency to retrieval).
  */
 export async function runSearch(
   env: Env,
@@ -181,33 +198,43 @@ export async function runSearch(
   input: RunSearchInput
 ): Promise<SearchResponse> {
   const userScope = await resolveUserScope(env, userId)
-  // Only fetch team/product names (for the LLM to map filters) when the
-  // caller actually has scope to filter within.
+  const effective = effectiveScope(input.scope, userScope)
   const available: AvailableScope =
     userScope.teams.length > 0 || userScope.products.length > 0
       ? await availableScope(env, userScope)
       : { teams: [], products: [] }
 
-  const u = await understandQuery(env, input.query, available)
-
-  let scopeArg: SearchScope | undefined = input.scope
-  if (!scopeArg && (u.filters.teams.length > 0 || u.filters.products.length > 0)) {
-    scopeArg = { teams: u.filters.teams, products: u.filters.products }
-  }
-  const effective = effectiveScope(scopeArg, userScope)
-
-  const queries = [u.rewrittenQuery, ...u.expansions]
   const k = input.k ?? SEARCH_K_DEFAULT
-  const hits = await searchChunks(env, queries, { k, effective })
+  const [hits, u] = await Promise.all([
+    searchChunks(env, [input.query], { k, effective }),
+    understandQuery(env, input.query, available)
+  ])
   const results = await groupByDoc(env, hits)
 
   const interpretation: SearchInterpretation = {
-    rewrittenQuery: u.rewrittenQuery,
-    expansions: u.expansions,
-    filters: u.filters,
+    rewrittenQuery: input.query,
+    expansions: [],
+    suggestedFilters: buildSuggestedFilters(u.filters, available),
     llmUsed: u.llmUsed
   }
   return { results, interpretation }
+}
+
+/** Resolve the LLM's filter id guesses to {kind,id,name} chips (advisory). */
+function buildSuggestedFilters(
+  filters: { teams: string[]; products: string[] },
+  available: AvailableScope
+): SuggestedFilter[] {
+  const out: SuggestedFilter[] = []
+  for (const id of filters.teams) {
+    const t = available.teams.find((x) => x.id === id)
+    if (t) out.push({ kind: 'team', id, name: t.name })
+  }
+  for (const id of filters.products) {
+    const p = available.products.find((x) => x.id === id)
+    if (p) out.push({ kind: 'product', id, name: p.name })
+  }
+  return out
 }
 
 /** The caller's reachable teams/products, with display names for the LLM. */

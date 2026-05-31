@@ -33,6 +33,11 @@ function makeEnv(matches: Array<{ score: number; metadata: ChunkMetadata }>): En
     },
     DOCS_INDEX: {
       query: async () => ({ matches })
+    },
+    // gitDocIdsAmong runs against DB; stub returns no git docs so the
+    // scope filter alone governs these cases.
+    DB: {
+      prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) })
     }
   } as unknown as Env
 }

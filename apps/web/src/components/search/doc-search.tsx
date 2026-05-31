@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core'
-import type { SearchDocGroup, SearchResponse } from '@ctxlayer/shared'
+import type { SearchDocGroup, SearchResponse, SuggestedFilter } from '@ctxlayer/shared'
 import { ApiError, ApiSchemaError, searchDocs } from '../../lib/api'
 
 type SearchState =
@@ -11,19 +11,19 @@ type SearchState =
   | { kind: 'error'; query: string; message: string }
 
 /**
- * Hero RAG search for the docs homepage. Owns its own state and renders
- * either the semantic results (when a search has been run) or the
- * `children` browse view (when idle). Submit-driven — the LLM query-
- * understanding step makes per-keystroke searches too costly — so we
- * only fire on Enter / the Search button.
+ * Standalone semantic search for the search home. Submit-driven (Enter /
+ * the button). The query is embedded verbatim and searched across the
+ * caller's full scope; the server's LLM only surfaces optional filter
+ * suggestions, shown here as clickable chips that re-scope the search.
  */
-export function DocSearch({ children }: { children: ReactNode }) {
+export function SearchPanel() {
   const nav = useNavigate()
   const [input, setInput] = useState('')
+  const [activeFilter, setActiveFilter] = useState<SuggestedFilter | null>(null)
   const [state, setState] = useState<SearchState>({ kind: 'idle' })
   const ctrlRef = useRef<AbortController | null>(null)
 
-  const run = useCallback(async (raw: string) => {
+  const run = useCallback(async (raw: string, filter: SuggestedFilter | null) => {
     const query = raw.trim()
     ctrlRef.current?.abort()
     if (!query) {
@@ -33,8 +33,13 @@ export function DocSearch({ children }: { children: ReactNode }) {
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
     setState({ kind: 'searching', query })
+    const scope = filter
+      ? filter.kind === 'team'
+        ? { teams: [filter.id] }
+        : { products: [filter.id] }
+      : undefined
     try {
-      const resp = await searchDocs({ query }, ctrl.signal)
+      const resp = await searchDocs({ query, scope }, ctrl.signal)
       if (!ctrl.signal.aborted) setState({ kind: 'done', query, resp })
     } catch (err) {
       if (ctrl.signal.aborted) return
@@ -42,23 +47,30 @@ export function DocSearch({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const clear = useCallback(() => {
+  const applyFilter = (f: SuggestedFilter) => {
+    setActiveFilter(f)
+    void run(input, f)
+  }
+  const clearFilter = () => {
+    setActiveFilter(null)
+    void run(input, null)
+  }
+  const clearAll = () => {
     ctrlRef.current?.abort()
     setInput('')
+    setActiveFilter(null)
     setState({ kind: 'idle' })
-  }, [])
-
-  function openSection(docId: string, anchor?: string) {
-    const q = anchor ? `?section=${encodeURIComponent(anchor)}` : ''
-    nav(`/app/docs/${docId}${q}`)
   }
+
+  const openSection = (docId: string, anchor?: string) =>
+    nav(`/app/docs/${docId}${anchor ? `?section=${encodeURIComponent(anchor)}` : ''}`)
 
   return (
     <Stack gap="md">
       <form
         onSubmit={(e) => {
           e.preventDefault()
-          void run(input)
+          void run(input, activeFilter)
         }}
       >
         <TextInput
@@ -72,7 +84,7 @@ export function DocSearch({ children }: { children: ReactNode }) {
             state.kind === 'searching' ? (
               <Loader size="xs" />
             ) : state.kind !== 'idle' ? (
-              <Button variant="subtle" size="compact-xs" onClick={clear}>
+              <Button variant="subtle" size="compact-xs" onClick={clearAll}>
                 Clear
               </Button>
             ) : null
@@ -82,9 +94,18 @@ export function DocSearch({ children }: { children: ReactNode }) {
       </form>
 
       {state.kind === 'idle' ? (
-        children
+        <Text c="dimmed" fz="sm" ta="center" mt="lg">
+          Search across every doc in your org — authored and git-synced.
+        </Text>
       ) : (
-        <SearchResults state={state} onOpen={openSection} onClear={clear} />
+        <SearchResults
+          state={state}
+          activeFilter={activeFilter}
+          onApplyFilter={applyFilter}
+          onClearFilter={clearFilter}
+          onClearAll={clearAll}
+          onOpen={openSection}
+        />
       )}
     </Stack>
   )
@@ -92,12 +113,18 @@ export function DocSearch({ children }: { children: ReactNode }) {
 
 function SearchResults({
   state,
-  onOpen,
-  onClear
+  activeFilter,
+  onApplyFilter,
+  onClearFilter,
+  onClearAll,
+  onOpen
 }: {
   state: Exclude<SearchState, { kind: 'idle' }>
+  activeFilter: SuggestedFilter | null
+  onApplyFilter: (f: SuggestedFilter) => void
+  onClearFilter: () => void
+  onClearAll: () => void
   onOpen: (docId: string, anchor?: string) => void
-  onClear: () => void
 }) {
   if (state.kind === 'searching') {
     return (
@@ -113,8 +140,8 @@ function SearchResults({
         <Alert color="red" variant="light" radius="sm">
           {state.message}
         </Alert>
-        <Button variant="default" onClick={onClear} w={160}>
-          ← Back to browse
+        <Button variant="default" onClick={onClearAll} w={120}>
+          Clear
         </Button>
       </Stack>
     )
@@ -124,10 +151,16 @@ function SearchResults({
   const terms = significantWords(resp.interpretation.rewrittenQuery)
   return (
     <Stack gap="sm">
-      <Interpretation resp={resp} />
+      <FilterBar
+        resp={resp}
+        activeFilter={activeFilter}
+        onApply={onApplyFilter}
+        onClear={onClearFilter}
+      />
       {resp.results.length === 0 ? (
         <Text c="dimmed">
-          No matches for “{state.query}”. Try different wording, or clear the search to browse.
+          No matches for “{state.query}”
+          {activeFilter ? ` with the ${activeFilter.name} filter` : ''}. Try different wording.
         </Text>
       ) : (
         resp.results.map((g) => (
@@ -138,21 +171,51 @@ function SearchResults({
   )
 }
 
-function Interpretation({ resp }: { resp: SearchResponse }) {
-  const { interpretation: i } = resp
-  if (!i.llmUsed) return null
-  const chips: string[] = []
-  if (i.filters?.teams?.length) chips.push(`teams: ${i.filters.teams.length}`)
-  if (i.filters?.products?.length) chips.push(`products: ${i.filters.products.length}`)
-  for (const t of i.filters?.topics ?? []) chips.push(t)
+/** Active filter (removable) + the LLM's clickable filter suggestions. */
+function FilterBar({
+  resp,
+  activeFilter,
+  onApply,
+  onClear
+}: {
+  resp: SearchResponse
+  activeFilter: SuggestedFilter | null
+  onApply: (f: SuggestedFilter) => void
+  onClear: () => void
+}) {
+  const suggestions = (resp.interpretation.suggestedFilters ?? []).filter(
+    (s) => !(activeFilter && activeFilter.kind === s.kind && activeFilter.id === s.id)
+  )
+  if (!activeFilter && suggestions.length === 0) return null
   return (
     <Group gap={6} align="center">
-      <Text fz="xs" c="dimmed">
-        Interpreted as “{i.rewrittenQuery}”
-      </Text>
-      {chips.map((c) => (
-        <Badge key={c} size="xs" variant="light" color="blue">
-          {c}
+      {activeFilter && (
+        <Button
+          size="compact-xs"
+          variant="light"
+          color="blue"
+          rightSection={<span aria-hidden>✕</span>}
+          onClick={onClear}
+          title="Remove filter"
+        >
+          {activeFilter.kind}: {activeFilter.name}
+        </Button>
+      )}
+      {suggestions.length > 0 && (
+        <Text fz="xs" c="dimmed">
+          Filter by:
+        </Text>
+      )}
+      {suggestions.map((s) => (
+        <Badge
+          key={`${s.kind}:${s.id}`}
+          variant="light"
+          color="grape"
+          style={{ cursor: 'pointer' }}
+          onClick={() => onApply(s)}
+          title={`Narrow to ${s.kind} ${s.name}`}
+        >
+          + {s.name}
         </Badge>
       ))}
     </Group>
@@ -249,7 +312,7 @@ const STOPWORDS = new Set([
   'was', 'has', 'have', 'about', 'why', 'who'
 ])
 
-/** Significant words from the (rewritten) query, used to highlight snippets. */
+/** Significant words from the query, used to highlight snippet matches. */
 function significantWords(query: string): string[] {
   const words = query.toLowerCase().match(/[a-z0-9]+/g) ?? []
   return [...new Set(words.filter((w) => w.length >= 3 && !STOPWORDS.has(w)))]
@@ -267,14 +330,10 @@ function escapeRegExp(s: string): string {
 function Highlighted({ text, terms }: { text: string; terms: string[] }) {
   if (terms.length === 0) return <>{text}</>
   const re = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi')
-  // split with a single capture group interleaves [text, match, text, …];
-  // the matches land at odd indices.
   const parts = text.split(re)
   return (
     <>
-      {parts.map((p, i) =>
-        i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>
-      )}
+      {parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
     </>
   )
 }

@@ -19,6 +19,7 @@ interface NavSpec {
 }
 
 const PRIMARY_NAV: NavSpec[] = [
+  { to: '/app/search', label: 'Search', matches: (p) => p === '/app' || p.startsWith('/app/search') },
   { to: '/app/docs', label: 'Docs', matches: (p) => p.startsWith('/app/docs') },
   { to: '/app/upstreams', label: 'Upstreams' },
   { to: '/app/mcp-setup', label: 'MCP setup' },
@@ -38,6 +39,7 @@ const ADMIN_NAV: NavSpec[] = [
 ]
 
 const TITLES: Record<string, string> = {
+  '/app/search': 'Search',
   '/app/docs': 'Docs library',
   '/app/upstreams': 'Upstreams',
   '/app/mcp-setup': 'MCP setup',
@@ -121,7 +123,7 @@ export function Shell() {
   return (
     <div className="shell">
       <aside className="sidebar">
-        <Link to="/app/docs" className="sidebar-brand">
+        <Link to="/app/search" className="sidebar-brand">
           ctxlayer
         </Link>
 

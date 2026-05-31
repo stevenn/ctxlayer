@@ -31,7 +31,6 @@ import {
   renameFolder
 } from '../lib/api'
 import { useDialogs } from '../lib/dialogs'
-import { DocSearch } from '../components/search/doc-search'
 
 type Status =
   | { kind: 'loading' }
@@ -175,11 +174,7 @@ export function DocsList() {
         </Menu>
       </Group>
 
-      {/* Semantic search is the hero. When idle it renders the browse
-          view (folder tree + table) passed as children; running a search
-          replaces it with ranked, deep-linked results. */}
-      <DocSearch>
-        {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
+      {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
         {status.kind === 'error' && (
           <Stack gap="xs">
@@ -251,7 +246,6 @@ export function DocsList() {
             </div>
           </Stack>
         )}
-      </DocSearch>
 
       <BlankDocModal
         opened={createOpen}

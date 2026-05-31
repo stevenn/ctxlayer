@@ -1002,7 +1002,10 @@ function FolderField({
 
   const label = current ? <code>{current}</code> : <span>Root</span>
 
-  if (!doc.canEdit) return <div>{label}</div>
+  // Read-only when the doc can't be edited, or when it's git-synced —
+  // git docs are foldered by their repo path (sync-owned), so the folder
+  // isn't user-editable here.
+  if (!doc.canEdit || doc.gitSourceId) return <div>{label}</div>
 
   return (
     <div

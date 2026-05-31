@@ -127,6 +127,23 @@ export async function updateChunkCount(env: Env, docId: string, count: number): 
     .run()
 }
 
+/**
+ * Of the supplied doc ids, which are git-synced. Lets the search layer
+ * keep git docs visible regardless of their team/product tag (search is
+ * otherwise scope-filtered) without a chunk-metadata reindex. Empty
+ * input → empty set (no query).
+ */
+export async function gitDocIdsAmong(env: Env, docIds: string[]): Promise<Set<string>> {
+  if (docIds.length === 0) return new Set()
+  const placeholders = docIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT id FROM documents WHERE git_source_id IS NOT NULL AND id IN (${placeholders})`
+  )
+    .bind(...docIds)
+    .all<{ id: string }>()
+  return new Set((res.results ?? []).map((r) => r.id))
+}
+
 export interface CreateDocInput {
   title: string
   slug?: string

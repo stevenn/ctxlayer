@@ -36,19 +36,24 @@ export const SearchDocGroup = z.object({
 })
 export type SearchDocGroup = z.infer<typeof SearchDocGroup>
 
-// Echoes what the LLM understood so the UI can show "interpreted
-// as / filtered by". `llmUsed=false` when the query-understanding
-// step was skipped or fell back to the raw query.
+// A team/product the LLM thinks the query is about. Advisory only —
+// shown as a clickable chip that re-scopes the search; never applied
+// automatically.
+export const SuggestedFilter = z.object({
+  kind: z.enum(['team', 'product']),
+  id: z.string(),
+  name: z.string()
+})
+export type SuggestedFilter = z.infer<typeof SuggestedFilter>
+
+// What the query-understanding step produced. The query is embedded
+// verbatim (no auto-rewrite/expansion applied to retrieval); the LLM's
+// only effect on results is the optional `suggestedFilters` the user
+// can click. `llmUsed=false` when the LLM was skipped or fell back.
 export const SearchInterpretation = z.object({
   rewrittenQuery: z.string(),
   expansions: z.array(z.string()).optional(),
-  filters: z
-    .object({
-      teams: z.array(z.string()).optional(),
-      products: z.array(z.string()).optional(),
-      topics: z.array(z.string()).optional()
-    })
-    .optional(),
+  suggestedFilters: z.array(SuggestedFilter).optional(),
   llmUsed: z.boolean()
 })
 export type SearchInterpretation = z.infer<typeof SearchInterpretation>
