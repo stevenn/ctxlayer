@@ -18,7 +18,6 @@ import {
 import type {
   AdminGitSourceRow,
   GitCredStrategy,
-  GitProvider,
   GitSyncInterval,
   ProductRef,
   TeamRef,
@@ -39,12 +38,7 @@ import {
   fetchProducts,
   fetchTeams
 } from '../../lib/api'
-
-const PROVIDER_OPTIONS: { value: GitProvider; label: string; enabled: boolean }[] = [
-  { value: 'github', label: 'GitHub', enabled: true },
-  { value: 'gitlab', label: 'GitLab (soon)', enabled: false },
-  { value: 'azure', label: 'Azure DevOps (soon)', enabled: false }
-]
+import { parseGitUrl, type ParsedGitUrl } from '../../lib/git-url'
 
 const STRATEGY_OPTIONS: { value: GitCredStrategy; label: string }[] = [
   { value: 'shared_bearer', label: 'Shared org token (PAT)' },
@@ -210,60 +204,73 @@ function CreateGitSourceModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [slug, setSlug] = useState('')
-  const [displayName, setDisplayName] = useState('')
-  const [provider, setProvider] = useState<GitProvider>('github')
-  const [owner, setOwner] = useState('')
-  const [repo, setRepo] = useState('')
+  // The repo URL drives everything — provider, host, owner, repo, and
+  // (for /tree/ links) branch + folder are derived from it. Only the
+  // non-derivable bits stay as fields; strategies + cadence default and
+  // are editable in the drawer afterwards.
+  const [url, setUrl] = useState('')
+  const [parsed, setParsed] = useState<ParsedGitUrl | null>(null)
   const [branch, setBranch] = useState('main')
-  const [baseUrl, setBaseUrl] = useState('')
-  const [pathPrefix, setPathPrefix] = useState('')
-  const [folderRoot, setFolderRoot] = useState('')
+  const [folder, setFolder] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [slug, setSlug] = useState('')
   const [productId, setProductId] = useState<string | null>(null)
-  const [readStrategy, setReadStrategy] = useState<GitCredStrategy>('shared_bearer')
-  const [writeStrategy, setWriteStrategy] = useState<GitCredStrategy>('user_bearer')
-  const [syncInterval, setSyncInterval] = useState<GitSyncInterval>('daily')
+  // Once the user edits an auto-filled field, stop overwriting it.
+  const [nameTouched, setNameTouched] = useState(false)
+  const [slugTouched, setSlugTouched] = useState(false)
+  const [branchTouched, setBranchTouched] = useState(false)
+  const [folderTouched, setFolderTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!opened) {
-      setSlug('')
-      setDisplayName('')
-      setProvider('github')
-      setOwner('')
-      setRepo('')
+      setUrl('')
+      setParsed(null)
       setBranch('main')
-      setBaseUrl('')
-      setPathPrefix('')
-      setFolderRoot('')
+      setFolder('')
+      setDisplayName('')
+      setSlug('')
       setProductId(null)
-      setReadStrategy('shared_bearer')
-      setWriteStrategy('user_bearer')
-      setSyncInterval('daily')
+      setNameTouched(false)
+      setSlugTouched(false)
+      setBranchTouched(false)
+      setFolderTouched(false)
       setError(null)
     }
   }, [opened])
 
+  function onUrlChange(value: string) {
+    setUrl(value)
+    const p = parseGitUrl(value)
+    setParsed(p)
+    if (!p) return
+    if (!nameTouched) setDisplayName(p.owner ? `${p.owner}/${p.repo}` : p.repo)
+    if (!slugTouched) setSlug(p.slugSuggestion)
+    if (!branchTouched) setBranch(p.branch ?? 'main')
+    if (!folderTouched) setFolder(p.pathPrefix)
+  }
+
+  const unsupported = parsed !== null && parsed.provider !== 'github'
+  const canSubmit =
+    !!parsed && !unsupported && !!slug.trim() && !!displayName.trim() && !!branch.trim()
+
   async function submit() {
-    if (!slug.trim() || !displayName.trim() || !repo.trim() || !branch.trim()) return
+    if (!parsed || !canSubmit) return
     setBusy(true)
     setError(null)
     try {
       const created = await adminCreateGitSource({
         slug: slug.trim(),
         displayName: displayName.trim(),
-        provider,
-        owner: owner.trim() || undefined,
-        repo: repo.trim(),
+        provider: parsed.provider,
+        baseUrl: parsed.baseUrl ?? undefined,
+        owner: parsed.owner || undefined,
+        project: parsed.project || undefined,
+        repo: parsed.repo,
         branch: branch.trim(),
-        baseUrl: baseUrl.trim() || undefined,
-        pathPrefix: pathPrefix.trim() || undefined,
-        folderRoot: folderRoot.trim() || undefined,
+        pathPrefix: folder.trim() || undefined,
         productId,
-        readStrategy,
-        writeStrategy,
-        syncInterval,
         enabled: true
       })
       onCreated(created.id)
@@ -278,102 +285,83 @@ function CreateGitSourceModal({
     <Modal opened={opened} onClose={onClose} title="New git source" centered size="lg">
       <Stack gap="md">
         <TextInput
-          label="Display name"
-          placeholder="Product docs"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.currentTarget.value)}
+          label="Git repo URL"
+          placeholder="https://github.com/acme/docs  (or …/tree/main/docs)"
+          description="Paste the repo URL. Provider, owner, repo — and branch + folder from a /tree/ link — are filled in automatically."
+          value={url}
+          onChange={(e) => onUrlChange(e.currentTarget.value)}
+          error={url.trim() && !parsed ? 'Not a recognizable git repo URL' : undefined}
+          data-autofocus
         />
-        <TextInput
-          label="Slug"
-          placeholder="product-docs"
-          description="Lowercase letters, digits and dashes."
-          value={slug}
-          onChange={(e) => setSlug(e.currentTarget.value)}
-        />
-        <Select
-          label="Provider"
-          data={PROVIDER_OPTIONS.map((o) => ({ value: o.value, label: o.label, disabled: !o.enabled }))}
-          value={provider}
-          onChange={(v) => v && setProvider(v as GitProvider)}
-          allowDeselect={false}
-        />
-        <Group grow>
-          <TextInput
-            label="Owner / org"
-            placeholder="acme"
-            value={owner}
-            onChange={(e) => setOwner(e.currentTarget.value)}
-          />
-          <TextInput
-            label="Repo"
-            placeholder="docs"
-            value={repo}
-            onChange={(e) => setRepo(e.currentTarget.value)}
-          />
-        </Group>
+
+        {parsed && (
+          <Text fz="xs" c={unsupported ? 'red' : 'dimmed'}>
+            {unsupported
+              ? `${parsed.provider} isn't supported yet — only GitHub.`
+              : `Detected: ${parsed.provider}${parsed.baseUrl ? ` (${parsed.baseUrl})` : ''} · ${
+                  parsed.owner ? `${parsed.owner}/` : ''
+                }${parsed.repo}`}
+          </Text>
+        )}
+
         <Group grow>
           <TextInput
             label="Branch"
             placeholder="main"
             value={branch}
-            onChange={(e) => setBranch(e.currentTarget.value)}
+            onChange={(e) => {
+              setBranchTouched(true)
+              setBranch(e.currentTarget.value)
+            }}
           />
           <TextInput
-            label="Path prefix (optional)"
-            placeholder="docs/"
-            value={pathPrefix}
-            onChange={(e) => setPathPrefix(e.currentTarget.value)}
+            label="Folder (optional)"
+            placeholder="docs/billing"
+            description="Limit the sync to a subfolder — e.g. for multi-product repos."
+            value={folder}
+            onChange={(e) => {
+              setFolderTouched(true)
+              setFolder(e.currentTarget.value)
+            }}
           />
         </Group>
-        <TextInput
-          label="Base URL (optional)"
-          placeholder="https://git.acme.io  (self-hosted only)"
-          description="Leave blank for github.com. Set for GitHub Enterprise."
-          value={baseUrl}
-          onChange={(e) => setBaseUrl(e.currentTarget.value)}
-        />
+
         <Select
           label="Product (optional)"
           placeholder="None"
-          description="Synced docs are auto-tagged with this product, scoping search_docs to the right users."
+          description="Synced docs are auto-tagged with this product, scoping search to the right users."
           data={(products ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
           value={productId}
           onChange={setProductId}
           clearable
           searchable
         />
-        <TextInput
-          label="Folder root (optional)"
-          placeholder="/git/product-docs"
-          description="ctxlayer folder synced docs are filed under (browse placement). Slug-shaped path; blank = root."
-          value={folderRoot}
-          onChange={(e) => setFolderRoot(e.currentTarget.value)}
-        />
+
         <Group grow>
-          <Select
-            label="Read strategy"
-            data={STRATEGY_OPTIONS}
-            value={readStrategy}
-            onChange={(v) => v && setReadStrategy(v as GitCredStrategy)}
-            allowDeselect={false}
-            description="Unattended cron sync needs the shared org token."
+          <TextInput
+            label="Display name"
+            placeholder="acme/docs"
+            value={displayName}
+            onChange={(e) => {
+              setNameTouched(true)
+              setDisplayName(e.currentTarget.value)
+            }}
           />
-          <Select
-            label="Write strategy"
-            data={STRATEGY_OPTIONS}
-            value={writeStrategy}
-            onChange={(v) => v && setWriteStrategy(v as GitCredStrategy)}
-            allowDeselect={false}
-            description="Authorship of write-back PRs (falls back to the org token)."
+          <TextInput
+            label="Slug"
+            placeholder="docs"
+            value={slug}
+            onChange={(e) => {
+              setSlugTouched(true)
+              setSlug(e.currentTarget.value)
+            }}
           />
         </Group>
-        <Select
-          label="Sync cadence"
-          data={INTERVAL_OPTIONS}
-          value={syncInterval}
-          onChange={(v) => v && setSyncInterval(v as GitSyncInterval)}
-          allowDeselect={false}
-        />
+
+        <Text fz="xs" c="dimmed">
+          After creating, set the read token + adjust credential strategy / cadence in the drawer.
+        </Text>
+
         {error && (
           <Alert color="red" variant="light" radius="sm">
             {error}
@@ -383,11 +371,7 @@ function CreateGitSourceModal({
           <Button variant="default" onClick={onClose}>
             Cancel
           </Button>
-          <Button
-            onClick={submit}
-            loading={busy}
-            disabled={!slug.trim() || !displayName.trim() || !repo.trim() || !branch.trim()}
-          >
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
             Create
           </Button>
         </Group>
@@ -565,6 +549,8 @@ function DetailsSection({
     pathPrefix?: string
     folderRoot?: string
     productId?: string | null
+    readStrategy?: GitCredStrategy
+    writeStrategy?: GitCredStrategy
     syncInterval?: GitSyncInterval
     enabled?: boolean
   }) => void
@@ -575,6 +561,8 @@ function DetailsSection({
   const [pathPrefix, setPathPrefix] = useState(row.pathPrefix)
   const [folderRoot, setFolderRoot] = useState(row.folderRoot)
   const [productId, setProductId] = useState<string | null>(row.productId)
+  const [readStrategy, setReadStrategy] = useState<GitCredStrategy>(row.readStrategy)
+  const [writeStrategy, setWriteStrategy] = useState<GitCredStrategy>(row.writeStrategy)
   const [syncInterval, setSyncInterval] = useState<GitSyncInterval>(row.syncInterval)
   const [enabled, setEnabled] = useState(row.enabled)
 
@@ -584,6 +572,8 @@ function DetailsSection({
     setPathPrefix(row.pathPrefix)
     setFolderRoot(row.folderRoot)
     setProductId(row.productId)
+    setReadStrategy(row.readStrategy)
+    setWriteStrategy(row.writeStrategy)
     setSyncInterval(row.syncInterval)
     setEnabled(row.enabled)
   }, [row])
@@ -620,6 +610,24 @@ function DetailsSection({
           clearable
           searchable
         />
+        <Group grow>
+          <Select
+            label="Read strategy"
+            data={STRATEGY_OPTIONS}
+            value={readStrategy}
+            onChange={(v) => v && setReadStrategy(v as GitCredStrategy)}
+            allowDeselect={false}
+            description="Unattended cron sync needs the shared org token."
+          />
+          <Select
+            label="Write strategy"
+            data={STRATEGY_OPTIONS}
+            value={writeStrategy}
+            onChange={(v) => v && setWriteStrategy(v as GitCredStrategy)}
+            allowDeselect={false}
+            description="Write-back PR authorship (falls back to the org token)."
+          />
+        </Group>
         <Select
           label="Sync cadence"
           data={INTERVAL_OPTIONS}
@@ -638,7 +646,17 @@ function DetailsSection({
           </Button>
           <Button
             onClick={() =>
-              onSave({ displayName, branch, pathPrefix, folderRoot, productId, syncInterval, enabled })
+              onSave({
+                displayName,
+                branch,
+                pathPrefix,
+                folderRoot,
+                productId,
+                readStrategy,
+                writeStrategy,
+                syncInterval,
+                enabled
+              })
             }
             loading={busy}
           >
