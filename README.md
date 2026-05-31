@@ -149,6 +149,7 @@ wrangler r2 bucket create ctxlayer-docs
 wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine
 wrangler queues create ctxlayer-usage
 wrangler queues create ctxlayer-reindex
+wrangler queues create ctxlayer-git-sync
 # then paste the printed IDs into the <TODO>-marked slots in wrangler.toml
 ```
 

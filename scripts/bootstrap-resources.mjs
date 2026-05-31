@@ -8,7 +8,7 @@
  *   KV namespace      (OAUTH_KV)
  *   R2 bucket         (ctxlayer-docs) — no id, just create
  *   Vectorize index   (ctxlayer-docs)
- *   Queues            (ctxlayer-usage, ctxlayer-reindex)
+ *   Queues            (ctxlayer-usage, ctxlayer-reindex, ctxlayer-git-sync)
  *
  * Requires `wrangler login` (or CLOUDFLARE_API_TOKEN + ACCOUNT_ID in
  * env). Re-run any time without harm.
@@ -22,7 +22,7 @@ const DB_NAME = 'ctxlayer'
 const KV_NAME = 'OAUTH_KV'
 const R2_BUCKET = 'ctxlayer-docs'
 const VECTORIZE_NAME = 'ctxlayer-docs'
-const QUEUES = ['ctxlayer-usage', 'ctxlayer-reindex']
+const QUEUES = ['ctxlayer-usage', 'ctxlayer-reindex', 'ctxlayer-git-sync']
 
 const PLACEHOLDER_RE = /^0+(-0+)*$/
 
