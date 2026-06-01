@@ -3,13 +3,18 @@
   "private": true,
   "version": "0.0.0",
   "description": "Agent context layer — MCP service on Cloudflare with curated docs, upstream proxy, and usage analytics.",
+  "license": "MIT",
+  "author": "Steven Noels and Satisa BV",
   "type": "module",
   "packageManager": "bun@1.3.11",
   "engines": {
     "bun": ">=1.3",
     "node": ">=22"
   },
-  "workspaces": ["apps/*", "packages/*"],
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "dev": "concurrently -n worker,web -c blue,green \"bun --filter='@ctxlayer/worker' run dev\" \"bun --filter='@ctxlayer/web' run dev\"",
     "dev:worker": "bun --filter='@ctxlayer/worker' run dev",
@@ -20,11 +25,14 @@
     "deploy": "bun run build && bun --filter='@ctxlayer/worker' run deploy",
     "deploy:preview": "bun run build && bun --filter='@ctxlayer/worker' run deploy:preview",
     "typecheck": "bun --filter='*' run typecheck",
-    "lint": "bun --filter='*' run lint",
+    "lint": "biome lint .",
+    "format": "biome format --write .",
+    "check": "biome check .",
     "test": "bun --filter='*' run test",
     "test:int": "bun --filter='@ctxlayer/worker' run test:int",
     "test:e2e": "bun --filter='@ctxlayer/web' run test:e2e",
-    "verify": "bun run typecheck && bun run test && bun run smoke",
+    "verify": "bun run typecheck && bun run lint && bun run test && bun run test:int",
+    "verify:full": "bun run verify && bun run smoke",
     "smoke": "bun ./scripts/smoke.mjs",
     "bootstrap": "bun ./scripts/bootstrap-resources.mjs",
     "migrate:local": "wrangler d1 migrations apply DB --local",
@@ -36,6 +44,7 @@
     "logs:mcp": "wrangler tail --format pretty --search /mcp"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.0.0",
     "concurrently": "^9.1.0",
     "typescript": "^5.6.3",
     "wrangler": "^4.0.0"

@@ -2,20 +2,25 @@
   "name": "@ctxlayer/cli",
   "version": "0.1.0",
   "description": "ctxlayer CLI — pull org skills into Claude Code, manage local config.",
-  "license": "UNLICENSED",
+  "license": "MIT",
   "private": true,
   "type": "module",
   "bin": {
     "ctxlayer": "./dist/cli.cjs"
   },
-  "files": ["dist/", "README.md"],
-  "engines": { "node": ">=20" },
+  "files": [
+    "dist/",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "dev": "bun run src/cli.ts",
     "build": "tsup src/cli.ts --format cjs --target node20 --clean --shims",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured for cli'",
-    "test": "echo 'no tests for cli yet'"
+    "test": "vitest run"
   },
   "dependencies": {
     "@ctxlayer/shared": "workspace:*",
@@ -26,6 +31,7 @@
   "devDependencies": {
     "@types/node": "^20.16.0",
     "tsup": "^8.3.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^2.1.0"
   }
 }

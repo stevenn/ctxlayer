@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { CtxlayerError, isDebug } from '../errors'
-import { type DraftedSkill } from './output-schema'
+import type { DraftedSkill } from './output-schema'
 
 /**
  * Locate `claude` on PATH. Spawns `claude --version`; returns null if
@@ -72,7 +72,11 @@ export async function runClaudeDraft(opts: ClaudeRunOptions): Promise<ClaudeRunR
   ]
   const bin = opts.binary ?? 'claude'
   if (isDebug()) {
-    console.error('[ctxlayer debug] spawning:', bin, args.map((a) => (a.length > 80 ? a.slice(0, 80) + '…' : a)))
+    console.error(
+      '[ctxlayer debug] spawning:',
+      bin,
+      args.map((a) => (a.length > 80 ? a.slice(0, 80) + '…' : a))
+    )
     console.error('[ctxlayer debug] stdin bytes:', opts.userPrompt.length)
   }
   const run = await runCapture(bin, args, opts.userPrompt, 5 * 60_000)
@@ -86,10 +90,7 @@ export async function runClaudeDraft(opts: ClaudeRunOptions): Promise<ClaudeRunR
     const stdoutTail = run.stdout.trim().split(/\r?\n/).slice(-2).join(' | ')
     const detail =
       tail || stdoutTail || '(no output — re-run with CTXLAYER_DEBUG=1 for full streams)'
-    throw new CtxlayerError(
-      `claude exited with code ${run.code}: ${detail}`,
-      'claude_failed'
-    )
+    throw new CtxlayerError(`claude exited with code ${run.code}: ${detail}`, 'claude_failed')
   }
 
   let envelope: ClaudeJsonEnvelope
@@ -154,12 +155,12 @@ function parseDraftResult(raw: string): DraftedSkill | null {
   if (start < 0) return null
   let depth = 0
   let inString = false
-  let escape = false
+  let escaped = false
   for (let i = start; i < raw.length; i++) {
     const ch = raw[i]
     if (inString) {
-      if (escape) escape = false
-      else if (ch === '\\') escape = true
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
       else if (ch === '"') inString = false
       continue
     }

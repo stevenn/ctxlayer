@@ -67,7 +67,7 @@ export async function openWriteBackPr(
   const branchName = openPr?.branch_name ?? `ctxlayer/doc-${doc.slug}-${shortId()}`
   const base = env.PUBLIC_BASE_URL.replace(/\/+$/, '')
 
-  let opened
+  let opened: Awaited<ReturnType<typeof provider.openOrUpdatePullRequest>>
   try {
     opened = await provider.openOrUpdatePullRequest({
       baseRef: source.branch,
@@ -117,7 +117,13 @@ export async function openWriteBackPr(
 }
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
-  return { provider: s.provider, baseUrl: s.base_url, owner: s.owner, project: s.project, repo: s.repo }
+  return {
+    provider: s.provider,
+    baseUrl: s.base_url,
+    owner: s.owner,
+    project: s.project,
+    repo: s.repo
+  }
 }
 
 function shortId(): string {

@@ -31,10 +31,7 @@ export async function handleAuthorize(request: Request, env: Env): Promise<Respo
 }
 
 /** Look up the authorize request that was stashed for this requestId. */
-export async function consumeAuthRequest(
-  env: Env,
-  requestId: string
-): Promise<unknown | null> {
+export async function consumeAuthRequest(env: Env, requestId: string): Promise<unknown | null> {
   const raw = await env.OAUTH_KV.get(`authReq:${requestId}`)
   if (!raw) return null
   // Delete after the lookup so the request is single-use; ignore errors
@@ -77,7 +74,7 @@ function renderPage(
     )
     .join('')
   const subtitle = clientName
-    ? `<strong>${escape(clientName)}</strong> wants to access ctxlayer.`
+    ? `<strong>${escapeHtml(clientName)}</strong> wants to access ctxlayer.`
     : 'An MCP client wants to access ctxlayer.'
 
   return `<!doctype html>
@@ -142,7 +139,7 @@ function renderPage(
 </html>`
 }
 
-function escape(s: string): string {
+function escapeHtml(s: string): string {
   return s.replace(/[&<>"']/g, (c) =>
     c === '&' ? '&amp;' : c === '<' ? '&lt;' : c === '>' ? '&gt;' : c === '"' ? '&quot;' : '&#39;'
   )

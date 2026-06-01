@@ -30,15 +30,11 @@ import { skillsDraftContextRoute } from './api/skills-draft-context'
 import { docAttachmentsRoute } from './api/doc-attachments'
 import { usageRoute } from './api/usage'
 import { upstreamsRoute } from './api/upstreams'
-import {
-  upstreamOauthCallbackRoute,
-  upstreamOauthStartRoute
-} from './api/upstream-oauth'
+import { upstreamOauthCallbackRoute, upstreamOauthStartRoute } from './api/upstream-oauth'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
 import { handleAuthorize } from './oauth/authorize-page'
 import { handleCollabUpgrade } from './collab/upgrade'
-import { McpSessionDO } from './mcp/session-do'
 import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'

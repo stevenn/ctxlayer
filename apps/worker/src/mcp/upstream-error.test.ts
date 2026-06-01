@@ -20,12 +20,12 @@ describe('sanitiseUpstreamError', () => {
   })
 
   it('redacts generic key=value secrets', () => {
-    expect(
-      sanitiseUpstreamError('fetch failed: api_key=sk-live-abcdef0123456789')
-    ).toMatch(/\[redacted\]/)
-    expect(
-      sanitiseUpstreamError('rejected token=ghp_0123456789abcdefghijklmn')
-    ).toMatch(/\[redacted\]/)
+    expect(sanitiseUpstreamError('fetch failed: api_key=sk-live-abcdef0123456789')).toMatch(
+      /\[redacted\]/
+    )
+    expect(sanitiseUpstreamError('rejected token=ghp_0123456789abcdefghijklmn')).toMatch(
+      /\[redacted\]/
+    )
   })
 
   it('strips URLs', () => {
@@ -37,12 +37,8 @@ describe('sanitiseUpstreamError', () => {
   })
 
   it('strips IPv4 + IPv6 addresses', () => {
-    expect(sanitiseUpstreamError('connect to 192.168.1.42:5432 refused')).toMatch(
-      /\[ip\]/
-    )
-    expect(sanitiseUpstreamError('connect to 2001:db8::1 refused')).toMatch(
-      /\[ip\]/
-    )
+    expect(sanitiseUpstreamError('connect to 192.168.1.42:5432 refused')).toMatch(/\[ip\]/)
+    expect(sanitiseUpstreamError('connect to 2001:db8::1 refused')).toMatch(/\[ip\]/)
   })
 
   it('strips Node-style stack frames', () => {
@@ -62,16 +58,13 @@ describe('sanitiseUpstreamError', () => {
   })
 
   it('preserves meaningful HTTP-status detail', () => {
-    expect(sanitiseUpstreamError('HTTP 504 Gateway Timeout')).toBe(
-      'HTTP 504 Gateway Timeout'
-    )
-    expect(sanitiseUpstreamError('HTTP 429 rate limited')).toBe(
-      'HTTP 429 rate limited'
-    )
+    expect(sanitiseUpstreamError('HTTP 504 Gateway Timeout')).toBe('HTTP 504 Gateway Timeout')
+    expect(sanitiseUpstreamError('HTTP 429 rate limited')).toBe('HTTP 429 rate limited')
   })
 
   it('strips control chars (no ANSI / smuggled escapes)', () => {
     const out = sanitiseUpstreamError('upstream said: \x1b[31merror\x1b[0m')
+    // biome-ignore lint/suspicious/noControlCharactersInRegex: asserting the ESC byte is stripped
     expect(out).not.toMatch(/\x1b/)
     expect(out).toMatch(/error/)
   })

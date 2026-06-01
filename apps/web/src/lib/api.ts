@@ -132,14 +132,20 @@ import { z } from 'zod'
 
 /** HTTP-level failure (non-2xx). */
 export class ApiError extends Error {
-  constructor(public status: number, public body: unknown) {
+  constructor(
+    public status: number,
+    public body: unknown
+  ) {
     super(`api ${status}`)
   }
 }
 
 /** Server returned 2xx but the body didn't match the expected schema. */
 export class ApiSchemaError extends Error {
-  constructor(public path: string, cause: unknown) {
+  constructor(
+    public path: string,
+    cause: unknown
+  ) {
     super(`api schema mismatch at ${path}`, { cause })
   }
 }
@@ -185,8 +191,6 @@ async function request<T>(
   }
 }
 
-const VOID = z.undefined()
-
 // ----- session-shaped reads ----------------------------------------------
 
 export function fetchMe(signal?: AbortSignal): Promise<MeResponseT> {
@@ -230,10 +234,7 @@ export function adminReindexAllDocs(): Promise<{ queued: number; total: number }
 
 // Semantic RAG search over the doc library. POST so the query + scope
 // ride in the body (and to match the worker's CSRF-gated route).
-export function searchDocs(
-  req: SearchRequestT,
-  signal?: AbortSignal
-): Promise<SearchResponseT> {
+export function searchDocs(req: SearchRequestT, signal?: AbortSignal): Promise<SearchResponseT> {
   return request('/api/search', (b) => SearchResponse.parse(b), {
     method: 'POST',
     body: JSON.stringify(SearchRequest.parse(req)),
@@ -303,7 +304,9 @@ const GitDocSource = z.object({ markdown: z.string() })
 
 // 404 ⇒ the doc isn't git-backed; callers treat that as "no git panel".
 export function fetchDocGitStatus(id: string, signal?: AbortSignal): Promise<GitDocStatusT> {
-  return request(`/api/docs/${encodeURIComponent(id)}/git`, (b) => GitDocStatus.parse(b), { signal })
+  return request(`/api/docs/${encodeURIComponent(id)}/git`, (b) => GitDocStatus.parse(b), {
+    signal
+  })
 }
 
 export function fetchDocGitSource(id: string, signal?: AbortSignal): Promise<{ markdown: string }> {
@@ -316,11 +319,14 @@ export function proposeGitPullRequest(
   id: string,
   markdown: string
 ): Promise<CreatePullRequestResultT> {
-  return request(`/api/docs/${encodeURIComponent(id)}/git/pull-request`, (b) =>
-    CreatePullRequestResult.parse(b), {
-    method: 'POST',
-    body: JSON.stringify(CreatePullRequestRequest.parse({ markdown }))
-  })
+  return request(
+    `/api/docs/${encodeURIComponent(id)}/git/pull-request`,
+    (b) => CreatePullRequestResult.parse(b),
+    {
+      method: 'POST',
+      body: JSON.stringify(CreatePullRequestRequest.parse({ markdown }))
+    }
+  )
 }
 
 export function putGitUserCredential(sourceId: string, token: string): Promise<void> {
@@ -384,7 +390,10 @@ export function fetchRevisions(id: string, signal?: AbortSignal): Promise<Revisi
   })
 }
 
-export function restoreRevision(id: string, body: RestoreRequestT): Promise<{ revisionId: string }> {
+export function restoreRevision(
+  id: string,
+  body: RestoreRequestT
+): Promise<{ revisionId: string }> {
   return request(`/api/docs/${encodeURIComponent(id)}/restore`, (b) => RestoreResult.parse(b), {
     method: 'POST',
     body: JSON.stringify(RestoreRequest.parse(body))
@@ -408,7 +417,9 @@ export function fetchFolders(signal?: AbortSignal): Promise<FolderTreeResponseT>
   return request('/api/folders', (b) => FolderTreeResponseSchema.parse(b), { signal })
 }
 
-export function renameFolder(body: FolderRenameRequestT): Promise<{ moved: number; ids: string[] }> {
+export function renameFolder(
+  body: FolderRenameRequestT
+): Promise<{ moved: number; ids: string[] }> {
   return request(
     '/api/folders',
     (b) => z.object({ moved: z.number(), ids: z.array(z.string()) }).parse(b),
@@ -433,9 +444,13 @@ function base64UrlEncode(s: string): string {
 // ----- per-doc ACL --------------------------------------------------------
 
 export function fetchDocEditors(id: string, signal?: AbortSignal): Promise<DocEditorsResponseT> {
-  return request(`/api/docs/${encodeURIComponent(id)}/editors`, (b) => DocEditorsResponse.parse(b), {
-    signal
-  })
+  return request(
+    `/api/docs/${encodeURIComponent(id)}/editors`,
+    (b) => DocEditorsResponse.parse(b),
+    {
+      signal
+    }
+  )
 }
 
 export function addDocEditor(id: string, body: AddEditorRequestT): Promise<void> {
@@ -460,10 +475,7 @@ export function removeDocEditor(
 
 // ----- user directory -----------------------------------------------------
 
-export function searchUsers(
-  emailPrefix: string,
-  signal?: AbortSignal
-): Promise<UserSearchResultT> {
+export function searchUsers(emailPrefix: string, signal?: AbortSignal): Promise<UserSearchResultT> {
   const qs = new URLSearchParams({ email: emailPrefix })
   return request(`/api/users?${qs}`, (b) => UserSearchResult.parse(b), { signal })
 }
@@ -519,7 +531,9 @@ export function adminPatchTeam(id: string, patch: UpdateTeamRequestT): Promise<v
 }
 
 export function adminDeleteTeam(id: string): Promise<void> {
-  return request(`/api/admin/teams/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' })
+  return request(`/api/admin/teams/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'DELETE'
+  })
 }
 
 export function fetchTeamMembers(id: string, signal?: AbortSignal): Promise<TeamMemberRowT[]> {
@@ -583,10 +597,7 @@ export function fetchAdminUpstreams(signal?: AbortSignal): Promise<AdminUpstream
   return request('/api/admin/upstreams', (b) => AdminUpstreamList.parse(b), { signal })
 }
 
-export function fetchAdminUpstream(
-  id: string,
-  signal?: AbortSignal
-): Promise<AdminUpstreamRowT> {
+export function fetchAdminUpstream(id: string, signal?: AbortSignal): Promise<AdminUpstreamRowT> {
   return request(
     `/api/admin/upstreams/${encodeURIComponent(id)}`,
     (b) => AdminUpstreamRow.parse(b),
@@ -601,10 +612,7 @@ export function adminCreateUpstream(input: CreateUpstreamRequestT): Promise<Admi
   })
 }
 
-export function adminPatchUpstream(
-  id: string,
-  patch: UpdateUpstreamRequestT
-): Promise<void> {
+export function adminPatchUpstream(id: string, patch: UpdateUpstreamRequestT): Promise<void> {
   return request(`/api/admin/upstreams/${encodeURIComponent(id)}`, () => undefined, {
     method: 'PATCH',
     body: JSON.stringify(UpdateUpstreamRequest.parse(patch))
@@ -621,14 +629,10 @@ export function adminPutUpstreamVisibility(
   id: string,
   body: ReplaceVisibilityRequestT
 ): Promise<void> {
-  return request(
-    `/api/admin/upstreams/${encodeURIComponent(id)}/visibility`,
-    () => undefined,
-    {
-      method: 'PUT',
-      body: JSON.stringify(ReplaceVisibilityRequest.parse(body))
-    }
-  )
+  return request(`/api/admin/upstreams/${encodeURIComponent(id)}/visibility`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(ReplaceVisibilityRequest.parse(body))
+  })
 }
 
 export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsResponseT> {
@@ -650,10 +654,7 @@ export function fetchAdminUpstreamTools(
   )
 }
 
-export function adminPutSharedCredentials(
-  id: string,
-  body: PasteBearerRequestT
-): Promise<void> {
+export function adminPutSharedCredentials(id: string, body: PasteBearerRequestT): Promise<void> {
   return request(
     `/api/admin/upstreams/${encodeURIComponent(id)}/shared-credentials`,
     () => undefined,
@@ -681,10 +682,7 @@ export function fetchAdminUsers(signal?: AbortSignal): Promise<AdminUserRowT[]> 
   return request('/api/admin/users', (b) => AdminUserList.parse(b), { signal })
 }
 
-export function adminPatchUserRole(
-  userId: string,
-  body: UpdateUserRoleRequestT
-): Promise<void> {
+export function adminPatchUserRole(userId: string, body: UpdateUserRoleRequestT): Promise<void> {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, () => undefined, {
     method: 'PATCH',
     body: JSON.stringify(UpdateUserRoleRequest.parse(body))
@@ -746,11 +744,9 @@ export function fetchAdminOAuthClients(
 }
 
 export function pruneAdminOAuthClients(): Promise<OAuthClientsPruneResponseT> {
-  return request(
-    '/api/admin/oauth-clients/prune',
-    (b) => OAuthClientsPruneResponse.parse(b),
-    { method: 'POST' }
-  )
+  return request('/api/admin/oauth-clients/prune', (b) => OAuthClientsPruneResponse.parse(b), {
+    method: 'POST'
+  })
 }
 
 // ----- admin audit --------------------------------------------------------
@@ -776,9 +772,7 @@ export function fetchAdminAudit(
   return request(path, (b) => AuditLogResponse.parse(b), { signal })
 }
 
-export function adminRevokeUserCredentials(
-  userId: string
-): Promise<{ removed: number }> {
+export function adminRevokeUserCredentials(userId: string): Promise<{ removed: number }> {
   return request(
     `/api/admin/users/${encodeURIComponent(userId)}/credentials`,
     (b) => RevokeCredsResult.parse(b),
@@ -809,19 +803,16 @@ export function putUpstreamCredentials(
   upstreamId: string,
   body: PasteBearerRequestT
 ): Promise<void> {
-  return request(
-    `/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`,
-    () => undefined,
-    { method: 'PUT', body: JSON.stringify(PasteBearerRequest.parse(body)) }
-  )
+  return request(`/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(PasteBearerRequest.parse(body))
+  })
 }
 
 export function deleteUpstreamCredentials(upstreamId: string): Promise<void> {
-  return request(
-    `/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`,
-    () => undefined,
-    { method: 'DELETE' }
-  )
+  return request(`/api/upstreams/${encodeURIComponent(upstreamId)}/credentials`, () => undefined, {
+    method: 'DELETE'
+  })
 }
 
 // ----- skills (M7a) -------------------------------------------------------
@@ -850,9 +841,7 @@ export function fetchSkill(id: string, signal?: AbortSignal): Promise<SkillDetai
   })
 }
 
-export function createSkill(
-  input: CreateSkillRequestT
-): Promise<{ id: string; slug: string }> {
+export function createSkill(input: CreateSkillRequestT): Promise<{ id: string; slug: string }> {
   return request('/api/skills', (b) => CreateSkillResult.parse(b), {
     method: 'POST',
     body: JSON.stringify(CreateSkillRequest.parse(input))
@@ -972,8 +961,3 @@ export function detachDoc(input: AttachDocRequestT): Promise<void> {
 export function fetchSkillsExport(signal?: AbortSignal): Promise<SkillExportResponseT> {
   return request('/api/skills/export', (b) => SkillExportResponse.parse(b), { signal })
 }
-
-// Silence unused warning for the VOID schema export — keeping it
-// exported lets future modules adopt the same `() => undefined`
-// parser shape if they need it.
-export { VOID as __unusedVoid }

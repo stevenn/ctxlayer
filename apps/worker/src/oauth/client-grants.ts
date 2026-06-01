@@ -24,7 +24,7 @@
  * rows over time).
  */
 
-import { getOAuthApi } from '@cloudflare/workers-oauth-provider'
+import type { getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { OAuthClientUserRef } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { listUserRefs } from '../db/queries/users'

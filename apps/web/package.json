@@ -2,6 +2,7 @@
   "name": "@ctxlayer/web",
   "version": "0.0.0",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "scripts": {
     "predev": "bun ../../scripts/setup-dev-tls.mjs",
@@ -10,7 +11,8 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'lint TBD'",
-    "test": "echo 'no unit tests for web yet'",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "test:e2e": "echo 'playwright TBD'"
   },
   "dependencies": {
@@ -29,10 +31,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@vitejs/plugin-react": "^4.3.2",
+    "jsdom": "^25.0.1",
     "typescript": "^5.6.3",
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vitest": "^2.1.0"
   }
 }

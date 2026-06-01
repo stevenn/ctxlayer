@@ -90,234 +90,238 @@ export interface BlockNoteEditorHandle {
  */
 export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditorProps>(
   function BlockNoteEditor(props, ref) {
-  type EditorOpts = Partial<BlockNoteEditorOptions<any, any, any>>
-  // `collaboration` is the source of truth when present, so we must
-  // not pass `initialContent` (BlockNote rejects both together).
-  const editorOptions: EditorOpts = props.collaboration
-    ? {
-        collaboration: {
-          provider: props.collaboration.provider,
-          fragment: props.collaboration.fragment,
-          user: props.collaboration.user
-        } as unknown as EditorOpts['collaboration']
-      }
-    : {
-        initialContent:
-          props.initialBlocks.length > 0
-            ? (props.initialBlocks as EditorOpts['initialContent'])
-            : undefined
-      }
-  const editor = useCreateBlockNote(editorOptions)
-  const hostRef = useRef<HTMLDivElement | null>(null)
-
-  // Collab load gate. In collab mode the Y.Doc starts empty and the
-  // server streams the content as a syncStep2 — for a large doc that's a
-  // visible gap where the editor looks blank. We overlay a loader and
-  // force the editor read-only until `onSynced` fires, so nobody mistakes
-  // a still-loading doc for an empty one and types into it. REST mode (no
-  // provider, or a provider without `onSynced`) never gates.
-  const provider = props.collaboration?.provider
-  const [loading, setLoading] = useState<boolean>(() => !!provider?.onSynced)
-  useEffect(() => {
-    const subscribe = provider?.onSynced
-    if (!provider || !subscribe) {
-      setLoading(false)
-      return
-    }
-    setLoading(true)
-    // Call through the provider instance so `this` is bound — onSynced
-    // reads instance state (extracting the method would detach it).
-    const off = subscribe.call(provider, () => setLoading(false))
-    return () => off?.()
-  }, [provider])
-
-  useImperativeHandle(
-    ref,
-    (): BlockNoteEditorHandle => ({
-      replaceBlocks(blocks) {
-        const core = editor as unknown as BlockNoteEditorCore
-        // `editor.document` is the current top-level block list; replacing
-        // it with the incoming blocks is the v0.51-supported way to swap
-        // the entire doc programmatically. Casts because BlockNote types
-        // the second arg with the editor's resolved schema generics.
-        //
-        // A document must always hold at least one block: replacing with an
-        // empty list deletes the last block and leaves an invalid zero-block
-        // doc, which makes the ProseMirror transaction throw. Discarding to
-        // an empty baseline (e.g. on a freshly-created doc, whose snapshot is
-        // `{ blocks: [] }`) must therefore land a single empty paragraph, not
-        // nothing — otherwise Discard / Discard & leave throw and no-op.
-        const next = (blocks as unknown[]).length > 0 ? blocks : [{ type: 'paragraph' }]
-        core.replaceBlocks(core.document, next as Parameters<typeof core.replaceBlocks>[1])
-      },
-      getBlocks() {
-        return (editor as unknown as BlockNoteEditorCore).document as unknown[]
-      },
-      getMarkdown() {
-        const core = editor as unknown as BlockNoteEditorCore
-        // BlockNote types this as sync in this version; wrap so the
-        // handle stays Promise-shaped (it has been async in others).
-        return Promise.resolve(core.blocksToMarkdownLossy(core.document))
-      },
-      scrollToHeadingPath(anchor) {
-        const host = hostRef.current
-        if (!host || !anchor) return false
-        const blocks = (editor as unknown as BlockNoteEditorCore).document as unknown[]
-        const blockId = findHeadingBlockId(blocks, anchor)
-        if (!blockId) return false
-        return flashBlock(host, blockId)
-      }
-    }),
-    [editor]
-  )
-
-  // Bridge editor.onChange -> prop callback. The editor's onChange
-  // returns an unsubscribe function from BlockNote v0.14+.
-  useEffect(() => {
-    if (!props.onChange) return
-    const off = editor.onChange(() => {
-      props.onChange?.(editor.document as unknown[])
-    })
-    return () => off?.()
-  }, [editor, props.onChange])
-
-  // Esc-to-blur: leave edit mode without saving. We listen at the
-  // wrapper rather than relying on a ProseMirror keymap because
-  // BlockNote already maps Esc to "close menus"; deferring one tick
-  // lets that fire first, then we drop focus to leave edit mode.
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return
-      setTimeout(() => {
-        const active = document.activeElement as HTMLElement | null
-        if (active && host.contains(active) && typeof active.blur === 'function') {
-          active.blur()
+    // biome-ignore lint/suspicious/noExplicitAny: BlockNote's option generics require `any` here
+    type EditorOpts = Partial<BlockNoteEditorOptions<any, any, any>>
+    // `collaboration` is the source of truth when present, so we must
+    // not pass `initialContent` (BlockNote rejects both together).
+    const editorOptions: EditorOpts = props.collaboration
+      ? {
+          collaboration: {
+            provider: props.collaboration.provider,
+            fragment: props.collaboration.fragment,
+            user: props.collaboration.user
+          } as unknown as EditorOpts['collaboration']
         }
-      }, 0)
-    }
-    host.addEventListener('keydown', onKeyDown)
-    return () => host.removeEventListener('keydown', onKeyDown)
-  }, [editor])
+      : {
+          initialContent:
+            props.initialBlocks.length > 0
+              ? (props.initialBlocks as EditorOpts['initialContent'])
+              : undefined
+        }
+    const editor = useCreateBlockNote(editorOptions)
+    const hostRef = useRef<HTMLDivElement | null>(null)
 
-  // Intercept clicks on internal SPA links (e.g. /app/docs/<id>) so
-  // they navigate via React Router instead of triggering a full page
-  // load. Modifier keys + non-primary buttons fall through to the
-  // browser so "open in new tab" still works.
-  const nav = useNavigate()
-  useEffect(() => {
-    const host = hostRef.current
-    if (!host) return
-    const onClick = (e: MouseEvent) => {
-      if (e.defaultPrevented || e.button !== 0) return
-      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-      const anchor = (e.target as HTMLElement | null)?.closest('a')
-      if (!anchor) return
-      const href = anchor.getAttribute('href')
-      if (!href || !href.startsWith('/app/')) return
-      // Respect target="_blank" / explicit download even on internal links.
-      if (anchor.target && anchor.target !== '' && anchor.target !== '_self') return
-      e.preventDefault()
-      nav(href)
-    }
-    host.addEventListener('click', onClick)
-    return () => host.removeEventListener('click', onClick)
-  }, [nav])
+    // Collab load gate. In collab mode the Y.Doc starts empty and the
+    // server streams the content as a syncStep2 — for a large doc that's a
+    // visible gap where the editor looks blank. We overlay a loader and
+    // force the editor read-only until `onSynced` fires, so nobody mistakes
+    // a still-loading doc for an empty one and types into it. REST mode (no
+    // provider, or a provider without `onSynced`) never gates.
+    const provider = props.collaboration?.provider
+    const [loading, setLoading] = useState<boolean>(() => !!provider?.onSynced)
+    useEffect(() => {
+      const subscribe = provider?.onSynced
+      if (!provider || !subscribe) {
+        setLoading(false)
+        return
+      }
+      setLoading(true)
+      // Call through the provider instance so `this` is bound — onSynced
+      // reads instance state (extracting the method would detach it).
+      const off = subscribe.call(provider, () => setLoading(false))
+      return () => off?.()
+    }, [provider])
 
-  const { colorScheme } = useMantineColorScheme()
-  const resolved: 'light' | 'dark' =
-    colorScheme === 'dark'
-      ? 'dark'
-      : colorScheme === 'light'
-        ? 'light'
-        : window.matchMedia('(prefers-color-scheme: dark)').matches
-          ? 'dark'
-          : 'light'
+    useImperativeHandle(
+      ref,
+      (): BlockNoteEditorHandle => ({
+        replaceBlocks(blocks) {
+          const core = editor as unknown as BlockNoteEditorCore
+          // `editor.document` is the current top-level block list; replacing
+          // it with the incoming blocks is the v0.51-supported way to swap
+          // the entire doc programmatically. Casts because BlockNote types
+          // the second arg with the editor's resolved schema generics.
+          //
+          // A document must always hold at least one block: replacing with an
+          // empty list deletes the last block and leaves an invalid zero-block
+          // doc, which makes the ProseMirror transaction throw. Discarding to
+          // an empty baseline (e.g. on a freshly-created doc, whose snapshot is
+          // `{ blocks: [] }`) must therefore land a single empty paragraph, not
+          // nothing — otherwise Discard / Discard & leave throw and no-op.
+          const next = (blocks as unknown[]).length > 0 ? blocks : [{ type: 'paragraph' }]
+          core.replaceBlocks(core.document, next as Parameters<typeof core.replaceBlocks>[1])
+        },
+        getBlocks() {
+          return (editor as unknown as BlockNoteEditorCore).document as unknown[]
+        },
+        getMarkdown() {
+          const core = editor as unknown as BlockNoteEditorCore
+          // BlockNote types this as sync in this version; wrap so the
+          // handle stays Promise-shaped (it has been async in others).
+          return Promise.resolve(core.blocksToMarkdownLossy(core.document))
+        },
+        scrollToHeadingPath(anchor) {
+          const host = hostRef.current
+          if (!host || !anchor) return false
+          const blocks = (editor as unknown as BlockNoteEditorCore).document as unknown[]
+          const blockId = findHeadingBlockId(blocks, anchor)
+          if (!blockId) return false
+          return flashBlock(host, blockId)
+        }
+      }),
+      [editor]
+    )
 
-  // Snapshot the host callback in a ref so the SuggestionMenuController
-  // closure always sees the latest version (host modal state can
-  // change between renders).
-  const resolveDocLinkRef = useRef(props.resolveDocLink)
-  resolveDocLinkRef.current = props.resolveDocLink
+    // Bridge editor.onChange -> prop callback. The editor's onChange
+    // returns an unsubscribe function from BlockNote v0.14+.
+    useEffect(() => {
+      if (!props.onChange) return
+      const off = editor.onChange(() => {
+        props.onChange?.(editor.document as unknown[])
+      })
+      return () => off?.()
+    }, [editor, props.onChange])
 
-  return (
-    <div ref={hostRef} style={{ height: '100%', position: 'relative' }}>
-      {loading && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 10,
-            // Opaque so the still-empty editor underneath doesn't read as
-            // a blank document. Also captures pointer events → no clicks
-            // reach the editor while it loads.
-            background: 'var(--bg-surface)',
-            color: 'var(--text-dim)',
-            fontSize: 13
-          }}
-          aria-live="polite"
-          aria-busy="true"
+    // Esc-to-blur: leave edit mode without saving. We listen at the
+    // wrapper rather than relying on a ProseMirror keymap because
+    // BlockNote already maps Esc to "close menus"; deferring one tick
+    // lets that fire first, then we drop focus to leave edit mode.
+    useEffect(() => {
+      const host = hostRef.current
+      if (!host) return
+      const onKeyDown = (e: KeyboardEvent) => {
+        if (e.key !== 'Escape') return
+        setTimeout(() => {
+          const active = document.activeElement as HTMLElement | null
+          if (active && host.contains(active) && typeof active.blur === 'function') {
+            active.blur()
+          }
+        }, 0)
+      }
+      host.addEventListener('keydown', onKeyDown)
+      return () => host.removeEventListener('keydown', onKeyDown)
+    }, [editor])
+
+    // Intercept clicks on internal SPA links (e.g. /app/docs/<id>) so
+    // they navigate via React Router instead of triggering a full page
+    // load. Modifier keys + non-primary buttons fall through to the
+    // browser so "open in new tab" still works.
+    const nav = useNavigate()
+    useEffect(() => {
+      const host = hostRef.current
+      if (!host) return
+      const onClick = (e: MouseEvent) => {
+        if (e.defaultPrevented || e.button !== 0) return
+        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+        const anchor = (e.target as HTMLElement | null)?.closest('a')
+        if (!anchor) return
+        const href = anchor.getAttribute('href')
+        if (!href || !href.startsWith('/app/')) return
+        // Respect target="_blank" / explicit download even on internal links.
+        if (anchor.target && anchor.target !== '' && anchor.target !== '_self') return
+        e.preventDefault()
+        nav(href)
+      }
+      host.addEventListener('click', onClick)
+      return () => host.removeEventListener('click', onClick)
+    }, [nav])
+
+    const { colorScheme } = useMantineColorScheme()
+    const resolved: 'light' | 'dark' =
+      colorScheme === 'dark'
+        ? 'dark'
+        : colorScheme === 'light'
+          ? 'light'
+          : window.matchMedia('(prefers-color-scheme: dark)').matches
+            ? 'dark'
+            : 'light'
+
+    // Snapshot the host callback in a ref so the SuggestionMenuController
+    // closure always sees the latest version (host modal state can
+    // change between renders).
+    const resolveDocLinkRef = useRef(props.resolveDocLink)
+    resolveDocLinkRef.current = props.resolveDocLink
+
+    return (
+      <div ref={hostRef} style={{ height: '100%', position: 'relative' }}>
+        {loading && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              zIndex: 10,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 10,
+              // Opaque so the still-empty editor underneath doesn't read as
+              // a blank document. Also captures pointer events → no clicks
+              // reach the editor while it loads.
+              background: 'var(--bg-surface)',
+              color: 'var(--text-dim)',
+              fontSize: 13
+            }}
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <Loader size="sm" />
+            <span>Loading document…</span>
+          </div>
+        )}
+        <BlockNoteView
+          editor={editor}
+          editable={props.editable && !loading}
+          theme={resolved}
+          slashMenu={false}
+          formattingToolbar={false}
         >
-          <Loader size="sm" />
-          <span>Loading document…</span>
-        </div>
-      )}
-      <BlockNoteView
-        editor={editor}
-        editable={props.editable && !loading}
-        theme={resolved}
-        slashMenu={false}
-        formattingToolbar={false}
-      >
-        <SuggestionMenuController
-          triggerCharacter="/"
-          getItems={async (query) => {
-            const items: DefaultReactSuggestionItem[] = [
-              ...(resolveDocLinkRef.current
-                ? [
-                    {
-                      title: 'Link to doc',
-                      subtext: 'Pick another document to link to',
-                      aliases: ['doc', 'link', 'reference', 'ref'],
-                      group: 'Other',
-                      icon: <span aria-hidden>🔗</span>,
-                      onItemClick: async () => {
-                        const link = await resolveDocLinkRef.current?.()
-                        if (!link) return
-                        editor.insertInlineContent([
-                          {
-                            type: 'link',
-                            href: link.href,
-                            content: link.label
-                          }
-                        ])
+          <SuggestionMenuController
+            triggerCharacter="/"
+            getItems={async (query) => {
+              const items: DefaultReactSuggestionItem[] = [
+                ...(resolveDocLinkRef.current
+                  ? [
+                      {
+                        title: 'Link to doc',
+                        subtext: 'Pick another document to link to',
+                        aliases: ['doc', 'link', 'reference', 'ref'],
+                        group: 'Other',
+                        icon: <span aria-hidden>🔗</span>,
+                        onItemClick: async () => {
+                          const link = await resolveDocLinkRef.current?.()
+                          if (!link) return
+                          editor.insertInlineContent([
+                            {
+                              type: 'link',
+                              href: link.href,
+                              content: link.label
+                            }
+                          ])
+                        }
                       }
-                    }
-                  ]
-                : []),
-              ...getDefaultReactSlashMenuItems(editor)
-            ]
-            return filterSuggestionItems(items, query)
-          }}
-        />
-        <FormattingToolbarController
-          formattingToolbar={() => (
-            <FormattingToolbar>
-              {getFormattingToolbarItems()}
-              {resolveDocLinkRef.current && <DocLinkToolbarButton resolveRef={resolveDocLinkRef} />}
-            </FormattingToolbar>
-          )}
-        />
-      </BlockNoteView>
-    </div>
-  )
-})
+                    ]
+                  : []),
+                ...getDefaultReactSlashMenuItems(editor)
+              ]
+              return filterSuggestionItems(items, query)
+            }}
+          />
+          <FormattingToolbarController
+            formattingToolbar={() => (
+              <FormattingToolbar>
+                {getFormattingToolbarItems()}
+                {resolveDocLinkRef.current && (
+                  <DocLinkToolbarButton resolveRef={resolveDocLinkRef} />
+                )}
+              </FormattingToolbar>
+            )}
+          />
+        </BlockNoteView>
+      </div>
+    )
+  }
+)
 
 /**
  * Toolbar button that wraps the current selection in an internal
@@ -376,7 +380,10 @@ function findHeadingBlockId(blocks: unknown[], anchor: string): string | null {
       const slug = slugifyHeading(blockPlainText(block))
       while (stack.length && stack[stack.length - 1]!.level >= level) stack.pop()
       stack.push({ level, slug })
-      const path = stack.map((s) => s.slug).filter(Boolean).join('/')
+      const path = stack
+        .map((s) => s.slug)
+        .filter(Boolean)
+        .join('/')
       if (path === anchor) matchId = block.id
       else if (!fallbackId && slug && slug === lastSeg) fallbackId = block.id
     }

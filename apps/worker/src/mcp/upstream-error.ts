@@ -63,7 +63,7 @@ export function sanitiseUpstreamError(raw: string): string {
     raw
       // Control chars (incl. ANSI escapes' ESC byte). Keeps the
       // payload safe to forward to the model as plain text.
-      // eslint-disable-next-line no-control-regex
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
       .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')
       // Bearer / Authorization headers as they often appear in
       // upstream error bodies.

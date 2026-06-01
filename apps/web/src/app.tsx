@@ -19,6 +19,7 @@ import {
   AdminSkillEditor
 } from './routes/admin'
 import { Shell } from './components/shell'
+import { RouteError } from './components/route-error'
 
 /**
  * Returns the route tree as a fragment of `<Route>` elements. Consumed
@@ -28,7 +29,7 @@ import { Shell } from './components/shell'
  */
 export function appRoutes() {
   return (
-    <>
+    <Route errorElement={<RouteError />}>
       <Route path="/sign-in" element={<SignIn />} />
       <Route path="/app" element={<Shell />}>
         <Route index element={<Navigate to="/app/search" replace />} />
@@ -50,6 +51,6 @@ export function appRoutes() {
         <Route path="admin/skills/:id/edit" element={<AdminSkillEditor />} />
       </Route>
       <Route path="*" element={<Navigate to="/app/search" replace />} />
-    </>
+    </Route>
   )
 }

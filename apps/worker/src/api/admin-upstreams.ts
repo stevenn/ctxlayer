@@ -31,10 +31,7 @@ import {
   toUpstreamConnection,
   upsertSharedCredential
 } from '../db/queries/upstreams'
-import {
-  refreshCatalogueByUpstreamId,
-  refreshCatalogueForConnection
-} from '../upstream/catalogue'
+import { refreshCatalogueByUpstreamId, refreshCatalogueForConnection } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
 import { seal } from '../crypto/aead'
@@ -194,7 +191,7 @@ adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  let conn
+  let conn: ReturnType<typeof toUpstreamConnection>
   try {
     conn = toUpstreamConnection(row)
   } catch {
@@ -262,9 +259,7 @@ adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
     refreshCatalogueByUpstreamId(c.env, id, parsed.data.token).then(
       (r) => {
         if (r.ok) {
-          console.log(
-            `[catalogue] ${r.slug}: warmed ${r.toolsCount} tools after shared-bearer set`
-          )
+          console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools after shared-bearer set`)
         } else {
           console.warn(
             `[catalogue] ${row.slug}: shared-bearer refresh failed (${r.reason})${

@@ -21,9 +21,14 @@
  * plugin expects: `.awareness`, `.doc`, plus `.onStatus` / `.onSynced`.
  */
 
-import * as Y from 'yjs'
+import type * as Y from 'yjs'
 import * as sync from 'y-protocols/sync'
-import { Awareness, applyAwarenessUpdate, encodeAwarenessUpdate, removeAwarenessStates } from 'y-protocols/awareness'
+import {
+  Awareness,
+  applyAwarenessUpdate,
+  encodeAwarenessUpdate,
+  removeAwarenessStates
+} from 'y-protocols/awareness'
 import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 
@@ -78,10 +83,7 @@ export class CollabWSProvider {
       const changed = [...added, ...updated, ...removed]
       const encoder = encoding.createEncoder()
       encoding.writeVarUint(encoder, MESSAGE_AWARENESS)
-      encoding.writeVarUint8Array(
-        encoder,
-        encodeAwarenessUpdate(this.awareness, changed)
-      )
+      encoding.writeVarUint8Array(encoder, encodeAwarenessUpdate(this.awareness, changed))
       this.send(encoding.toUint8Array(encoder))
     }
     this.awareness.on('update', this.handleAwarenessUpdate)
@@ -214,10 +216,7 @@ export class CollabWSProvider {
 
   private scheduleReconnect(): void {
     if (this.destroyed || this.reconnectTimer != null) return
-    const delay = Math.min(
-      RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempt),
-      RECONNECT_MAX_MS
-    )
+    const delay = Math.min(RECONNECT_BASE_MS * Math.pow(2, this.reconnectAttempt), RECONNECT_MAX_MS)
     this.reconnectAttempt += 1
     this.setStatus('reconnecting')
     this.reconnectTimer = window.setTimeout(() => {

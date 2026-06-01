@@ -33,18 +33,10 @@ import {
   type UpstreamServerRow,
   type UpstreamToolRow
 } from '../db/queries/upstreams'
-import {
-  listSkillsForUpstream,
-  type SkillForUpstreamRow
-} from '../db/queries/skill-attachments'
-import {
-  listDocsForUpstream,
-  type DocForUpstreamRow
-} from '../db/queries/doc-attachments'
-import {
-  createUpstreamClient,
-  type UpstreamClient
-} from '../upstream/upstream-client'
+import { listSkillsForUpstream, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
+import { listDocsForUpstream, type DocForUpstreamRow } from '../db/queries/doc-attachments'
+import { createUpstreamClient, type UpstreamClient } from '../upstream/upstream-client'
+import type { McpUpstreamEntry } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
@@ -56,23 +48,9 @@ import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
 
-export interface ListUpstreamsEntry {
-  slug: string
-  displayName: string
-  transport: 'streamable_http' | 'sse'
-  connected: boolean
-  toolsCount: number
-  requiresAuth?: 'user_bearer' | 'shared_bearer' | 'user_oauth' | 'none'
-  // M7a: whole-upstream attachments (tool_name='' rows in
-  // skill_attachments / doc_attachments). Per-tool attachments surface
-  // on /api/upstreams/:id/tools instead. Default empty arrays so MCP
-  // clients can rely on the field being present.
-  attached_skills: Array<{ slug: string; title: string }>
-  // `id` is the canonical doc id `get_doc` expects; `slug` is the
-  // human-friendly handle. Both are emitted so the discovery chain
-  // (list_upstreams → get_doc) works without a second lookup.
-  attached_docs: Array<{ id: string; slug: string; title: string }>
-}
+// The `list_upstreams` entry shape is the shared MCP output contract; the
+// builder below is typed against it so it can't drift from the schema.
+export type ListUpstreamsEntry = McpUpstreamEntry
 
 export class UpstreamProxyRegistry {
   /** upstream_id → live MCP Client */
@@ -85,7 +63,10 @@ export class UpstreamProxyRegistry {
     // the tool path (cheap: one synchronous insert + an idempotent drain
     // schedule) so durability no longer rides a cancellable `waitUntil`.
     private readonly stageUsage: (args: RecordUsageArgs) => Promise<void>,
-    private readonly sessionId: string
+    private readonly sessionId: string,
+    // Injectable so tests can substitute a fake transport without real
+    // network. Defaults to the real factory in production.
+    private readonly makeClient: typeof createUpstreamClient = createUpstreamClient
   ) {}
 
   /**
@@ -102,7 +83,7 @@ export class UpstreamProxyRegistry {
       const bearer = await this.resolveBearer(row, conn)
       if (conn.authStrategy !== 'none' && bearer === null) continue
 
-      const client = createUpstreamClient(conn, bearer)
+      const client = this.makeClient(conn, bearer)
       const tools = await this.ensureCatalogue(conn, client)
       if (tools.length === 0) {
         // Empty even after refresh — log and skip; user sees built-ins only.
@@ -154,7 +135,7 @@ export class UpstreamProxyRegistry {
     return (
       '\n\n**Org playbooks attached to your upstreams — read these BEFORE the ' +
       "first call to the named upstream's tools. They encode required conventions " +
-      "(label/status names, formatting rules, prefer-this-tool guidance) the tool " +
+      '(label/status names, formatting rules, prefer-this-tool guidance) the tool ' +
       'schemas do not show:**\n' +
       lines.join('\n')
     )
@@ -181,20 +162,14 @@ export class UpstreamProxyRegistry {
    * upstreams (missing user_bearer creds) are returned with `connected:
    * false` so agents know the deep-link to /upstreams.
    */
-  static async listUpstreamsForUser(
-    env: Env,
-    userId: string
-  ): Promise<ListUpstreamsEntry[]> {
+  static async listUpstreamsForUser(env: Env, userId: string): Promise<ListUpstreamsEntry[]> {
     const rows = await listUpstreamsVisibleToUser(env, userId)
     if (rows.length === 0) return []
     const out: ListUpstreamsEntry[] = []
     for (const row of rows) {
       if (row.transport !== 'streamable_http' && row.transport !== 'sse') continue
-      const requiresCred =
-        row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
-      const connected = requiresCred
-        ? !!(await getUserCredential(env, userId, row.id))
-        : true
+      const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
+      const connected = requiresCred ? !!(await getUserCredential(env, userId, row.id)) : true
       const toolsCount = await countToolsForUpstream(env, row.id)
       // Whole-upstream attachments only (tool_name = ''); per-tool
       // attachments surface via /api/upstreams/:id/tools.
@@ -224,10 +199,7 @@ export class UpstreamProxyRegistry {
 
   // ----- internals ------------------------------------------------------
 
-  private resolveBearer(
-    row: UpstreamServerRow,
-    conn: UpstreamConnection
-  ): Promise<string | null> {
+  private resolveBearer(row: UpstreamServerRow, conn: UpstreamConnection): Promise<string | null> {
     return resolveUserUpstreamBearer(this.env, row, conn, this.userId)
   }
 
@@ -236,8 +208,7 @@ export class UpstreamProxyRegistry {
     client: UpstreamClient
   ): Promise<UpstreamToolRow[]> {
     const cachedAt = await getToolsCachedAt(this.env, conn.id)
-    const stale =
-      cachedAt === null || Date.now() / 1000 - cachedAt > CATALOGUE_TTL_SECONDS
+    const stale = cachedAt === null || Date.now() / 1000 - cachedAt > CATALOGUE_TTL_SECONDS
     if (!stale) return listCachedTools(this.env, conn.id)
     try {
       // Reuse the persistent client this registry already opened — avoids
@@ -367,11 +338,13 @@ export class UpstreamProxyRegistry {
     // Single cast on the call keeps the handler closed-over types
     // intact (alternative: cast the inputSchema to `never`, which
     // collapses the callback signature to `() => ...`).
-    ;(server.registerTool as unknown as (
-      name: string,
-      cfg: { title: string; description: string; inputSchema: unknown },
-      cb: (args: unknown) => unknown
-    ) => unknown)(
+    ;(
+      server.registerTool as unknown as (
+        name: string,
+        cfg: { title: string; description: string; inputSchema: unknown },
+        cb: (args: unknown) => unknown
+      ) => unknown
+    )(
       mangled,
       // title = mangled so the human-facing label matches the
       // agent-callable name (and surfaces the upstream slug). Falls
@@ -392,7 +365,7 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
   }
 }
 
-function truncateDescription(s: string, max = 1024): string {
+export function truncateDescription(s: string, max = 1024): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
 }
 
@@ -403,7 +376,7 @@ function truncateDescription(s: string, max = 1024): string {
  * individual tools. Skills and docs are merged into one ordered list per
  * tool so a tool can carry both.
  */
-function perToolPointers(
+export function perToolPointers(
   skills: SkillForUpstreamRow[],
   docs: DocForUpstreamRow[]
 ): Map<string, string[]> {
@@ -426,7 +399,7 @@ function perToolPointers(
  * and Unicode intact.
  */
 function sanitizeUntrustedText(s: string): string {
-  // eslint-disable-next-line no-control-regex
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
   return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')
 }
 
@@ -435,7 +408,7 @@ function stringifyError(err: unknown): string {
   return String(err)
 }
 
-function isTimeoutError(err: unknown): boolean {
+export function isTimeoutError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)
   // Both the upstream/http-client 60s wall cap and the MCP SDK's
   // own RequestTimeoutError surface as messages mentioning timeout.
@@ -460,7 +433,7 @@ function errText(msg: string) {
  * tool's pagination params, so we name the common levers. First-party
  * text (no upstream input), so no sanitisation needed.
  */
-function truncationNotice(slug: string, tool: string, bytes: number, cap: number): string {
+export function truncationNotice(slug: string, tool: string, bytes: number, cap: number): string {
   return (
     `[ctxlayer] The response from ${slug}.${tool} was ${bytes} bytes, over the ` +
     `${cap}-byte relay cap, and was withheld to protect the agent's context. ` +
