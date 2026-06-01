@@ -38,6 +38,8 @@ export interface DocumentRow {
  */
 export interface DocumentWithUsersRow extends DocumentRow {
   git_source_id: string | null
+  git_source_slug: string | null
+  git_source_name: string | null
   created_by_email: string | null
   created_by_name: string | null
   updated_by_id: string | null
@@ -52,6 +54,8 @@ const SELECT_DOC_WITH_USERS = `
          d.r2_snapshot, d.created_by, d.created_at, d.updated_at,
          d.deleted_at, d.chunk_count,
          d.locked_at, d.locked_by, d.git_source_id,
+         gs.slug         AS git_source_slug,
+         gs.display_name AS git_source_name,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
          ru.id    AS updated_by_id,
@@ -63,7 +67,8 @@ const SELECT_DOC_WITH_USERS = `
   LEFT JOIN users cu ON cu.id = d.created_by
   LEFT JOIN doc_revisions r ON r.id = d.current_rev_id
   LEFT JOIN users ru ON ru.id = r.author_id
-  LEFT JOIN users lu ON lu.id = d.locked_by`
+  LEFT JOIN users lu ON lu.id = d.locked_by
+  LEFT JOIN git_sources gs ON gs.id = d.git_source_id`
 
 export interface RevisionRow {
   id: string

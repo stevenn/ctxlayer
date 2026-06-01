@@ -268,6 +268,8 @@ function toSummary(row: DocumentWithUsersRow): DocSummary {
     kind: row.kind,
     folder: row.folder,
     gitSourceId: row.git_source_id,
+    gitSourceSlug: row.git_source_slug,
+    gitSourceName: row.git_source_name,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     lockedAt: row.locked_at,

@@ -67,6 +67,12 @@ export const DocSummary = z.object({
   // The git source this doc is synced from, or null for authored docs.
   // Drives the Home vs Code Docs split + the git badge in the library.
   gitSourceId: z.string().nullable(),
+  // Human-readable identity of that git source, joined in for the library
+  // UI: the Code Docs tree groups synced docs under a virtual per-repo
+  // node labelled with the source. Both null for authored docs (and for a
+  // git doc whose source row was removed).
+  gitSourceSlug: z.string().nullable(),
+  gitSourceName: z.string().nullable(),
   createdAt: z.number(),
   updatedAt: z.number(),
   // The original author (documents.created_by joined to users).

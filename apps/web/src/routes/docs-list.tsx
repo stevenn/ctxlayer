@@ -45,6 +45,10 @@ type FolderGroup = 'home' | 'code'
 interface FolderSelection {
   group: FolderGroup
   path: string | null
+  // Only meaningful for the code group: which git source (repo) the
+  // selection is scoped to. Code docs hang under a virtual per-repo node,
+  // so a folder path alone isn't unique across repos. Undefined for home.
+  sourceId?: string | null
 }
 
 const EMPTY_DOCS: DocSummary[] = []
@@ -119,7 +123,6 @@ export function DocsList() {
   const homeDocs = useMemo(() => docs.filter((d) => !isGitDoc(d)), [docs])
   const codeDocs = useMemo(() => docs.filter(isGitDoc), [docs])
   const homeFolders = useMemo(() => computeFolderNodes(homeDocs), [homeDocs])
-  const codeFolders = useMemo(() => computeFolderNodes(codeDocs), [codeDocs])
 
   async function onRenameFolder(oldPath: string) {
     const next = await dialogs.prompt({
@@ -267,14 +270,10 @@ export function DocsList() {
                   onDelete={onDeleteFolder}
                 />
                 {codeDocs.length > 0 && (
-                  <FolderTree
-                    group="code"
-                    rootLabel="Code Docs"
-                    folders={codeFolders}
-                    rootDocCount={codeDocs.filter((d) => !d.folder).length}
+                  <CodeDocsTree
+                    codeDocs={codeDocs}
                     selected={selected}
                     onSelect={setSelected}
-                    manageable={false}
                   />
                 )}
               </Stack>
@@ -282,6 +281,7 @@ export function DocsList() {
                 docs={status.docs}
                 group={selected.group}
                 folder={selected.path}
+                sourceId={selected.sourceId ?? null}
                 query={query}
                 onOpen={(id) => nav(`/app/docs/${id}`)}
                 onMove={onMoveDoc}
@@ -440,10 +440,91 @@ function FolderTree({
   )
 }
 
+// ----- Code Docs tree (grouped by repo) ----------------------------------
+
+interface RepoGroup {
+  sourceId: string
+  label: string
+  tree: TreeNode
+}
+
+/**
+ * Group git-synced docs by their source repo, building a folder subtree
+ * per repo. Each repo becomes a virtual top-level node (path === null)
+ * whose badge counts every doc in the repo and whose folder children
+ * narrow to exact paths — so the library hierarchy reads
+ * `Code Docs › <repo> › <folder…>`. Sorted by repo label for stability.
+ */
+function groupCodeDocsByRepo(docs: DocSummary[]): RepoGroup[] {
+  const bySource = new Map<string, DocSummary[]>()
+  for (const d of docs) {
+    if (!d.gitSourceId) continue
+    const arr = bySource.get(d.gitSourceId)
+    if (arr) arr.push(d)
+    else bySource.set(d.gitSourceId, [d])
+  }
+  const groups: RepoGroup[] = []
+  for (const [sourceId, repoDocs] of bySource) {
+    const first = repoDocs[0]!
+    const label = first.gitSourceName || first.gitSourceSlug || 'Unknown repo'
+    // Repo root lists the whole repo, so its count is the repo total.
+    const tree = buildTree(computeFolderNodes(repoDocs), repoDocs.length, label)
+    groups.push({ sourceId, label, tree })
+  }
+  groups.sort((a, b) => a.label.localeCompare(b.label))
+  return groups
+}
+
+function CodeDocsTree({
+  codeDocs,
+  selected,
+  onSelect
+}: {
+  codeDocs: DocSummary[]
+  selected: FolderSelection
+  onSelect: (sel: FolderSelection) => void
+}) {
+  const repos = useMemo(() => groupCodeDocsByRepo(codeDocs), [codeDocs])
+
+  return (
+    <aside
+      style={{
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        padding: '8px 6px',
+        background: 'var(--bg-surface)'
+      }}
+    >
+      <Text
+        fz={10}
+        fw={600}
+        c="dimmed"
+        tt="uppercase"
+        style={{ letterSpacing: '0.06em', padding: '2px 8px 6px' }}
+      >
+        Code Docs
+      </Text>
+      {repos.map((r) => (
+        <FolderNodeRow
+          key={r.sourceId}
+          node={r.tree}
+          depth={0}
+          group="code"
+          sourceId={r.sourceId}
+          selected={selected}
+          onSelect={onSelect}
+          manageable={false}
+        />
+      ))}
+    </aside>
+  )
+}
+
 function FolderNodeRow({
   node,
   depth,
   group,
+  sourceId,
   selected,
   onSelect,
   manageable,
@@ -453,13 +534,18 @@ function FolderNodeRow({
   node: TreeNode
   depth: number
   group: FolderGroup
+  // Repo scope for the whole subtree (code group only); undefined for home.
+  sourceId?: string | null
   selected: FolderSelection
   onSelect: (sel: FolderSelection) => void
   manageable: boolean
   onRename?: (path: string) => void
   onDelete?: (path: string, descendantDocCount: number) => void
 }) {
-  const isActive = selected.group === group && (node.path ?? null) === (selected.path ?? null)
+  const isActive =
+    selected.group === group &&
+    (selected.sourceId ?? null) === (sourceId ?? null) &&
+    (node.path ?? null) === (selected.path ?? null)
   const isRoot = node.path === null
 
   return (
@@ -474,7 +560,7 @@ function FolderNodeRow({
           cursor: 'pointer',
           background: isActive ? 'var(--bg-hover)' : undefined
         }}
-        onClick={() => onSelect({ group, path: node.path })}
+        onClick={() => onSelect({ group, path: node.path, sourceId })}
       >
         <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive || isRoot ? 600 : 400 }}>
           {node.label}
@@ -512,6 +598,7 @@ function FolderNodeRow({
           node={child}
           depth={depth + 1}
           group={group}
+          sourceId={sourceId}
           selected={selected}
           onSelect={onSelect}
           manageable={manageable}
@@ -529,6 +616,7 @@ function DocsTable({
   docs,
   group,
   folder,
+  sourceId,
   query,
   onOpen,
   onMove
@@ -536,6 +624,7 @@ function DocsTable({
   docs: DocSummary[]
   group: FolderGroup
   folder: string | null
+  sourceId: string | null
   query: string
   onOpen: (id: string) => void
   onMove: (doc: DocSummary) => void
@@ -543,16 +632,31 @@ function DocsTable({
   // A non-empty query is a global "find a doc anywhere" — it searches the
   // whole library (both groups) and bypasses the folder filter. An empty
   // query is strict browse: docs of the selected group directly in the
-  // selected folder (null path = that group's root).
+  // selected folder (null path = that group's root). For the code group
+  // the selection is also scoped to a repo (sourceId); the repo root
+  // (folder null) lists the whole repo, a real folder narrows to its
+  // exact members.
   const scoped = useMemo(() => {
     if (query.trim()) return docs
-    return docs.filter(
-      (d) => isGitDoc(d) === (group === 'code') && (d.folder ?? null) === folder
-    )
-  }, [docs, folder, query, group])
+    if (group === 'home') {
+      return docs.filter((d) => !isGitDoc(d) && (d.folder ?? null) === folder)
+    }
+    return docs.filter((d) => {
+      if (!isGitDoc(d)) return false
+      if (sourceId && d.gitSourceId !== sourceId) return false
+      return folder === null ? true : (d.folder ?? null) === folder
+    })
+  }, [docs, folder, sourceId, query, group])
   const filtered = useMemo(() => filterDocs(scoped, query), [scoped, query])
 
-  const where = folder ?? (group === 'code' ? 'Code Docs' : 'Home')
+  const repoLabel =
+    group === 'code' && sourceId
+      ? (() => {
+          const r = docs.find((d) => d.gitSourceId === sourceId)
+          return r?.gitSourceName || r?.gitSourceSlug || 'repo'
+        })()
+      : null
+  const where = folder ?? repoLabel ?? (group === 'code' ? 'Code Docs' : 'Home')
   if (filtered.length === 0) {
     return (
       <Text c="dimmed">
