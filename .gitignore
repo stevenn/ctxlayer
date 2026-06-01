@@ -4,6 +4,7 @@ dist/
 .dev-tls/
 .dev.vars
 .dev.vars.local
+.prod.vars
 *.log
 .DS_Store
 .env

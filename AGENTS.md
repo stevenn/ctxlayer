@@ -6,10 +6,12 @@ verifies over interactive flows.
 
 ## Golden path for any change
 
-1. `bun run verify` — typecheck + unit/integration tests + smoke.
+1. `bun run verify` — typecheck + unit + integration tests, all offline.
+   `bun run verify:full` additionally runs the `smoke` suite, which needs a
+   running local Worker (`bun run dev:worker`) or a preview URL.
 2. Commit with a present-tense, "why" focused message.
 3. `git push -u origin <branch>` and open a PR with `gh pr create`.
-4. CI runs the same `bun run verify` plus a preview deploy.
+4. There is no hosted CI — run `bun run verify` yourself before pushing.
 
 ## Where things live
 
@@ -44,8 +46,9 @@ verifies over interactive flows.
 
 1. Create `*-do.ts` exporting the class.
 2. Re-export from `apps/worker/src/index.ts`.
-3. Add `[[durable_objects.bindings]]` + `new_sqlite_classes` migration in
-   `wrangler.toml`.
+3. Add `[[durable_objects.bindings]]` + a class migration in `wrangler.toml`:
+   `new_classes`, or `new_sqlite_classes` only if the DO uses `ctx.storage.sql`
+   (the storage backend is sticky once the class is created).
 4. Reference it through the typed `Env` binding.
 
 ## Anti-patterns to avoid

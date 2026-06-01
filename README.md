@@ -18,9 +18,19 @@ reference, not a roadmap). Briefing for AI agents working in this repo is
 **[`CLAUDE.md`](CLAUDE.md)** / **[`AGENTS.md`](AGENTS.md)**. Architectural
 conventions and gotchas live in `docs/plan/G-conventions.md`.
 
-## Current state (2026-05-26)
+> **Integration surfaces.** The supported, stable contract for external
+> clients is the **MCP** surface (`/mcp`, `/sse`) plus the OAuth provider.
+> The `/api/*` REST endpoints are an **internal contract for the bundled
+> SPA** — not versioned and subject to change between releases. Build agents
+> and scripts against MCP, not `/api`.
 
-| Milestone | Status | What works |
+## Current state
+
+Everything described in [`docs/PLAN.md`](docs/PLAN.md) is shipped and deployed.
+The milestone framing below is kept as a feature inventory, not a roadmap (the
+milestone-driven plan is retired — see `CLAUDE.md`).
+
+| Area | Status | What works |
 |---|---|---|
 | **M1** — Skeleton + sign-in | ✅ done | GitHub / Google sign-in with allowlist, real `/api/me` |
 | **M2** — Docs + RAG via MCP | ✅ done | BlockNote editor with revisions, R2 snapshots, Vectorize embedding pipeline, MCP server at `/mcp` with `search_docs` / `get_doc` / `whoami` / `list_my_context` / `list_upstreams`, doc resources, admin teams + products + tags |
@@ -28,6 +38,8 @@ conventions and gotchas live in `docs/plan/G-conventions.md`.
 | **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done | AES-GCM creds, MCP SDK Client for Streamable HTTP / SSE, namespaced tool aggregation, JSON-Schema → Zod schema preservation, full admin UI for upstreams, user `/upstreams` page with paste-bearer + OAuth. **Validated end-to-end against Notion MCP via Claude Desktop** — search, fetch, create-page. |
 | **M5** — Admin polish | ✅ done | Admin Users (promote/demote + revoke creds), `shared_bearer` storage, admin Audit log viewer (`/app/admin/audit`), admin OAuth-clients viewer (`/app/admin/oauth-clients`), real `/app/mcp-setup` with per-client snippets. Bundled side features: folder organisation for docs, per-doc lock, modal-dialog system, doc-move UI |
 | **M6** — Usage pipeline + dashboards | ✅ done | Per-user/upstream call + token charts, tiktoken consumer, daily rollups, admin + user usage pages |
+| **Skills** — curated playbooks | ✅ done | Published skills surface over MCP (`list_skills` / `get_skill` + `mcp://ctxlayer/skills/{slug}`), per-upstream/per-tool attachments, admin skill editor, CLI `draft-skill` |
+| **Git sync** — code docs from repos | ✅ done | Register a GitHub repo (PAT or OAuth), mirror Markdown into the doc store, product-link auto-tagging, scheduled cron sync |
 | **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
 
 ## Quickstart (contributors hacking on ctxlayer)
@@ -39,10 +51,33 @@ deployed ctxlayer and operators standing it up don't need any of this; see
 ```bash
 brew install mkcert nss           # macOS contributors only; see docs/plan/G-conventions.md G11 for Linux/Windows
 bun install
-cp .dev.vars.example .dev.vars    # fill in IdP secrets, ENCRYPTION_KEY, SESSION_COOKIE_SECRET
+cp .dev.vars.example .dev.vars    # then edit it — see "Filling in .dev.vars" below
+bun run migrate:local             # apply D1 migrations to the local (miniflare) DB
+bun run seed:local                # load fixture teams / products / upstreams / docs
 bun run dev                       # or split-terminals: dev:worker + dev:web (recommended)
-bun run verify                    # typecheck + tests + smoke
+bun run verify                    # typecheck + unit + integration tests (all offline)
 ```
+
+#### Filling in `.dev.vars`
+
+To sign in locally you need at least one IdP. The quickest is a **GitHub OAuth
+app** (<https://github.com/settings/developers> → "New OAuth App"):
+
+- Authorization callback URL: `https://localhost:8787/idp/github/callback`
+- Put its client id/secret in `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET`.
+- Set `ALLOWED_GITHUB_USERS=<your-login>` — the allowlist gates who may sign in.
+- Set `ADMIN_EMAILS=<your-email>` so the admin pages are reachable.
+- Generate `ENCRYPTION_KEY` and `SESSION_COOKIE_SECRET` with
+  `openssl rand -base64 32` each.
+- `PUBLIC_BASE_URL` is already set to `https://localhost:8787` in the example.
+
+**Local dev needs no Cloudflare account** — miniflare emulates D1, KV, R2, and
+Queues offline. Workers AI and Vectorize have no local emulator, so
+`search_docs` returns nothing locally (the reindex consumer soft-skips
+Vectorize in dev) — that's expected; exercise RAG end-to-end against a real
+deploy. `bun run verify` is fully offline; `bun run verify:full` additionally
+runs the `smoke` suite, which needs a running Worker (`bun run dev:worker`) or
+a preview URL.
 
 The first dev run calls `scripts/setup-dev-tls.mjs` via the `predev` hook
 and generates a locally-trusted cert in `.dev-tls/`. Both Vite and Wrangler
@@ -289,8 +324,10 @@ routing side.
 
 Finalise the deployment so everything points at the real hostname:
 
-1. Set `PUBLIC_BASE_URL` in `wrangler.toml [vars]` to
-   `https://ctxlayer.acme.com`. Redeploy.
+1. Set `PUBLIC_BASE_URL=https://ctxlayer.acme.com` in your gitignored
+   `.prod.vars` (copy from `.prod.vars.example`). `scripts/deploy.mjs`
+   injects it at deploy time, so the committed `wrangler.toml` stays a
+   generic template. Redeploy.
 2. Update the **GitHub OAuth App** callback URL to
    `https://ctxlayer.acme.com/idp/github/callback`
    (GitHub OAuth apps allow only one callback URL — swap, don't add).
@@ -398,7 +435,8 @@ A few rules the worker enforces that are operator-visible:
 apps/worker/      Cloudflare Worker — Hono routes, MCP server, OAuth provider,
                   DOs (McpSessionDO + DocRoomDO), upstream proxy, queue consumers
 apps/web/         React SPA — Vite, BlockNote editor, admin pages, /upstreams
-packages/shared/  Zod schemas + types shared between worker and SPA
+packages/shared/  Zod schemas + types shared between worker and SPA (the wire contract)
+packages/cli/     The `ctxlayer` CLI — login, pull org skills into Claude Code, draft-skill
 docs/             PLAN.md + topic deep-dives under docs/plan/
-scripts/          Bootstrap, dev-TLS, smoke, seed
+scripts/          Bootstrap, dev-TLS, smoke, seed, deploy
 ```

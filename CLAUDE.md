@@ -173,8 +173,8 @@ Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 
 ## Where to start
 
-ctxlayer is fully built and deployed to `ctxlayer.stevenn-a65.workers.dev`
-(GitHub sign-in; Google supported but off in the live deploy). Everything in
+ctxlayer is fully built and runs as a single Cloudflare Worker
+(GitHub sign-in; Google supported but off in the reference deploy). Everything in
 PLAN.md is shipped: docs + RAG over Vectorize, the BlockNote/Yjs collab editor,
 the HTTP/SSE upstream proxy (incl. `user_oauth` DCR+PKCE, AES-GCM creds at rest,
 per-upstream timeouts + response-size guard), the admin pages (users / audit /

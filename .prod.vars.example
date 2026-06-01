@@ -1,0 +1,10 @@
+# Copy to .prod.vars and fill in. .prod.vars is gitignored.
+#
+# NON-SECRET plaintext config injected into production deploys by
+# `scripts/deploy.mjs` (via `--var`). Keeps the committed wrangler.toml a
+# clean public template. Real secrets (ENCRYPTION_KEY, IdP creds, …) are NOT
+# set here — use `wrangler secret put <NAME>`.
+
+# Your deployment's public origin. Bakes into OAuth callback URLs + the MCP
+# base URL, so it must match the hostname your IdP apps are registered against.
+PUBLIC_BASE_URL=https://your-worker.workers.dev

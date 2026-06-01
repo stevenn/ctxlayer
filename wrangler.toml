@@ -153,7 +153,11 @@ port = 8787
 local_protocol = "https"
 
 [vars]
-PUBLIC_BASE_URL = "https://ctxlayer.stevenn-a65.workers.dev"
+# Placeholder for the public template. The real deployment origin is injected
+# at deploy time by `scripts/deploy.mjs` from a gitignored `.prod.vars`
+# (`--var PUBLIC_BASE_URL:…`), so this committed value is never shipped.
+# For local dev, `.dev.vars` overrides it with https://localhost:8787.
+PUBLIC_BASE_URL = "https://YOUR-WORKER.example.workers.dev"
 # Build provenance, surfaced on /api/version + /api/health. Empty by
 # default (local dev / a bare `wrangler deploy`); the `deploy` script
 # overrides both with `--var` from `git rev-parse` + a UTC timestamp.

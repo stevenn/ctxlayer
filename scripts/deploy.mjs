@@ -1,0 +1,65 @@
+#!/usr/bin/env bun
+/**
+ * Deploy (or upload a preview of) the Worker, injecting PUBLIC_BASE_URL from a
+ * gitignored `.prod.vars` so the committed wrangler.toml stays a clean public
+ * template. Usage:
+ *
+ *   bun scripts/deploy.mjs            # wrangler deploy
+ *   bun scripts/deploy.mjs --preview  # wrangler versions upload
+ *
+ * `.prod.vars` holds NON-SECRET plaintext config only (deployment origin).
+ * Real secrets (ENCRYPTION_KEY, IdP creds, …) go via `wrangler secret put`.
+ */
+import { readFileSync, existsSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { fileURLToPath } from 'node:url'
+import { dirname, join } from 'node:path'
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
+const preview = process.argv.includes('--preview')
+
+// Parse a `.prod.vars` (KEY=VALUE lines, `#` comments). Returns {} if absent.
+function loadProdVars() {
+  const path = join(repoRoot, '.prod.vars')
+  if (!existsSync(path)) return {}
+  const out = {}
+  for (const raw of readFileSync(path, 'utf8').split('\n')) {
+    const line = raw.trim()
+    if (!line || line.startsWith('#')) continue
+    const eq = line.indexOf('=')
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim()
+  }
+  return out
+}
+
+const fileVars = loadProdVars()
+const publicBaseUrl = process.env.PUBLIC_BASE_URL || fileVars.PUBLIC_BASE_URL
+
+if (!publicBaseUrl || /YOUR-WORKER|example\.workers\.dev/.test(publicBaseUrl)) {
+  console.error(
+    '\n[deploy] PUBLIC_BASE_URL is not set.\n' +
+      '  Create a gitignored .prod.vars at the repo root with your origin:\n' +
+      '    PUBLIC_BASE_URL=https://<your-worker>.workers.dev\n' +
+      '  (or export PUBLIC_BASE_URL=…). See README → Deploying ctxlayer.\n'
+  )
+  process.exit(1)
+}
+
+const sha = execFileSync('git', ['rev-parse', '--short', 'HEAD'], { cwd: repoRoot })
+  .toString()
+  .trim()
+const builtAt = new Date().toISOString().replace(/\.\d{3}Z$/, 'Z')
+
+const vars = [
+  ['PUBLIC_BASE_URL', publicBaseUrl],
+  ['GIT_SHA', sha],
+  ['BUILT_AT', builtAt]
+]
+const varArgs = vars.flatMap(([k, v]) => ['--var', `${k}:${v}`])
+const wranglerArgs = preview ? ['versions', 'upload', ...varArgs] : ['deploy', ...varArgs]
+
+console.error(`[deploy] PUBLIC_BASE_URL=${publicBaseUrl}`)
+console.error(`[deploy] wrangler ${wranglerArgs.join(' ')}`)
+// Run from the original cwd (apps/worker); wrangler resolves the root config
+// + `[assets] directory` relative to wrangler.toml regardless of cwd.
+execFileSync('bunx', ['wrangler', ...wranglerArgs], { stdio: 'inherit' })
