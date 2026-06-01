@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { prefixedSlug } from './slug'
 
 export const TeamRef = z.object({
   id: z.string(),
@@ -83,7 +84,7 @@ export const OrgSlug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase, digits and dashes only')
 
 export const CreateTeamRequest = z.object({
-  slug: OrgSlug,
+  slug: prefixedSlug('team'),
   displayName: z.string().min(1).max(200),
   description: z.string().max(2000).nullish(),
   idpGroup: z.string().max(200).nullish(),
@@ -95,7 +96,10 @@ export const CreateTeamRequest = z.object({
 export type CreateTeamRequest = z.infer<typeof CreateTeamRequest>
 
 export const UpdateTeamRequest = z.object({
-  slug: OrgSlug.optional(),
+  // Renamable, but a new slug must carry the `team-` prefix. The SPA only
+  // sends `slug` when it actually changed, so editing other fields on a
+  // grandfathered (pre-prefix) team doesn't force a re-slug.
+  slug: prefixedSlug('team').optional(),
   displayName: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullish(),
   idpGroup: z.string().max(200).nullish(),
@@ -115,14 +119,16 @@ export const AdminTeamRow = TeamRef.extend({
 export type AdminTeamRow = z.infer<typeof AdminTeamRow>
 
 export const CreateProductRequest = z.object({
-  slug: OrgSlug,
+  slug: prefixedSlug('product'),
   displayName: z.string().min(1).max(200),
   description: z.string().max(2000).nullish()
 })
 export type CreateProductRequest = z.infer<typeof CreateProductRequest>
 
 export const UpdateProductRequest = z.object({
-  slug: OrgSlug.optional(),
+  // Renamable; a new slug must carry the `prod-` prefix. Same send-only-
+  // when-changed rule as teams keeps grandfathered products editable.
+  slug: prefixedSlug('product').optional(),
   displayName: z.string().min(1).max(200).optional(),
   description: z.string().max(2000).nullish()
 })

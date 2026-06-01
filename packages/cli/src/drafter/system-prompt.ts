@@ -29,7 +29,7 @@ Return JSON conforming to the supplied schema:
 
   {
     "frontmatter": {
-      "slug": "<lowercase-hyphen, 1-64 chars, derived from title>",
+      "slug": "<sk-<lowercase-hyphen>, derived from title, e.g. sk-deploy-preview, ≤64 chars>",
       "title": "<human display label, 40-100 chars>",
       "description": "<one-line when-to-use trigger, 1-2 sentences max>",
       "triggerText": "<OPTIONAL extra when-X hints, 1-2 paragraphs>"

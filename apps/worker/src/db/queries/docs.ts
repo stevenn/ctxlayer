@@ -6,6 +6,7 @@
  */
 
 import type { Env } from '../../env'
+import { slugifyBody, suggestSlug } from '@ctxlayer/shared'
 
 export interface DocumentRow {
   id: string
@@ -197,7 +198,7 @@ export async function createDoc(env: Env, input: CreateDocInput): Promise<Docume
   const now = Math.floor(Date.now() / 1000)
   const kind = input.kind ?? 'doc'
   const folder = input.folder ?? null
-  const baseSlug = input.slug ?? slugify(input.title)
+  const baseSlug = input.slug ?? suggestSlug('doc', input.title)
 
   for (let attempt = 0; attempt < 4; attempt++) {
     const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomSuffix()}`
@@ -221,7 +222,7 @@ export async function createDoc(env: Env, input: CreateDocInput): Promise<Docume
 
 export interface PatchDocInput {
   title?: string
-  slug?: string
+  // slug intentionally omitted: doc slugs are immutable after creation.
   kind?: 'doc' | 'prompt'
   // `null` moves the doc to root; `undefined` leaves folder unchanged.
   folder?: string | null
@@ -233,10 +234,6 @@ export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Prom
   if (patch.title !== undefined) {
     fields.push(`title = ?${fields.length + 1}`)
     binds.push(patch.title)
-  }
-  if (patch.slug !== undefined) {
-    fields.push(`slug = ?${fields.length + 1}`)
-    binds.push(patch.slug)
   }
   if (patch.kind !== undefined) {
     fields.push(`kind = ?${fields.length + 1}`)
@@ -567,19 +564,11 @@ function randomSuffix(): string {
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
 }
 
+// Slug BODY for a doc title (no `doc-` prefix). Thin wrapper over the
+// shared canonical slugifier so the worker, SPA, and CLI stay in lockstep.
+// Callers that need the full create-time slug use `suggestSlug('doc', …)`.
 export function slugify(title: string): string {
-  return (
-    title
-      .toLowerCase()
-      .normalize('NFKD')
-      // Strip combining diacritic marks NFKD just produced (e.g. é -> e + ́).
-      // Without this, `é` becomes `e` plus a combining acute which the
-      // next regex treats as a non-allowed char and replaces with '-'.
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 90) || 'untitled'
-  )
+  return slugifyBody(title, 90)
 }
 
 function isUniqueViolation(err: unknown): boolean {

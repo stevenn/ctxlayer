@@ -53,6 +53,7 @@ import {
   putUpstreamCredentials
 } from '../../lib/api'
 import { useDialogs } from '../../lib/dialogs'
+import { useSlugSuggest } from '../../lib/use-slug-suggest'
 
 const TRANSPORT_OPTIONS: { value: SupportedTransport; label: string }[] = [
   { value: 'streamable_http', label: 'Streamable HTTP (current MCP spec)' },
@@ -348,8 +349,8 @@ function CreateUpstreamModal({
   onClose: () => void
   onCreated: (id: string) => void
 }) {
-  const [slug, setSlug] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const slugField = useSlugSuggest('upstream', displayName)
   const [transport, setTransport] = useState<SupportedTransport>('streamable_http')
   const [url, setUrl] = useState('')
   const [authStrategy, setAuthStrategy] = useState<AuthStrategy>('user_bearer')
@@ -358,22 +359,23 @@ function CreateUpstreamModal({
 
   useEffect(() => {
     if (!opened) {
-      setSlug('')
       setDisplayName('')
+      slugField.reset()
       setTransport('streamable_http')
       setUrl('')
       setAuthStrategy('user_bearer')
       setError(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened])
 
   async function submit() {
-    if (!slug.trim() || !displayName.trim() || !url.trim()) return
+    if (!slugField.slug.trim() || !displayName.trim() || !url.trim()) return
     setBusy(true)
     setError(null)
     try {
       const created = await adminCreateUpstream({
-        slug: slug.trim(),
+        slug: slugField.slug.trim(),
         displayName: displayName.trim(),
         transport,
         url: url.trim(),
@@ -399,10 +401,10 @@ function CreateUpstreamModal({
         />
         <TextInput
           label="Slug"
-          placeholder="notion"
-          description="Used in tool namespacing — agents see notion__search_pages. Lowercase letter then [a-z0-9_], max 24."
-          value={slug}
-          onChange={(e) => setSlug(e.currentTarget.value)}
+          placeholder="up-notion"
+          description="Used in tool namespacing — agents see up-notion__search_pages. Must start with up-, then lowercase/digits/dashes, max 24. Immutable after creation."
+          value={slugField.slug}
+          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
         />
         <Select
           label="Transport"
@@ -441,7 +443,7 @@ function CreateUpstreamModal({
           <Button
             onClick={submit}
             loading={busy}
-            disabled={!slug.trim() || !displayName.trim() || !url.trim()}
+            disabled={!slugField.slug.trim() || !displayName.trim() || !url.trim()}
           >
             Create
           </Button>

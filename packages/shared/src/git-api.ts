@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { FolderPath } from './docs-types'
 import { VisibilityRulePayload } from './upstream-api'
+import { prefixedSlug } from './slug'
 
 // ----- enums -------------------------------------------------------------
 
@@ -96,7 +97,9 @@ export const AdminGitSourceRow = z.object({
 export type AdminGitSourceRow = z.infer<typeof AdminGitSourceRow>
 
 export const CreateGitSourceRequest = z.object({
-  slug: GitSourceSlug,
+  // `repo-` prefix enforced on new sources. The base `GitSourceSlug`
+  // (used by AdminGitSourceRow) stays permissive so existing sources read.
+  slug: prefixedSlug('gitSource'),
   displayName: z.string().min(1).max(120),
   provider: GitProvider,
   baseUrl: GitBaseUrl.optional(),

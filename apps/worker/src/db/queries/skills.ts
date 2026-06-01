@@ -12,6 +12,7 @@
  */
 
 import type { Env } from '../../env'
+import { suggestSlug } from '@ctxlayer/shared'
 
 export interface SkillRow {
   id: string
@@ -156,7 +157,7 @@ export interface CreateSkillInput {
 export async function createSkill(env: Env, input: CreateSkillInput): Promise<SkillRow> {
   const id = newId()
   const now = Math.floor(Date.now() / 1000)
-  const baseSlug = input.slug ?? slugifySkill(input.title)
+  const baseSlug = input.slug ?? suggestSlug('skill', input.title)
   const status = input.status ?? 'draft'
   const triggerText = input.triggerText ?? ''
   const drafterMetaJson =
@@ -204,7 +205,8 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
 }
 
 export interface PatchSkillInput {
-  slug?: string
+  // slug intentionally omitted: skill slugs are immutable after creation
+  // (public MCP id + on-disk SKILL.md path).
   title?: string
   description?: string
   triggerText?: string
@@ -214,10 +216,6 @@ export interface PatchSkillInput {
 export async function patchSkill(env: Env, id: string, patch: PatchSkillInput): Promise<void> {
   const fields: string[] = []
   const binds: unknown[] = []
-  if (patch.slug !== undefined) {
-    fields.push(`slug = ?${fields.length + 1}`)
-    binds.push(patch.slug)
-  }
   if (patch.title !== undefined) {
     fields.push(`title = ?${fields.length + 1}`)
     binds.push(patch.title)
@@ -336,24 +334,6 @@ function randomSuffix(): string {
   const buf = new Uint8Array(3)
   crypto.getRandomValues(buf)
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-/**
- * SKILL.md-safe slugifier. Stricter than docs' `slugify`: enforces
- * the leading + trailing alphanumeric and max 64 chars (matches the
- * SkillSlug zod schema in @ctxlayer/shared).
- */
-export function slugifySkill(title: string): string {
-  return (
-    title
-      .toLowerCase()
-      .normalize('NFKD')
-      // Strip combining diacritic marks NFKD just produced.
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 64) || 'untitled'
-  )
 }
 
 function isUniqueViolation(err: unknown): boolean {

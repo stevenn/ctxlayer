@@ -5,7 +5,9 @@
  *
  * SlugPattern is intentionally a bit looser than the worker's
  * SkillSlug to avoid the model emitting an invalid slug and forcing
- * a retry; the worker re-validates on POST.
+ * a retry; the CLI normalises the slug to the enforced `sk-` prefix
+ * before POST (see normalizeSkillSlug in draft-skill.ts) and the worker
+ * re-validates.
  */
 export const DRAFTER_OUTPUT_SCHEMA = {
   type: 'object',

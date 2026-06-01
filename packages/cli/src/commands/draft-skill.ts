@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline/promises'
 import pc from 'picocolors'
-import type { DraftContextBundle } from '@ctxlayer/shared'
+import { type DraftContextBundle, SLUG_PREFIX, slugifyBody } from '@ctxlayer/shared'
 import { authedRequest } from '../auth/client'
 import { loadCredentials } from '../auth/token-store'
 import { CtxlayerError } from '../errors'
@@ -71,6 +71,11 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
     binary: claudeBin,
     budgetUsd: 0.5
   })
+
+  // Skill slugs are enforced to the `sk-` prefix at the create boundary.
+  // Normalise the drafter's slug here so the previewed slug matches what's
+  // posted and the create can't 400 on a bare slug.
+  draft.frontmatter.slug = normalizeSkillSlug(draft.frontmatter.slug)
 
   renderPreview(draft)
 
@@ -178,6 +183,17 @@ function buildDrafterMeta(
     costUsd: envelope.total_cost_usd,
     draftedAt: Math.floor(Date.now() / 1000)
   }
+}
+
+/**
+ * Coerce a drafter-supplied slug to the enforced `sk-<body>` shape: strip
+ * any existing `sk-` so we don't double it, re-slugify the body (the model
+ * may emit stray characters), then re-prefix and cap at the SkillSlug max.
+ */
+function normalizeSkillSlug(raw: string): string {
+  const prefix = `${SLUG_PREFIX.skill}-`
+  const body = raw.startsWith(prefix) ? raw.slice(prefix.length) : raw
+  return `${prefix}${slugifyBody(body, 64 - prefix.length)}`
 }
 
 // ----- preview rendering -------------------------------------------------

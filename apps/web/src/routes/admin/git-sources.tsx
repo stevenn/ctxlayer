@@ -349,7 +349,8 @@ function CreateGitSourceModal({
           />
           <TextInput
             label="Slug"
-            placeholder="docs"
+            placeholder="repo-docs"
+            description="Auto-filled from the repo; edit to customise. Must start with repo-."
             value={slug}
             onChange={(e) => {
               setSlugTouched(true)

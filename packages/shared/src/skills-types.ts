@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UserSummary, DocContent } from './docs-types'
+import { prefixedSlug } from './slug'
 
 // SKILL.md-safe identifier. Lowercase, digits, internal hyphens; 1..64
 // chars; must not start or end with '-'. Stricter than DocSlug (max 96)
@@ -68,9 +69,10 @@ export const SkillDetail = SkillSummary.extend({
 export type SkillDetail = z.infer<typeof SkillDetail>
 
 export const CreateSkillRequest = z.object({
-  // If omitted, the server slugifies the title and appends a suffix
-  // on collision (same algorithm as createDoc).
-  slug: SkillSlug.optional(),
+  // If omitted, the server derives `sk-<slugified-title>` and appends a
+  // suffix on collision (same algorithm as createDoc). If provided, must
+  // carry the `sk-` prefix.
+  slug: prefixedSlug('skill').optional(),
   title: z.string().min(1).max(200),
   description: z.string().min(1).max(500),
   triggerText: z.string().max(500).optional(),
@@ -89,7 +91,10 @@ export const CreateSkillRequest = z.object({
 export type CreateSkillRequest = z.infer<typeof CreateSkillRequest>
 
 export const UpdateSkillRequest = z.object({
-  slug: SkillSlug.optional(),
+  // Slug is immutable after creation: it's the public, agent-facing
+  // identifier (MCP resource `mcp://ctxlayer/skills/{slug}`, get_skill
+  // lookup, and the on-disk `<slug>/SKILL.md` from `ctxlayer pull`).
+  // Renaming would orphan every one of those — so it's never patched.
   title: z.string().min(1).max(200).optional(),
   description: z.string().min(1).max(500).optional(),
   triggerText: z.string().max(500).optional(),

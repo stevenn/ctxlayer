@@ -14,6 +14,7 @@
 import { z } from 'zod'
 import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
+import { prefixedSlug } from './slug'
 
 // Remote HTTP transports are the only dialable kinds; admin POST/PATCH
 // validate against this set. Matches `UpstreamTransport` from mcp-types.
@@ -54,7 +55,13 @@ const UpstreamUrl = z
   )
 
 export const CreateUpstreamRequest = z.object({
-  slug: UpstreamSlug.refine((s) => !ReservedSlugs.has(s), 'slug collides with a built-in tool'),
+  // `up-` prefix enforced on new upstreams; it rides into every proxied
+  // tool name (`up-<slug-body>__<tool>`). The base `UpstreamSlug` stays
+  // permissive for read shapes so pre-prefix upstreams keep validating.
+  slug: prefixedSlug('upstream').refine(
+    (s) => !ReservedSlugs.has(s),
+    'slug collides with a built-in tool'
+  ),
   displayName: z.string().min(1).max(120),
   transport: SupportedTransport,
   url: UpstreamUrl,

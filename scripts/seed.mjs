@@ -22,13 +22,13 @@ if (remote) {
 // Deterministic ids (lowercased, dashes stripped) so re-runs are idempotent.
 const now = Math.floor(Date.now() / 1000)
 const teams = [
-  { id: 'seedteamplatform', slug: 'platform', name: 'Platform', desc: 'Core infra + DX' },
-  { id: 'seedteamweb', slug: 'web', name: 'Web', desc: 'Frontend + SPA' },
-  { id: 'seedteamdata', slug: 'data', name: 'Data', desc: 'Analytics + pipelines' }
+  { id: 'seedteamplatform', slug: 'team-platform', name: 'Platform', desc: 'Core infra + DX' },
+  { id: 'seedteamweb', slug: 'team-web', name: 'Web', desc: 'Frontend + SPA' },
+  { id: 'seedteamdata', slug: 'team-data', name: 'Data', desc: 'Analytics + pipelines' }
 ]
 const products = [
-  { id: 'seedprodcheckout', slug: 'checkout', name: 'Checkout', desc: 'Payment flow' },
-  { id: 'seedprodsearch', slug: 'search', name: 'Search', desc: 'Discovery surfaces' }
+  { id: 'seedprodcheckout', slug: 'prod-checkout', name: 'Checkout', desc: 'Payment flow' },
+  { id: 'seedprodsearch', slug: 'prod-search', name: 'Search', desc: 'Discovery surfaces' }
 ]
 
 const stmts = []

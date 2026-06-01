@@ -33,6 +33,7 @@ import {
   renameFolder
 } from '../lib/api'
 import { useDialogs } from '../lib/dialogs'
+import { useSlugSuggest } from '../lib/use-slug-suggest'
 
 type Status =
   | { kind: 'loading' }
@@ -769,13 +770,17 @@ function BlankDocModal({
   const [folder, setFolder] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const slugField = useSlugSuggest('doc', title)
 
   useEffect(() => {
     if (opened) {
       setTitle('')
       setFolder(defaultFolder ?? '')
       setError(null)
+      slugField.reset()
     }
+    // slugField identity is stable across renders; intentionally not a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened, defaultFolder])
 
   async function submit() {
@@ -785,7 +790,7 @@ function BlankDocModal({
     setBusy(true)
     setError(null)
     try {
-      const { id } = await createDoc({ title: t, folder: f })
+      const { id } = await createDoc({ title: t, folder: f, slug: slugField.slug.trim() || undefined })
       onClose()
       nav(`/app/docs/${id}`)
     } catch (err) {
@@ -807,6 +812,12 @@ function BlankDocModal({
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
           }}
+        />
+        <TextInput
+          label="Slug"
+          value={slugField.slug}
+          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
+          description="Auto-filled from the title; edit to customise. Must start with doc-."
         />
         <TextInput
           label="Folder"
@@ -847,6 +858,7 @@ function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: () => v
   const [file, setFile] = useState<File | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const slugField = useSlugSuggest('doc', title)
 
   useEffect(() => {
     if (!opened) {
@@ -854,7 +866,9 @@ function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: () => v
       setTitleTouched(false)
       setFile(null)
       setError(null)
+      slugField.reset()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened])
 
   function onFile(f: File | null) {
@@ -873,7 +887,10 @@ function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: () => v
     try {
       const text = await file.text()
       const blocks = parser.tryParseMarkdownToBlocks(text)
-      const { id } = await createDoc({ title: title.trim() })
+      const { id } = await createDoc({
+        title: title.trim(),
+        slug: slugField.slug.trim() || undefined
+      })
       try {
         await putDocContent(id, { blocks: blocks as unknown[] })
       } catch (err) {
@@ -921,6 +938,13 @@ function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: () => v
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
           }}
+        />
+
+        <TextInput
+          label="Slug"
+          value={slugField.slug}
+          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
+          description="Auto-filled from the title; edit to customise. Must start with doc-."
         />
 
         {error && (

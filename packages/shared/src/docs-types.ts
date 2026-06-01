@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { prefixedSlug } from './slug'
 
 export const DocKind = z.enum(['doc', 'prompt'])
 export type DocKind = z.infer<typeof DocKind>
@@ -114,9 +115,9 @@ export type SetLockedRequest = z.infer<typeof SetLockedRequest>
 
 export const CreateDocRequest = z.object({
   title: z.string().min(1).max(200),
-  // If omitted, the server slugifies the title and appends a 6-char
-  // suffix on collision.
-  slug: DocSlug.optional(),
+  // If omitted, the server derives `doc-<slugified-title>` and appends a
+  // 6-char suffix on collision. If provided, must carry the `doc-` prefix.
+  slug: prefixedSlug('doc').optional(),
   kind: DocKind.optional(),
   // Folder path. Omit or pass null to create at root.
   folder: FolderPath.nullable().optional()
@@ -125,7 +126,9 @@ export type CreateDocRequest = z.infer<typeof CreateDocRequest>
 
 export const UpdateDocRequest = z.object({
   title: z.string().min(1).max(200).optional(),
-  slug: DocSlug.optional(),
+  // Slug is immutable after creation: it's a stable reference (get_doc
+  // accepts id-or-slug, search deep-links, doc-link hrefs), so renaming
+  // it would silently orphan those. Set once at create; never patched.
   kind: DocKind.optional(),
   // Pass `null` to move to root, a FolderPath to move, or omit to leave
   // the folder unchanged. `.nullable()` admits null; `.optional()` admits

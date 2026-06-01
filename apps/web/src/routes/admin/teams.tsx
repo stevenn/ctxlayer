@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { useSlugSuggest } from '../../lib/use-slug-suggest'
 import {
   Alert,
   Button,
@@ -141,8 +142,8 @@ function CreateTeamModal({
   onClose: () => void
   onCreated: () => void
 }) {
-  const [slug, setSlug] = useState('')
   const [displayName, setDisplayName] = useState('')
+  const slugField = useSlugSuggest('team', displayName)
   const [description, setDescription] = useState('')
   const [idpGroup, setIdpGroup] = useState('')
   const [managedByIdp, setManagedByIdp] = useState(false)
@@ -151,22 +152,23 @@ function CreateTeamModal({
 
   useEffect(() => {
     if (!opened) {
-      setSlug('')
       setDisplayName('')
+      slugField.reset()
       setDescription('')
       setIdpGroup('')
       setManagedByIdp(false)
       setError(null)
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened])
 
   async function submit() {
-    if (!slug.trim() || !displayName.trim()) return
+    if (!slugField.slug.trim() || !displayName.trim()) return
     setBusy(true)
     setError(null)
     try {
       await adminCreateTeam({
-        slug: slug.trim(),
+        slug: slugField.slug.trim(),
         displayName: displayName.trim(),
         description: description.trim() || null,
         idpGroup: idpGroup.trim() || null,
@@ -191,10 +193,10 @@ function CreateTeamModal({
         />
         <TextInput
           label="Slug"
-          placeholder="platform"
-          value={slug}
-          onChange={(e) => setSlug(e.currentTarget.value)}
-          description="Lowercase, digits and dashes only."
+          placeholder="team-platform"
+          value={slugField.slug}
+          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
+          description="Auto-filled from the name; edit to customise. Must start with team-."
         />
         <TextInput
           label="Description"
@@ -227,7 +229,7 @@ function CreateTeamModal({
           <Button
             onClick={submit}
             loading={busy}
-            disabled={!slug.trim() || !displayName.trim()}
+            disabled={!slugField.slug.trim() || !displayName.trim()}
           >
             Create
           </Button>
@@ -323,8 +325,12 @@ function TeamDrawer({
 
   const savePatch = () =>
     withBusy(async () => {
+      const trimmedSlug = slug.trim()
       await adminPatchTeam(team.id, {
-        slug: slug.trim(),
+        // Only send slug when it actually changed: a grandfathered (pre-
+        // prefix) team can be edited without being forced to re-slug, and
+        // the `team-` prefix is enforced only on a real rename.
+        ...(trimmedSlug !== team.slug ? { slug: trimmedSlug } : {}),
         displayName: displayName.trim(),
         description: description.trim() || null,
         idpGroup: idpGroup.trim() || null,

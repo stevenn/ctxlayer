@@ -9,7 +9,7 @@ import {
   TextInput,
   Title
 } from '@mantine/core'
-import type { ProductRef } from '@ctxlayer/shared'
+import { type ProductRef, suggestSlug } from '@ctxlayer/shared'
 import {
   ApiError,
   ApiSchemaError,
@@ -124,6 +124,10 @@ function ProductFormModal({
 }) {
   const isEdit = !!initial
   const [slug, setSlug] = useState(initial?.slug ?? '')
+  // In create mode the slug auto-fills from the name until the user edits
+  // it; in edit mode it starts "touched" so we never overwrite the
+  // existing slug.
+  const [slugTouched, setSlugTouched] = useState(false)
   const [displayName, setDisplayName] = useState(initial?.displayName ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [busy, setBusy] = useState(false)
@@ -136,14 +140,23 @@ function ProductFormModal({
     }
     if (opened && initial) {
       setSlug(initial.slug)
+      setSlugTouched(true)
       setDisplayName(initial.displayName)
       setDescription(initial.description ?? '')
     } else if (opened) {
       setSlug('')
+      setSlugTouched(false)
       setDisplayName('')
       setDescription('')
     }
   }, [opened, initial])
+
+  // Create-mode live suggestion: `prod-<slugified-name>` until touched.
+  useEffect(() => {
+    if (!isEdit && !slugTouched) {
+      setSlug(displayName.trim() ? suggestSlug('product', displayName) : '')
+    }
+  }, [isEdit, slugTouched, displayName])
 
   async function submit() {
     if (!slug.trim() || !displayName.trim()) return
@@ -151,8 +164,12 @@ function ProductFormModal({
     setError(null)
     try {
       if (isEdit && initial) {
+        const trimmedSlug = slug.trim()
         await adminPatchProduct(initial.id, {
-          slug: slug.trim(),
+          // Send slug only when it changed, so a grandfathered (pre-prefix)
+          // product can be edited without being forced to re-slug; the
+          // `prod-` prefix is enforced only on a real rename.
+          ...(trimmedSlug !== initial.slug ? { slug: trimmedSlug } : {}),
           displayName: displayName.trim(),
           description: description.trim() || null
         })
@@ -197,8 +214,11 @@ function ProductFormModal({
         <TextInput
           label="Slug"
           value={slug}
-          onChange={(e) => setSlug(e.currentTarget.value)}
-          description="Lowercase, digits and dashes only."
+          onChange={(e) => {
+            setSlugTouched(true)
+            setSlug(e.currentTarget.value)
+          }}
+          description="Auto-filled from the name; edit to customise. Must start with prod-."
         />
         <TextInput
           label="Description"

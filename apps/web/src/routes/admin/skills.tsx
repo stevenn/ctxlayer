@@ -35,6 +35,7 @@ import {
   patchSkill
 } from '../../lib/api'
 import { useDialogs } from '../../lib/dialogs'
+import { useSlugSuggest } from '../../lib/use-slug-suggest'
 
 type StatusFilter = 'all' | 'draft' | 'published' | 'archived'
 
@@ -278,6 +279,7 @@ function CreateSkillModal({
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const slugField = useSlugSuggest('skill', title)
 
   async function submit() {
     if (!title.trim() || !description.trim()) {
@@ -289,7 +291,8 @@ function CreateSkillModal({
     try {
       const input: CreateSkillRequest = {
         title: title.trim(),
-        description: description.trim()
+        description: description.trim(),
+        slug: slugField.slug.trim() || undefined
       }
       const { id } = await createSkill(input)
       onCreated(id)
@@ -315,6 +318,12 @@ function CreateSkillModal({
           onChange={(e) => setTitle(e.currentTarget.value)}
           required
           autoFocus
+        />
+        <TextInput
+          label="Slug"
+          description="Auto-filled from the title; edit to customise. Must start with sk-. Immutable after creation."
+          value={slugField.slug}
+          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
         />
         <Textarea
           label="Description"

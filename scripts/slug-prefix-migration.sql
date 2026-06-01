@@ -1,0 +1,106 @@
+-- ============================================================================
+-- Slug-prefix alignment migration (one-time, MANUAL, operator-initiated)
+-- ============================================================================
+--
+-- Brings EXISTING prod rows into the entity-type slug convention introduced
+-- alongside packages/shared/src/slug.ts:
+--
+--     teams → team-   products → prod-   git_sources → repo-
+--     documents → doc-   skills → sk-   upstream_servers → up-
+--
+-- WHY THIS IS A STANDALONE SCRIPT, NOT A NUMBERED D1 MIGRATION
+-- The app already GRANDFATHERS pre-prefix slugs: the create/rename request
+-- schemas enforce the prefix, but the read/response schemas stay permissive,
+-- so nothing breaks if you never run this. Renaming an existing slug is a
+-- DELIBERATE act with real blast radius (below), so it must not auto-apply on
+-- the next `migrate:remote`/deploy. Run the tiers you want, by hand, after
+-- the pre-flight preview — DO NOT drop this file into the migrations_dir.
+--
+-- SAFETY (verified against the schema):
+--   • No foreign key references a slug — every FK is by id.
+--   • Attachments (skill_attachments, doc_attachments) and the upstream_tools
+--     cache key by upstream_id + the BARE tool_name; the mangled `slug__tool`
+--     name is recomputed from the live slug at registration, never stored.
+--   • Credentials (user_credentials, upstream_shared_credentials, incl. OAuth)
+--     key by upstream_id → a rename does NOT drop the Linear/Notion connection.
+--   • Usage events/rollup key by upstream_id (the `tool` column may carry the
+--     mangled name → historical analytics labels split, cosmetic only).
+--   • R2 content keys are id-based (docs + skills) → content survives a rename.
+--   • Doc team/product tags + visibility rules store team_id/product_id, never
+--     the slug.
+--   • Prefixing is injective, so it cannot create collisions among rows that
+--     were already unique. The ONLY collision risk is a pre-existing already-
+--     prefixed slug colliding with a freshly-prefixed bare one (e.g. a doc
+--     `doc-x` AND a doc `x`); the UNIQUE constraint aborts that UPDATE rather
+--     than corrupting data. The pre-flight check surfaces it.
+--   • Each UPDATE is guarded with `slug NOT LIKE '<prefix>-%'` → idempotent and
+--     safe to re-run.
+--
+-- HOW TO RUN (binding `DB`, database `ctxlayer`):
+--   1a. PRE-FLIGHT overview — counts per table (read-only; D1 caps UNION
+--       terms, so this uses scalar subqueries instead of a compound SELECT):
+--        wrangler d1 execute DB --remote --command \
+--          "SELECT (SELECT count(*) FROM teams WHERE slug NOT LIKE 'team-%') AS teams, \
+--                  (SELECT count(*) FROM products WHERE slug NOT LIKE 'prod-%') AS products, \
+--                  (SELECT count(*) FROM git_sources WHERE slug NOT LIKE 'repo-%') AS git_sources, \
+--                  (SELECT count(*) FROM documents WHERE slug NOT LIKE 'doc-%') AS docs, \
+--                  (SELECT count(*) FROM skills WHERE slug NOT LIKE 'sk-%') AS skills, \
+--                  (SELECT count(*) FROM upstream_servers WHERE slug NOT LIKE 'up-%') AS upstreams;"
+--   1b. PRE-FLIGHT detail — list the actual slugs, one table at a time:
+--        wrangler d1 execute DB --remote --command \
+--          "SELECT slug FROM upstream_servers WHERE slug NOT LIKE 'up-%';"   (repeat per table)
+--   2. Run a tier — either the whole file, or one statement at a time via
+--      `--command`, depending on which tiers you've decided to apply:
+--        wrangler d1 execute DB --remote --file=scripts/slug-prefix-migration.sql
+--   3. POST-CHECK — re-run the pre-flight SELECT; it should return zero rows
+--      for the tiers you applied.
+--
+-- ============================================================================
+-- TIER 1 — SAFE. Display/cosmetic slugs; nothing references them by slug and
+-- they never appear in an agent-facing identifier. Apply freely.
+-- ============================================================================
+
+UPDATE teams       SET slug = 'team-' || slug WHERE slug NOT LIKE 'team-%';
+UPDATE products    SET slug = 'prod-' || slug WHERE slug NOT LIKE 'prod-%';
+UPDATE git_sources SET slug = 'repo-' || slug WHERE slug NOT LIKE 'repo-%';
+
+-- ============================================================================
+-- TIER 2 — MODERATE. Doc slugs are a soft reference: `get_doc` accepts
+-- id-OR-slug and a renamed slug stops resolving by its old value, but the SPA
+-- routes/links/search deep-links all use the id. Prose that names a doc by
+-- slug (CLAUDE.md, skill bodies, the dynamic MCP server-instructions) will go
+-- stale — the generated instructions regenerate from the DB on next request,
+-- but static prose does not. Apply after deciding you're OK updating prose.
+-- ============================================================================
+
+-- UPDATE documents SET slug = 'doc-' || slug WHERE slug NOT LIKE 'doc-%';
+
+-- ============================================================================
+-- TIER 3 — HIGH BLAST RADIUS. These slugs ARE agent-facing identifiers.
+-- Apply ONLY with the follow-ups below; comment back in to use.
+--
+-- SKILLS  — slug is the public MCP id (`mcp://ctxlayer/skills/{slug}`), the
+--           get_skill key, and the on-disk `~/.claude/skills/ctxlayer/<slug>/`
+--           dir from `ctxlayer pull`. Follow-ups after running:
+--             • re-run `ctxlayer pull` and delete the orphaned old <slug>/ dirs
+--             • update any prose/CLAUDE.md naming a skill by its old slug
+--           (Attachments to upstreams are by skill_id and survive untouched;
+--            the dynamic upstream instructions regenerate with the new slugs.)
+--
+-- UPSTREAMS — slug is the prefix of EVERY proxied tool name the agent calls
+--           (`<slug>__<tool>`), so renaming changes e.g. notion__search_pages
+--           → up-notion__search_pages. Follow-ups after running:
+--             • update any Claude Code settings.json allowlist / permission
+--               rules referencing `mcp__ctxlayer__<oldslug>__*`
+--             • existing agent sessions rediscover tool names on reconnect;
+--               cached `upstream_tools` re-mangle from the new slug, creds and
+--               visibility survive (keyed by id).
+-- ============================================================================
+
+-- UPDATE skills           SET slug = 'sk-' || slug WHERE slug NOT LIKE 'sk-%';
+-- UPDATE upstream_servers SET slug = 'up-' || slug WHERE slug NOT LIKE 'up-%';
+
+-- Sentinel: keeps a `--file` run ending on a terminated statement so the
+-- trailing commented tiers above don't trip wrangler's "leftover buffer"
+-- warning. Harmless to re-run.
+SELECT 'slug-prefix-migration: active tiers applied' AS status;

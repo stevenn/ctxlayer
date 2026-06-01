@@ -1,4 +1,4 @@
-import type { GitProvider } from '@ctxlayer/shared'
+import { type GitProvider, suggestSlug } from '@ctxlayer/shared'
 
 /**
  * Parse a pasted repo URL into the fields a git source needs. Handles
@@ -57,7 +57,7 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
       repo,
       branch: null,
       pathPrefix: '',
-      slugSuggestion: slugifyName(repo)
+      slugSuggestion: suggestSlug('gitSource', repo)
     }
   }
 
@@ -98,7 +98,7 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
       repo,
       branch,
       pathPrefix,
-      slugSuggestion: slugifyName(repo)
+      slugSuggestion: suggestSlug('gitSource', repo)
     }
   }
 
@@ -118,17 +118,10 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
     repo,
     branch,
     pathPrefix,
-    slugSuggestion: slugifyName(repo)
+    slugSuggestion: suggestSlug('gitSource', repo)
   }
 }
 
 function stripDotGit(s: string): string {
   return s.replace(/\.git$/i, '')
-}
-
-function slugifyName(s: string): string {
-  return s
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
 }
