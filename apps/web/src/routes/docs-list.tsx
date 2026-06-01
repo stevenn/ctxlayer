@@ -467,8 +467,15 @@ function groupCodeDocsByRepo(docs: DocSummary[]): RepoGroup[] {
   for (const [sourceId, repoDocs] of bySource) {
     const first = repoDocs[0]!
     const label = first.gitSourceName || first.gitSourceSlug || 'Unknown repo'
-    // Repo root lists the whole repo, so its count is the repo total.
-    const tree = buildTree(computeFolderNodes(repoDocs), repoDocs.length, label)
+    // Mirror the Home root: the repo node lists only docs sitting directly
+    // at the repo's top level (no sub-folder) and its badge counts those;
+    // sub-folders narrow from there. Exact-folder matching, same as the
+    // authored-doc browser — no recursive dump of the whole repo.
+    const tree = buildTree(
+      computeFolderNodes(repoDocs),
+      repoDocs.filter((d) => !d.folder).length,
+      label
+    )
     groups.push({ sourceId, label, tree })
   }
   groups.sort((a, b) => a.label.localeCompare(b.label))
@@ -633,9 +640,9 @@ function DocsTable({
   // whole library (both groups) and bypasses the folder filter. An empty
   // query is strict browse: docs of the selected group directly in the
   // selected folder (null path = that group's root). For the code group
-  // the selection is also scoped to a repo (sourceId); the repo root
-  // (folder null) lists the whole repo, a real folder narrows to its
-  // exact members.
+  // the selection is also scoped to a repo (sourceId), but folder matching
+  // stays exact — identical to the authored-doc browser — so the repo root
+  // lists only its top-level docs, not the whole repo recursively.
   const scoped = useMemo(() => {
     if (query.trim()) return docs
     if (group === 'home') {
@@ -644,7 +651,7 @@ function DocsTable({
     return docs.filter((d) => {
       if (!isGitDoc(d)) return false
       if (sourceId && d.gitSourceId !== sourceId) return false
-      return folder === null ? true : (d.folder ?? null) === folder
+      return (d.folder ?? null) === folder
     })
   }, [docs, folder, sourceId, query, group])
   const filtered = useMemo(() => filterDocs(scoped, query), [scoped, query])
