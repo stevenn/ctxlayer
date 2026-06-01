@@ -12,6 +12,20 @@ Agent context layer — an MCP service on Cloudflare that:
   collaborative markdown editing, admin upstream management, and (later)
   usage analytics.
 
+## Screenshots
+
+|  |  |
+| --- | --- |
+| [![Admin · Upstreams](docs/screenshots/admin-upstreams.png)](docs/screenshots/admin-upstreams.png) | [![Usage dashboard](docs/screenshots/usage.png)](docs/screenshots/usage.png) |
+| **Curate & gate upstream MCP servers** — cache their tools, attach org playbooks + docs per tool | **Usage analytics** — calls, tokens, and top tools per user / upstream |
+| [![Connect upstreams](docs/screenshots/connect-upstreams.png)](docs/screenshots/connect-upstreams.png) | [![Curated skills](docs/screenshots/skills.png)](docs/screenshots/skills.png) |
+| **Self-service onboarding** — connect upstreams via OAuth or a personal token, sealed at rest | **Curated skills** — procedural playbooks agents load on demand |
+
+<p align="center">
+  <img src="docs/screenshots/upstream-config.png" alt="Per-upstream configuration drawer" width="680"><br>
+  <em>Per-upstream config — transport, auth strategy, resilience caps, and team/product visibility</em>
+</p>
+
 The architecture & data-model reference is **[`docs/PLAN.md`](docs/PLAN.md)**
 (the milestone-driven plan that built ctxlayer is retired; PLAN.md is now a
 reference, not a roadmap). Briefing for AI agents working in this repo is
