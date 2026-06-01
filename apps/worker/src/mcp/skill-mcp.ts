@@ -14,7 +14,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { getSkillBySlug, listPublishedSkills } from '../db/queries/skills'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
-import type { McpSkillSummary } from '@ctxlayer/shared'
+import { type McpSkillSummary, McpListSkillsResult } from '@ctxlayer/shared'
 import { readSnapshot } from '../storage/skills-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 
@@ -30,7 +30,10 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
     {
       title: 'List skills',
       description:
-        'Lists org-curated skills (procedural playbooks the agent can load on demand). Each entry carries the SKILL.md `name`, a one-line `description` (when to invoke), and the upstream tools it is attached to. Only published skills surface.'
+        'Lists org-curated skills (procedural playbooks the agent can load on demand). Each entry carries the SKILL.md `name`, a one-line `description` (when to invoke), and the upstream tools it is attached to. Only published skills surface.',
+      // structuredContent must be an object, so the summary array is wrapped
+      // under `skills`; the text `content` keeps the bare array for back-compat.
+      outputSchema: { skills: McpListSkillsResult }
     },
     () =>
       rec('list_skills', undefined, async () => {
@@ -52,7 +55,8 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
           })
         )
         return {
-          content: [{ type: 'text', text: JSON.stringify(summaries, null, 2) }]
+          content: [{ type: 'text', text: JSON.stringify(summaries, null, 2) }],
+          structuredContent: { skills: summaries }
         }
       })
   )

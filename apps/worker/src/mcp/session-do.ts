@@ -25,7 +25,12 @@ import { UpstreamProxyRegistry } from './tools-proxy'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
-import { SearchScope, type McpMyContext, type McpSearchResult } from '@ctxlayer/shared'
+import {
+  SearchScope,
+  McpMyContext,
+  McpSearchResult,
+  McpListUpstreamsResult
+} from '@ctxlayer/shared'
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
 // USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
@@ -154,7 +159,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       {
         title: 'List my context',
         description:
-          'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the reachable team/product scope (used to NARROW search; `search_docs` itself defaults to open-read across all docs).'
+          'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the reachable team/product scope (used to NARROW search; `search_docs` itself defaults to open-read across all docs).',
+        outputSchema: McpMyContext.shape
       },
       () =>
         rec('list_my_context', undefined, async () => {
@@ -173,7 +179,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             defaultScope: scope
           }
           return {
-            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }]
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
+            structuredContent: body
           }
         })
     )
@@ -183,7 +190,11 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       {
         title: 'List upstreams',
         description:
-          'Lists the upstream MCP servers visible to the caller, with connected state, transport, and cached tool count. Disconnected upstreams point the user at /upstreams to paste a token.'
+          'Lists the upstream MCP servers visible to the caller, with connected state, transport, and cached tool count. Disconnected upstreams point the user at /upstreams to paste a token.',
+        // structuredContent must be an object, so the entry array is wrapped
+        // under `upstreams`. The text `content` keeps the bare array for
+        // back-compat with clients that read the rendered JSON.
+        outputSchema: { upstreams: McpListUpstreamsResult }
       },
       () =>
         rec('list_upstreams', undefined, async () => {
@@ -191,7 +202,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           if (!userId) return errText('not_signed_in')
           const entries = await UpstreamProxyRegistry.listUpstreamsForUser(this.env, userId)
           return {
-            content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }]
+            content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }],
+            structuredContent: { upstreams: entries }
           }
         })
     )
@@ -232,7 +244,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),
           // Same `SearchScope` the REST /api/search contract uses.
           scope: SearchScope.optional()
-        }
+        },
+        outputSchema: McpSearchResult.shape
       },
       (args) =>
         rec('search_docs', args, async () => {
@@ -252,7 +265,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           // Typed against the shared MCP contract (see `McpSearchResult`).
           const body: McpSearchResult = { matches }
           return {
-            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }]
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
+            structuredContent: body
           }
         })
     )
