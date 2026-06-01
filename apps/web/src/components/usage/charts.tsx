@@ -151,8 +151,8 @@ function Bars({
         return (
           <g key={d.day}>
             <title>
-              {fmtDate(d.day)} — {d.calls} call{d.calls === 1 ? '' : 's'}, req{' '}
-              {d.reqTokens} tok, resp {d.respTokens} tok
+              {fmtDate(d.day)} — {d.calls} call{d.calls === 1 ? '' : 's'}, req {d.reqTokens} tok,
+              resp {d.respTokens} tok
               {d.errors > 0 ? `, ${d.errors} error${d.errors === 1 ? '' : 's'}` : ''}
             </title>
             {/* resp tokens (top half) */}

@@ -15,9 +15,7 @@ export function openUrl(url: string): void {
         : `xdg-open "${url}"`
   exec(cmd, (err) => {
     if (err) {
-      console.error(
-        `Could not auto-open the browser. Open this URL manually:\n  ${url}`
-      )
+      console.error(`Could not auto-open the browser. Open this URL manually:\n  ${url}`)
     }
   })
 }

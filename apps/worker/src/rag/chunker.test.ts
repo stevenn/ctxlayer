@@ -15,8 +15,7 @@ describe('chunkMarkdown', () => {
   })
 
   it('tracks the heading stack across h1/h2/h3 with resets', () => {
-    const md =
-      '# Eng\n\n## API\n\nfoo\n\n### Pagination\n\nbar\n\n## Storage\n\nbaz'
+    const md = '# Eng\n\n## API\n\nfoo\n\n### Pagination\n\nbar\n\n## Storage\n\nbaz'
     const chunks = chunkMarkdown(md, { targetTokens: 10_000 })
     // small target -> single chunk; headings come from the START
     expect(chunks).toHaveLength(1)
@@ -44,7 +43,7 @@ describe('chunkMarkdown', () => {
   it('hard-splits a single oversized line', () => {
     // ~1500 chars of "word " -> ~400 tokens; force tiny target to trip
     // the oversize branch.
-    const oneBigLine = ('word '.repeat(800)).trim()
+    const oneBigLine = 'word '.repeat(800).trim()
     const chunks = chunkMarkdown(oneBigLine, { targetTokens: 20, overlapTokens: 0 })
     expect(chunks.length).toBeGreaterThan(1)
     for (const c of chunks) {

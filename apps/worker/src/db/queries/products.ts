@@ -69,11 +69,7 @@ export interface PatchProductInput {
   description?: string | null
 }
 
-export async function patchProduct(
-  env: Env,
-  id: string,
-  patch: PatchProductInput
-): Promise<void> {
+export async function patchProduct(env: Env, id: string, patch: PatchProductInput): Promise<void> {
   const fields: string[] = []
   const binds: unknown[] = []
   if (patch.slug !== undefined) {

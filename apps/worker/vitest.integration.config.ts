@@ -18,10 +18,7 @@ export default defineWorkersConfig(async () => {
 
   return {
     test: {
-      include: [
-        'src/**/*.integration.test.ts',
-        'test/integration/**/*.test.ts'
-      ],
+      include: ['src/**/*.integration.test.ts', 'test/integration/**/*.test.ts'],
       setupFiles: ['./test/integration/setup.ts'],
       poolOptions: {
         workers: {

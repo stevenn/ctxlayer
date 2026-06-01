@@ -17,9 +17,7 @@ interface TagRow {
 
 /** Read all tags for a doc, grouped by kind. */
 export async function listTagsForDoc(env: Env, docId: string): Promise<DocTags> {
-  const res = await env.DB.prepare(
-    `SELECT tag_kind, tag_value FROM doc_tags WHERE doc_id = ?1`
-  )
+  const res = await env.DB.prepare(`SELECT tag_kind, tag_value FROM doc_tags WHERE doc_id = ?1`)
     .bind(docId)
     .all<TagRow>()
   const out: DocTags = { teams: [], products: [], topics: [] }
@@ -37,11 +35,7 @@ export async function listTagsForDoc(env: Env, docId: string): Promise<DocTags> 
  * Caller has already validated ids (canEdit + existence checks live
  * in the route layer).
  */
-export async function replaceTagsForDoc(
-  env: Env,
-  docId: string,
-  tags: DocTags
-): Promise<void> {
+export async function replaceTagsForDoc(env: Env, docId: string, tags: DocTags): Promise<void> {
   const stmts: D1PreparedStatement[] = [
     env.DB.prepare(`DELETE FROM doc_tags WHERE doc_id = ?1`).bind(docId)
   ]

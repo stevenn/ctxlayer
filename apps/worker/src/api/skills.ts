@@ -48,12 +48,7 @@ skillsRoute.use('*', requireCsrf)
 
 skillsRoute.get('/', async (c) => {
   const role = c.get('user').role
-  const status = c.req.query('status') as
-    | 'draft'
-    | 'published'
-    | 'archived'
-    | 'all'
-    | undefined
+  const status = c.req.query('status') as 'draft' | 'published' | 'archived' | 'all' | undefined
   const rows =
     role === 'admin'
       ? await listSkillsForAdmin(c.env, { status })
@@ -101,8 +96,7 @@ skillsRoute.get('/:id', async (c) => {
   const id = c.req.param('id')
   const row = await getSkillById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role))
-    return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
   const [attachments, tags] = await Promise.all([
     listAttachmentsForSkill(c.env, id),
     listTagsForSkill(c.env, id)
@@ -145,8 +139,7 @@ skillsRoute.get('/:id/content', async (c) => {
   const id = c.req.param('id')
   const row = await getSkillById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role))
-    return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
   const content = (await readSnapshot(c.env, id)) ?? { blocks: [] }
   return c.json(content)
 })
@@ -209,8 +202,7 @@ skillsRoute.get('/:id/tags', async (c) => {
   const id = c.req.param('id')
   const row = await getSkillById(c.env, id)
   if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role))
-    return c.json({ error: 'not_found' }, 404)
+  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
   const tags = await listTagsForSkill(c.env, id)
   return c.json(tags)
 })

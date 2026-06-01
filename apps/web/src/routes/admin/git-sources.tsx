@@ -102,8 +102,8 @@ export function AdminGitSources() {
       {!items && !error && <Text c="dimmed">Loading…</Text>}
       {items && items.length === 0 && (
         <Text c="dimmed">
-          No git sources yet. Click <strong>+ New git source</strong> to mirror a repo's
-          markdown into the doc library.
+          No git sources yet. Click <strong>+ New git source</strong> to mirror a repo's markdown
+          into the doc library.
         </Text>
       )}
 
@@ -177,7 +177,12 @@ export function AdminGitSources() {
 }
 
 function SyncBadge({ row }: { row: AdminGitSourceRow }) {
-  if (!row.lastSyncStatus) return <Badge variant="light" color="gray">never</Badge>
+  if (!row.lastSyncStatus)
+    return (
+      <Badge variant="light" color="gray">
+        never
+      </Badge>
+    )
   const color =
     row.lastSyncStatus === 'ok' ? 'green' : row.lastSyncStatus === 'partial' ? 'yellow' : 'red'
   return (
@@ -461,7 +466,13 @@ function GitSourceDrawer({
           </Alert>
         )}
         {notice && (
-          <Alert color="blue" variant="light" radius="sm" withCloseButton onClose={() => setNotice(null)}>
+          <Alert
+            color="blue"
+            variant="light"
+            radius="sm"
+            withCloseButton
+            onClose={() => setNotice(null)}
+          >
             {notice}
           </Alert>
         )}
@@ -597,7 +608,11 @@ function DetailsSection({
         />
         <TextInput label="Repo" value={repoLabel(row)} disabled />
         <Group grow>
-          <TextInput label="Branch" value={branch} onChange={(e) => setBranch(e.currentTarget.value)} />
+          <TextInput
+            label="Branch"
+            value={branch}
+            onChange={(e) => setBranch(e.currentTarget.value)}
+          />
           <TextInput
             label="Path prefix"
             value={pathPrefix}
@@ -691,9 +706,7 @@ function SyncSection({
   onSyncNow: () => void
 }) {
   const [token, setToken] = useState('')
-  const lastSynced = row.lastSyncedAt
-    ? new Date(row.lastSyncedAt * 1000).toLocaleString()
-    : 'never'
+  const lastSynced = row.lastSyncedAt ? new Date(row.lastSyncedAt * 1000).toLocaleString() : 'never'
 
   return (
     <Section title="Read token & sync">
@@ -716,7 +729,9 @@ function SyncSection({
         />
         <Group justify="space-between">
           <div>
-            <Text fz="xs" c="dimmed">Last sync</Text>
+            <Text fz="xs" c="dimmed">
+              Last sync
+            </Text>
             <Text fz="sm">
               {lastSynced}
               {row.lastSyncStatus ? ` · ${row.lastSyncStatus}` : ''}
@@ -805,8 +820,16 @@ function VisibilitySection({
           onChange={(e) => setEveryone(e.currentTarget.checked)}
         />
         <SubSection title="Teams">
-          {!teams && <Text c="dimmed" fz="xs">Loading…</Text>}
-          {teams && teams.length === 0 && <Text c="dimmed" fz="xs">No teams yet.</Text>}
+          {!teams && (
+            <Text c="dimmed" fz="xs">
+              Loading…
+            </Text>
+          )}
+          {teams && teams.length === 0 && (
+            <Text c="dimmed" fz="xs">
+              No teams yet.
+            </Text>
+          )}
           {teams &&
             teams.map((t) => (
               <Checkbox
@@ -818,8 +841,16 @@ function VisibilitySection({
             ))}
         </SubSection>
         <SubSection title="Products">
-          {!products && <Text c="dimmed" fz="xs">Loading…</Text>}
-          {products && products.length === 0 && <Text c="dimmed" fz="xs">No products yet.</Text>}
+          {!products && (
+            <Text c="dimmed" fz="xs">
+              Loading…
+            </Text>
+          )}
+          {products && products.length === 0 && (
+            <Text c="dimmed" fz="xs">
+              No products yet.
+            </Text>
+          )}
           {products &&
             products.map((p) => (
               <Checkbox

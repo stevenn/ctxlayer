@@ -7,11 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('./client-grants', () => ({ buildUserGrantIndex: vi.fn() }))
 import { buildUserGrantIndex } from './client-grants'
-import {
-  isPrunableClient,
-  pruneClientsByPolicy,
-  pruneOrphanOAuthClients
-} from './prune-clients'
+import { isPrunableClient, pruneClientsByPolicy, pruneOrphanOAuthClients } from './prune-clients'
 
 const DAY = 86400
 const NOW = 1_780_000_000
@@ -35,11 +31,7 @@ describe('isPrunableClient', () => {
 
   it('keeps confidential clients even when grant-less and old', () => {
     expect(
-      isPrunableClient(
-        client({ tokenEndpointAuthMethod: 'client_secret_basic' }),
-        noGrants,
-        CUTOFF
-      )
+      isPrunableClient(client({ tokenEndpointAuthMethod: 'client_secret_basic' }), noGrants, CUTOFF)
     ).toBe(false)
   })
 
@@ -49,18 +41,12 @@ describe('isPrunableClient', () => {
   })
 
   it('keeps clients younger than the cutoff', () => {
-    expect(
-      isPrunableClient(client({ registrationDate: NOW - 60 }), noGrants, CUTOFF)
-    ).toBe(false)
+    expect(isPrunableClient(client({ registrationDate: NOW - 60 }), noGrants, CUTOFF)).toBe(false)
   })
 
   it('keeps clients with no registrationDate (cannot be aged)', () => {
-    expect(
-      isPrunableClient(client({ registrationDate: null }), noGrants, CUTOFF)
-    ).toBe(false)
-    expect(
-      isPrunableClient(client({ registrationDate: undefined }), noGrants, CUTOFF)
-    ).toBe(false)
+    expect(isPrunableClient(client({ registrationDate: null }), noGrants, CUTOFF)).toBe(false)
+    expect(isPrunableClient(client({ registrationDate: undefined }), noGrants, CUTOFF)).toBe(false)
   })
 })
 
@@ -95,7 +81,11 @@ describe('pruneClientsByPolicy', () => {
     const clients: FakeClient[] = [
       { clientId: 'orphan-a', tokenEndpointAuthMethod: 'none', registrationDate: NOW - 2 * DAY },
       { clientId: 'has-grant', tokenEndpointAuthMethod: 'none', registrationDate: NOW - 2 * DAY },
-      { clientId: 'confidential', tokenEndpointAuthMethod: 'client_secret_basic', registrationDate: NOW - 5 * DAY },
+      {
+        clientId: 'confidential',
+        tokenEndpointAuthMethod: 'client_secret_basic',
+        registrationDate: NOW - 5 * DAY
+      },
       { clientId: 'too-young', tokenEndpointAuthMethod: 'none', registrationDate: NOW - 60 },
       { clientId: 'orphan-b', tokenEndpointAuthMethod: 'none', registrationDate: NOW - 3 * DAY }
     ]

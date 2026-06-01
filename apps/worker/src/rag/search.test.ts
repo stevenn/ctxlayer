@@ -74,8 +74,14 @@ describe('searchChunks', () => {
   it('keeps global + in-scope chunks, drops out-of-scope, sorts by score', async () => {
     const env = makeEnv([
       { score: 0.9, metadata: chunk({ docId: 'a', chunkIdx: 0, is_global: true }) },
-      { score: 0.8, metadata: chunk({ docId: 'b', chunkIdx: 0, is_global: false, tag_teams: ['t1'] }) },
-      { score: 0.7, metadata: chunk({ docId: 'c', chunkIdx: 0, is_global: false, tag_teams: ['t2'] }) }
+      {
+        score: 0.8,
+        metadata: chunk({ docId: 'b', chunkIdx: 0, is_global: false, tag_teams: ['t1'] })
+      },
+      {
+        score: 0.7,
+        metadata: chunk({ docId: 'c', chunkIdx: 0, is_global: false, tag_teams: ['t2'] })
+      }
     ])
     const hits = await searchChunks(env, ['q'], {
       k: 8,

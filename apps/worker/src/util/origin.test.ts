@@ -3,9 +3,9 @@ import { isAllowedOrigin } from './origin'
 
 describe('isAllowedOrigin', () => {
   it('accepts exact match (prod shape)', () => {
-    expect(
-      isAllowedOrigin('https://ctxlayer.example.com', 'https://ctxlayer.example.com')
-    ).toBe(true)
+    expect(isAllowedOrigin('https://ctxlayer.example.com', 'https://ctxlayer.example.com')).toBe(
+      true
+    )
   })
 
   it('rejects mismatched origin in prod', () => {

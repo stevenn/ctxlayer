@@ -175,10 +175,10 @@ async function handleCreate(env: Env, req: Request, userId: string): Promise<Res
   }
   const parsed = CreateSkillRequest.safeParse(raw)
   if (!parsed.success) {
-    return new Response(
-      JSON.stringify({ error: 'bad_request', issues: parsed.error.issues }),
-      { status: 400, headers: { 'content-type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ error: 'bad_request', issues: parsed.error.issues }), {
+      status: 400,
+      headers: { 'content-type': 'application/json' }
+    })
   }
   try {
     const { content, ...meta } = parsed.data
@@ -209,10 +209,10 @@ async function handleCreate(env: Env, req: Request, userId: string): Promise<Res
       target: row.id,
       meta: { source: 'cli', draftedBy: meta.drafterMeta ? 'cli' : 'manual' }
     })
-    return new Response(
-      JSON.stringify({ id: row.id, slug: row.slug, lintFindings }),
-      { status: 201, headers: { 'content-type': 'application/json' } }
-    )
+    return new Response(JSON.stringify({ id: row.id, slug: row.slug, lintFindings }), {
+      status: 201,
+      headers: { 'content-type': 'application/json' }
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (/UNIQUE constraint failed/i.test(msg)) return jsonError('slug_taken', 409)
@@ -278,9 +278,7 @@ function resolveCachedTool<T extends { tool_name: string }>(
   }
   // 3. Collapse-form match: reference is the short name, cached row has
   //    the slug-prefixed variant (e.g. ref=`search`, row=`notion-search`).
-  const collapsed = rows.find(
-    (r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference
-  )
+  const collapsed = rows.find((r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference)
   if (collapsed) return collapsed
   // 4. Last-ditch: the operator may have re-applied the mangle by hand.
   const remangled = rows.find((r) => mangleToolName(upstreamSlug, r.tool_name) === reference)

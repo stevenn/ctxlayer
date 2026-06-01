@@ -69,7 +69,10 @@ interface Block {
 export function renderBlocksToMarkdown(blocks: unknown[]): string {
   const out = renderSiblings(blocks as Block[], 0)
   // Collapse runs of >2 blank lines that nested cases can produce.
-  return out.join('\n\n').replace(/\n{3,}/g, '\n\n').trim()
+  return out
+    .join('\n\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
 }
 
 /**

@@ -155,9 +155,7 @@ export async function gitDocIdsAmong(env: Env, docIds: string[]): Promise<Set<st
  * needs to enqueue a reindex (git docs go via source.md, authored docs
  * via their current revision).
  */
-export async function listDocsForReindex(
-  env: Env
-): Promise<
+export async function listDocsForReindex(env: Env): Promise<
   Array<{
     id: string
     current_rev_id: string | null
@@ -373,7 +371,15 @@ export async function recordRevision(env: Env, input: RecordRevisionInput): Prom
     `INSERT INTO doc_revisions (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
   )
-    .bind(input.revisionId, input.docId, input.authorId, input.r2Key, input.byteSize, input.contentHash, now)
+    .bind(
+      input.revisionId,
+      input.docId,
+      input.authorId,
+      input.r2Key,
+      input.byteSize,
+      input.contentHash,
+      now
+    )
     .run()
   await env.DB.prepare(
     `UPDATE documents SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`

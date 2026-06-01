@@ -246,9 +246,7 @@ export function parseInline(text: string): Inline[] {
           out.push({
             type: 'link',
             href: text.slice(close + 2, urlEnd),
-            content: [
-              { type: 'text', text: text.slice(i + 1, close), styles: {} }
-            ]
+            content: [{ type: 'text', text: text.slice(i + 1, close), styles: {} }]
           })
           i = urlEnd + 1
           continue

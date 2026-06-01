@@ -133,9 +133,7 @@ async function runStart(
         },
         (err) => {
           const msg = err instanceof Error ? err.message : String(err)
-          console.error(
-            `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh threw: ${msg}`
-          )
+          console.error(`[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh threw: ${msg}`)
         }
       )
     )

@@ -62,10 +62,7 @@ export async function pullCommand(opts: { dryRun?: boolean }): Promise<void> {
 
 function renderSkillMd(entry: SkillExportEntry): string {
   const fm =
-    `---\n` +
-    `name: ${entry.name}\n` +
-    `description: ${yamlOneLine(entry.description)}\n` +
-    `---\n`
+    `---\n` + `name: ${entry.name}\n` + `description: ${yamlOneLine(entry.description)}\n` + `---\n`
   const managed = `<!-- Managed by @ctxlayer/cli. Edits will be overwritten on next pull. -->\n`
   const triggerPart = entry.triggerText.trim() ? `\n${entry.triggerText.trim()}\n` : ''
   const body = entry.bodyMd || '_empty skill_'

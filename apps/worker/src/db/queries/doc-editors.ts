@@ -66,11 +66,7 @@ export async function addUserEditor(
     .run()
 }
 
-export async function addEveryoneEditor(
-  env: Env,
-  docId: string,
-  grantedBy: string
-): Promise<void> {
+export async function addEveryoneEditor(env: Env, docId: string, grantedBy: string): Promise<void> {
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
     `INSERT INTO doc_editors (doc_id, scope_kind, scope_id, granted_by, created_at)
@@ -81,11 +77,7 @@ export async function addEveryoneEditor(
     .run()
 }
 
-export async function removeUserEditor(
-  env: Env,
-  docId: string,
-  userId: string
-): Promise<void> {
+export async function removeUserEditor(env: Env, docId: string, userId: string): Promise<void> {
   await env.DB.prepare(
     `DELETE FROM doc_editors WHERE doc_id = ?1 AND scope_kind = 'user' AND scope_id = ?2`
   )

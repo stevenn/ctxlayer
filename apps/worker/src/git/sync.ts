@@ -152,7 +152,13 @@ export async function runGitSync(
 }
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
-  return { provider: s.provider, baseUrl: s.base_url, owner: s.owner, project: s.project, repo: s.repo }
+  return {
+    provider: s.provider,
+    baseUrl: s.base_url,
+    owner: s.owner,
+    project: s.project,
+    repo: s.repo
+  }
 }
 
 /** Title from the first H1, else the filename sans markdown extension. */
@@ -171,7 +177,10 @@ function deriveTitle(markdown: string, path: string): string {
  */
 function repoPathToFolder(folderRoot: string, repoPath: string): string | null {
   const dir = repoPath.includes('/') ? repoPath.slice(0, repoPath.lastIndexOf('/')) : ''
-  const rootSegs = folderRoot.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
+  const rootSegs = folderRoot
+    .replace(/^\/+|\/+$/g, '')
+    .split('/')
+    .filter(Boolean)
   const dirSegs = dir.split('/').filter(Boolean)
   const segs = [...rootSegs, ...dirSegs].map(slugifyHeading).filter(Boolean).slice(0, 5)
   return segs.length === 0 ? null : `/${segs.join('/')}`

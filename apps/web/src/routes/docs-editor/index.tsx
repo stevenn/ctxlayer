@@ -15,7 +15,10 @@ import {
   patchDoc,
   putDocContent
 } from '../../lib/api'
-import { BlockNoteEditor, type BlockNoteEditorHandle } from '../../components/editor/blocknote-editor'
+import {
+  BlockNoteEditor,
+  type BlockNoteEditorHandle
+} from '../../components/editor/blocknote-editor'
 import {
   LeaveGuard,
   SAVE_IDLE_MS,

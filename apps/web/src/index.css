@@ -9,7 +9,7 @@
  */
 
 :root,
-:root[data-mantine-color-scheme='dark'] {
+:root[data-mantine-color-scheme="dark"] {
   color-scheme: dark;
   --bg: #0f1117;
   --bg-surface: #1a1d27;
@@ -22,8 +22,8 @@
   --muted: #c8d2e0;
   --text-dim: #94a3b8;
 
-  --accent: #3b82f6;        /* blue-500, brighter in dark mode */
-  --accent-hover: #60a5fa;  /* blue-400 */
+  --accent: #3b82f6; /* blue-500, brighter in dark mode */
+  --accent-hover: #60a5fa; /* blue-400 */
   --accent-strong: #2563eb; /* blue-600 — primary CTA shade */
 
   --danger: #f87171;
@@ -35,7 +35,7 @@
   --radius-sm: 4px;
 }
 
-:root[data-mantine-color-scheme='light'] {
+:root[data-mantine-color-scheme="light"] {
   color-scheme: light;
   --bg: #f1f5f9;
   --bg-surface: #ffffff;
@@ -87,7 +87,7 @@ body,
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   font-size: 14px;
@@ -152,7 +152,9 @@ a:hover {
   color: var(--text-muted);
   font-size: 13px;
   text-decoration: none;
-  transition: background-color 0.12s ease, color 0.12s ease;
+  transition:
+    background-color 0.12s ease,
+    color 0.12s ease;
 }
 .nav-item:hover {
   background: var(--bg-elevated);
@@ -295,28 +297,28 @@ a:hover {
 .bn-side-menu {
   display: inline-flex;
   align-items: center;
-  gap: 0;                 /* + and handle sit flush */
-  margin-right: 6px;      /* push pair away from the block content */
+  gap: 0; /* + and handle sit flush */
+  margin-right: 6px; /* push pair away from the block content */
   opacity: 0.65;
   transition: opacity 0.15s ease;
 }
-:root[data-mantine-color-scheme='dark'] .bn-side-menu {
+:root[data-mantine-color-scheme="dark"] .bn-side-menu {
   opacity: 0.45;
 }
 .bn-side-menu:hover,
 .bn-block-content:hover ~ .bn-side-menu,
-[data-node-type='blockOuter']:hover .bn-side-menu {
+[data-node-type="blockOuter"]:hover .bn-side-menu {
   opacity: 1;
 }
 .bn-side-menu button,
 .bn-side-menu .mantine-ActionIcon-root,
-.bn-side-menu [role='button'] {
+.bn-side-menu [role="button"] {
   width: 20px !important;
   height: 20px !important;
   min-width: 20px !important;
   min-height: 20px !important;
   padding: 2px !important;
-  border-radius: 6px !important;  /* softer than the default 4 */
+  border-radius: 6px !important; /* softer than the default 4 */
 }
 .bn-side-menu svg {
   width: 14px !important;
@@ -331,8 +333,8 @@ a:hover {
   opacity: 0.65;
   transition: opacity 0.15s ease;
 }
-:root[data-mantine-color-scheme='dark'] .bn-table-handle,
-:root[data-mantine-color-scheme='dark'] .bn-table-cell-handle {
+:root[data-mantine-color-scheme="dark"] .bn-table-handle,
+:root[data-mantine-color-scheme="dark"] .bn-table-cell-handle {
   opacity: 0.45;
 }
 .bn-table-handle:hover,
@@ -372,32 +374,32 @@ table:hover .bn-table-cell-handle {
 .bn-editor,
 .bn-container,
 .bn-mantine,
-.bn-mantine [contenteditable='true'] {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
-    sans-serif !important;
+.bn-mantine [contenteditable="true"] {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif !important;
 }
 .bn-editor,
-.bn-block-content[data-content-type='paragraph'],
-.bn-block-content[data-content-type='bulletListItem'],
-.bn-block-content[data-content-type='numberedListItem'],
-.bn-block-content[data-content-type='checkListItem'],
-.bn-block-content[data-content-type='toggleListItem'],
-.bn-block-content[data-content-type='quote'] {
+.bn-block-content[data-content-type="paragraph"],
+.bn-block-content[data-content-type="bulletListItem"],
+.bn-block-content[data-content-type="numberedListItem"],
+.bn-block-content[data-content-type="checkListItem"],
+.bn-block-content[data-content-type="toggleListItem"],
+.bn-block-content[data-content-type="quote"] {
   font-size: 14px !important;
   line-height: 1.55;
 }
 
 /* Tables + code blocks: a denser type for content that's already
    visually heavier than prose. */
-.bn-block-content[data-content-type='table'] table,
-.bn-block-content[data-content-type='table'] td,
-.bn-block-content[data-content-type='table'] th {
+.bn-block-content[data-content-type="table"] table,
+.bn-block-content[data-content-type="table"] td,
+.bn-block-content[data-content-type="table"] th {
   font-size: 12px !important;
   line-height: 1.4;
 }
-.bn-block-content[data-content-type='codeBlock'],
-.bn-block-content[data-content-type='codeBlock'] pre,
-.bn-block-content[data-content-type='codeBlock'] code {
+.bn-block-content[data-content-type="codeBlock"],
+.bn-block-content[data-content-type="codeBlock"] pre,
+.bn-block-content[data-content-type="codeBlock"] code {
   font-size: 12px !important;
   line-height: 1.45;
 }

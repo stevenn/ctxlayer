@@ -46,35 +46,32 @@ export function AdminAudit() {
   // controller so a fresh filter cancels the in-flight request.
   const ctrlRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(
-    async (filters: { action: string; actorId: string }) => {
-      ctrlRef.current?.abort()
-      const ctrl = new AbortController()
-      ctrlRef.current = ctrl
-      setStatus({ kind: 'loading' })
-      try {
-        const page = await fetchAdminAudit(
-          {
-            action: filters.action || undefined,
-            actorId: filters.actorId || undefined,
-            limit: PAGE_SIZE
-          },
-          ctrl.signal
-        )
-        if (ctrl.signal.aborted) return
-        setStatus({
-          kind: 'ready',
-          entries: page.entries,
-          nextBefore: page.nextBefore,
-          loadingMore: false
-        })
-      } catch (err) {
-        if (ctrl.signal.aborted) return
-        setStatus({ kind: 'error', message: explain(err) })
-      }
-    },
-    []
-  )
+  const load = useCallback(async (filters: { action: string; actorId: string }) => {
+    ctrlRef.current?.abort()
+    const ctrl = new AbortController()
+    ctrlRef.current = ctrl
+    setStatus({ kind: 'loading' })
+    try {
+      const page = await fetchAdminAudit(
+        {
+          action: filters.action || undefined,
+          actorId: filters.actorId || undefined,
+          limit: PAGE_SIZE
+        },
+        ctrl.signal
+      )
+      if (ctrl.signal.aborted) return
+      setStatus({
+        kind: 'ready',
+        entries: page.entries,
+        nextBefore: page.nextBefore,
+        loadingMore: false
+      })
+    } catch (err) {
+      if (ctrl.signal.aborted) return
+      setStatus({ kind: 'error', message: explain(err) })
+    }
+  }, [])
 
   // Initial load.
   useEffect(() => {
@@ -192,12 +189,7 @@ export function AdminAudit() {
 
           <Group justify="center" mt="md">
             {status.nextBefore !== null ? (
-              <Button
-                variant="default"
-                size="xs"
-                onClick={loadMore}
-                loading={status.loadingMore}
-              >
+              <Button variant="default" size="xs" onClick={loadMore} loading={status.loadingMore}>
                 Load more
               </Button>
             ) : (
@@ -217,13 +209,7 @@ export function AdminAudit() {
 
 // ----- Row drawer --------------------------------------------------------
 
-function EntryDrawer({
-  entry,
-  onClose
-}: {
-  entry: AuditLogEntry
-  onClose: () => void
-}) {
+function EntryDrawer({ entry, onClose }: { entry: AuditLogEntry; onClose: () => void }) {
   const metaJson = entry.meta != null ? JSON.stringify(entry.meta, null, 2) : null
   return (
     <Drawer
@@ -245,7 +231,11 @@ function EntryDrawer({
         </Section>
         <Section title="Actor">
           <Text fz="sm">
-            {entry.actorEmail ?? <Text component="span" c="dimmed">unknown email</Text>}
+            {entry.actorEmail ?? (
+              <Text component="span" c="dimmed">
+                unknown email
+              </Text>
+            )}
           </Text>
           {entry.actorId && (
             <Text fz="xs" c="dimmed">
@@ -257,7 +247,9 @@ function EntryDrawer({
           {entry.target ? (
             <code style={{ fontSize: 12 }}>{entry.target}</code>
           ) : (
-            <Text fz="xs" c="dimmed">No target.</Text>
+            <Text fz="xs" c="dimmed">
+              No target.
+            </Text>
           )}
         </Section>
         <Section title="Meta">
@@ -266,7 +258,9 @@ function EntryDrawer({
               {metaJson}
             </Code>
           ) : (
-            <Text fz="xs" c="dimmed">No metadata.</Text>
+            <Text fz="xs" c="dimmed">
+              No metadata.
+            </Text>
           )}
         </Section>
         <Section title="Entry id">
@@ -283,7 +277,12 @@ function ActionBadge({ action }: { action: string }) {
   const prefix = action.split('.')[0] ?? action
   const color = colorForPrefix(prefix)
   return (
-    <Badge color={color} variant="light" size="sm" style={{ fontFamily: 'var(--mantine-font-family-monospace, monospace)' }}>
+    <Badge
+      color={color}
+      variant="light"
+      size="sm"
+      style={{ fontFamily: 'var(--mantine-font-family-monospace, monospace)' }}
+    >
       {action}
     </Badge>
   )
@@ -313,7 +312,10 @@ function MetaSummary({ meta }: { meta: unknown }) {
   if (entries.length === 0) return <span>{'{}'}</span>
   // First couple of keys give the reader the gist; click-through opens
   // the drawer with the full JSON.
-  const preview = entries.slice(0, 3).map(([k, v]) => `${k}=${formatScalar(v)}`).join(' · ')
+  const preview = entries
+    .slice(0, 3)
+    .map(([k, v]) => `${k}=${formatScalar(v)}`)
+    .join(' · ')
   const more = entries.length > 3 ? ` (+${entries.length - 3})` : ''
   return (
     <span style={{ fontFamily: 'var(--mantine-font-family-monospace, monospace)', fontSize: 11 }}>

@@ -48,7 +48,12 @@ describe('GitHubProvider read path', () => {
       'fetch',
       vi.fn(async (url: string) => {
         expect(url).toContain('/repos/acme/docs/contents/docs/guide.md?ref=main')
-        return jsonResponse({ type: 'file', sha: 'b', encoding: 'base64', content: btoa('# Hello\n') })
+        return jsonResponse({
+          type: 'file',
+          sha: 'b',
+          encoding: 'base64',
+          content: btoa('# Hello\n')
+        })
       })
     )
     const gh = new GitHubProvider(config, 't')
@@ -65,7 +70,10 @@ describe('GitHubProvider read path', () => {
   })
 
   it('resolves a ref to a commit sha', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse({ sha: 'deadbeef' })))
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ sha: 'deadbeef' }))
+    )
     const gh = new GitHubProvider(config, 't')
     expect(await gh.resolveRef('main')).toBe('deadbeef')
   })

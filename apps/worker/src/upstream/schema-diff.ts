@@ -59,8 +59,7 @@ export function canonicalise(v: unknown, parentKey?: string): string {
   if (v === null || typeof v !== 'object') return JSON.stringify(v)
   if (Array.isArray(v)) {
     // Sort set-like arrays so element reordering doesn't trip the hash.
-    const items =
-      parentKey && SET_LIKE_ARRAYS.has(parentKey) ? [...v].sort(stableCompare) : v
+    const items = parentKey && SET_LIKE_ARRAYS.has(parentKey) ? [...v].sort(stableCompare) : v
     return '[' + items.map((x) => canonicalise(x)).join(',') + ']'
   }
   const obj = v as Record<string, unknown>
@@ -80,11 +79,7 @@ export function canonicalise(v: unknown, parentKey?: string): string {
   // 3. Sort keys for deterministic ordering.
   entries.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
   return (
-    '{' +
-    entries
-      .map(([k, val]) => JSON.stringify(k) + ':' + canonicalise(val, k))
-      .join(',') +
-    '}'
+    '{' + entries.map(([k, val]) => JSON.stringify(k) + ':' + canonicalise(val, k)).join(',') + '}'
   )
 }
 

@@ -123,10 +123,7 @@ export async function getSkillById(env: Env, id: string): Promise<SkillWithUsers
   return row ?? null
 }
 
-export async function getSkillBySlug(
-  env: Env,
-  slug: string
-): Promise<SkillWithUsersRow | null> {
+export async function getSkillBySlug(env: Env, slug: string): Promise<SkillWithUsersRow | null> {
   const row = await env.DB.prepare(
     `${SELECT_SKILL_WITH_USERS} WHERE s.slug = ?1 AND s.deleted_at IS NULL`
   )
@@ -297,10 +294,7 @@ export async function recordSkillRevision(
   return row
 }
 
-export async function listSkillRevisions(
-  env: Env,
-  skillId: string
-): Promise<SkillRevisionRow[]> {
+export async function listSkillRevisions(env: Env, skillId: string): Promise<SkillRevisionRow[]> {
   const res = await env.DB.prepare(
     `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at
      FROM skill_revisions WHERE skill_id = ?1 ORDER BY created_at DESC LIMIT 100`

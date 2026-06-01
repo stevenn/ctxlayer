@@ -82,10 +82,7 @@ export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
   return res.results ?? []
 }
 
-export async function getUpstreamById(
-  env: Env,
-  id: string
-): Promise<UpstreamServerRow | null> {
+export async function getUpstreamById(env: Env, id: string): Promise<UpstreamServerRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
             enabled, created_at, updated_at
@@ -96,10 +93,7 @@ export async function getUpstreamById(
   return row ?? null
 }
 
-export async function getUpstreamBySlug(
-  env: Env,
-  slug: string
-): Promise<UpstreamServerRow | null> {
+export async function getUpstreamBySlug(env: Env, slug: string): Promise<UpstreamServerRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
             enabled, created_at, updated_at
@@ -646,9 +640,7 @@ export async function deleteUserCredential(
   userId: string,
   upstreamId: string
 ): Promise<void> {
-  await env.DB.prepare(
-    `DELETE FROM user_credentials WHERE user_id = ?1 AND upstream_id = ?2`
-  )
+  await env.DB.prepare(`DELETE FROM user_credentials WHERE user_id = ?1 AND upstream_id = ?2`)
     .bind(userId, upstreamId)
     .run()
 }
@@ -662,9 +654,7 @@ export async function listUserCredentialedUpstreamIds(
   env: Env,
   userId: string
 ): Promise<Set<string>> {
-  const res = await env.DB.prepare(
-    `SELECT upstream_id FROM user_credentials WHERE user_id = ?1`
-  )
+  const res = await env.DB.prepare(`SELECT upstream_id FROM user_credentials WHERE user_id = ?1`)
     .bind(userId)
     .all<{ upstream_id: string }>()
   return new Set((res.results ?? []).map((r) => r.upstream_id))
@@ -691,8 +681,7 @@ export async function adminRowFor(
   const row = await getUpstreamById(env, upstreamId)
   if (!row) return null
   if (row.transport !== 'streamable_http' && row.transport !== 'sse') return null
-  const requiresUserCred =
-    row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
+  const requiresUserCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
   const isSharedBearer = row.auth_strategy === 'shared_bearer'
   const [visibility, toolsCount, cachedAt, cred, sharedConfigured] = await Promise.all([
     listVisibilityForUpstream(env, upstreamId),
@@ -741,9 +730,7 @@ export async function listUserUpstreamSummaries(
   const credIds = await listUserCredentialedUpstreamIds(env, userId)
   const sharedFlags = await Promise.all(
     rows.map((r) =>
-      r.auth_strategy === 'shared_bearer'
-        ? hasSharedCredential(env, r.id)
-        : Promise.resolve(false)
+      r.auth_strategy === 'shared_bearer' ? hasSharedCredential(env, r.id) : Promise.resolve(false)
     )
   )
   const counts = await Promise.all(rows.map((r) => countToolsForUpstream(env, r.id)))

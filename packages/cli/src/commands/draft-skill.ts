@@ -4,10 +4,7 @@ import { type DraftContextBundle, SLUG_PREFIX, slugifyBody } from '@ctxlayer/sha
 import { authedRequest } from '../auth/client'
 import { loadCredentials } from '../auth/token-store'
 import { CtxlayerError } from '../errors'
-import {
-  DRAFTER_PROMPT_VERSION,
-  DRAFTER_SYSTEM_PROMPT
-} from '../drafter/system-prompt'
+import { DRAFTER_PROMPT_VERSION, DRAFTER_SYSTEM_PROMPT } from '../drafter/system-prompt'
 import { locateClaude, runClaudeDraft } from '../drafter/claude-runner'
 import { markdownToBlocks } from '../drafter/markdown-to-blocks'
 
@@ -122,7 +119,7 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
   if (res.lintFindings && res.lintFindings.length > 0) {
     console.log()
     console.log(
-      pc.yellow('⚠  Schema linter found references that don\'t exist on attached upstreams:')
+      pc.yellow("⚠  Schema linter found references that don't exist on attached upstreams:")
     )
     for (const f of res.lintFindings) {
       const where = f.upstreamSlug
@@ -131,9 +128,7 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
       console.log(`    - ${pc.cyan(f.reference)} (${f.kind}: ${where})`)
     }
     console.log(
-      pc.gray(
-        '  (Warning only — the draft saved successfully. Review in the SPA editor.)'
-      )
+      pc.gray('  (Warning only — the draft saved successfully. Review in the SPA editor.)')
     )
   }
 }
@@ -153,9 +148,7 @@ function buildUserPrompt(bundle: DraftContextBundle): string {
   if (bundle.operatorPrompt) {
     lines.push(`Operator request: ${bundle.operatorPrompt}`)
   } else {
-    lines.push(
-      'Operator request: (none — propose a useful skill from the context above)'
-    )
+    lines.push('Operator request: (none — propose a useful skill from the context above)')
   }
   return lines.join('\n')
 }

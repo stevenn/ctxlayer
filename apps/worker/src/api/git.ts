@@ -10,7 +10,11 @@
  */
 
 import { Hono } from 'hono'
-import { CreatePullRequestRequest, GitSetCredentialRequest, type GitDocStatus } from '@ctxlayer/shared'
+import {
+  CreatePullRequestRequest,
+  GitSetCredentialRequest,
+  type GitDocStatus
+} from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
@@ -33,7 +37,13 @@ import { openWriteBackPr } from '../git/writeback'
 import { seal } from '../crypto/aead'
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
-  return { provider: s.provider, baseUrl: s.base_url, owner: s.owner, project: s.project, repo: s.repo }
+  return {
+    provider: s.provider,
+    baseUrl: s.base_url,
+    owner: s.owner,
+    project: s.project,
+    repo: s.repo
+  }
 }
 
 // ----- doc-scoped (/api/docs) --------------------------------------------
@@ -51,7 +61,10 @@ gitDocsRoute.get('/:id/git', async (c) => {
 
   const userId = c.get('user').userId
   const canWrite = await canEditDoc(c.env, userId, id)
-  const webUrl = createGitProvider(repoConfig(source), '').blobWebUrl(origin.git_path, source.branch)
+  const webUrl = createGitProvider(repoConfig(source), '').blobWebUrl(
+    origin.git_path,
+    source.branch
+  )
 
   let syncState = origin.git_sync_state
   const latest = await getLatestPrForDoc(c.env, id)
@@ -114,7 +127,10 @@ gitDocsRoute.post('/:id/git/pull-request', async (c) => {
   if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
   const parsed = CreatePullRequestRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  const outcome = await openWriteBackPr(c.env, id, { actorId: userId, markdown: parsed.data.markdown })
+  const outcome = await openWriteBackPr(c.env, id, {
+    actorId: userId,
+    markdown: parsed.data.markdown
+  })
   if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 502)
   return c.json(outcome.result)
 })
@@ -130,7 +146,8 @@ gitSourcesUserRoute.put('/:id/credentials', async (c) => {
   const actor = c.get('user')
   const source = await getGitSourceById(c.env, id)
   if (!source) return c.json({ error: 'not_found' }, 404)
-  const allowed = actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, id, actor.userId))
+  const allowed =
+    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, id, actor.userId))
   if (!allowed) return c.json({ error: 'forbidden' }, 403)
   const parsed = GitSetCredentialRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)

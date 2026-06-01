@@ -76,10 +76,7 @@ describe('listAuditEntries', () => {
     await seedAudit('upstream.create', 'alice', BASE_TS + 3)
 
     const userOnly = await listAuditEntries(testEnv, { limit: 10, actionPrefix: 'user.' })
-    expect(userOnly.entries.map((e) => e.action).sort()).toEqual([
-      'user.demote',
-      'user.promote'
-    ])
+    expect(userOnly.entries.map((e) => e.action).sort()).toEqual(['user.demote', 'user.promote'])
   })
 
   it('actorId filter is an exact match', async () => {

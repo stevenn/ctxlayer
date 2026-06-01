@@ -14,15 +14,14 @@ const blue: MantineColorsTuple = [
   '#2563eb', // 600 → 6  (light-mode primary)
   '#1d4ed8', // 700 → 7
   '#1e40af', // 800 → 8
-  '#1e3a8a'  // 900 → 9
+  '#1e3a8a' // 900 → 9
 ]
 
 export const appTheme = createTheme({
   primaryColor: 'blue',
   primaryShade: { light: 6, dark: 5 },
   colors: { blue },
-  fontFamily:
-    "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+  fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
   defaultRadius: 'sm',
   radius: { xs: '2px', sm: '4px', md: '6px', lg: '8px', xl: '12px' },
   cursorType: 'pointer'

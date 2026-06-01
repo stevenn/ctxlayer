@@ -39,9 +39,7 @@ export async function lintSkillBody(
   bodyOrBlocks: string | { blocks: unknown[] }
 ): Promise<LintFinding[]> {
   const text =
-    typeof bodyOrBlocks === 'string'
-      ? bodyOrBlocks
-      : renderBlocksToMarkdown(bodyOrBlocks.blocks)
+    typeof bodyOrBlocks === 'string' ? bodyOrBlocks : renderBlocksToMarkdown(bodyOrBlocks.blocks)
 
   // Pull attached upstream slugs once.
   const attachments = await listAttachmentsForSkill(env, skillId)

@@ -134,9 +134,7 @@ function resolveCachedTool<T extends { tool_name: string }>(
     )
     if (fromMangled) return fromMangled
   }
-  const collapsed = rows.find(
-    (r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference
-  )
+  const collapsed = rows.find((r) => collapseSlugPrefix(upstreamSlug, r.tool_name) === reference)
   if (collapsed) return collapsed
   const remangled = rows.find((r) => mangleToolName(upstreamSlug, r.tool_name) === reference)
   return remangled ?? null

@@ -161,11 +161,7 @@ export async function readYjsSnapshot(env: Env, docId: string): Promise<Uint8Arr
   return new Uint8Array(await obj.arrayBuffer())
 }
 
-export async function writeYjsSnapshot(
-  env: Env,
-  docId: string,
-  bytes: Uint8Array
-): Promise<void> {
+export async function writeYjsSnapshot(env: Env, docId: string, bytes: Uint8Array): Promise<void> {
   await env.DOCS_BUCKET.put(yjsSnapshotKey(docId), bytes, {
     httpMetadata: { contentType: YJS_CONTENT_TYPE }
   })

@@ -84,9 +84,7 @@ export const CreateSkillRequest = z.object({
   // M8: BlockNote body to persist alongside the create (so the
   // drafting CLI doesn't need a follow-up PUT /content roundtrip).
   // If omitted, skill starts with an empty body.
-  content: z
-    .object({ blocks: z.array(z.unknown()) })
-    .optional()
+  content: z.object({ blocks: z.array(z.unknown()) }).optional()
 })
 export type CreateSkillRequest = z.infer<typeof CreateSkillRequest>
 

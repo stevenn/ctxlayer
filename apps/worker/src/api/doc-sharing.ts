@@ -5,10 +5,7 @@
  */
 
 import { Hono } from 'hono'
-import {
-  AddEditorRequest,
-  type DocEditorsResponse
-} from '@ctxlayer/shared'
+import { AddEditorRequest, type DocEditorsResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'

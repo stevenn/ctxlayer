@@ -2,8 +2,10 @@
 // Mobile-friendly smoke test. Pass a base URL or rely on $CTXLAYER_URL.
 // Prints a compact text table and exits non-zero if any check fails.
 
-const base = (process.argv[2] ?? process.env.CTXLAYER_URL ?? 'http://localhost:8787')
-  .replace(/\/$/, '')
+const base = (process.argv[2] ?? process.env.CTXLAYER_URL ?? 'http://localhost:8787').replace(
+  /\/$/,
+  ''
+)
 
 // Accept the mkcert-issued cert when hitting localhost. Bun/Node fetch
 // doesn't pick up the macOS keychain CA store by default, so
@@ -14,10 +16,10 @@ const isLocalHttps = /^https:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/i.test(base)
 const tlsExtra = isLocalHttps ? { tls: { rejectUnauthorized: false } } : {}
 
 const checks = [
-  { name: 'health',     method: 'GET',  path: '/api/health',   expect: [200, 503] },
-  { name: 'version',    method: 'GET',  path: '/api/version',  expect: [200] },
+  { name: 'health', method: 'GET', path: '/api/health', expect: [200, 503] },
+  { name: 'version', method: 'GET', path: '/api/version', expect: [200] },
   // Public; the SPA hits this before sign-in.
-  { name: 'config',     method: 'GET',  path: '/api/config',   expect: [200] },
+  { name: 'config', method: 'GET', path: '/api/config', expect: [200] },
   // Without a session cookie /api/me MUST return 401. CI rigs that send
   // a dev session widen this themselves via $SMOKE_ME_OK=1.
   {
@@ -90,6 +92,8 @@ for (const r of rows) {
   const tail = r.error ? `  ${r.error}` : ''
   console.log(`${flag}  ${r.name.padEnd(12)} ${String(r.status).padEnd(5)} ${r.ms}ms${tail}`)
 }
-console.log(failed === 0 ? `\npassed (${rows.length}/${rows.length})` : `\nFAILED ${failed}/${rows.length}`)
+console.log(
+  failed === 0 ? `\npassed (${rows.length}/${rows.length})` : `\nFAILED ${failed}/${rows.length}`
+)
 
 process.exit(failed === 0 ? 0 : 1)

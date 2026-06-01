@@ -11,12 +11,7 @@ import { Hono } from 'hono'
 import type { AdminUsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
-import {
-  dailyTotals,
-  topTools,
-  topUpstreams,
-  topUsers
-} from '../db/queries/usage-read'
+import { dailyTotals, topTools, topUpstreams, topUsers } from '../db/queries/usage-read'
 import { clampDays } from './usage'
 
 export const adminUsageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()

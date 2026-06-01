@@ -9,11 +9,7 @@ import { AttachDocRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
-import {
-  attachDoc,
-  detachDoc,
-  listAttachmentsForDoc
-} from '../db/queries/doc-attachments'
+import { attachDoc, detachDoc, listAttachmentsForDoc } from '../db/queries/doc-attachments'
 import { getDocById } from '../db/queries/docs'
 import { getUpstreamById } from '../db/queries/upstreams'
 import { audit } from '../audit/log'

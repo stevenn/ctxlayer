@@ -7,13 +7,7 @@
  */
 
 import type { Env } from '../env'
-import {
-  b64urlDecode,
-  b64urlEncode,
-  hmacSign,
-  hmacVerify,
-  readCookie
-} from '../auth/session'
+import { b64urlDecode, b64urlEncode, hmacSign, hmacVerify, readCookie } from '../auth/session'
 
 const STATE_COOKIE_NAME = '__Host-ctx_oauth_state'
 const STATE_MAX_AGE_SECONDS = 10 * 60

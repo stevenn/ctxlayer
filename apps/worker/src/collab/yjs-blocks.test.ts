@@ -43,7 +43,12 @@ describe('yDocToBlocks', () => {
     const doc = buildDoc([blockContainer(para(textEl('bananas')))])
     const blocks = yDocToBlocks(doc)
     expect(blocks).toEqual([
-      { type: 'paragraph', props: {}, content: [{ type: 'text', text: 'bananas', styles: {} }], children: [] }
+      {
+        type: 'paragraph',
+        props: {},
+        content: [{ type: 'text', text: 'bananas', styles: {} }],
+        children: []
+      }
     ])
     expect(renderBlocksToMarkdown(blocks)).toBe('bananas')
   })

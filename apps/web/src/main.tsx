@@ -1,10 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import {
-  RouterProvider,
-  createBrowserRouter,
-  createRoutesFromElements
-} from 'react-router-dom'
+import { RouterProvider, createBrowserRouter, createRoutesFromElements } from 'react-router-dom'
 import { ColorSchemeScript, MantineProvider } from '@mantine/core'
 import '@mantine/core/styles.css'
 import { appRoutes } from './app'

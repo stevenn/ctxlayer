@@ -68,11 +68,7 @@ export function AdminSkillEditor() {
       const blocks = editorRef.current.getBlocks()
       setSaveState({ kind: 'saving' })
       try {
-        const res = await putSkillContent(
-          skillId,
-          { blocks },
-          AbortSignal.timeout(SAVE_TIMEOUT_MS)
-        )
+        const res = await putSkillContent(skillId, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
         if (explicit) {
           baselineRef.current = blocks
           dirtyRef.current = false
@@ -165,16 +161,15 @@ export function AdminSkillEditor() {
         </div>
         <Group gap="xs">
           <SaveControls state={saveState} dirty={dirty} onSave={saveExplicit} onDiscard={discard} />
-          <StatusButton skillId={skillId} current={detail.status} onChanged={async () => {
-            const fresh = await fetchSkill(skillId).catch(() => null)
-            if (fresh) setDetail(fresh)
-          }} />
-          <Button
-            size="xs"
-            variant="default"
-            component={Link}
-            to="/app/admin/skills"
-          >
+          <StatusButton
+            skillId={skillId}
+            current={detail.status}
+            onChanged={async () => {
+              const fresh = await fetchSkill(skillId).catch(() => null)
+              if (fresh) setDetail(fresh)
+            }}
+          />
+          <Button size="xs" variant="default" component={Link} to="/app/admin/skills">
             Back to list
           </Button>
         </Group>
@@ -199,7 +194,15 @@ export function AdminSkillEditor() {
         </Alert>
       )}
 
-      <div style={{ flex: 1, minHeight: 0, border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', overflow: 'auto' }}>
+      <div
+        style={{
+          flex: 1,
+          minHeight: 0,
+          border: '1px solid var(--border)',
+          borderRadius: 'var(--radius-sm)',
+          overflow: 'auto'
+        }}
+      >
         <BlockNoteEditor
           ref={editorRef}
           initialBlocks={initialBlocks}

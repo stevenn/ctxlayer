@@ -47,9 +47,7 @@ export function AdminUsers() {
     const q = query.trim().toLowerCase()
     if (!q) return items
     return items.filter(
-      (u) =>
-        u.email.toLowerCase().includes(q) ||
-        (u.name ?? '').toLowerCase().includes(q)
+      (u) => u.email.toLowerCase().includes(q) || (u.name ?? '').toLowerCase().includes(q)
     )
   }, [items, query])
 
@@ -124,11 +122,7 @@ export function AdminUsers() {
       )}
 
       {editing && (
-        <UserDrawer
-          user={editing}
-          onClose={() => setEditingId(null)}
-          onChanged={() => reload()}
-        />
+        <UserDrawer user={editing} onClose={() => setEditingId(null)} onChanged={() => reload()} />
       )}
     </>
   )
@@ -173,18 +167,21 @@ function UserDrawer({
   }
 
   const toggleRole = (next: boolean) =>
-    withBusy(async () => {
-      const nextRole: Role = next ? 'admin' : 'user'
-      try {
-        await adminPatchUserRole(user.id, { role: nextRole })
-      } catch (err) {
-        // Bounce the switch back on failure (e.g. last-admin guard).
-        setIsAdmin(user.role === 'admin')
-        throw err
-      }
-      setIsAdmin(next)
-      onChanged()
-    }, next ? 'Promote to admin' : 'Demote to user')
+    withBusy(
+      async () => {
+        const nextRole: Role = next ? 'admin' : 'user'
+        try {
+          await adminPatchUserRole(user.id, { role: nextRole })
+        } catch (err) {
+          // Bounce the switch back on failure (e.g. last-admin guard).
+          setIsAdmin(user.role === 'admin')
+          throw err
+        }
+        setIsAdmin(next)
+        onChanged()
+      },
+      next ? 'Promote to admin' : 'Demote to user'
+    )
 
   const revokeCreds = () =>
     withBusy(async () => {
@@ -220,7 +217,13 @@ function UserDrawer({
           </Alert>
         )}
         {info && (
-          <Alert color="green" variant="light" radius="sm" withCloseButton onClose={() => setInfo(null)}>
+          <Alert
+            color="green"
+            variant="light"
+            radius="sm"
+            withCloseButton
+            onClose={() => setInfo(null)}
+          >
             {info}
           </Alert>
         )}

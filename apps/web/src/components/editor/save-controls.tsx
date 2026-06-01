@@ -163,17 +163,11 @@ export function LeaveGuard({
   }
 
   return (
-    <Modal
-      opened
-      onClose={() => blocker.reset?.()}
-      title="Unsaved changes"
-      centered
-      size="md"
-    >
+    <Modal opened onClose={() => blocker.reset?.()} title="Unsaved changes" centered size="md">
       <Stack gap="md">
         <Text fz="sm">
-          You have unsaved changes. Save them, discard them, or stay on the page.
-          Discarding reverts to your last save.
+          You have unsaved changes. Save them, discard them, or stay on the page. Discarding reverts
+          to your last save.
         </Text>
         {error && (
           <Text fz="sm" c="red">

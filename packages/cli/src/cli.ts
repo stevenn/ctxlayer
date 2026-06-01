@@ -34,9 +34,7 @@ program
 
 program
   .command('pull')
-  .description(
-    'Materialise published skills as SKILL.md files under ~/.claude/skills/ctxlayer/.'
-  )
+  .description('Materialise published skills as SKILL.md files under ~/.claude/skills/ctxlayer/.')
   .option('--dry-run', 'Print what would be written without touching the filesystem.')
   .action(async (opts) => {
     await pullCommand({ dryRun: opts.dryRun })

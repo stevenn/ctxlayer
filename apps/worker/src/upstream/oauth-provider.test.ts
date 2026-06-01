@@ -34,7 +34,10 @@ function makeKv() {
 
 interface MutableUpstream {
   row: UpstreamServerRow
-  credByUser: Map<string, { ciphertext: Uint8Array; iv: Uint8Array; keyVersion: number; kind: 'bearer' | 'oauth' }>
+  credByUser: Map<
+    string,
+    { ciphertext: Uint8Array; iv: Uint8Array; keyVersion: number; kind: 'bearer' | 'oauth' }
+  >
 }
 
 function makeUpstream(): MutableUpstream {

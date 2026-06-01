@@ -15,9 +15,7 @@ interface TagRow {
 }
 
 export async function listTagsForSkill(env: Env, skillId: string): Promise<SkillTags> {
-  const res = await env.DB.prepare(
-    `SELECT tag_kind, tag_value FROM skill_tags WHERE skill_id = ?1`
-  )
+  const res = await env.DB.prepare(`SELECT tag_kind, tag_value FROM skill_tags WHERE skill_id = ?1`)
     .bind(skillId)
     .all<TagRow>()
   const out: SkillTags = { teams: [], products: [], topics: [] }

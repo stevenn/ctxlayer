@@ -9,10 +9,11 @@ const SCOPE: AvailableScope = {
 
 // Stub Env: in-memory KV + an AI.run that returns a scripted response
 // (or throws). `kv` is returned so a test can assert on cache writes.
-function makeEnv(opts: {
-  aiResponse?: string
-  aiThrows?: boolean
-}): { env: Env; kv: Map<string, string>; calls: () => number } {
+function makeEnv(opts: { aiResponse?: string; aiThrows?: boolean }): {
+  env: Env
+  kv: Map<string, string>
+  calls: () => number
+} {
   const kv = new Map<string, string>()
   let runCalls = 0
   const env = {

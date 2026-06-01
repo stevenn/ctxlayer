@@ -96,11 +96,7 @@ function nodeToZod(node: JsonSchemaNode): ZodTypeAny {
   const types = Array.isArray(node.type) ? node.type : node.type ? [node.type] : []
   if (types.length > 1) {
     return z.union(
-      types.map((t) => nodeToZod({ ...node, type: t })) as [
-        ZodTypeAny,
-        ZodTypeAny,
-        ...ZodTypeAny[]
-      ]
+      types.map((t) => nodeToZod({ ...node, type: t })) as [ZodTypeAny, ZodTypeAny, ...ZodTypeAny[]]
     )
   }
 

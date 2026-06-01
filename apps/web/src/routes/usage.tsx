@@ -1,12 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Alert,
-  Group,
-  Select,
-  Stack,
-  Text,
-  Title
-} from '@mantine/core'
+import { Alert, Group, Select, Stack, Text, Title } from '@mantine/core'
 import type { UsageResponse } from '@ctxlayer/shared'
 import { fetchUsage } from '../lib/api'
 import { explain } from '../lib/explain'
@@ -78,9 +71,7 @@ export function Usage() {
 
       {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
-      {status.kind === 'ready' && (
-        <UsageBody data={status.data} daysBack={days} />
-      )}
+      {status.kind === 'ready' && <UsageBody data={status.data} daysBack={days} />}
     </Stack>
   )
 }
@@ -159,12 +150,7 @@ export function Stat({
       >
         {label}
       </Text>
-      <Text
-        fz={22}
-        fw={600}
-        c={accent === 'red' ? 'red' : undefined}
-        style={{ lineHeight: 1.2 }}
-      >
+      <Text fz={22} fw={600} c={accent === 'red' ? 'red' : undefined} style={{ lineHeight: 1.2 }}>
         {value}
       </Text>
     </div>
@@ -252,14 +238,20 @@ export function ToolTable({
             </td>
             <td
               className={r.errors > 0 ? undefined : 'text-muted'}
-              style={{ textAlign: 'right', color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined }}
+              style={{
+                textAlign: 'right',
+                color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined
+              }}
             >
               {r.errors.toLocaleString()}
             </td>
             {showResilience && (
               <td
                 className={r.timeouts > 0 ? undefined : 'text-muted'}
-                style={{ textAlign: 'right', color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined }}
+                style={{
+                  textAlign: 'right',
+                  color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined
+                }}
               >
                 {r.timeouts.toLocaleString()}
               </td>
@@ -320,7 +312,7 @@ export function UpstreamTable({
             <td>
               {r.upstreamId === ''
                 ? 'Built-in'
-                : r.upstreamName ?? r.upstreamSlug ?? <code>{r.upstreamId}</code>}
+                : (r.upstreamName ?? r.upstreamSlug ?? <code>{r.upstreamId}</code>)}
             </td>
             <td style={{ textAlign: 'right' }}>{r.calls.toLocaleString()}</td>
             <td className="text-muted" style={{ textAlign: 'right' }}>
@@ -330,14 +322,20 @@ export function UpstreamTable({
               {r.respTokens.toLocaleString()}
             </td>
             <td
-              style={{ textAlign: 'right', color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined }}
+              style={{
+                textAlign: 'right',
+                color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined
+              }}
             >
               {r.errors.toLocaleString()}
             </td>
             {showResilience && (
               <td
                 className={r.timeouts > 0 ? undefined : 'text-muted'}
-                style={{ textAlign: 'right', color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined }}
+                style={{
+                  textAlign: 'right',
+                  color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined
+                }}
               >
                 {r.timeouts.toLocaleString()}
               </td>

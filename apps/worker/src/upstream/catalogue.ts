@@ -31,11 +31,7 @@ export interface CatalogueRefreshOk {
 
 export interface CatalogueRefreshErr {
   ok: false
-  reason:
-    | 'not_found'
-    | 'unsupported_transport'
-    | 'no_credentials'
-    | 'listTools_failed'
+  reason: 'not_found' | 'unsupported_transport' | 'no_credentials' | 'listTools_failed'
   message?: string
 }
 

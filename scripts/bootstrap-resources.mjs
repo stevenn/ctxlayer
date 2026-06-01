@@ -51,9 +51,7 @@ function run(args) {
 }
 
 // ----- D1 ---------------------------------------------------------------
-const dbMatch = toml.match(
-  /\[\[d1_databases\]\][\s\S]*?database_id\s*=\s*"([0-9a-fA-F-]+)"/
-)
+const dbMatch = toml.match(/\[\[d1_databases\]\][\s\S]*?database_id\s*=\s*"([0-9a-fA-F-]+)"/)
 if (!dbMatch) {
   console.error('Could not find d1_databases.database_id in wrangler.toml')
   process.exit(1)

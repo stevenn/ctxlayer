@@ -206,9 +206,8 @@ export function AdminOAuthClients() {
       </Group>
 
       <Text c="dimmed" fz="sm" mb="md">
-        Clients registered against this MCP server (mostly via Dynamic Client
-        Registration when a host first connects). Read-only — registrations
-        come in over <code>/oauth/register</code>.
+        Clients registered against this MCP server (mostly via Dynamic Client Registration when a
+        host first connects). Read-only — registrations come in over <code>/oauth/register</code>.
       </Text>
 
       {status.kind === 'error' && (
@@ -221,20 +220,23 @@ export function AdminOAuthClients() {
 
       {status.kind === 'ready' && status.clients.length === 0 && (
         <Text c="dimmed">
-          No clients have registered yet. Connect Claude or another MCP host
-          via <code>/app/mcp-setup</code> and one will appear here.
+          No clients have registered yet. Connect Claude or another MCP host via{' '}
+          <code>/app/mcp-setup</code> and one will appear here.
         </Text>
       )}
 
-      {filtered && filtered.length === 0 && status.kind === 'ready' && status.clients.length > 0 && (
-        <Text c="dimmed">
-          {query.trim()
-            ? `No clients match "${query}".`
-            : `All ${status.clients.length} loaded client${
-                status.clients.length === 1 ? ' is an orphan' : 's are orphans'
-              } (hidden). Toggle "Hide orphans" to show them.`}
-        </Text>
-      )}
+      {filtered &&
+        filtered.length === 0 &&
+        status.kind === 'ready' &&
+        status.clients.length > 0 && (
+          <Text c="dimmed">
+            {query.trim()
+              ? `No clients match "${query}".`
+              : `All ${status.clients.length} loaded client${
+                  status.clients.length === 1 ? ' is an orphan' : 's are orphans'
+                } (hidden). Toggle "Hide orphans" to show them.`}
+          </Text>
+        )}
 
       {filtered && filtered.length > 0 && (
         <>
@@ -252,7 +254,9 @@ export function AdminOAuthClients() {
             <tbody>
               {filtered.map((c) => (
                 <tr key={c.clientId} onClick={() => setSelected(c)}>
-                  <td style={{ fontWeight: 500 }}>{c.clientName ?? <span style={{ color: 'var(--text-dim)' }}>(unnamed)</span>}</td>
+                  <td style={{ fontWeight: 500 }}>
+                    {c.clientName ?? <span style={{ color: 'var(--text-dim)' }}>(unnamed)</span>}
+                  </td>
                   <td>
                     <ClientTypeBadge method={c.tokenEndpointAuthMethod} />
                   </td>
@@ -276,12 +280,7 @@ export function AdminOAuthClients() {
           {status.kind === 'ready' && (
             <Group justify="center" mt="md">
               {status.nextCursor ? (
-                <Button
-                  variant="default"
-                  size="xs"
-                  onClick={loadMore}
-                  loading={status.loadingMore}
-                >
+                <Button variant="default" size="xs" onClick={loadMore} loading={status.loadingMore}>
                   Load more
                 </Button>
               ) : (
@@ -302,13 +301,7 @@ export function AdminOAuthClients() {
 
 // ----- Drawer ------------------------------------------------------------
 
-function ClientDrawer({
-  client,
-  onClose
-}: {
-  client: OAuthClientRow
-  onClose: () => void
-}) {
+function ClientDrawer({ client, onClose }: { client: OAuthClientRow; onClose: () => void }) {
   const raw = JSON.stringify(client, null, 2)
   return (
     <Drawer
@@ -344,7 +337,9 @@ function ClientDrawer({
 
         <Section title="Redirect URIs">
           {client.redirectUris.length === 0 ? (
-            <Text fz="xs" c="dimmed">No redirect URIs registered.</Text>
+            <Text fz="xs" c="dimmed">
+              No redirect URIs registered.
+            </Text>
           ) : (
             <Stack gap={2}>
               {client.redirectUris.map((u) => (
@@ -414,10 +409,7 @@ function isOrphanClient(c: OAuthClientRow): boolean {
 
 function OrphanBadge() {
   return (
-    <Tooltip
-      label="Public client, no grants. Auto-pruned once older than 1 day."
-      withArrow
-    >
+    <Tooltip label="Public client, no grants. Auto-pruned once older than 1 day." withArrow>
       <Badge size="sm" color="gray" variant="outline">
         orphan
       </Badge>
@@ -474,12 +466,7 @@ function RedirectCell({ uris }: { uris: string[] }) {
     return <code style={{ fontSize: 11 }}>{truncateUri(first)}</code>
   }
   return (
-    <Tooltip
-      multiline
-      maw={420}
-      label={uris.map((u) => `• ${u}`).join('\n')}
-      withArrow
-    >
+    <Tooltip multiline maw={420} label={uris.map((u) => `• ${u}`).join('\n')} withArrow>
       <span>
         <code style={{ fontSize: 11 }}>{truncateUri(first)}</code>
         <Text component="span" fz="xs" c="dimmed" ml={6}>

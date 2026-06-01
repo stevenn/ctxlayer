@@ -13,10 +13,7 @@ export interface DocAttachmentRow {
   tool_name: string
 }
 
-export async function listAttachmentsForDoc(
-  env: Env,
-  docId: string
-): Promise<DocAttachmentRow[]> {
+export async function listAttachmentsForDoc(env: Env, docId: string): Promise<DocAttachmentRow[]> {
   const res = await env.DB.prepare(
     `SELECT da.doc_id, da.upstream_id, da.tool_name,
             u.slug AS upstream_slug

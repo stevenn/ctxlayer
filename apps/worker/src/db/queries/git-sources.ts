@@ -65,7 +65,9 @@ export async function listEnabledGitSources(env: Env): Promise<GitSourceRow[]> {
 }
 
 export async function getGitSourceById(env: Env, id: string): Promise<GitSourceRow | null> {
-  const row = await env.DB.prepare(`${SELECT_GIT_SOURCE} WHERE id = ?1`).bind(id).first<GitSourceRow>()
+  const row = await env.DB.prepare(`${SELECT_GIT_SOURCE} WHERE id = ?1`)
+    .bind(id)
+    .first<GitSourceRow>()
   return row ?? null
 }
 
@@ -95,7 +97,10 @@ export interface CreateGitSourceInput {
   createdBy: string
 }
 
-export async function createGitSource(env: Env, input: CreateGitSourceInput): Promise<GitSourceRow> {
+export async function createGitSource(
+  env: Env,
+  input: CreateGitSourceInput
+): Promise<GitSourceRow> {
   const id = newId()
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
@@ -147,7 +152,11 @@ export interface PatchGitSourceInput {
   enabled?: boolean
 }
 
-export async function patchGitSource(env: Env, id: string, patch: PatchGitSourceInput): Promise<void> {
+export async function patchGitSource(
+  env: Env,
+  id: string,
+  patch: PatchGitSourceInput
+): Promise<void> {
   const fields: string[] = []
   const binds: unknown[] = []
   const push = (col: string, val: unknown) => {
@@ -398,9 +407,7 @@ export async function deleteGitUserCredential(
   userId: string,
   gitSourceId: string
 ): Promise<void> {
-  await env.DB.prepare(
-    `DELETE FROM git_user_credentials WHERE user_id = ?1 AND git_source_id = ?2`
-  )
+  await env.DB.prepare(`DELETE FROM git_user_credentials WHERE user_id = ?1 AND git_source_id = ?2`)
     .bind(userId, gitSourceId)
     .run()
 }
@@ -446,7 +453,12 @@ export async function listGitDocPaths(
   env: Env,
   gitSourceId: string
 ): Promise<
-  Array<{ id: string; git_path: string; git_commit_sha: string | null; git_sync_state: GitSyncState | null }>
+  Array<{
+    id: string
+    git_path: string
+    git_commit_sha: string | null
+    git_sync_state: GitSyncState | null
+  }>
 > {
   const res = await env.DB.prepare(
     `SELECT id, git_path, git_commit_sha, git_sync_state FROM documents
@@ -487,7 +499,11 @@ export async function markDocGitOrigin(
     .run()
 }
 
-export async function setDocGitSyncState(env: Env, docId: string, state: GitSyncState): Promise<void> {
+export async function setDocGitSyncState(
+  env: Env,
+  docId: string,
+  state: GitSyncState
+): Promise<void> {
   await env.DB.prepare(`UPDATE documents SET git_sync_state = ?2 WHERE id = ?1`)
     .bind(docId, state)
     .run()
@@ -520,7 +536,9 @@ export async function getOpenPrForDoc(env: Env, docId: string): Promise<GitPrRow
 }
 
 export async function getLatestPrForDoc(env: Env, docId: string): Promise<GitPrRow | null> {
-  const row = await env.DB.prepare(`${SELECT_PR} WHERE doc_id = ?1 ORDER BY created_at DESC LIMIT 1`)
+  const row = await env.DB.prepare(
+    `${SELECT_PR} WHERE doc_id = ?1 ORDER BY created_at DESC LIMIT 1`
+  )
     .bind(docId)
     .first<GitPrRow>()
   return row ?? null
@@ -564,9 +582,7 @@ export async function insertGitPr(
 }
 
 export async function updateGitPrState(env: Env, id: string, state: GitPrState): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE git_pull_requests SET state = ?2, updated_at = ?3 WHERE id = ?1`
-  )
+  await env.DB.prepare(`UPDATE git_pull_requests SET state = ?2, updated_at = ?3 WHERE id = ?1`)
     .bind(id, state, Math.floor(Date.now() / 1000))
     .run()
 }

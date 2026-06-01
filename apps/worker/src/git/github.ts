@@ -57,7 +57,9 @@ export class GitHubProvider implements GitProviderClient {
     const r = await this.call('GET', `${this.repoPath}/git/trees/${enc(ref)}?recursive=1`)
     const body = asObj(r.json)
     if (body.truncated) {
-      console.warn(`github: tree truncated for ${this.owner}/${this.repo} — some files may be missed`)
+      console.warn(
+        `github: tree truncated for ${this.owner}/${this.repo} — some files may be missed`
+      )
     }
     const tree = Array.isArray(body.tree) ? (body.tree as Array<Record<string, unknown>>) : []
     const prefix = normalizePrefix(pathPrefix)
@@ -100,11 +102,10 @@ export class GitHubProvider implements GitProviderClient {
       const baseSha = asObj(asObj(baseRef.json).object).sha
       if (typeof baseSha !== 'string') throw new Error('github_base_ref_missing')
       // Create the head branch; 422 = already exists (re-running a PR).
-      await this.call(
-        'POST',
-        `${this.repoPath}/git/refs`,
-        { body: { ref: `refs/heads/${headBranch}`, sha: baseSha }, allow: [422] }
-      )
+      await this.call('POST', `${this.repoPath}/git/refs`, {
+        body: { ref: `refs/heads/${headBranch}`, sha: baseSha },
+        allow: [422]
+      })
     }
 
     // Current file sha on the head branch (needed to update; 404 = new file).
@@ -130,7 +131,10 @@ export class GitHubProvider implements GitProviderClient {
         body: { title: input.prTitle, head: headBranch, base: input.baseRef, body: input.prBody },
         allow: [422]
       })
-      pr = opened.status === 422 ? await this.findOpenPr(headBranch, input.baseRef) : asObj(opened.json)
+      pr =
+        opened.status === 422
+          ? await this.findOpenPr(headBranch, input.baseRef)
+          : asObj(opened.json)
     }
     const number = pr?.number
     const url = pr?.html_url
@@ -151,7 +155,10 @@ export class GitHubProvider implements GitProviderClient {
 
   // ----- internals -------------------------------------------------------
 
-  private async findOpenPr(headBranch: string, baseRef: string): Promise<Record<string, unknown> | null> {
+  private async findOpenPr(
+    headBranch: string,
+    baseRef: string
+  ): Promise<Record<string, unknown> | null> {
     const r = await this.call(
       'GET',
       `${this.repoPath}/pulls?head=${enc(this.owner)}:${enc(headBranch)}&base=${enc(baseRef)}&state=open`

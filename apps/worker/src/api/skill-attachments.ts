@@ -8,11 +8,7 @@ import { AttachSkillRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
-import {
-  attachSkill,
-  detachSkill,
-  listAttachmentsForSkill
-} from '../db/queries/skill-attachments'
+import { attachSkill, detachSkill, listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { getSkillById } from '../db/queries/skills'
 import { getUpstreamById } from '../db/queries/upstreams'
 import { audit } from '../audit/log'

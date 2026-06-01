@@ -19,7 +19,11 @@ interface NavSpec {
 }
 
 const PRIMARY_NAV: NavSpec[] = [
-  { to: '/app/search', label: 'Search', matches: (p) => p === '/app' || p.startsWith('/app/search') },
+  {
+    to: '/app/search',
+    label: 'Search',
+    matches: (p) => p === '/app' || p.startsWith('/app/search')
+  },
   { to: '/app/docs', label: 'Docs', matches: (p) => p.startsWith('/app/docs') },
   { to: '/app/upstreams', label: 'Upstreams' },
   { to: '/app/mcp-setup', label: 'MCP setup' },

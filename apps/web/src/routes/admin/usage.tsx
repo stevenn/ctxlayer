@@ -1,23 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import {
-  Alert,
-  Group,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-  Title
-} from '@mantine/core'
+import { Alert, Group, Select, Stack, Text, TextInput, Title } from '@mantine/core'
 import type { AdminUsageResponse } from '@ctxlayer/shared'
 import { fetchAdminUsage } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { DailyBars } from '../../components/usage/charts'
-import {
-  Panel,
-  Stat,
-  ToolTable,
-  UpstreamTable
-} from '../usage'
+import { Panel, Stat, ToolTable, UpstreamTable } from '../usage'
 
 /**
  * Admin org-wide usage dashboard. Hits `/api/admin/usage` which is
@@ -46,31 +33,28 @@ export function AdminUsage() {
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const ctrlRef = useRef<AbortController | null>(null)
 
-  const load = useCallback(
-    (opts: { days: number; userId: string; upstreamId: string }) => {
-      ctrlRef.current?.abort()
-      const ctrl = new AbortController()
-      ctrlRef.current = ctrl
-      setStatus({ kind: 'loading' })
-      fetchAdminUsage(
-        {
-          days: opts.days,
-          userId: opts.userId || undefined,
-          upstreamId: opts.upstreamId || undefined
-        },
-        ctrl.signal
-      ).then(
-        (data) => {
-          if (!ctrl.signal.aborted) setStatus({ kind: 'ready', data })
-        },
-        (err) => {
-          if (ctrl.signal.aborted) return
-          setStatus({ kind: 'error', message: explain(err) })
-        }
-      )
-    },
-    []
-  )
+  const load = useCallback((opts: { days: number; userId: string; upstreamId: string }) => {
+    ctrlRef.current?.abort()
+    const ctrl = new AbortController()
+    ctrlRef.current = ctrl
+    setStatus({ kind: 'loading' })
+    fetchAdminUsage(
+      {
+        days: opts.days,
+        userId: opts.userId || undefined,
+        upstreamId: opts.upstreamId || undefined
+      },
+      ctrl.signal
+    ).then(
+      (data) => {
+        if (!ctrl.signal.aborted) setStatus({ kind: 'ready', data })
+      },
+      (err) => {
+        if (ctrl.signal.aborted) return
+        setStatus({ kind: 'error', message: explain(err) })
+      }
+    )
+  }, [])
 
   // Range select fires immediately; text filters debounce 300ms.
   useEffect(() => {
@@ -259,7 +243,10 @@ function UserTable({
               {r.respTokens.toLocaleString()}
             </td>
             <td
-              style={{ textAlign: 'right', color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined }}
+              style={{
+                textAlign: 'right',
+                color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined
+              }}
             >
               {r.errors.toLocaleString()}
             </td>

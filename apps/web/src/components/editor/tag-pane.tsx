@@ -60,8 +60,7 @@ export function TagPane({ docId, canEdit }: Props) {
     return () => ctrl.abort()
   }, [docId])
 
-  const dirty =
-    draft !== null && original !== null && !sameTags(draft, original)
+  const dirty = draft !== null && original !== null && !sameTags(draft, original)
 
   function addTopic() {
     const cleaned = normaliseTopic(topicInput)
@@ -95,7 +94,15 @@ export function TagPane({ docId, canEdit }: Props) {
   if (!draft || !teams || !products) {
     return (
       <SectionLabel>
-        {error ? <Text c="red" fz="xs">{error}</Text> : <Text c="dimmed" fz="xs">Loading tags…</Text>}
+        {error ? (
+          <Text c="red" fz="xs">
+            {error}
+          </Text>
+        ) : (
+          <Text c="dimmed" fz="xs">
+            Loading tags…
+          </Text>
+        )}
       </SectionLabel>
     )
   }
@@ -248,9 +255,7 @@ function normaliseTopic(raw: string): string {
 }
 
 function sameTags(a: DocTags, b: DocTags): boolean {
-  return (
-    sameSet(a.teams, b.teams) && sameSet(a.products, b.products) && sameSet(a.topics, b.topics)
-  )
+  return sameSet(a.teams, b.teams) && sameSet(a.products, b.products) && sameSet(a.topics, b.topics)
 }
 function sameSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false

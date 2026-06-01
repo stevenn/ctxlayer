@@ -244,9 +244,7 @@ function DrafterMetaCard({ meta }: { meta: unknown }) {
         )}
         <Text fz="xs" c="dimmed">
           Drafted {when}
-          {typeof m.costUsd === 'number' && m.costUsd > 0
-            ? ` · ~$${m.costUsd.toFixed(4)}`
-            : ''}
+          {typeof m.costUsd === 'number' && m.costUsd > 0 ? ` · ~$${m.costUsd.toFixed(4)}` : ''}
           {m.promptVersion ? ` · prompt ${m.promptVersion}` : ''}
         </Text>
       </Stack>
@@ -257,8 +255,7 @@ function DrafterMetaCard({ meta }: { meta: unknown }) {
 // ----- Status badge ------------------------------------------------------
 
 function StatusBadge({ status }: { status: 'draft' | 'published' | 'archived' }) {
-  const colour =
-    status === 'published' ? 'green' : status === 'draft' ? 'yellow' : 'gray'
+  const colour = status === 'published' ? 'green' : status === 'draft' ? 'yellow' : 'gray'
   return (
     <Badge color={colour} variant={status === 'published' ? 'filled' : 'light'}>
       {status}
@@ -465,7 +462,14 @@ function SkillDrawer({
 
   if (!detail && !error) {
     return (
-      <Drawer opened onClose={onClose} title="Skill · loading…" position="right" size="md" padding="md">
+      <Drawer
+        opened
+        onClose={onClose}
+        title="Skill · loading…"
+        position="right"
+        size="md"
+        padding="md"
+      >
         <Text c="dimmed">Loading…</Text>
       </Drawer>
     )
@@ -487,7 +491,13 @@ function SkillDrawer({
           </Alert>
         )}
         {info && (
-          <Alert color="green" variant="light" radius="sm" withCloseButton onClose={() => setInfo(null)}>
+          <Alert
+            color="green"
+            variant="light"
+            radius="sm"
+            withCloseButton
+            onClose={() => setInfo(null)}
+          >
             {info}
           </Alert>
         )}

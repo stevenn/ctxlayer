@@ -1,16 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import {
-  Alert,
-  Button,
-  Group,
-  Menu,
-  Stack,
-  Text,
-  TextInput,
-  Title,
-  Tooltip
-} from '@mantine/core'
+import { Alert, Button, Group, Menu, Stack, Text, TextInput, Title, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
 import {
   adminReindexAllDocs,
@@ -24,13 +14,7 @@ import { useDialogs } from '../../lib/dialogs'
 import { BlankDocModal } from './BlankDocModal'
 import { CodeDocsTree, FolderTree } from './FolderTree'
 import { DocsTable } from './DocsTable'
-import {
-  computeFolderNodes,
-  EMPTY_DOCS,
-  explain,
-  type FolderSelection,
-  isGitDoc
-} from './helpers'
+import { computeFolderNodes, EMPTY_DOCS, explain, type FolderSelection, isGitDoc } from './helpers'
 import { ImportDocModal } from './ImportDocModal'
 
 export { personLabel } from './helpers'

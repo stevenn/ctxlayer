@@ -47,9 +47,7 @@ export async function completeMcpAuthorization(
   const { redirectTo } = await env.OAUTH_PROVIDER.completeAuthorization({
     // The library accepts the parsed AuthRequest object from
     // parseAuthRequest() (cast to its expected type).
-    request: authReq as Parameters<
-      Env['OAUTH_PROVIDER']['completeAuthorization']
-    >[0]['request'],
+    request: authReq as Parameters<Env['OAUTH_PROVIDER']['completeAuthorization']>[0]['request'],
     userId: user.id,
     metadata: { idp: user.idp, email: user.email },
     scope: ['mcp'],

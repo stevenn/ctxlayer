@@ -48,9 +48,9 @@ describe('writeUsageEvent', () => {
   it('keeps NULL upstream_id on the raw row and translates to "" on the rollup', async () => {
     await writeUsageEvent(testEnv, event())
 
-    const raw = await testEnv.DB.prepare(
-      'SELECT upstream_id FROM usage_events'
-    ).first<{ upstream_id: string | null }>()
+    const raw = await testEnv.DB.prepare('SELECT upstream_id FROM usage_events').first<{
+      upstream_id: string | null
+    }>()
     expect(raw?.upstream_id).toBeNull()
 
     const rollup = await testEnv.DB.prepare(
@@ -81,9 +81,10 @@ describe('writeUsageEvent', () => {
     await writeUsageEvent(testEnv, event({ status: 'error' }))
     await writeUsageEvent(testEnv, event({ status: 'timeout' }))
 
-    const r = await testEnv.DB.prepare(
-      'SELECT calls, errors FROM usage_rollups_daily'
-    ).first<{ calls: number; errors: number }>()
+    const r = await testEnv.DB.prepare('SELECT calls, errors FROM usage_rollups_daily').first<{
+      calls: number
+      errors: number
+    }>()
     expect(r).toEqual({ calls: 3, errors: 2 })
   })
 
@@ -102,9 +103,10 @@ describe('writeUsageEvent', () => {
   it('uses the proxied upstream id verbatim on the rollup', async () => {
     await writeUsageEvent(testEnv, event({ upstreamId: 'ups-notion', tool: 'notion__search' }))
 
-    const r = await testEnv.DB.prepare(
-      'SELECT upstream_id, tool FROM usage_rollups_daily'
-    ).first<{ upstream_id: string; tool: string }>()
+    const r = await testEnv.DB.prepare('SELECT upstream_id, tool FROM usage_rollups_daily').first<{
+      upstream_id: string
+      tool: string
+    }>()
     expect(r).toEqual({ upstream_id: 'ups-notion', tool: 'notion__search' })
   })
 })
@@ -120,9 +122,9 @@ describe('pruneUsageEvents', () => {
     const removed = await pruneUsageEvents(testEnv, 30)
     expect(removed).toBe(1)
 
-    const rawCount = await testEnv.DB.prepare(
-      'SELECT COUNT(*) AS n FROM usage_events'
-    ).first<{ n: number }>()
+    const rawCount = await testEnv.DB.prepare('SELECT COUNT(*) AS n FROM usage_events').first<{
+      n: number
+    }>()
     expect(rawCount?.n).toBe(1)
 
     // Rollups stay forever — confirms we only pruned raw events.

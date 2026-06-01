@@ -6,11 +6,7 @@
  */
 
 import { Hono } from 'hono'
-import {
-  AddTeamMemberRequest,
-  CreateTeamRequest,
-  UpdateTeamRequest
-} from '@ctxlayer/shared'
+import { AddTeamMemberRequest, CreateTeamRequest, UpdateTeamRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'

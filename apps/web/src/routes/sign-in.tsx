@@ -26,8 +26,7 @@ export function SignIn() {
   const [configError, setConfigError] = useState<string | null>(null)
 
   const urlErrorCode = params.get('error')
-  const urlError =
-    urlErrorCode != null ? ERROR_MESSAGE[urlErrorCode] ?? 'Sign-in failed.' : null
+  const urlError = urlErrorCode != null ? (ERROR_MESSAGE[urlErrorCode] ?? 'Sign-in failed.') : null
 
   useEffect(() => {
     const ctrl = new AbortController()
@@ -70,8 +69,8 @@ export function SignIn() {
             ))}
             {idps?.length === 0 && (
               <Text c="dimmed" fz="sm">
-                No identity providers are configured for this deployment. Ask an admin to
-                set <code>ALLOWED_GOOGLE_HD</code> or <code>ALLOWED_GITHUB_ORG</code>.
+                No identity providers are configured for this deployment. Ask an admin to set{' '}
+                <code>ALLOWED_GOOGLE_HD</code> or <code>ALLOWED_GITHUB_ORG</code>.
               </Text>
             )}
             {configError && (

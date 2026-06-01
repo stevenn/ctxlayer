@@ -29,10 +29,7 @@ type Row = {
   meta: string | null
 }
 
-export async function listAuditEntries(
-  env: Env,
-  opts: ListAuditOpts
-): Promise<AuditLogResponse> {
+export async function listAuditEntries(env: Env, opts: ListAuditOpts): Promise<AuditLogResponse> {
   const where: string[] = []
   const binds: unknown[] = []
 
@@ -79,8 +76,7 @@ export async function listAuditEntries(
 
   // nextBefore = oldest ts on this page, but only if we filled the
   // window — otherwise we've reached the tail.
-  const nextBefore =
-    entries.length === opts.limit ? entries[entries.length - 1]!.ts : null
+  const nextBefore = entries.length === opts.limit ? entries[entries.length - 1]!.ts : null
 
   return { entries, nextBefore }
 }

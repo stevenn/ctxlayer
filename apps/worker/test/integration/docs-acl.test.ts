@@ -1,10 +1,6 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  canEditDoc,
-  canLockDoc,
-  canShareDoc
-} from '../../src/db/queries/docs'
+import { canEditDoc, canLockDoc, canShareDoc } from '../../src/db/queries/docs'
 import type { Env as WorkerEnv } from '../../src/env'
 
 /**
@@ -26,12 +22,7 @@ async function seedUser(id: string, role: 'user' | 'admin' = 'user') {
     .run()
 }
 
-async function seedDoc(opts: {
-  id: string
-  ownerId: string
-  locked?: boolean
-  deleted?: boolean
-}) {
+async function seedDoc(opts: { id: string; ownerId: string; locked?: boolean; deleted?: boolean }) {
   const lockedAt = opts.locked ? NOW : null
   const lockedBy = opts.locked ? opts.ownerId : null
   const deletedAt = opts.deleted ? NOW : null

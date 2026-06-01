@@ -42,8 +42,7 @@ export const FolderPath = z
       return segs.every((seg) => FolderSegment.test(seg))
     },
     {
-      message:
-        'leading "/", slug-shaped segments separated by "/", max depth 5, no trailing "/"'
+      message: 'leading "/", slug-shaped segments separated by "/", max depth 5, no trailing "/"'
     }
   )
 export type FolderPath = z.infer<typeof FolderPath>

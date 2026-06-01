@@ -11,7 +11,11 @@ import {
   Title,
   UnstyledButton
 } from '@mantine/core'
-import { mangleToolName, type UpstreamToolSummary, type UserUpstreamSummary } from '@ctxlayer/shared'
+import {
+  mangleToolName,
+  type UpstreamToolSummary,
+  type UserUpstreamSummary
+} from '@ctxlayer/shared'
 import {
   deleteUpstreamCredentials,
   fetchUpstreams,
@@ -29,7 +33,9 @@ type ToolsState =
 export function Upstreams() {
   const [items, setItems] = useState<UserUpstreamSummary[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(null)
+  const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(
+    null
+  )
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -57,7 +63,10 @@ export function Upstreams() {
       setOauthBanner({ kind: 'ok', message: `Connected ${connected}.` })
     } else if (errCode) {
       const desc = params.get('desc') ?? ''
-      setOauthBanner({ kind: 'err', message: `OAuth failed: ${errCode}${desc ? ` — ${desc}` : ''}` })
+      setOauthBanner({
+        kind: 'err',
+        message: `OAuth failed: ${errCode}${desc ? ` — ${desc}` : ''}`
+      })
     }
     if (connected || errCode) {
       params.delete('oauth_connected')
@@ -75,9 +84,9 @@ export function Upstreams() {
           Connect upstreams
         </Title>
         <Text c="dimmed" fz="sm">
-          MCP upstreams an admin has shared with your team or product. Connect
-          via OAuth or paste a personal access token — credentials are
-          encrypted at rest and only used to call the upstream on your behalf.
+          MCP upstreams an admin has shared with your team or product. Connect via OAuth or paste a
+          personal access token — credentials are encrypted at rest and only used to call the
+          upstream on your behalf.
         </Text>
       </div>
 
@@ -100,20 +109,15 @@ export function Upstreams() {
       {!items && !error && <Text c="dimmed">Loading…</Text>}
       {items && items.length === 0 && (
         <Text c="dimmed">
-          No upstreams are visible to you yet. Ask an admin to grant your team
-          or product access on the Admin · Upstreams page.
+          No upstreams are visible to you yet. Ask an admin to grant your team or product access on
+          the Admin · Upstreams page.
         </Text>
       )}
 
       {items && items.length > 0 && (
         <Stack gap="sm">
           {items.map((u) => (
-            <UpstreamCard
-              key={u.id}
-              upstream={u}
-              onChanged={() => reload()}
-              onError={setError}
-            />
+            <UpstreamCard key={u.id} upstream={u} onChanged={() => reload()} onError={setError} />
           ))}
         </Stack>
       )}
@@ -258,22 +262,11 @@ function UpstreamCard({
             />
             <Group justify="flex-end" gap="xs">
               {upstream.connected && (
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  color="red"
-                  onClick={revoke}
-                  disabled={busy}
-                >
+                <Button size="xs" variant="subtle" color="red" onClick={revoke} disabled={busy}>
                   Disconnect
                 </Button>
               )}
-              <Button
-                size="xs"
-                onClick={save}
-                loading={busy}
-                disabled={!token.trim()}
-              >
+              <Button size="xs" onClick={save} loading={busy} disabled={!token.trim()}>
                 {upstream.connected ? 'Replace token' : 'Connect'}
               </Button>
             </Group>
@@ -283,19 +276,12 @@ function UpstreamCard({
         {isOauth && (
           <Stack gap="xs">
             <Text fz="xs" c="dimmed">
-              Connect signs you in at the upstream via OAuth (PKCE).
-              ctxlayer stores the refresh token sealed at rest and
-              transparently refreshes the access token as needed.
+              Connect signs you in at the upstream via OAuth (PKCE). ctxlayer stores the refresh
+              token sealed at rest and transparently refreshes the access token as needed.
             </Text>
             <Group justify="flex-end" gap="xs">
               {upstream.connected && (
-                <Button
-                  size="xs"
-                  variant="subtle"
-                  color="red"
-                  onClick={revoke}
-                  disabled={busy}
-                >
+                <Button size="xs" variant="subtle" color="red" onClick={revoke} disabled={busy}>
                   Disconnect
                 </Button>
               )}
@@ -319,8 +305,7 @@ function UpstreamCard({
 
         {isNone && (
           <Text fz="xs" c="dimmed">
-            No personal token needed — this upstream uses <code>none</code>{' '}
-            (no auth required).
+            No personal token needed — this upstream uses <code>none</code> (no auth required).
           </Text>
         )}
 
@@ -342,13 +327,7 @@ function UpstreamCard({
   )
 }
 
-function ToolsExpansion({
-  slug,
-  state
-}: {
-  slug: string
-  state: ToolsState | undefined
-}) {
+function ToolsExpansion({ slug, state }: { slug: string; state: ToolsState | undefined }) {
   if (!state || state.kind === 'loading') {
     return (
       <Text c="dimmed" fz="xs">
@@ -366,8 +345,8 @@ function ToolsExpansion({
   if (state.tools.length === 0) {
     return (
       <Text c="dimmed" fz="xs">
-        No tools cached yet. An admin can populate the catalogue via Admin · Upstreams →
-        Refresh tools.
+        No tools cached yet. An admin can populate the catalogue via Admin · Upstreams → Refresh
+        tools.
       </Text>
     )
   }

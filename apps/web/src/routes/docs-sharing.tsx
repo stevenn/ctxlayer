@@ -11,12 +11,7 @@ import {
   TextInput
 } from '@mantine/core'
 import type { DocEditorsResponse, UserSearchResult } from '@ctxlayer/shared'
-import {
-  addDocEditor,
-  fetchDocEditors,
-  removeDocEditor,
-  searchUsers
-} from '../lib/api'
+import { addDocEditor, fetchDocEditors, removeDocEditor, searchUsers } from '../lib/api'
 
 interface Props {
   docId: string
@@ -156,7 +151,12 @@ export function SharingDialog({ docId, onClose }: Props) {
                     {u.email}
                     {u.name ? ` · ${u.name}` : ''}
                   </Text>
-                  <Button size="xs" variant="default" disabled={busy} onClick={() => grantUser(u.id)}>
+                  <Button
+                    size="xs"
+                    variant="default"
+                    disabled={busy}
+                    onClick={() => grantUser(u.id)}
+                  >
                     Add
                   </Button>
                 </Group>

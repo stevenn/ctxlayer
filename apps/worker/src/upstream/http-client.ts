@@ -16,11 +16,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker-provider.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
-import type {
-  UpstreamCallResult,
-  UpstreamCatalogueTool,
-  UpstreamClient
-} from './upstream-client'
+import type { UpstreamCallResult, UpstreamCatalogueTool, UpstreamClient } from './upstream-client'
 
 /**
  * tools/list is metadata — keep it on a tight fail-fast cap so a hung
@@ -161,10 +157,7 @@ export class UpstreamHttpClient implements UpstreamClient {
         // callback body is a no-op — we only want the keep-alive effect.
         onprogress: () => {},
         resetTimeoutOnProgress: true,
-        maxTotalTimeout: this.timeout(
-          overrides?.maxCallMs,
-          UPSTREAM_MAX_CALL_TIMEOUT_MS
-        )
+        maxTotalTimeout: this.timeout(overrides?.maxCallMs, UPSTREAM_MAX_CALL_TIMEOUT_MS)
       }
     )
     return {

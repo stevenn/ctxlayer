@@ -85,7 +85,11 @@ export async function loginCommand(opts: { baseUrl?: string; force?: boolean }):
   })
 
   console.log(pc.green('✓'), 'Logged in. Credentials saved.')
-  console.log('  Try', pc.cyan('ctxlayer pull'), 'to materialise skills under ~/.claude/skills/ctxlayer/.')
+  console.log(
+    '  Try',
+    pc.cyan('ctxlayer pull'),
+    'to materialise skills under ~/.claude/skills/ctxlayer/.'
+  )
 }
 
 interface OAuthMetadata {
@@ -136,7 +140,10 @@ async function dcrRegister(
   }
   const body = (await res.json()) as { client_id?: string }
   if (!body.client_id) {
-    throw new CtxlayerError('Dynamic client registration returned no client_id.', 'dcr_no_client_id')
+    throw new CtxlayerError(
+      'Dynamic client registration returned no client_id.',
+      'dcr_no_client_id'
+    )
   }
   return { client_id: body.client_id }
 }
@@ -169,10 +176,7 @@ async function exchangeCode(args: {
   if (!res.ok) {
     // Don't log the body — token-exchange responses can carry detailed
     // error metadata that's better logged server-side only.
-    throw new CtxlayerError(
-      `Token exchange failed (HTTP ${res.status}).`,
-      'token_exchange_failed'
-    )
+    throw new CtxlayerError(`Token exchange failed (HTTP ${res.status}).`, 'token_exchange_failed')
   }
   return (await res.json()) as TokenResponse
 }

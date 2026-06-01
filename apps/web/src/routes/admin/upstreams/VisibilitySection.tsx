@@ -1,11 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Group, Stack, Text } from '@mantine/core'
-import type {
-  AdminUpstreamRow,
-  ProductRef,
-  TeamRef,
-  VisibilityRulePayload
-} from '@ctxlayer/shared'
+import type { AdminUpstreamRow, ProductRef, TeamRef, VisibilityRulePayload } from '@ctxlayer/shared'
 import { Section, SubSection } from './helpers'
 
 export function VisibilitySection({

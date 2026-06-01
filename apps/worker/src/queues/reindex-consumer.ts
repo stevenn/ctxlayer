@@ -167,7 +167,10 @@ async function handle(
   // so result snippets read naturally — only the embedding input carries
   // the header.
   const [{ vectors }, tags] = await Promise.all([
-    embed(env, chunks.map((c) => embedInput(doc.title, c))),
+    embed(
+      env,
+      chunks.map((c) => embedInput(doc.title, c))
+    ),
     listTagsForDoc(env, docId)
   ])
   // Topic tags aren't part of the search filter today; we pass only

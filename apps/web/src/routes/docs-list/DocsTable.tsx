@@ -1,13 +1,7 @@
 import { useMemo } from 'react'
 import { Badge, Button, Group, Menu, Stack, Text, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
-import {
-  filterDocs,
-  type FolderGroup,
-  formatRelative,
-  isGitDoc,
-  personLabel
-} from './helpers'
+import { filterDocs, type FolderGroup, formatRelative, isGitDoc, personLabel } from './helpers'
 
 // ----- Docs table --------------------------------------------------------
 

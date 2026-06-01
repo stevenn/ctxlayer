@@ -163,14 +163,10 @@ export async function searchChunks(
   // product tag (the tag organizes, it doesn't gate search). Resolve
   // which candidate docs are git in one query, then keep a chunk if it's
   // git OR passes the caller's scope.
-  const gitDocIds = await gitDocIdsAmong(env, [
-    ...new Set(candidates.map((c) => c.metadata.docId))
-  ])
+  const gitDocIds = await gitDocIdsAmong(env, [...new Set(candidates.map((c) => c.metadata.docId))])
 
   return candidates
-    .filter(
-      (c) => gitDocIds.has(c.metadata.docId) || passesScope(c.metadata, opts.effective)
-    )
+    .filter((c) => gitDocIds.has(c.metadata.docId) || passesScope(c.metadata, opts.effective))
     .filter((c) => c.score >= SCORE_FLOOR)
     .sort((a, b) => b.score - a.score)
     .slice(0, opts.k)
@@ -254,9 +250,7 @@ async function availableScope(
   const pset = new Set(userScope.products)
   return {
     teams: teams.filter((t) => tset.has(t.id)).map((t) => ({ id: t.id, name: t.displayName })),
-    products: products
-      .filter((p) => pset.has(p.id))
-      .map((p) => ({ id: p.id, name: p.displayName }))
+    products: products.filter((p) => pset.has(p.id)).map((p) => ({ id: p.id, name: p.displayName }))
   }
 }
 

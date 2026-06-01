@@ -29,9 +29,7 @@ describe('renderBlocksToMarkdown', () => {
       block('heading', 'H6', { props: { level: 6 } }),
       block('heading', 'Bad', { props: { level: 99 } })
     ])
-    expect(out).toBe(
-      '# H1\n\n## H2\n\n### H3\n\n#### H4\n\n##### H5\n\n###### H6\n\n## Bad'
-    )
+    expect(out).toBe('# H1\n\n## H2\n\n### H3\n\n#### H4\n\n##### H5\n\n###### H6\n\n## Bad')
   })
 
   it('renders inline marks: bold, italic, code, strike', () => {
@@ -198,9 +196,9 @@ describe('renderBlocksToMarkdown', () => {
   })
 
   it('falls back to name then alt text when image url is missing', () => {
-    expect(
-      renderBlocksToMarkdown([{ type: 'image', props: { name: 'arch.png' } }])
-    ).toBe('arch.png')
+    expect(renderBlocksToMarkdown([{ type: 'image', props: { name: 'arch.png' } }])).toBe(
+      'arch.png'
+    )
     expect(renderBlocksToMarkdown([{ type: 'image', props: {} }])).toBe('image')
   })
 

@@ -147,7 +147,8 @@ function parseModelJson(
     .filter(Boolean)
     .slice(0, MAX_EXPANSIONS)
 
-  const f = obj.filters && typeof obj.filters === 'object' ? (obj.filters as Record<string, unknown>) : {}
+  const f =
+    obj.filters && typeof obj.filters === 'object' ? (obj.filters as Record<string, unknown>) : {}
   const teamIds = new Set(scope.teams.map((t) => t.id))
   const productIds = new Set(scope.products.map((p) => p.id))
   const filters: QueryFilters = {

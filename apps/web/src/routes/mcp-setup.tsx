@@ -64,9 +64,9 @@ export function McpSetup() {
           Connect ctxlayer to your AI tool
         </Title>
         <Text c="dimmed" fz="sm">
-          ctxlayer is a remote MCP server. Most modern clients can connect over
-          streamable HTTP and authenticate via OAuth 2.1 (Dynamic Client
-          Registration + PKCE) — no copy-paste of long-lived secrets.
+          ctxlayer is a remote MCP server. Most modern clients can connect over streamable HTTP and
+          authenticate via OAuth 2.1 (Dynamic Client Registration + PKCE) — no copy-paste of
+          long-lived secrets.
         </Text>
       </div>
 
@@ -82,9 +82,9 @@ export function McpSetup() {
         title="Claude (web app)"
         body={
           <>
-            In <strong>Settings → Connectors → Add custom connector</strong>, paste
-            the URL above. Claude walks you through GitHub / Google sign-in on first
-            use and remembers the connection.
+            In <strong>Settings → Connectors → Add custom connector</strong>, paste the URL above.
+            Claude walks you through GitHub / Google sign-in on first use and remembers the
+            connection.
           </>
         }
       />
@@ -94,13 +94,12 @@ export function McpSetup() {
         badge="mcp-remote shim"
         body={
           <>
-            Claude Desktop and Claude Code speak <em>local stdio</em> MCP only, so
-            we tunnel through{' '}
+            Claude Desktop and Claude Code speak <em>local stdio</em> MCP only, so we tunnel through{' '}
             <Anchor href="https://github.com/geelen/mcp-remote" target="_blank">
               mcp-remote
             </Anchor>
-            . Drop this into <code>~/.claude.json</code> (Code) or the Desktop
-            config file (Settings → Developer → Edit config):
+            . Drop this into <code>~/.claude.json</code> (Code) or the Desktop config file (Settings
+            → Developer → Edit config):
           </>
         }
       >
@@ -125,19 +124,15 @@ export function McpSetup() {
         title="Cursor / Windsurf / Zed / VS Code"
         body={
           <>
-            Most editor-side MCP integrations accept a remote URL directly. The
-            shape varies — Cursor uses <code>~/.cursor/mcp.json</code>, others have a
-            settings UI. The connection record is always the same:
+            Most editor-side MCP integrations accept a remote URL directly. The shape varies —
+            Cursor uses <code>~/.cursor/mcp.json</code>, others have a settings UI. The connection
+            record is always the same:
           </>
         }
       >
         <Snippet
           lang="json"
-          value={JSON.stringify(
-            { mcpServers: { ctxlayer: { url: mcpUrl } } },
-            null,
-            2
-          )}
+          value={JSON.stringify({ mcpServers: { ctxlayer: { url: mcpUrl } } }, null, 2)}
         />
       </Section>
 
@@ -145,13 +140,13 @@ export function McpSetup() {
         title="Upstream credentials"
         body={
           <>
-            ctxlayer proxies third-party MCP upstreams (Notion, Linear, etc.)
-            using <em>per-user</em> credentials. After connecting, head to{' '}
+            ctxlayer proxies third-party MCP upstreams (Notion, Linear, etc.) using{' '}
+            <em>per-user</em> credentials. After connecting, head to{' '}
             <Anchor component={Link} to="/upstreams">
               /upstreams
             </Anchor>{' '}
-            to authorise each upstream — OAuth where the upstream supports it,
-            or a paste-in bearer token as a fallback.
+            to authorise each upstream — OAuth where the upstream supports it, or a paste-in bearer
+            token as a fallback.
           </>
         }
       />

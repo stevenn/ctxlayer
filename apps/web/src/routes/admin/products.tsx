@@ -1,14 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import {
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Stack,
-  Text,
-  TextInput,
-  Title
-} from '@mantine/core'
+import { Alert, Button, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core'
 import { type ProductRef, suggestSlug } from '@ctxlayer/shared'
 import {
   adminCreateProduct,
@@ -73,7 +64,9 @@ export function AdminProducts() {
             {products.map((p) => (
               <tr key={p.id} onClick={() => setEditing(p)}>
                 <td style={{ fontWeight: 500 }}>{p.displayName}</td>
-                <td className="text-muted"><code>{p.slug}</code></td>
+                <td className="text-muted">
+                  <code>{p.slug}</code>
+                </td>
                 <td className="text-muted">{p.description ?? '—'}</td>
               </tr>
             ))}
@@ -211,7 +204,12 @@ function ProductFormModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title={isEdit ? 'Edit product' : 'New product'} centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={isEdit ? 'Edit product' : 'New product'}
+      centered
+    >
       <Stack gap="md">
         <TextInput
           label="Display name"
@@ -249,11 +247,7 @@ function ProductFormModal({
             <Button variant="default" onClick={onClose}>
               Cancel
             </Button>
-            <Button
-              onClick={submit}
-              loading={busy}
-              disabled={!slug.trim() || !displayName.trim()}
-            >
+            <Button onClick={submit} loading={busy} disabled={!slug.trim() || !displayName.trim()}>
               {isEdit ? 'Save' : 'Create'}
             </Button>
           </Group>

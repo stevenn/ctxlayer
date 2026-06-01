@@ -82,15 +82,8 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
  * retention window. Rollups are never pruned — they're tiny and
  * historic dashboards want them.
  */
-export async function pruneUsageEvents(
-  env: Env,
-  daysToKeep: number
-): Promise<number> {
+export async function pruneUsageEvents(env: Env, daysToKeep: number): Promise<number> {
   const cutoff = Math.floor(Date.now() / 1000) - daysToKeep * SECONDS_PER_DAY
-  const res = await env.DB.prepare(
-    `DELETE FROM usage_events WHERE ts < ?1`
-  )
-    .bind(cutoff)
-    .run()
+  const res = await env.DB.prepare(`DELETE FROM usage_events WHERE ts < ?1`).bind(cutoff).run()
   return res.meta?.changes ?? 0
 }

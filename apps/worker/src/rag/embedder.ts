@@ -27,9 +27,7 @@ export async function embed(env: Env, texts: string[]): Promise<EmbedResult> {
     const batch = texts.slice(i, i + BATCH_SIZE)
     const vecs = await runBatchWithRetry(env, batch)
     if (vecs.length !== batch.length) {
-      throw new Error(
-        `embedder: batch length mismatch (in=${batch.length}, out=${vecs.length})`
-      )
+      throw new Error(`embedder: batch length mismatch (in=${batch.length}, out=${vecs.length})`)
     }
     for (const v of vecs) {
       if (v.length !== VECTOR_DIM) {

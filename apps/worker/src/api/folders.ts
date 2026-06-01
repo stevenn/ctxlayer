@@ -70,9 +70,7 @@ foldersRoute.patch('/', requireCsrf, async (c) => {
   if (affectedIds.length === 0) {
     return c.json({ error: 'folder_empty_or_missing' }, 404)
   }
-  const editChecks = await Promise.all(
-    affectedIds.map((id) => canEditDoc(c.env, userId, id))
-  )
+  const editChecks = await Promise.all(affectedIds.map((id) => canEditDoc(c.env, userId, id)))
   const blocking = affectedIds.filter((_, i) => !editChecks[i])
   if (blocking.length > 0) {
     return c.json(

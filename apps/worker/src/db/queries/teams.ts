@@ -176,11 +176,7 @@ export async function addTeamMember(
     .run()
 }
 
-export async function removeTeamMember(
-  env: Env,
-  teamId: string,
-  userId: string
-): Promise<void> {
+export async function removeTeamMember(env: Env, teamId: string, userId: string): Promise<void> {
   await env.DB.prepare(`DELETE FROM team_members WHERE team_id = ?1 AND user_id = ?2`)
     .bind(teamId, userId)
     .run()
