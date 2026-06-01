@@ -24,8 +24,6 @@ import type {
   VisibilityRulePayload
 } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
   adminCreateGitSource,
   adminDeleteGitSharedCredential,
   adminDeleteGitSource,
@@ -38,6 +36,8 @@ import {
   fetchProducts,
   fetchTeams
 } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
+import { useDialogs } from '../../lib/dialogs'
 import { parseGitUrl, type ParsedGitUrl } from '../../lib/git-url'
 
 const STRATEGY_OPTIONS: { value: GitCredStrategy; label: string }[] = [
@@ -394,6 +394,7 @@ function GitSourceDrawer({
   onChanged: () => void
   onDeleted: () => void
 }) {
+  const dialogs = useDialogs()
   const [row, setRow] = useState<AdminGitSourceRow | null>(null)
   const [teams, setTeams] = useState<TeamRef[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
@@ -478,12 +479,13 @@ function GitSourceDrawer({
           }
           onDelete={() =>
             withBusy(async () => {
-              if (
-                !confirm(
-                  `Delete git source "${row.displayName}"? Synced docs stay as ordinary docs, but lose their git link.`
-                )
-              )
-                return
+              const ok = await dialogs.confirm({
+                title: 'Delete git source?',
+                message: `Delete git source "${row.displayName}"? Synced docs stay as ordinary docs, but lose their git link.`,
+                confirmLabel: 'Delete',
+                danger: true
+              })
+              if (!ok) return
               await adminDeleteGitSource(sourceId)
               onDeleted()
             }, 'Delete')
@@ -502,7 +504,13 @@ function GitSourceDrawer({
           }
           onClearToken={() =>
             withBusy(async () => {
-              if (!confirm(`Clear the read token for "${row.displayName}"?`)) return
+              const ok = await dialogs.confirm({
+                title: 'Clear token?',
+                message: `Clear the read token for "${row.displayName}"?`,
+                confirmLabel: 'Clear',
+                danger: true
+              })
+              if (!ok) return
               await adminDeleteGitSharedCredential(sourceId)
               await reload()
               onChanged()
@@ -895,16 +903,12 @@ function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 409) return 'That slug is already taken.'
-  if (err instanceof ApiError && err.status === 400) {
-    const body = err.body as { error?: string } | null
-    return body?.error ? `Rejected: ${body.error}` : 'Server rejected the request.'
-  }
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    409: 'That slug is already taken.',
+    400: (e) => {
+      const body = e.body as { error?: string } | null
+      return body?.error ? `Rejected: ${body.error}` : 'Server rejected the request.'
+    }
+  })
 }

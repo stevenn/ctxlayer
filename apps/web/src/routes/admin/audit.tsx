@@ -12,7 +12,8 @@ import {
   Title
 } from '@mantine/core'
 import type { AuditLogEntry } from '@ctxlayer/shared'
-import { ApiError, ApiSchemaError, fetchAdminAudit } from '../../lib/api'
+import { fetchAdminAudit } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 
 /**
  * Admin · Audit log viewer (M5 phase 3).
@@ -368,15 +369,11 @@ function relativeTime(ts: number): string {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 400) {
-    const body = err.body as { hint?: string } | null
-    return (body && typeof body.hint === 'string' && body.hint) || 'Bad request.'
-  }
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    400: (e) => {
+      const body = e.body as { hint?: string } | null
+      return (body && typeof body.hint === 'string' && body.hint) || 'Bad request.'
+    }
+  })
 }

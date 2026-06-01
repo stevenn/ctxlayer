@@ -8,7 +8,8 @@ import {
   Title
 } from '@mantine/core'
 import type { UsageResponse } from '@ctxlayer/shared'
-import { ApiError, ApiSchemaError, fetchUsage } from '../lib/api'
+import { fetchUsage } from '../lib/api'
+import { explain } from '../lib/explain'
 import { DailyBars } from '../components/usage/charts'
 
 /**
@@ -351,13 +352,4 @@ export function UpstreamTable({
       </tbody>
     </table>
   )
-}
-
-function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
 }

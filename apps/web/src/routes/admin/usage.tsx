@@ -9,7 +9,8 @@ import {
   Title
 } from '@mantine/core'
 import type { AdminUsageResponse } from '@ctxlayer/shared'
-import { ApiError, ApiSchemaError, fetchAdminUsage } from '../../lib/api'
+import { fetchAdminUsage } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 import { DailyBars } from '../../components/usage/charts'
 import {
   Panel,
@@ -270,11 +271,7 @@ function UserTable({
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.'
+  })
 }

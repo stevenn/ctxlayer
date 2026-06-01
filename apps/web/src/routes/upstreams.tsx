@@ -13,13 +13,13 @@ import {
 } from '@mantine/core'
 import { mangleToolName, type UpstreamToolSummary, type UserUpstreamSummary } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
   deleteUpstreamCredentials,
   fetchUpstreams,
   fetchUserUpstreamTools,
   putUpstreamCredentials
 } from '../lib/api'
+import { explain as explainBase } from '../lib/explain'
+import { useDialogs } from '../lib/dialogs'
 
 type ToolsState =
   | { kind: 'loading' }
@@ -130,6 +130,7 @@ function UpstreamCard({
   onChanged: () => void
   onError: (msg: string) => void
 }) {
+  const dialogs = useDialogs()
   const [token, setToken] = useState('')
   const [busy, setBusy] = useState(false)
   const [toolsOpen, setToolsOpen] = useState(false)
@@ -187,9 +188,13 @@ function UpstreamCard({
   }
 
   async function revoke() {
-    if (!confirm(`Disconnect ${upstream.displayName}? You'll need to paste the token again to reconnect.`)) {
-      return
-    }
+    const ok = await dialogs.confirm({
+      title: 'Disconnect upstream?',
+      message: `Disconnect ${upstream.displayName}? You'll need to paste the token again to reconnect.`,
+      confirmLabel: 'Disconnect',
+      danger: true
+    })
+    if (!ok) return
     setBusy(true)
     try {
       await deleteUpstreamCredentials(upstream.id)
@@ -418,16 +423,7 @@ function ExpandChevron({ open }: { open: boolean }) {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401) {
-    return 'Your session expired. Refresh to sign in again.'
-  }
-  if (err instanceof ApiError && err.status === 400) {
-    return 'Server rejected the request. Check the token and try again.'
-  }
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) {
-    return 'Server returned an unexpected response shape.'
-  }
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    400: 'Server rejected the request. Check the token and try again.'
+  })
 }

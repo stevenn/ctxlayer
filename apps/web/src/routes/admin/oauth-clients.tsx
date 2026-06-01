@@ -14,12 +14,8 @@ import {
   Tooltip
 } from '@mantine/core'
 import type { OAuthClientRow, OAuthClientUserRef } from '@ctxlayer/shared'
-import {
-  ApiError,
-  ApiSchemaError,
-  fetchAdminOAuthClients,
-  pruneAdminOAuthClients
-} from '../../lib/api'
+import { fetchAdminOAuthClients, pruneAdminOAuthClients } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -567,11 +563,7 @@ function relativeTime(ts: number): string {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.'
+  })
 }

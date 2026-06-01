@@ -11,13 +11,13 @@ import {
 } from '@mantine/core'
 import { type ProductRef, suggestSlug } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
   adminCreateProduct,
   adminDeleteProduct,
   adminPatchProduct,
   fetchProducts
 } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
+import { useDialogs } from '../../lib/dialogs'
 
 export function AdminProducts() {
   const [products, setProducts] = useState<ProductRef[] | null>(null)
@@ -122,6 +122,7 @@ function ProductFormModal({
   onSaved: () => void
   onDeleted?: () => void
 }) {
+  const dialogs = useDialogs()
   const isEdit = !!initial
   const [slug, setSlug] = useState(initial?.slug ?? '')
   // In create mode the slug auto-fills from the name until the user edits
@@ -190,7 +191,13 @@ function ProductFormModal({
 
   async function onDelete() {
     if (!initial) return
-    if (!confirm(`Delete product "${initial.displayName}"?`)) return
+    const ok = await dialogs.confirm({
+      title: 'Delete product?',
+      message: `Delete product "${initial.displayName}"?`,
+      confirmLabel: 'Delete',
+      danger: true
+    })
+    if (!ok) return
     setBusy(true)
     setError(null)
     try {
@@ -257,12 +264,8 @@ function ProductFormModal({
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 409) return 'That slug is already taken.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    409: 'That slug is already taken.'
+  })
 }

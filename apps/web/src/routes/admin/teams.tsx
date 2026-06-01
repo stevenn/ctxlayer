@@ -22,8 +22,6 @@ import type {
   UserSearchResult
 } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
   addTeamMember,
   adminCreateTeam,
   adminDeleteTeam,
@@ -36,6 +34,8 @@ import {
   removeTeamMember,
   searchUsers
 } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
+import { useDialogs } from '../../lib/dialogs'
 
 export function AdminTeams() {
   const [teams, setTeams] = useState<AdminTeamRow[] | null>(null)
@@ -95,7 +95,9 @@ export function AdminTeams() {
             {teams.map((t) => (
               <tr key={t.id} onClick={() => setEditingTeam(t)}>
                 <td style={{ fontWeight: 500 }}>{t.displayName}</td>
-                <td className="text-muted"><code>{t.slug}</code></td>
+                <td className="text-muted">
+                  <code>{t.slug}</code>
+                </td>
                 <td className="text-muted">{t.description ?? '—'}</td>
                 <td className="text-muted">
                   {t.idpGroup ? <code style={{ fontSize: 11 }}>{t.idpGroup}</code> : '—'}
@@ -159,7 +161,6 @@ function CreateTeamModal({
       setManagedByIdp(false)
       setError(null)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [opened])
 
   async function submit() {
@@ -252,6 +253,7 @@ function TeamDrawer({
   onChanged: () => void
   onDeleted: () => void
 }) {
+  const dialogs = useDialogs()
   const [slug, setSlug] = useState(team.slug)
   const [displayName, setDisplayName] = useState(team.displayName)
   const [description, setDescription] = useState(team.description ?? '')
@@ -341,8 +343,13 @@ function TeamDrawer({
 
   const onDelete = () =>
     withBusy(async () => {
-      if (!confirm(`Delete team "${team.displayName}"? Members and product links are removed.`))
-        return
+      const ok = await dialogs.confirm({
+        title: 'Delete team?',
+        message: `Delete team "${team.displayName}"? Members and product links are removed.`,
+        confirmLabel: 'Delete',
+        danger: true
+      })
+      if (!ok) return
       await adminDeleteTeam(team.id)
       onDeleted()
     }, 'Delete')
@@ -407,11 +414,7 @@ function TeamDrawer({
             value={displayName}
             onChange={(e) => setDisplayName(e.currentTarget.value)}
           />
-          <TextInput
-            label="Slug"
-            value={slug}
-            onChange={(e) => setSlug(e.currentTarget.value)}
-          />
+          <TextInput label="Slug" value={slug} onChange={(e) => setSlug(e.currentTarget.value)} />
           <TextInput
             label="Description"
             value={description}
@@ -460,9 +463,15 @@ function TeamDrawer({
                 ))}
               </Stack>
             )}
-            {!members && <Text c="dimmed" fz="xs">Loading…</Text>}
+            {!members && (
+              <Text c="dimmed" fz="xs">
+                Loading…
+              </Text>
+            )}
             {members && members.length === 0 && (
-              <Text c="dimmed" fz="xs">No members yet.</Text>
+              <Text c="dimmed" fz="xs">
+                No members yet.
+              </Text>
             )}
             {members && members.length > 0 && (
               <Stack gap={4}>
@@ -501,7 +510,11 @@ function TeamDrawer({
         </Section>
 
         <Section title="Linked products">
-          {!products && <Text c="dimmed" fz="xs">Loading…</Text>}
+          {!products && (
+            <Text c="dimmed" fz="xs">
+              Loading…
+            </Text>
+          )}
           {products && products.length === 0 && (
             <Text c="dimmed" fz="xs">
               No products yet. Create one on the Products page.
@@ -565,16 +578,17 @@ function AddCandidateRow({
     >
       <div style={{ minWidth: 0 }}>
         <div style={{ fontSize: 13 }}>{user.email}</div>
-        {user.name && (
-          <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{user.name}</div>
-        )}
+        {user.name && <div style={{ fontSize: 11, color: 'var(--text-dim)' }}>{user.name}</div>}
       </div>
       <Group gap={4}>
         <Select
           size="xs"
           value={role}
           onChange={(v) => v && setRole(v as TeamMemberRole)}
-          data={[{ value: 'member', label: 'member' }, { value: 'lead', label: 'lead' }]}
+          data={[
+            { value: 'member', label: 'member' },
+            { value: 'lead', label: 'lead' }
+          ]}
           w={90}
         />
         <Button size="xs" variant="default" onClick={() => onAdd(role)} disabled={disabled}>
@@ -586,12 +600,8 @@ function AddCandidateRow({
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 409) return 'That slug is already taken.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    409: 'That slug is already taken.'
+  })
 }

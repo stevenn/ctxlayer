@@ -2,7 +2,8 @@ import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core'
 import type { SearchDocGroup, SearchResponse, SuggestedFilter } from '@ctxlayer/shared'
-import { ApiError, ApiSchemaError, searchDocs } from '../../lib/api'
+import { searchDocs } from '../../lib/api'
+import { explain } from '../../lib/explain'
 
 type SearchState =
   | { kind: 'idle' }
@@ -245,6 +246,7 @@ function ResultCard({
       }}
     >
       <button
+        type="button"
         onClick={() => onOpen(group.docId)}
         style={{
           background: 'transparent',
@@ -274,6 +276,7 @@ function ResultCard({
               <Highlighted text={s.snippet} terms={terms} />
             </div>
             <button
+              type="button"
               onClick={() => onOpen(group.docId, s.anchor || undefined)}
               style={{
                 background: 'transparent',
@@ -307,9 +310,31 @@ function ResultCard({
 // ----- snippet highlighting ----------------------------------------------
 
 const STOPWORDS = new Set([
-  'the', 'and', 'for', 'with', 'how', 'does', 'what', 'are', 'you', 'your',
-  'from', 'that', 'this', 'into', 'can', 'will', 'when', 'where', 'which',
-  'was', 'has', 'have', 'about', 'why', 'who'
+  'the',
+  'and',
+  'for',
+  'with',
+  'how',
+  'does',
+  'what',
+  'are',
+  'you',
+  'your',
+  'from',
+  'that',
+  'this',
+  'into',
+  'can',
+  'will',
+  'when',
+  'where',
+  'which',
+  'was',
+  'has',
+  'have',
+  'about',
+  'why',
+  'who'
 ])
 
 /** Significant words from the query, used to highlight snippet matches. */
@@ -332,16 +357,6 @@ function Highlighted({ text, terms }: { text: string; terms: string[] }) {
   const re = new RegExp(`(${terms.map(escapeRegExp).join('|')})`, 'gi')
   const parts = text.split(re)
   return (
-    <>
-      {parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}
-    </>
+    <>{parts.map((p, i) => (i % 2 === 1 ? <mark key={i}>{p}</mark> : <span key={i}>{p}</span>))}</>
   )
-}
-
-function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  return 'Could not reach the server.'
 }

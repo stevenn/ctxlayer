@@ -13,12 +13,13 @@ import {
 } from '@mantine/core'
 import type { AdminUserRow, AdminUserTeam, Role } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
+  type ApiError,
   adminPatchUserRole,
   adminRevokeUserCredentials,
   fetchAdminUsers
 } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
+import { useDialogs } from '../../lib/dialogs'
 
 export function AdminUsers() {
   const [items, setItems] = useState<AdminUserRow[] | null>(null)
@@ -144,6 +145,7 @@ function UserDrawer({
   onClose: () => void
   onChanged: () => void
 }) {
+  const dialogs = useDialogs()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -186,13 +188,13 @@ function UserDrawer({
 
   const revokeCreds = () =>
     withBusy(async () => {
-      if (
-        !confirm(
-          `Revoke all upstream credentials for ${user.email}? They'll need to re-connect every upstream on /upstreams after this.`
-        )
-      ) {
-        return
-      }
+      const ok = await dialogs.confirm({
+        title: 'Revoke credentials?',
+        message: `Revoke all upstream credentials for ${user.email}? They'll need to re-connect every upstream on /upstreams after this.`,
+        confirmLabel: 'Revoke',
+        danger: true
+      })
+      if (!ok) return
       const { removed } = await adminRevokeUserCredentials(user.id)
       setInfo(
         removed === 0
@@ -355,20 +357,15 @@ function relativeTime(ts: number | null): string {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 404) return 'User not found.'
-  if (err instanceof ApiError && err.status === 400) {
-    return apiErrorBodyMessage(err) ?? 'Server rejected the request.'
-  }
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    404: 'User not found.',
+    400: (e) => bodyMessage(e) ?? 'Server rejected the request.'
+  })
 }
 
-function apiErrorBodyMessage(err: ApiError): string | null {
+// Preferred body-message order for this screen: hint → message → error.
+function bodyMessage(err: ApiError): string | null {
   const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
   if (!body || typeof body !== 'object') return null
   if (typeof body.hint === 'string' && body.hint) return body.hint

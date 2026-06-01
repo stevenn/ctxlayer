@@ -10,14 +10,8 @@ import {
   TextInput
 } from '@mantine/core'
 import type { DocTags, ProductRef, TeamRef } from '@ctxlayer/shared'
-import {
-  ApiError,
-  ApiSchemaError,
-  fetchDocTags,
-  fetchProducts,
-  fetchTeams,
-  putDocTags
-} from '../../lib/api'
+import { fetchDocTags, fetchProducts, fetchTeams, putDocTags } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 
 interface Props {
   docId: string
@@ -266,10 +260,7 @@ function sameSet(a: string[], b: string[]): boolean {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 403)
-    return 'You do not have permission to change tags.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'You do not have permission to change tags.'
+  })
 }

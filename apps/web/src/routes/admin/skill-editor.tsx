@@ -2,14 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core'
 import type { SkillDetail, SkillLintFinding } from '@ctxlayer/shared'
-import {
-  ApiError,
-  ApiSchemaError,
-  fetchSkill,
-  fetchSkillContent,
-  patchSkill,
-  putSkillContent
-} from '../../lib/api'
+import { fetchSkill, fetchSkillContent, patchSkill, putSkillContent } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 import {
   BlockNoteEditor,
   type BlockNoteEditorHandle
@@ -257,14 +251,10 @@ function StatusButton({
 // ----- helpers -----------------------------------------------------------
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 404) return 'Skill not found.'
-  if (err instanceof ApiError && err.status === 413) return 'Body too large.'
-  if (err instanceof ApiError && err.status === 400) return 'Server rejected the body.'
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    404: 'Skill not found.',
+    413: 'Body too large.',
+    400: 'Server rejected the body.'
+  })
 }

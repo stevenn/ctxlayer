@@ -22,8 +22,7 @@ import type {
   UserUpstreamSummary
 } from '@ctxlayer/shared'
 import {
-  ApiError,
-  ApiSchemaError,
+  type ApiError,
   attachSkill,
   createSkill,
   deleteSkill,
@@ -34,6 +33,7 @@ import {
   fetchUpstreams,
   patchSkill
 } from '../../lib/api'
+import { explain as explainBase } from '../../lib/explain'
 import { useDialogs } from '../../lib/dialogs'
 import { useSlugSuggest } from '../../lib/use-slug-suggest'
 
@@ -816,21 +816,16 @@ function relativeTime(ts: number | null): string {
 }
 
 function explain(err: unknown): string {
-  if (err instanceof ApiError && err.status === 401)
-    return 'Your session expired. Refresh to sign in again.'
-  if (err instanceof ApiError && err.status === 403) return 'Admin permission required.'
-  if (err instanceof ApiError && err.status === 404) return 'Not found.'
-  if (err instanceof ApiError && err.status === 409) return 'Slug already taken — pick another.'
-  if (err instanceof ApiError && err.status === 400) {
-    return apiErrorBodyMessage(err) ?? 'Server rejected the request.'
-  }
-  if (err instanceof ApiError) return `Server returned HTTP ${err.status}.`
-  if (err instanceof ApiSchemaError) return 'Server returned an unexpected response shape.'
-  if (err instanceof Error) return err.message
-  return 'Could not reach the server.'
+  return explainBase(err, {
+    403: 'Admin permission required.',
+    404: 'Not found.',
+    409: 'Slug already taken — pick another.',
+    400: (e) => bodyMessage(e) ?? 'Server rejected the request.'
+  })
 }
 
-function apiErrorBodyMessage(err: ApiError): string | null {
+// Preferred body-message order for this screen: hint → message → error.
+function bodyMessage(err: ApiError): string | null {
   const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
   if (!body || typeof body !== 'object') return null
   if (typeof body.hint === 'string' && body.hint) return body.hint
