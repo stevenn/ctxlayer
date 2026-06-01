@@ -15,6 +15,7 @@ import { z } from 'zod'
 import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
 import { prefixedSlug } from './slug'
+import { isHttpsOrLoopback, isOwnWorkersHost } from './url-trust'
 
 // Remote HTTP transports are the only dialable kinds; admin POST/PATCH
 // validate against this set. Matches `UpstreamTransport` from mcp-types.
@@ -30,29 +31,27 @@ export const UpstreamSlug = z
   .max(24)
   .regex(/^[a-z][a-z0-9_]*$/, 'lowercase letter, then letters/digits/underscores (≤24)')
 
-const ReservedSlugs = new Set(['list_upstreams', 'search_docs', 'get_doc', 'whoami', 'list_my_context'])
+const ReservedSlugs = new Set([
+  'list_upstreams',
+  'search_docs',
+  'get_doc',
+  'whoami',
+  'list_my_context'
+])
 
 /**
- * Outbound upstream URLs must be https in production. We allow http
- * only when the host is a literal loopback address — this keeps the
- * dev story (point at a local MCP server) without softening the prod
- * rule. Hostname-based private-range checks are NOT done here; the
- * Worker runtime's `global_fetch_strictly_public` compatibility flag
- * (set in wrangler.toml) blocks RFC 1918 + link-local egress at the
- * fetch layer.
- *
- * The regex avoids `new URL(...)`: the shared package targets ES2023
- * with no DOM/Node `URL` global, and `.url()` above has already
- * validated the overall syntax.
+ * Outbound upstream URLs must be https in production (http allowed only
+ * for loopback in dev), and must never point at one of our own Cloudflare
+ * hosts — that would let the proxy loop back into itself. Both rules live
+ * in `url-trust.ts`, shared with the git-source validator so they can't
+ * drift. Private-range egress is additionally blocked at the fetch layer
+ * by the runtime's `global_fetch_strictly_public` flag (set in wrangler.toml).
  */
-const HTTP_LOOPBACK_RE = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i
-const UpstreamUrl = z
+export const UpstreamUrl = z
   .string()
   .url()
-  .refine(
-    (value) => value.toLowerCase().startsWith('https://') || HTTP_LOOPBACK_RE.test(value),
-    'must be https (http allowed only for localhost)'
-  )
+  .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
+  .refine((v) => !isOwnWorkersHost(v), 'must not be a workers.dev / cloudflareworkers.com host')
 
 export const CreateUpstreamRequest = z.object({
   // `up-` prefix enforced on new upstreams; it rides into every proxied
@@ -204,4 +203,3 @@ export const UpstreamToolsResponse = z.object({
   attachedDocs: z.array(AttachedDocRef).default([])
 })
 export type UpstreamToolsResponse = z.infer<typeof UpstreamToolsResponse>
-

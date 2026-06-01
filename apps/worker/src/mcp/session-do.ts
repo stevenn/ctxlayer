@@ -20,16 +20,12 @@ import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
-import {
-  searchChunks,
-  effectiveScope,
-  SEARCH_K_DEFAULT,
-  SEARCH_K_MAX
-} from '../rag/search'
+import { searchChunks, effectiveScope, SEARCH_K_DEFAULT, SEARCH_K_MAX } from '../rag/search'
 import { UpstreamProxyRegistry } from './tools-proxy'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
+import { SearchScope, type McpMyContext, type McpSearchResult } from '@ctxlayer/shared'
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
 // USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
@@ -168,22 +164,16 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             resolveUserScope(this.env, userId),
             UpstreamProxyRegistry.accessibleSlugs(this.env, userId)
           ])
+          // Typed against the shared MCP contract so the serialised shape
+          // can't drift from `McpMyContext`.
+          const body: McpMyContext = {
+            teams: scope.teams,
+            products: scope.products,
+            accessibleUpstreams,
+            defaultScope: scope
+          }
           return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    teams: scope.teams,
-                    products: scope.products,
-                    accessibleUpstreams,
-                    defaultScope: scope
-                  },
-                  null,
-                  2
-                )
-              }
-            ]
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }]
           }
         })
     )
@@ -240,15 +230,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         inputSchema: {
           query: z.string().min(1),
           k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),
-          scope: z
-            .union([
-              z.literal('all'),
-              z.object({
-                teams: z.array(z.string()).optional(),
-                products: z.array(z.string()).optional()
-              })
-            ])
-            .optional()
+          // Same `SearchScope` the REST /api/search contract uses.
+          scope: SearchScope.optional()
         }
       },
       (args) =>
@@ -266,8 +249,10 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             effective
           })
 
+          // Typed against the shared MCP contract (see `McpSearchResult`).
+          const body: McpSearchResult = { matches }
           return {
-            content: [{ type: 'text', text: JSON.stringify({ matches }, null, 2) }]
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }]
           }
         })
     )
@@ -413,4 +398,3 @@ function stringifyError(err: unknown): string {
   if (err instanceof Error) return err.message
   return String(err)
 }
-

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { AuthStrategy } from './upstream-auth-strategy'
 
 // Both transports are remote HTTP. A stdio MCP server is supported by running
 // an operator-managed stdio<->HTTP bridge and registering it as a
@@ -6,17 +7,73 @@ import { z } from 'zod'
 export const UpstreamTransport = z.enum(['streamable_http', 'sse'])
 export type UpstreamTransport = z.infer<typeof UpstreamTransport>
 
-export const UpstreamConnected = z.object({
+// ---- MCP built-in tool output contracts ----------------------------------
+// These are the exact shapes the MCP server serialises from
+// `mcp/session-do.ts` + `mcp/tools-proxy.ts`. The worker producers are typed
+// against them (compile-time) so the agent-facing wire contract can't silently
+// drift from the schema an external MCP client would rely on.
+
+export const McpAttachedSkillRef = z.object({ slug: z.string(), title: z.string() })
+export type McpAttachedSkillRef = z.infer<typeof McpAttachedSkillRef>
+
+export const McpAttachedDocRef = z.object({
+  // `id` is the canonical handle `get_doc` expects; `slug` is human-friendly.
+  id: z.string(),
+  slug: z.string(),
+  title: z.string()
+})
+export type McpAttachedDocRef = z.infer<typeof McpAttachedDocRef>
+
+/** One entry from `list_upstreams`. */
+export const McpUpstreamEntry = z.object({
   slug: z.string(),
   displayName: z.string(),
   transport: UpstreamTransport,
   connected: z.boolean(),
-  toolsCount: z.number().optional(),
-  lastCalledAt: z.number().nullable().optional(),
-  requiresAuth: z.string().optional(),
-  connectUrl: z.string().url().optional()
+  toolsCount: z.number(),
+  requiresAuth: AuthStrategy.optional(),
+  // Whole-upstream attachments (curated playbooks / reference docs). Always
+  // present (default empty) so clients can rely on the field.
+  attached_skills: z.array(McpAttachedSkillRef),
+  attached_docs: z.array(McpAttachedDocRef)
 })
-export type UpstreamConnected = z.infer<typeof UpstreamConnected>
+export type McpUpstreamEntry = z.infer<typeof McpUpstreamEntry>
 
-export const ListUpstreamsResult = z.array(UpstreamConnected)
-export type ListUpstreamsResult = z.infer<typeof ListUpstreamsResult>
+export const McpListUpstreamsResult = z.array(McpUpstreamEntry)
+export type McpListUpstreamsResult = z.infer<typeof McpListUpstreamsResult>
+
+/** One attachment pointer on a skill (from `list_skills`). */
+export const McpSkillAttachment = z.object({
+  upstream_slug: z.string(),
+  tool_name: z.string().nullable()
+})
+export type McpSkillAttachment = z.infer<typeof McpSkillAttachment>
+
+/** One entry from `list_skills`. */
+export const McpSkillSummary = z.object({
+  slug: z.string(),
+  name: z.string(),
+  title: z.string(),
+  description: z.string(),
+  attached_to: z.array(McpSkillAttachment)
+})
+export type McpSkillSummary = z.infer<typeof McpSkillSummary>
+
+export const McpListSkillsResult = z.array(McpSkillSummary)
+export type McpListSkillsResult = z.infer<typeof McpListSkillsResult>
+
+/**
+ * `list_my_context` result. Every array holds ids/slugs (not objects):
+ * `teams`/`products`/`defaultScope.*` are ids; `accessibleUpstreams` are
+ * slugs. Mirrors `resolveUserScope` + `accessibleSlugs` in the worker.
+ */
+export const McpMyContext = z.object({
+  teams: z.array(z.string()),
+  products: z.array(z.string()),
+  accessibleUpstreams: z.array(z.string()),
+  defaultScope: z.object({
+    teams: z.array(z.string()),
+    products: z.array(z.string())
+  })
+})
+export type McpMyContext = z.infer<typeof McpMyContext>

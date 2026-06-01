@@ -7,6 +7,9 @@ export const healthRoute = new Hono<{ Bindings: Env }>()
 healthRoute.get('/', async (c) => {
   const checks = await Promise.all([
     timed('db', async () => {
+      // Intentional inline `SELECT 1` liveness probe — the one sanctioned
+      // exception to the "SQL lives in db/queries/*" rule, since it's a
+      // health check, not a data query.
       const row = await c.env.DB.prepare('SELECT 1 AS ok').first<{ ok: number }>()
       if (row?.ok !== 1) throw new Error('unexpected response')
     }),

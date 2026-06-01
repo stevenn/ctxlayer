@@ -10,6 +10,7 @@ import type { DraftContextBundle } from '@ctxlayer/shared'
 import { mangleToolName } from '@ctxlayer/shared'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
+import { getUpstreamUsageRollup } from '../db/queries/usage-read'
 
 const RELATED_DOCS_K = 3
 const RELATED_DOCS_SNIPPET = 500
@@ -73,39 +74,21 @@ export async function buildUsageAggregates(
   try {
     const now = Math.floor(Date.now() / 1000)
     const earliestDay =
-      Math.floor((now - USAGE_LOOKBACK_DAYS * SECONDS_PER_DAY) / SECONDS_PER_DAY) *
-      SECONDS_PER_DAY
+      Math.floor((now - USAGE_LOOKBACK_DAYS * SECONDS_PER_DAY) / SECONDS_PER_DAY) * SECONDS_PER_DAY
 
     // tool name is mangled in usage_rollups_daily; if no specific tool,
     // sum across all tools on the upstream.
-    const mangled = args.toolName
-      ? mangleToolName(args.upstreamSlug, args.toolName)
-      : null
+    const mangled = args.toolName ? mangleToolName(args.upstreamSlug, args.toolName) : null
 
-    const totalRow = await env.DB.prepare(
-      `SELECT COALESCE(SUM(calls), 0) AS calls
-       FROM usage_rollups_daily
-       WHERE user_id = ?1 AND upstream_id = ?2 AND day >= ?3
-         AND (?4 IS NULL OR tool = ?4)`
-    )
-      .bind(args.userId, args.upstreamId, earliestDay, mangled)
-      .first<{ calls: number }>()
-
-    const totalCalls = totalRow?.calls ?? 0
+    const { totalCalls, byDay } = await getUpstreamUsageRollup(env, {
+      userId: args.userId,
+      upstreamId: args.upstreamId,
+      sinceDay: earliestDay,
+      mangledTool: mangled
+    })
     if (totalCalls === 0) return null
 
-    const dayRows = await env.DB.prepare(
-      `SELECT day, SUM(calls) AS calls
-       FROM usage_rollups_daily
-       WHERE user_id = ?1 AND upstream_id = ?2 AND day >= ?3
-         AND (?4 IS NULL OR tool = ?4)
-       GROUP BY day
-       ORDER BY day ASC`
-    )
-      .bind(args.userId, args.upstreamId, earliestDay, mangled)
-      .all<{ day: number; calls: number }>()
-
-    const callsByDay = (dayRows.results ?? []).map((r) => ({
+    const callsByDay = byDay.map((r) => ({
       day: new Date(r.day * 1000).toISOString().slice(0, 10),
       count: r.calls
     }))

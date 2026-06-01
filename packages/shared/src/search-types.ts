@@ -12,6 +12,23 @@ export const SearchRequest = z.object({
 })
 export type SearchRequest = z.infer<typeof SearchRequest>
 
+// ---- MCP `search_docs` output contract -----------------------------------
+// The MCP tool returns the raw retrieval hits (one per chunk), distinct from
+// the doc-grouped REST `/api/search` shape below. Matches `SearchHit` in
+// apps/worker/src/rag/search.ts; the worker types its output against this.
+export const McpSearchHit = z.object({
+  docId: z.string(),
+  chunkIdx: z.number(),
+  title: z.string(),
+  headings: z.array(z.string()),
+  score: z.number(),
+  snippet: z.string()
+})
+export type McpSearchHit = z.infer<typeof McpSearchHit>
+
+export const McpSearchResult = z.object({ matches: z.array(McpSearchHit) })
+export type McpSearchResult = z.infer<typeof McpSearchResult>
+
 // One matching chunk within a doc. `anchor` is the slugified heading
 // path (see headingAnchor) the editor scrolls to via ?section=.
 export const SearchSectionHit = z.object({

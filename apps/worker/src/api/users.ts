@@ -15,6 +15,7 @@ import type { UserSearchResult } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { searchUsersByEmailPrefix } from '../db/queries/users'
 
 const MAX_RESULTS = 10
 const MIN_PREFIX = 2
@@ -27,19 +28,6 @@ usersRoute.use('*', requireCsrf)
 usersRoute.get('/', async (c) => {
   const emailPrefix = (c.req.query('email') ?? '').trim().toLowerCase()
   if (emailPrefix.length < MIN_PREFIX) return c.json([] satisfies UserSearchResult)
-  const like = `${escapeLike(emailPrefix)}%`
-  const res = await c.env.DB.prepare(
-    `SELECT id, email, name FROM users
-     WHERE LOWER(email) LIKE ?1 ESCAPE '\\'
-     ORDER BY email
-     LIMIT ?2`
-  )
-    .bind(like, MAX_RESULTS)
-    .all<{ id: string; email: string; name: string | null }>()
-  const body: UserSearchResult = res.results ?? []
+  const body: UserSearchResult = await searchUsersByEmailPrefix(c.env, emailPrefix, MAX_RESULTS)
   return c.json(body)
 })
-
-function escapeLike(s: string): string {
-  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`)
-}

@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { FolderPath } from './docs-types'
 import { VisibilityRulePayload } from './upstream-api'
 import { prefixedSlug } from './slug'
+import { isHttpsOrLoopback, isOwnWorkersHost } from './url-trust'
 
 // ----- enums -------------------------------------------------------------
 
@@ -34,35 +35,14 @@ export const GitSourceSlug = z
 // Folder root: '' (repo mirrored at the doc-store root) or a FolderPath.
 export const GitFolderRoot = z.union([z.literal(''), FolderPath])
 
-// Base URL trust boundary — mirrors UpstreamUrl: https only (http
-// allowed only for loopback in dev), and never our own workers hosts
-// (avoids the proxy looping back into itself).
-const HTTP_LOOPBACK_RE = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i
-
-// Extract the lowercased hostname without relying on the DOM `URL`
-// global (absent in the shared package's tsconfig lib set).
-function hostOf(u: string): string {
-  const m = u.match(/^[a-z]+:\/\/([^/?#]+)/i)
-  if (!m || !m[1]) return ''
-  let host = m[1]
-  const at = host.lastIndexOf('@')
-  if (at >= 0) host = host.slice(at + 1)
-  const colon = host.indexOf(':')
-  if (colon >= 0) host = host.slice(0, colon)
-  return host.toLowerCase()
-}
-
+// Base URL trust boundary — same rules as UpstreamUrl, shared via
+// `url-trust.ts`: https only (http allowed only for loopback in dev),
+// and never our own workers hosts (avoids the proxy looping back).
 export const GitBaseUrl = z
   .string()
   .url()
-  .refine(
-    (v) => v.toLowerCase().startsWith('https://') || HTTP_LOOPBACK_RE.test(v),
-    'must be https (http allowed only for localhost)'
-  )
-  .refine((v) => {
-    const h = hostOf(v)
-    return h !== '' && !h.endsWith('workers.dev') && !h.endsWith('cloudflareworkers.com')
-  }, 'must not be a workers.dev / cloudflareworkers.com host')
+  .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
+  .refine((v) => !isOwnWorkersHost(v), 'must not be a workers.dev / cloudflareworkers.com host')
 
 // ----- admin row + requests ----------------------------------------------
 

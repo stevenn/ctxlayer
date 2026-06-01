@@ -14,6 +14,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { getSkillBySlug, listPublishedSkills } from '../db/queries/skills'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
+import type { McpSkillSummary } from '@ctxlayer/shared'
 import { readSnapshot } from '../storage/skills-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 
@@ -34,7 +35,8 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
     () =>
       rec('list_skills', undefined, async () => {
         const rows = await listPublishedSkills(env)
-        const summaries = await Promise.all(
+        // Typed against the shared MCP contract (`McpSkillSummary`).
+        const summaries: McpSkillSummary[] = await Promise.all(
           rows.map(async (row) => {
             const attachments = await listAttachmentsForSkill(env, row.id)
             return {
@@ -59,8 +61,7 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
     'get_skill',
     {
       title: 'Get skill',
-      description:
-        'Fetches a skill body by slug. Returns SKILL.md frontmatter + body in markdown.',
+      description: 'Fetches a skill body by slug. Returns SKILL.md frontmatter + body in markdown.',
       inputSchema: { slug: z.string().min(1) }
     },
     (args) =>

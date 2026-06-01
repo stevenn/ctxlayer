@@ -25,25 +25,10 @@ export const TeamMembership = TeamRef.extend({
 })
 export type TeamMembership = z.infer<typeof TeamMembership>
 
-/**
- * `list_my_context()` result + GET /api/me/context body.
- *
- * - `accessibleUpstreams`: slugs (not ids) — agents reference upstreams
- *   by slug everywhere else (tool namespacing, `list_upstreams()` output).
- * - `defaultScope.teams` / `defaultScope.products`: ids (not slugs). The
- *   server resolves these against doc_tags.tag_value which stores ids.
- *   Slugs would force the server to denormalise.
- */
-export const MyContext = z.object({
-  teams: z.array(TeamMembership),
-  products: z.array(ProductRef),
-  accessibleUpstreams: z.array(z.string()),
-  defaultScope: z.object({
-    teams: z.array(z.string()),
-    products: z.array(z.string())
-  })
-})
-export type MyContext = z.infer<typeof MyContext>
+// NOTE: the `list_my_context` MCP output shape lives in `mcp-types.ts`
+// (`McpMyContext`) — all-string-arrays, matching `resolveUserScope`. The
+// earlier object-valued `MyContext` here had drifted from the live shape and
+// was unused, so it was removed.
 
 // Visibility rules on an upstream. Additive: any rule grants access.
 export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product'])

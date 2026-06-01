@@ -209,11 +209,7 @@ export async function topUpstreams(
   }))
 }
 
-export async function topUsers(
-  env: Env,
-  scope: UsageScope,
-  limit = 10
-): Promise<TopUserRow[]> {
+export async function topUsers(env: Env, scope: UsageScope, limit = 10): Promise<TopUserRow[]> {
   // No userId filter — even when an admin passes one, it short-circuits
   // to a single-row "top user" which is exactly what the dashboard
   // wants for a drill-down summary.
@@ -250,4 +246,39 @@ export async function topUsers(
     respTokens: r.resp_tokens ?? 0,
     errors: r.errors ?? 0
   }))
+}
+
+/**
+ * Per-upstream rollup totals for the skill drafter's context bundle
+ * (skills/draft-context-bundle.ts). `mangledTool` narrows to one tool when
+ * non-null; otherwise sums across the whole upstream. `sinceDay` is an
+ * epoch-day lower bound. Returns total calls + per-day counts (raw day
+ * epochs; the caller formats them).
+ */
+export async function getUpstreamUsageRollup(
+  env: Env,
+  args: { userId: string; upstreamId: string; sinceDay: number; mangledTool: string | null }
+): Promise<{ totalCalls: number; byDay: Array<{ day: number; calls: number }> }> {
+  const totalRow = await env.DB.prepare(
+    `SELECT COALESCE(SUM(calls), 0) AS calls
+     FROM usage_rollups_daily
+     WHERE user_id = ?1 AND upstream_id = ?2 AND day >= ?3
+       AND (?4 IS NULL OR tool = ?4)`
+  )
+    .bind(args.userId, args.upstreamId, args.sinceDay, args.mangledTool)
+    .first<{ calls: number }>()
+  const totalCalls = totalRow?.calls ?? 0
+  if (totalCalls === 0) return { totalCalls: 0, byDay: [] }
+
+  const dayRows = await env.DB.prepare(
+    `SELECT day, SUM(calls) AS calls
+     FROM usage_rollups_daily
+     WHERE user_id = ?1 AND upstream_id = ?2 AND day >= ?3
+       AND (?4 IS NULL OR tool = ?4)
+     GROUP BY day
+     ORDER BY day ASC`
+  )
+    .bind(args.userId, args.upstreamId, args.sinceDay, args.mangledTool)
+    .all<{ day: number; calls: number }>()
+  return { totalCalls, byDay: dayRows.results ?? [] }
 }

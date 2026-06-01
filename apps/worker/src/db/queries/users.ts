@@ -109,9 +109,11 @@ export async function bumpLastSeen(env: Env, id: string): Promise<void> {
 export async function listUserRefs(
   env: Env
 ): Promise<Array<{ id: string; email: string; name: string | null }>> {
-  const res = await env.DB.prepare(
-    `SELECT id, email, name FROM users ORDER BY LOWER(email)`
-  ).all<{ id: string; email: string; name: string | null }>()
+  const res = await env.DB.prepare(`SELECT id, email, name FROM users ORDER BY LOWER(email)`).all<{
+    id: string
+    email: string
+    name: string | null
+  }>()
   return res.results ?? []
 }
 
@@ -154,9 +156,10 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
       team_display_name: string
       team_description: string | null
     }>(),
-    env.DB.prepare(
-      `SELECT user_id, COUNT(*) AS n FROM user_credentials GROUP BY user_id`
-    ).all<{ user_id: string; n: number }>()
+    env.DB.prepare(`SELECT user_id, COUNT(*) AS n FROM user_credentials GROUP BY user_id`).all<{
+      user_id: string
+      n: number
+    }>()
   ])
 
   const teamsByUser = new Map<string, AdminUserTeam[]>()
@@ -203,9 +206,7 @@ export async function revokeAllUserCredentials(env: Env, userId: string): Promis
   )
     .bind(userId)
     .first<{ n: number }>()
-  await env.DB.prepare(`DELETE FROM user_credentials WHERE user_id = ?1`)
-    .bind(userId)
-    .run()
+  await env.DB.prepare(`DELETE FROM user_credentials WHERE user_id = ?1`).bind(userId).run()
   return before?.n ?? 0
 }
 
@@ -240,4 +241,30 @@ function parseAdminEmails(raw: string | undefined): Set<string> {
  */
 function newUlid(): string {
   return crypto.randomUUID().replace(/-/g, '')
+}
+
+/**
+ * Case-insensitive email-prefix lookup for the Sharing dialog autocomplete
+ * (api/users.ts). Bounded by `limit`; `escapeLike` neutralises LIKE wildcards
+ * in the user-supplied prefix.
+ */
+export async function searchUsersByEmailPrefix(
+  env: Env,
+  emailPrefix: string,
+  limit: number
+): Promise<Array<{ id: string; email: string; name: string | null }>> {
+  const like = `${escapeLike(emailPrefix)}%`
+  const res = await env.DB.prepare(
+    `SELECT id, email, name FROM users
+     WHERE LOWER(email) LIKE ?1 ESCAPE '\\'
+     ORDER BY email
+     LIMIT ?2`
+  )
+    .bind(like, limit)
+    .all<{ id: string; email: string; name: string | null }>()
+  return res.results ?? []
+}
+
+function escapeLike(s: string): string {
+  return s.replace(/[\\%_]/g, (ch) => `\\${ch}`)
 }
