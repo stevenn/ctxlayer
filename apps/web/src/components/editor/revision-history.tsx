@@ -44,10 +44,6 @@ type LoadState =
   | { kind: 'ready'; revisions: RevisionSummaryLike[] }
   | { kind: 'error'; message: string }
 
-// Below this a save is suspiciously small — an accidental empty/near-empty
-// save is worth flagging so it's easy to skip past when restoring.
-const TINY_BYTES = 64
-
 export function RevisionHistory({
   opened,
   onClose,
@@ -86,6 +82,9 @@ export function RevisionHistory({
 
   const onRestoreClick = useCallback(
     async (rev: RevisionSummaryLike) => {
+      // Close the slideout first so the confirm dialog isn't layered behind
+      // the drawer overlay.
+      onClose()
       const ok = await dialogs.confirm({
         title: 'Restore this version?',
         message: `Restore "${title}" to the version from ${formatTimestamp(rev.createdAt)}? This saves it as a new revision — the current version stays in the history.`,
@@ -100,7 +99,6 @@ export function RevisionHistory({
         // relying on a reload so a live collab session reflects it.
         const content = await fetchContent(rev.id)
         await onRestored(content)
-        onClose()
       } catch (err) {
         await dialogs.alert({ title: 'Restore failed', message: explain(err) })
       } finally {
@@ -172,7 +170,6 @@ function RevisionRow({
   disabled: boolean
   onRestore: () => void
 }) {
-  const tiny = rev.byteSize <= TINY_BYTES
   return (
     <Group
       justify="space-between"
@@ -191,11 +188,6 @@ function RevisionRow({
           {isCurrent && (
             <Badge size="xs" variant="light" color="blue">
               Current
-            </Badge>
-          )}
-          {tiny && (
-            <Badge size="xs" variant="light" color="yellow" title="Suspiciously small save">
-              Tiny
             </Badge>
           )}
         </Group>

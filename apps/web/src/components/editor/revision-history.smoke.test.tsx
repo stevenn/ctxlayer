@@ -24,7 +24,6 @@ const revisions: RevisionSummaryLike[] = [
   {
     id: 'rev_old',
     authorId: null,
-    // 12 bytes → below the tiny threshold, should get a "Tiny" flag.
     createdAt: 1_700_000_000,
     byteSize: 12,
     contentHash: 'h2'
@@ -32,7 +31,7 @@ const revisions: RevisionSummaryLike[] = [
 ]
 
 describe('RevisionHistory (render smoke)', () => {
-  it('renders a row per revision with size + current/tiny flags', async () => {
+  it('renders a row per revision with size + current flag', async () => {
     const list = vi.fn().mockResolvedValue(revisions)
     const restore = vi.fn().mockResolvedValue({ revisionId: 'rev_restored' })
     const fetchContent = vi.fn().mockResolvedValue({ blocks: [] })
@@ -50,12 +49,11 @@ describe('RevisionHistory (render smoke)', () => {
       />
     )
 
-    // Newest revision (4 KB) renders its size; the tiny one is flagged.
-    // Author + size share one line, so match on a substring.
+    // Newest revision (4 KB) renders its size; author + size share one line,
+    // so match on a substring.
     expect(await screen.findByText(/4\.0 KB/)).toBeInTheDocument()
     expect(screen.getByText(/12 B/)).toBeInTheDocument()
     expect(screen.getByText('Current')).toBeInTheDocument()
-    expect(screen.getByText('Tiny')).toBeInTheDocument()
     // The current (newest) row has no Restore button; the older one does.
     expect(screen.getAllByRole('button', { name: 'Restore' })).toHaveLength(1)
     expect(list).toHaveBeenCalledTimes(1)
