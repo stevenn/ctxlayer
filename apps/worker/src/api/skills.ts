@@ -11,6 +11,7 @@ import { Hono } from 'hono'
 import {
   CreateSkillRequest,
   DocContent,
+  RestoreRequest,
   SkillTags,
   UpdateSkillRequest,
   type SkillAttachmentRef,
@@ -36,7 +37,12 @@ import {
 } from '../db/queries/skills'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { listTagsForSkill, replaceTagsForSkill } from '../db/queries/skill-tags'
-import { readRevision, readSnapshot, writeRevisionAndSnapshot } from '../storage/skills-r2'
+import {
+  readRevision,
+  readSnapshot,
+  restoreFromRevision,
+  writeRevisionAndSnapshot
+} from '../storage/skills-r2'
 import { audit } from '../audit/log'
 import { lintSkillBody } from '../skills/schema-linter'
 
@@ -194,6 +200,33 @@ skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
   const content = await readRevision(c.env, id, rev)
   if (!content) return c.json({ error: 'not_found' }, 404)
   return c.json(content)
+})
+
+// Restore mirrors docs.ts POST /:id/restore: copy a source revision's
+// bytes to a fresh revision id + refresh the snapshot. No reindex enqueue
+// (skill save lints instead of reindexing; the lint is skipped on restore
+// since the body is just a verbatim copy of an already-saved revision).
+skillsRoute.post('/:id/restore', requireAdmin, async (c) => {
+  const id = c.req.param('id')
+  const { userId } = c.get('user')
+  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const parsed = RestoreRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const sourceRev = await getSkillRevision(c.env, id, parsed.data.revisionId)
+  if (!sourceRev) return c.json({ error: 'revision_not_found' }, 404)
+  const newRevId = newRevisionId()
+  const put = await restoreFromRevision(c.env, id, sourceRev.id, newRevId)
+  if (!put) return c.json({ error: 'revision_body_missing' }, 410)
+  await recordSkillRevision(c.env, {
+    skillId: id,
+    revisionId: newRevId,
+    authorId: userId,
+    r2Key: put.key,
+    byteSize: put.byteSize,
+    contentHash: put.contentHash
+  })
+  await audit(c.env, { actorId: userId, action: 'skill.restore', target: id })
+  return c.json({ revisionId: newRevId })
 })
 
 // Inline /:id/tags endpoints; tags model is small enough not to

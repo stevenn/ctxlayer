@@ -65,6 +65,22 @@ export async function readRevision(
   return parse(await obj.arrayBuffer())
 }
 
+/**
+ * Restore a previous revision: copy its bytes to a fresh revision id and
+ * refresh the snapshot. Mirrors docs-r2's restoreFromRevision — "save the
+ * old content as a new revision" so the timeline stays append-only.
+ */
+export async function restoreFromRevision(
+  env: Env,
+  skillId: string,
+  fromRevisionId: string,
+  newRevisionId: string
+): Promise<PutResult | null> {
+  const content = await readRevision(env, skillId, fromRevisionId)
+  if (!content) return null
+  return writeRevisionAndSnapshot(env, skillId, newRevisionId, content)
+}
+
 function serialize(content: DocContent): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(content))
 }

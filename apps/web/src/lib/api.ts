@@ -401,6 +401,18 @@ export function restoreRevision(
   })
 }
 
+export function fetchRevisionContent(
+  id: string,
+  revisionId: string,
+  signal?: AbortSignal
+): Promise<DocContentT> {
+  return request(
+    `/api/docs/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/content`,
+    (b) => DocContent.parse(b),
+    { signal }
+  )
+}
+
 // ----- lock toggle --------------------------------------------------------
 
 export function setDocLocked(id: string, body: SetLockedRequestT): Promise<void> {
@@ -897,6 +909,28 @@ export function fetchSkillRevisions(
   return request(
     `/api/skills/${encodeURIComponent(id)}/revisions`,
     (b) => SkillRevisionList.parse(b),
+    { signal }
+  )
+}
+
+export function restoreSkillRevision(
+  id: string,
+  body: RestoreRequestT
+): Promise<{ revisionId: string }> {
+  return request(`/api/skills/${encodeURIComponent(id)}/restore`, (b) => RestoreResult.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(RestoreRequest.parse(body))
+  })
+}
+
+export function fetchSkillRevisionContent(
+  id: string,
+  revisionId: string,
+  signal?: AbortSignal
+): Promise<DocContentT> {
+  return request(
+    `/api/skills/${encodeURIComponent(id)}/revisions/${encodeURIComponent(revisionId)}/content`,
+    (b) => DocContent.parse(b),
     { signal }
   )
 }
