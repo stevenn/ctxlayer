@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Group, Select, Stack, Text, TextInput, Title } from '@mantine/core'
-import type { AdminUsageResponse } from '@ctxlayer/shared'
-import { fetchAdminUsage } from '../../lib/api'
+import { USAGE_RANGE_LABEL, type AdminUsageResponse, type UsageRange } from '@ctxlayer/shared'
+import { fetchAdminUsage, searchUsers } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { DailyBars } from '../../components/usage/charts'
-import { Panel, Stat, ToolTable, UpstreamTable } from '../usage'
+import { DailyBars, chartDaysForRange } from '../../components/usage/charts'
+import { Panel, Stat, ToolTable, UpstreamTable, viewerOffsetSec, viewerTzLabel } from '../usage'
 
 /**
  * Admin org-wide usage dashboard. Hits `/api/admin/usage` which is
@@ -19,28 +19,29 @@ type Status =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; data: AdminUsageResponse }
 
-const RANGE_OPTIONS = [
-  { value: '7', label: 'Last 7 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '90', label: 'Last 90 days' },
-  { value: '180', label: 'Last 180 days' }
-]
+// Built from the shared range map so the options + order stay in sync.
+const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) => ({
+  value: r,
+  label: USAGE_RANGE_LABEL[r]
+}))
+
+type PickedUser = { id: string; email: string }
 
 export function AdminUsage() {
-  const [days, setDays] = useState(30)
-  const [userId, setUserId] = useState('')
+  const [range, setRange] = useState<UsageRange>('30d')
+  const [user, setUser] = useState<PickedUser | null>(null)
   const [upstreamId, setUpstreamId] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const ctrlRef = useRef<AbortController | null>(null)
 
-  const load = useCallback((opts: { days: number; userId: string; upstreamId: string }) => {
+  const load = useCallback((opts: { range: UsageRange; userId: string; upstreamId: string }) => {
     ctrlRef.current?.abort()
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
     setStatus({ kind: 'loading' })
     fetchAdminUsage(
       {
-        days: opts.days,
+        range: opts.range,
         userId: opts.userId || undefined,
         upstreamId: opts.upstreamId || undefined
       },
@@ -56,14 +57,14 @@ export function AdminUsage() {
     )
   }, [])
 
-  // Range select fires immediately; text filters debounce 300ms.
+  // Range + user select fire ~immediately; the upstream text filter debounces.
   useEffect(() => {
     const t = setTimeout(
-      () => load({ days, userId: userId.trim(), upstreamId: upstreamId.trim() }),
+      () => load({ range, userId: user?.id ?? '', upstreamId: upstreamId.trim() }),
       300
     )
     return () => clearTimeout(t)
-  }, [days, userId, upstreamId, load])
+  }, [range, user, upstreamId, load])
 
   useEffect(() => () => ctrlRef.current?.abort(), [])
 
@@ -77,24 +78,18 @@ export function AdminUsage() {
           <Select
             size="xs"
             data={RANGE_OPTIONS}
-            value={String(days)}
-            onChange={(v) => v && setDays(Number(v))}
-            w={160}
+            value={range}
+            onChange={(v) => v && setRange(v as UsageRange)}
+            w={150}
             allowDeselect={false}
           />
-          <TextInput
-            size="xs"
-            placeholder="Filter by user id"
-            value={userId}
-            onChange={(e) => setUserId(e.currentTarget.value)}
-            w={220}
-          />
+          <UserPicker value={user} onChange={setUser} />
           <TextInput
             size="xs"
             placeholder="Filter by upstream id"
             value={upstreamId}
             onChange={(e) => setUpstreamId(e.currentTarget.value)}
-            w={220}
+            w={200}
           />
         </Group>
       </Group>
@@ -109,8 +104,8 @@ export function AdminUsage() {
       {status.kind === 'ready' && (
         <AdminUsageBody
           data={status.data}
-          daysBack={days}
-          filterUserId={userId.trim()}
+          range={range}
+          filterUserEmail={user?.email ?? ''}
           filterUpstreamId={upstreamId.trim()}
         />
       )}
@@ -118,15 +113,81 @@ export function AdminUsage() {
   )
 }
 
+/**
+ * Admin per-user filter: type an email, pick a match. Searches `/api/users`
+ * (email prefix) with a short debounce; keeps the selected user in the option
+ * list so its label still renders after the search box is cleared.
+ */
+function UserPicker({
+  value,
+  onChange
+}: {
+  value: PickedUser | null
+  onChange: (u: PickedUser | null) => void
+}) {
+  const [search, setSearch] = useState('')
+  const [results, setResults] = useState<PickedUser[]>([])
+
+  useEffect(() => {
+    const q = search.trim()
+    if (q.length < 2) {
+      setResults([])
+      return
+    }
+    const ctrl = new AbortController()
+    const t = setTimeout(() => {
+      searchUsers(q, ctrl.signal).then(
+        (rows) => setResults(rows.map((r) => ({ id: r.id, email: r.email }))),
+        () => {}
+      )
+    }, 250)
+    return () => {
+      clearTimeout(t)
+      ctrl.abort()
+    }
+  }, [search])
+
+  const data = useMemo(() => {
+    const opts = results.map((u) => ({ value: u.id, label: u.email }))
+    if (value && !opts.some((o) => o.value === value.id)) {
+      opts.unshift({ value: value.id, label: value.email })
+    }
+    return opts
+  }, [results, value])
+
+  return (
+    <Select
+      size="xs"
+      w={240}
+      placeholder="Filter by user (email)"
+      searchable
+      clearable
+      data={data}
+      value={value?.id ?? null}
+      searchValue={search}
+      onSearchChange={setSearch}
+      onChange={(id) => {
+        if (!id) {
+          onChange(null)
+          return
+        }
+        const u = results.find((r) => r.id === id) ?? value
+        onChange(u ? { id: u.id, email: u.email } : null)
+      }}
+      nothingFoundMessage={search.trim().length < 2 ? 'Type an email…' : 'No matches'}
+    />
+  )
+}
+
 function AdminUsageBody({
   data,
-  daysBack,
-  filterUserId,
+  range,
+  filterUserEmail,
   filterUpstreamId
 }: {
   data: AdminUsageResponse
-  daysBack: number
-  filterUserId: string
+  range: UsageRange
+  filterUserEmail: string
   filterUpstreamId: string
 }) {
   const totals = data.dailyTotals.reduce(
@@ -138,6 +199,8 @@ function AdminUsageBody({
     }),
     { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
   )
+  const offsetSec = viewerOffsetSec()
+  const chartDays = chartDaysForRange(range, data.dailyTotals, offsetSec)
 
   return (
     <Stack gap="xl">
@@ -152,15 +215,15 @@ function AdminUsageBody({
         />
       </Group>
 
-      {(filterUserId || filterUpstreamId) && (
+      {(filterUserEmail || filterUpstreamId) && (
         <Text fz="xs" c="dimmed">
           Filtered to{' '}
-          {filterUserId && (
+          {filterUserEmail && (
             <>
-              user <code>{filterUserId}</code>
+              user <strong>{filterUserEmail}</strong>
             </>
           )}
-          {filterUserId && filterUpstreamId && ' · '}
+          {filterUserEmail && filterUpstreamId && ' · '}
           {filterUpstreamId && (
             <>
               upstream <code>{filterUpstreamId}</code>
@@ -172,14 +235,14 @@ function AdminUsageBody({
 
       <Panel
         title="Daily activity"
-        subtitle="Request tokens (violet) + response tokens (blue) per day. Red dot = day had errors."
+        subtitle={`Request (violet) + response (blue) tokens per local day · ${viewerTzLabel()}. Red dot = day had errors.`}
       >
         {totals.calls === 0 ? (
           <Text c="dimmed" fz="sm">
-            No tool calls in the last {daysBack} days yet.
+            No tool calls in this period yet.
           </Text>
         ) : (
-          <DailyBars rows={data.dailyTotals} daysBack={daysBack} />
+          <DailyBars rows={data.dailyTotals} daysBack={chartDays} offsetSec={offsetSec} />
         )}
       </Panel>
 

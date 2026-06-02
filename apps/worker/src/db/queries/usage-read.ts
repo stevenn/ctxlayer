@@ -1,4 +1,5 @@
 import type { Env } from '../../env'
+import { USAGE_RANGE_DAYS, localDayIndex, type UsageRange } from '@ctxlayer/shared'
 
 /**
  * Read helpers for the usage dashboards. All reads hit
@@ -14,7 +15,8 @@ import type { Env } from '../../env'
 const SECONDS_PER_DAY = 86400
 
 export interface UsageScope {
-  daysBack: number
+  // Midnight-UTC epoch lower bound (inclusive); null = all time.
+  sinceDay: number | null
   userId?: string | null
   upstreamId?: string | null
 }
@@ -61,22 +63,39 @@ export interface TopUserRow {
   errors: number
 }
 
-function cutoff(daysBack: number): number {
-  return Math.floor(Date.now() / 1000) - daysBack * SECONDS_PER_DAY
+/**
+ * Lower-bound cutoff (UTC epoch, not necessarily day-aligned) for a named
+ * range, evaluated in the viewer's timezone (`offsetSec` = seconds east of
+ * UTC), or null for `all`. Ranges are inclusive of the viewer's current local
+ * day. A UTC-day rollup is attributed to the local date its UTC-noon falls on,
+ * so the window follows the viewer's calendar; sub-day precision isn't
+ * recoverable from day rollups (see `rollupLocalDayIndex`).
+ */
+export function rangeCutoff(range: UsageRange, offsetSec: number): number | null {
+  const days = USAGE_RANGE_DAYS[range]
+  if (days == null) return null
+  const todayIndex = localDayIndex(Math.floor(Date.now() / 1000), offsetSec)
+  const cutoffIndex = todayIndex - (days - 1)
+  // Include a rollup (UTC midnight `day`) iff its UTC-noon maps to a local date
+  // >= cutoffIndex:  day + DAY/2 + offsetSec >= cutoffIndex*DAY.
+  return cutoffIndex * SECONDS_PER_DAY - SECONDS_PER_DAY / 2 - offsetSec
 }
 
-function applyScope(
-  scope: UsageScope,
-  baseWhere: string[],
-  baseBinds: unknown[]
-): { where: string; binds: unknown[] } {
-  const where = [...baseWhere]
-  const binds = [...baseBinds]
+// Build the WHERE clause for a scope. `dayCol` is the (possibly
+// table-qualified) day column for this query; the day filter is omitted
+// entirely when `sinceDay` is null (the `all` range).
+function whereFor(scope: UsageScope, dayCol: string): { where: string; binds: unknown[] } {
+  const where: string[] = []
+  const binds: unknown[] = []
+  if (scope.sinceDay != null) {
+    where.push(`${dayCol} >= ?`)
+    binds.push(scope.sinceDay)
+  }
   if (scope.userId) {
     where.push(`user_id = ?`)
     binds.push(scope.userId)
   }
-  if (scope.upstreamId !== undefined && scope.upstreamId !== null) {
+  if (scope.upstreamId != null) {
     where.push(`upstream_id = ?`)
     binds.push(scope.upstreamId)
   }
@@ -84,7 +103,7 @@ function applyScope(
 }
 
 export async function dailyTotals(env: Env, scope: UsageScope): Promise<DailyTotalRow[]> {
-  const { where, binds } = applyScope(scope, [`day >= ?`], [cutoff(scope.daysBack)])
+  const { where, binds } = whereFor(scope, 'day')
   const sql = `
     SELECT day,
            SUM(calls)       AS calls,
@@ -121,7 +140,7 @@ export async function dailyTotals(env: Env, scope: UsageScope): Promise<DailyTot
 }
 
 export async function topTools(env: Env, scope: UsageScope, limit = 10): Promise<TopToolRow[]> {
-  const { where, binds } = applyScope(scope, [`day >= ?`], [cutoff(scope.daysBack)])
+  const { where, binds } = whereFor(scope, 'day')
   const sql = `
     SELECT tool, upstream_id,
            SUM(calls)       AS calls,
@@ -165,7 +184,7 @@ export async function topUpstreams(
   scope: UsageScope,
   limit = 10
 ): Promise<TopUpstreamRow[]> {
-  const { where, binds } = applyScope(scope, [`u.day >= ?`], [cutoff(scope.daysBack)])
+  const { where, binds } = whereFor(scope, 'u.day')
   const sql = `
     SELECT u.upstream_id,
            us.slug         AS upstream_slug,
@@ -213,7 +232,7 @@ export async function topUsers(env: Env, scope: UsageScope, limit = 10): Promise
   // No userId filter — even when an admin passes one, it short-circuits
   // to a single-row "top user" which is exactly what the dashboard
   // wants for a drill-down summary.
-  const { where, binds } = applyScope(scope, [`r.day >= ?`], [cutoff(scope.daysBack)])
+  const { where, binds } = whereFor(scope, 'r.day')
   const sql = `
     SELECT r.user_id,
            u.email AS email,
