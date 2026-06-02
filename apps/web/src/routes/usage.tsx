@@ -21,6 +21,20 @@ const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) =
   label: USAGE_RANGE_LABEL[r]
 }))
 
+// Viewer timezone, shared by both usage pages. `offsetSec` drives the
+// day-bucketing; `label` (IANA zone) is shown in the chart legend so it's
+// clear the day grid follows the viewer's local calendar.
+export function viewerOffsetSec(): number {
+  return -new Date().getTimezoneOffset() * 60
+}
+export function viewerTzLabel(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  } catch {
+    return 'local time'
+  }
+}
+
 export function Usage() {
   const [range, setRange] = useState<UsageRange>('30d')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
@@ -86,21 +100,22 @@ function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) 
     }),
     { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
   )
-  const chartDays = chartDaysForRange(range, data.dailyTotals)
+  const offsetSec = viewerOffsetSec()
+  const chartDays = chartDaysForRange(range, data.dailyTotals, offsetSec)
 
   return (
     <Stack gap="xl">
       <SummaryRow totals={totals} />
       <Panel
         title="Daily activity"
-        subtitle={`Request tokens (violet) + response tokens (blue) per day. Red dot = day had errors.`}
+        subtitle={`Request (violet) + response (blue) tokens per local day · ${viewerTzLabel()}. Red dot = day had errors.`}
       >
         {totals.calls === 0 ? (
           <Text c="dimmed" fz="sm">
             No tool calls in this period yet.
           </Text>
         ) : (
-          <DailyBars rows={data.dailyTotals} daysBack={chartDays} />
+          <DailyBars rows={data.dailyTotals} daysBack={chartDays} offsetSec={offsetSec} />
         )}
       </Panel>
       <Panel title="Top tools">

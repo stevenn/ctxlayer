@@ -18,10 +18,12 @@ export const usageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }
 usageRoute.use('*', requireUser)
 
 usageRoute.get('/', async (c) => {
-  const range = parseRange(new URL(c.req.url).searchParams.get('range'))
+  const url = new URL(c.req.url)
+  const range = parseRange(url.searchParams.get('range'))
+  const offsetSec = parseOffset(url.searchParams.get('tz'))
   const user = c.get('user')
 
-  const scope = { sinceDay: rangeCutoff(range), userId: user.userId }
+  const scope = { sinceDay: rangeCutoff(range, offsetSec), userId: user.userId }
   const [daily, tools, upstreams] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
@@ -41,4 +43,12 @@ usageRoute.get('/', async (c) => {
 export function parseRange(raw: string | null): UsageRange {
   const parsed = UsageRange.safeParse(raw)
   return parsed.success ? parsed.data : '30d'
+}
+
+// Viewer UTC offset (seconds) from the `tz` query param (minutes east of UTC,
+// i.e. `-new Date().getTimezoneOffset()`). Clamped to ±14h; defaults to UTC.
+export function parseOffset(raw: string | null): number {
+  const min = raw ? Number(raw) : 0
+  if (!Number.isFinite(min)) return 0
+  return Math.max(-14 * 60, Math.min(14 * 60, Math.trunc(min))) * 60
 }

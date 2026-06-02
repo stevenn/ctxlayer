@@ -1,5 +1,5 @@
 import type { Env } from '../../env'
-import { USAGE_RANGE_DAYS, type UsageRange } from '@ctxlayer/shared'
+import { USAGE_RANGE_DAYS, localDayIndex, type UsageRange } from '@ctxlayer/shared'
 
 /**
  * Read helpers for the usage dashboards. All reads hit
@@ -64,14 +64,21 @@ export interface TopUserRow {
 }
 
 /**
- * Midnight-UTC epoch cutoff for a named range, or null for `all` (no lower
- * bound). Ranges are inclusive of today, so `7d` keeps today + the 6 prior days.
+ * Lower-bound cutoff (UTC epoch, not necessarily day-aligned) for a named
+ * range, evaluated in the viewer's timezone (`offsetSec` = seconds east of
+ * UTC), or null for `all`. Ranges are inclusive of the viewer's current local
+ * day. A UTC-day rollup is attributed to the local date its UTC-noon falls on,
+ * so the window follows the viewer's calendar; sub-day precision isn't
+ * recoverable from day rollups (see `rollupLocalDayIndex`).
  */
-export function rangeCutoff(range: UsageRange): number | null {
+export function rangeCutoff(range: UsageRange, offsetSec: number): number | null {
   const days = USAGE_RANGE_DAYS[range]
   if (days == null) return null
-  const todayMidnight = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY
-  return todayMidnight - (days - 1) * SECONDS_PER_DAY
+  const todayIndex = localDayIndex(Math.floor(Date.now() / 1000), offsetSec)
+  const cutoffIndex = todayIndex - (days - 1)
+  // Include a rollup (UTC midnight `day`) iff its UTC-noon maps to a local date
+  // >= cutoffIndex:  day + DAY/2 + offsetSec >= cutoffIndex*DAY.
+  return cutoffIndex * SECONDS_PER_DAY - SECONDS_PER_DAY / 2 - offsetSec
 }
 
 // Build the WHERE clause for a scope. `dayCol` is the (possibly

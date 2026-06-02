@@ -35,6 +35,26 @@ export const USAGE_RANGE_LABEL: Record<UsageRange, string> = {
   all: 'All time'
 }
 
+// ---- Timezone-aware day bucketing ----------------------------------------
+// Rollups are stored as UTC-day buckets, so a viewer's local-day windows are
+// approximated by relabelling each UTC-day to the local date it mostly covers.
+// These helpers are shared by the server cutoff and the client chart so both
+// agree on what "a day" is for a given viewer offset (seconds east of UTC).
+const DAY_SECONDS = 86400
+
+/** Local-calendar day index for a UTC epoch (seconds). */
+export function localDayIndex(utcSec: number, offsetSec: number): number {
+  return Math.floor((utcSec + offsetSec) / DAY_SECONDS)
+}
+
+/**
+ * The local date a UTC-day rollup (its UTC-midnight `day`) is attributed to:
+ * the date its UTC-noon falls on — i.e. the local day it mostly overlaps.
+ */
+export function rollupLocalDayIndex(day: number, offsetSec: number): number {
+  return localDayIndex(day + DAY_SECONDS / 2, offsetSec)
+}
+
 export const UsageDailyTotal = z.object({
   day: z.number().int(), // unix seconds, midnight UTC
   calls: z.number().int().min(0),

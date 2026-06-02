@@ -4,7 +4,7 @@ import { USAGE_RANGE_LABEL, type AdminUsageResponse, type UsageRange } from '@ct
 import { fetchAdminUsage, searchUsers } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { DailyBars, chartDaysForRange } from '../../components/usage/charts'
-import { Panel, Stat, ToolTable, UpstreamTable } from '../usage'
+import { Panel, Stat, ToolTable, UpstreamTable, viewerOffsetSec, viewerTzLabel } from '../usage'
 
 /**
  * Admin org-wide usage dashboard. Hits `/api/admin/usage` which is
@@ -199,7 +199,8 @@ function AdminUsageBody({
     }),
     { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
   )
-  const chartDays = chartDaysForRange(range, data.dailyTotals)
+  const offsetSec = viewerOffsetSec()
+  const chartDays = chartDaysForRange(range, data.dailyTotals, offsetSec)
 
   return (
     <Stack gap="xl">
@@ -234,14 +235,14 @@ function AdminUsageBody({
 
       <Panel
         title="Daily activity"
-        subtitle="Request tokens (violet) + response tokens (blue) per day. Red dot = day had errors."
+        subtitle={`Request (violet) + response (blue) tokens per local day · ${viewerTzLabel()}. Red dot = day had errors.`}
       >
         {totals.calls === 0 ? (
           <Text c="dimmed" fz="sm">
             No tool calls in this period yet.
           </Text>
         ) : (
-          <DailyBars rows={data.dailyTotals} daysBack={chartDays} />
+          <DailyBars rows={data.dailyTotals} daysBack={chartDays} offsetSec={offsetSec} />
         )}
       </Panel>
 

@@ -1,5 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { USAGE_RANGE_DAYS, type UsageDailyTotal, type UsageRange } from '@ctxlayer/shared'
+import {
+  USAGE_RANGE_DAYS,
+  localDayIndex,
+  rollupLocalDayIndex,
+  type UsageDailyTotal,
+  type UsageRange
+} from '@ctxlayer/shared'
 
 /**
  * Inline SVG charts for the M6 usage pages. Hand-rolled to avoid
@@ -27,10 +33,11 @@ const DEFAULT_HEIGHT = 220
 interface DailyBarsProps {
   rows: UsageDailyTotal[]
   daysBack: number
+  offsetSec: number
   height?: number
 }
 
-export function DailyBars({ rows, daysBack, height = DEFAULT_HEIGHT }: DailyBarsProps) {
+export function DailyBars({ rows, daysBack, offsetSec, height = DEFAULT_HEIGHT }: DailyBarsProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const [width, setWidth] = useState(0)
 
@@ -49,7 +56,15 @@ export function DailyBars({ rows, daysBack, height = DEFAULT_HEIGHT }: DailyBars
 
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
-      {width > 0 && <Bars rows={rows} daysBack={daysBack} width={width} height={height} />}
+      {width > 0 && (
+        <Bars
+          rows={rows}
+          daysBack={daysBack}
+          offsetSec={offsetSec}
+          width={width}
+          height={height}
+        />
+      )}
     </div>
   )
 }
@@ -57,15 +72,17 @@ export function DailyBars({ rows, daysBack, height = DEFAULT_HEIGHT }: DailyBars
 function Bars({
   rows,
   daysBack,
+  offsetSec,
   width,
   height
 }: {
   rows: UsageDailyTotal[]
   daysBack: number
+  offsetSec: number
   width: number
   height: number
 }) {
-  const days = fillDays(rows, daysBack)
+  const days = fillDays(rows, daysBack, offsetSec)
   const rawMax = Math.max(1, ...days.map((d) => d.reqTokens + d.respTokens))
   const maxTokens = niceCeil(rawMax)
   const plotW = Math.max(0, width - M_LEFT - M_RIGHT)
@@ -212,7 +229,7 @@ export function Sparkline({
   width?: number
   height?: number
 }) {
-  const days = fillDays(rows, daysBack)
+  const days = fillDays(rows, daysBack, 0)
   const max = Math.max(1, ...days.map((d) => d.calls))
   if (days.length < 2) return <span style={{ fontSize: 11, opacity: 0.5 }}>—</span>
   const stepX = width / (days.length - 1)
@@ -241,14 +258,17 @@ export function Sparkline({
  * use their span; `all` spans from the earliest data day to today (capped at
  * a year so one very old row can't explode the bar count).
  */
-export function chartDaysForRange(range: UsageRange, rows: UsageDailyTotal[]): number {
+export function chartDaysForRange(
+  range: UsageRange,
+  rows: UsageDailyTotal[],
+  offsetSec: number
+): number {
   const fixed = USAGE_RANGE_DAYS[range]
   if (fixed != null) return fixed
   if (rows.length === 0) return 1
-  const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY
-  const earliest = Math.min(...rows.map((r) => r.day))
-  const span = Math.floor((today - earliest) / SECONDS_PER_DAY) + 1
-  return Math.max(1, Math.min(span, 365))
+  const todayIndex = localDayIndex(Math.floor(Date.now() / 1000), offsetSec)
+  const earliestIndex = Math.min(...rows.map((r) => rollupLocalDayIndex(r.day, offsetSec)))
+  return Math.max(1, Math.min(todayIndex - earliestIndex + 1, 365))
 }
 
 // Decide which day-indices get an X-axis label. Always include the
@@ -269,22 +289,22 @@ function pickXTickIndices(daysCount: number, daysBack: number): number[] {
 // Fill missing days with zeros so the bars span the entire window
 // (otherwise an idle stretch leaves a hole and the bars rescale wildly
 // across renders).
-function fillDays(rows: UsageDailyTotal[], daysBack: number): UsageDailyTotal[] {
-  const byDay = new Map(rows.map((r) => [r.day, r]))
-  const today = Math.floor(Math.floor(Date.now() / 1000) / SECONDS_PER_DAY) * SECONDS_PER_DAY
+function fillDays(rows: UsageDailyTotal[], daysBack: number, offsetSec: number): UsageDailyTotal[] {
+  // Bucket each UTC-day rollup by the local date it mostly covers, then fill
+  // the window with the viewer's local days. The emitted `day` is the UTC
+  // instant of that local midnight, so the local-TZ date formatters below
+  // render the correct local date for each bar.
+  const byIndex = new Map(rows.map((r) => [rollupLocalDayIndex(r.day, offsetSec), r]))
+  const todayIndex = localDayIndex(Math.floor(Date.now() / 1000), offsetSec)
   const out: UsageDailyTotal[] = []
   for (let i = daysBack - 1; i >= 0; i--) {
-    const day = today - i * SECONDS_PER_DAY
+    const idx = todayIndex - i
+    const day = idx * SECONDS_PER_DAY - offsetSec
+    const r = byIndex.get(idx)
     out.push(
-      byDay.get(day) ?? {
-        day,
-        calls: 0,
-        reqTokens: 0,
-        respTokens: 0,
-        reqBytes: 0,
-        respBytes: 0,
-        errors: 0
-      }
+      r
+        ? { ...r, day }
+        : { day, calls: 0, reqTokens: 0, respTokens: 0, reqBytes: 0, respBytes: 0, errors: 0 }
     )
   }
   return out

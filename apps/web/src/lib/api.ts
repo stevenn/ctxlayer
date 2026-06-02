@@ -692,6 +692,12 @@ export function adminPatchUserRole(userId: string, body: UpdateUserRoleRequestT)
 
 // ----- usage --------------------------------------------------------------
 
+// Browser UTC offset, minutes east of UTC (getTimezoneOffset uses the inverse
+// sign). Sent as `tz` so the day window + chart follow the viewer's calendar.
+function browserTzOffsetMin(): number {
+  return -new Date().getTimezoneOffset()
+}
+
 export interface FetchUsageOpts {
   range?: UsageRangeT
 }
@@ -702,6 +708,7 @@ export function fetchUsage(
 ): Promise<UsageResponseT> {
   const params = new URLSearchParams()
   if (opts.range) params.set('range', opts.range)
+  params.set('tz', String(browserTzOffsetMin()))
   const qs = params.toString()
   const path = qs ? `/api/usage?${qs}` : '/api/usage'
   return request(path, (b) => UsageResponse.parse(b), { signal })
@@ -718,6 +725,7 @@ export function fetchAdminUsage(
 ): Promise<AdminUsageResponseT> {
   const params = new URLSearchParams()
   if (opts.range) params.set('range', opts.range)
+  params.set('tz', String(browserTzOffsetMin()))
   if (opts.userId) params.set('userId', opts.userId)
   if (opts.upstreamId) params.set('upstreamId', opts.upstreamId)
   const qs = params.toString()

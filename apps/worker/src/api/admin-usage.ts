@@ -12,7 +12,7 @@ import type { AdminUsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { dailyTotals, topTools, topUpstreams, topUsers, rangeCutoff } from '../db/queries/usage-read'
-import { parseRange } from './usage'
+import { parseRange, parseOffset } from './usage'
 
 export const adminUsageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUsageRoute.use('*', requireAdmin)
@@ -20,10 +20,11 @@ adminUsageRoute.use('*', requireAdmin)
 adminUsageRoute.get('/', async (c) => {
   const url = new URL(c.req.url)
   const range = parseRange(url.searchParams.get('range'))
+  const offsetSec = parseOffset(url.searchParams.get('tz'))
   const userId = url.searchParams.get('userId')?.trim() || null
   const upstreamId = url.searchParams.get('upstreamId')?.trim() || null
 
-  const scope = { sinceDay: rangeCutoff(range), userId, upstreamId }
+  const scope = { sinceDay: rangeCutoff(range, offsetSec), userId, upstreamId }
   const [daily, tools, upstreams, users] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
