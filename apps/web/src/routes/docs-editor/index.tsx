@@ -12,8 +12,11 @@ import {
   fetchDocGitSource,
   fetchDocGitStatus,
   fetchMe,
+  fetchRevisionContent,
+  fetchRevisions,
   patchDoc,
-  putDocContent
+  putDocContent,
+  restoreRevision
 } from '../../lib/api'
 import {
   BlockNoteEditor,
@@ -25,6 +28,7 @@ import {
   SaveControls,
   type SaveState
 } from '../../components/editor/save-controls'
+import { RevisionHistoryButton } from '../../components/editor/revision-history'
 import { TagPane } from '../../components/editor/tag-pane'
 import { SharingDialog } from '../docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../../lib/yjs-ws-provider'
@@ -398,6 +402,26 @@ export function DocsEditor() {
     return saveNow()
   }, [saveNow])
 
+  // Restore: the live doc body lives in the Y.Doc (collab DO), which the
+  // server-side restore does NOT touch — it only writes a new R2 revision +
+  // snapshot.json. A plain reload would reseed from the stale Y.Doc and the
+  // restore would be invisible (and then re-materialised over). So we push
+  // the restored blocks into the live Y.Doc here via replaceBlocks: the edit
+  // propagates through Yjs to the collab DO + every peer, which persists it
+  // and re-materialises snapshot.json. Then advance the Discard baseline so
+  // the restore isn't flagged as an unsaved change.
+  const restoreFromHistory = useCallback((content: DocContent) => {
+    try {
+      editorRef.current?.replaceBlocks(content.blocks)
+      baselineRef.current = content.blocks
+      dirtyRef.current = false
+      setDirty(false)
+      setSaveState({ kind: 'saved' })
+    } catch (err) {
+      setSaveState({ kind: 'error', message: explain(err) })
+    }
+  }, [])
+
   async function onDelete() {
     if (!id || status.kind !== 'ready') return
     const ok = await dialogs.confirm({
@@ -515,6 +539,17 @@ export function DocsEditor() {
             <SaveControls state={saveState} dirty={dirty} onSave={saveNow} onDiscard={discard} />
           )}
           <LockIndicator doc={doc} onChanged={refreshDoc} />
+          {/* History is hidden for git-backed docs: their source of truth is
+              the upstream repo (markdown), not our R2 revision timeline. */}
+          {doc.canEdit && !gitStatus && (
+            <RevisionHistoryButton
+              title={doc.title}
+              list={() => fetchRevisions(doc.id)}
+              fetchContent={(revId) => fetchRevisionContent(doc.id, revId)}
+              restore={(revId) => restoreRevision(doc.id, { revisionId: revId })}
+              onRestored={restoreFromHistory}
+            />
+          )}
           {doc.canShare && (
             <Button variant="default" onClick={() => setSharingOpen(true)}>
               Sharing

@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core'
-import type { SkillDetail, SkillLintFinding } from '@ctxlayer/shared'
-import { fetchSkill, fetchSkillContent, patchSkill, putSkillContent } from '../../lib/api'
+import type { DocContent, SkillDetail, SkillLintFinding } from '@ctxlayer/shared'
+import {
+  fetchSkill,
+  fetchSkillContent,
+  fetchSkillRevisionContent,
+  fetchSkillRevisions,
+  patchSkill,
+  putSkillContent,
+  restoreSkillRevision
+} from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import {
   BlockNoteEditor,
@@ -14,6 +22,7 @@ import {
   SaveControls,
   type SaveState
 } from '../../components/editor/save-controls'
+import { RevisionHistoryButton } from '../../components/editor/revision-history'
 
 // Hard ceiling on a single save request so a hung connection can't leave
 // the editor stuck "saving…" forever — the abort surfaces as an error.
@@ -105,6 +114,23 @@ export function AdminSkillEditor() {
     return doSave(true)
   }, [doSave])
 
+  // Restore: the server already wrote a new revision + snapshot. The skill
+  // editor is single-writer REST (no Yjs), so we just push the restored
+  // blocks into the editor view and advance the Discard baseline so the
+  // change isn't flagged unsaved. A reload would also work here, but
+  // replaceBlocks keeps the page state intact and matches the doc editor.
+  const restoreFromHistory = useCallback((content: DocContent) => {
+    try {
+      editorRef.current?.replaceBlocks(content.blocks)
+      baselineRef.current = content.blocks
+      dirtyRef.current = false
+      setDirty(false)
+      setSaveState({ kind: 'saved' })
+    } catch (err) {
+      setSaveState({ kind: 'error', message: explain(err) })
+    }
+  }, [])
+
   const scheduleSave = useCallback(() => {
     if (idleTimerRef.current) clearTimeout(idleTimerRef.current)
     idleTimerRef.current = setTimeout(() => {
@@ -161,6 +187,13 @@ export function AdminSkillEditor() {
         </div>
         <Group gap="xs">
           <SaveControls state={saveState} dirty={dirty} onSave={saveExplicit} onDiscard={discard} />
+          <RevisionHistoryButton
+            title={detail.title}
+            list={() => fetchSkillRevisions(skillId)}
+            fetchContent={(revId) => fetchSkillRevisionContent(skillId, revId)}
+            restore={(revId) => restoreSkillRevision(skillId, { revisionId: revId })}
+            onRestored={restoreFromHistory}
+          />
           <StatusButton
             skillId={skillId}
             current={detail.status}
