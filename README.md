@@ -1,5 +1,11 @@
 # ctxlayer
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+![Cloudflare Workers](https://img.shields.io/badge/Cloudflare-Workers-F38020?logo=cloudflare&logoColor=white)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-149ECA?logo=react&logoColor=white)
+![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-black)
+
 Agent context layer — an MCP service on Cloudflare that:
 
 - serves curated org docs (Markdown, with Vectorize-backed RAG search) as MCP
