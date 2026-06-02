@@ -26,7 +26,8 @@ const SECONDS_PER_DAY = 86400
 // Plot-area gutters for axes.
 const M_LEFT = 48
 const M_BOTTOM = 24
-const M_TOP = 8
+// Top gutter reserves room for the per-bar data labels above the tallest bar.
+const M_TOP = 20
 const M_RIGHT = 8
 const DEFAULT_HEIGHT = 220
 
@@ -202,7 +203,7 @@ function Bars({
             {barWidth >= 30 && d.reqTokens + d.respTokens > 0 && (
               <text
                 x={x + barWidth / 2}
-                y={Math.max(M_TOP + 8, yTop - 3)}
+                y={Math.max(12, yTop - 7)}
                 textAnchor="middle"
                 fontSize={9}
                 fontWeight={500}
