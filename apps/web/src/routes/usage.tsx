@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Alert, Group, Select, Stack, Text, Title } from '@mantine/core'
-import type { UsageResponse } from '@ctxlayer/shared'
+import { USAGE_RANGE_LABEL, type UsageRange, type UsageResponse } from '@ctxlayer/shared'
 import { fetchUsage } from '../lib/api'
 import { explain } from '../lib/explain'
-import { DailyBars } from '../components/usage/charts'
+import { DailyBars, chartDaysForRange } from '../components/usage/charts'
 
 /**
  * Personal usage dashboard. Self-scoped — the backend never exposes
@@ -15,23 +15,23 @@ type Status =
   | { kind: 'error'; message: string }
   | { kind: 'ready'; data: UsageResponse }
 
-const RANGE_OPTIONS = [
-  { value: '7', label: 'Last 7 days' },
-  { value: '30', label: 'Last 30 days' },
-  { value: '90', label: 'Last 90 days' }
-]
+// Built from the shared range map so the options + order stay in sync.
+const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) => ({
+  value: r,
+  label: USAGE_RANGE_LABEL[r]
+}))
 
 export function Usage() {
-  const [days, setDays] = useState(30)
+  const [range, setRange] = useState<UsageRange>('30d')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const ctrlRef = useRef<AbortController | null>(null)
 
-  const load = useCallback((n: number) => {
+  const load = useCallback((r: UsageRange) => {
     ctrlRef.current?.abort()
     const ctrl = new AbortController()
     ctrlRef.current = ctrl
     setStatus({ kind: 'loading' })
-    fetchUsage({ days: n }, ctrl.signal).then(
+    fetchUsage({ range: r }, ctrl.signal).then(
       (data) => {
         if (!ctrl.signal.aborted) setStatus({ kind: 'ready', data })
       },
@@ -43,9 +43,9 @@ export function Usage() {
   }, [])
 
   useEffect(() => {
-    load(days)
+    load(range)
     return () => ctrlRef.current?.abort()
-  }, [days, load])
+  }, [range, load])
 
   return (
     <Stack gap="lg">
@@ -56,9 +56,9 @@ export function Usage() {
         <Select
           size="xs"
           data={RANGE_OPTIONS}
-          value={String(days)}
-          onChange={(v) => v && setDays(Number(v))}
-          w={160}
+          value={range}
+          onChange={(v) => v && setRange(v as UsageRange)}
+          w={150}
           allowDeselect={false}
         />
       </Group>
@@ -71,12 +71,12 @@ export function Usage() {
 
       {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
-      {status.kind === 'ready' && <UsageBody data={status.data} daysBack={days} />}
+      {status.kind === 'ready' && <UsageBody data={status.data} range={range} />}
     </Stack>
   )
 }
 
-function UsageBody({ data, daysBack }: { data: UsageResponse; daysBack: number }) {
+function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) {
   const totals = data.dailyTotals.reduce(
     (acc, d) => ({
       calls: acc.calls + d.calls,
@@ -86,6 +86,7 @@ function UsageBody({ data, daysBack }: { data: UsageResponse; daysBack: number }
     }),
     { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
   )
+  const chartDays = chartDaysForRange(range, data.dailyTotals)
 
   return (
     <Stack gap="xl">
@@ -96,10 +97,10 @@ function UsageBody({ data, daysBack }: { data: UsageResponse; daysBack: number }
       >
         {totals.calls === 0 ? (
           <Text c="dimmed" fz="sm">
-            No tool calls in the last {daysBack} days yet.
+            No tool calls in this period yet.
           </Text>
         ) : (
-          <DailyBars rows={data.dailyTotals} daysBack={daysBack} />
+          <DailyBars rows={data.dailyTotals} daysBack={chartDays} />
         )}
       </Panel>
       <Panel title="Top tools">

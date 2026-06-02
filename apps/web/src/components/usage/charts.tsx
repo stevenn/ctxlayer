@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { UsageDailyTotal } from '@ctxlayer/shared'
+import { USAGE_RANGE_DAYS, type UsageDailyTotal, type UsageRange } from '@ctxlayer/shared'
 
 /**
  * Inline SVG charts for the M6 usage pages. Hand-rolled to avoid
@@ -179,6 +179,21 @@ function Bars({
                 fill="var(--mantine-color-red-6)"
               />
             )}
+            {/* Data label: per-day total tokens, shown only when bars are
+                wide enough to fit it (short windows) so dense charts stay
+                readable. Clamped below the top gutter for tall bars. */}
+            {barWidth >= 30 && d.reqTokens + d.respTokens > 0 && (
+              <text
+                x={x + barWidth / 2}
+                y={Math.max(M_TOP + 8, yTop - 3)}
+                textAnchor="middle"
+                fontSize={9}
+                fontWeight={500}
+                fill="var(--text-dim, #888)"
+              >
+                {fmtNum(d.reqTokens + d.respTokens)}
+              </text>
+            )}
           </g>
         )
       })}
@@ -219,6 +234,21 @@ export function Sparkline({
       <path d={path} fill="none" stroke="var(--mantine-color-blue-6)" strokeWidth={1.4} />
     </svg>
   )
+}
+
+/**
+ * Number of day-columns the chart should render for a range. Fixed ranges
+ * use their span; `all` spans from the earliest data day to today (capped at
+ * a year so one very old row can't explode the bar count).
+ */
+export function chartDaysForRange(range: UsageRange, rows: UsageDailyTotal[]): number {
+  const fixed = USAGE_RANGE_DAYS[range]
+  if (fixed != null) return fixed
+  if (rows.length === 0) return 1
+  const today = Math.floor(Date.now() / 1000 / SECONDS_PER_DAY) * SECONDS_PER_DAY
+  const earliest = Math.min(...rows.map((r) => r.day))
+  const span = Math.floor((today - earliest) / SECONDS_PER_DAY) + 1
+  return Math.max(1, Math.min(span, 365))
 }
 
 // Decide which day-indices get an X-axis label. Always include the

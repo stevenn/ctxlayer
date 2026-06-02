@@ -1,29 +1,27 @@
 /**
- * User-facing usage REST. `GET /api/usage?days=N` returns the
- * authed user's own rollup totals over the last N days plus a
- * top-tools / top-upstreams leaderboard. Defaults to 30 days
- * (matches the raw-event retention so the line chart and the
- * forensic drill-down agree on the window).
+ * User-facing usage REST. `GET /api/usage?range=30d` returns the authed
+ * user's own rollup totals over the selected window, plus a top-tools /
+ * top-upstreams leaderboard (all scoped to the same window). Defaults to
+ * the last 30 days; `range` is one of the `UsageRange` enum values.
  *
- * Admin equivalent at `/api/admin/usage` adds top-users and
- * accepts `userId` / `upstreamId` filters.
+ * Admin equivalent at `/api/admin/usage` adds top-users and accepts
+ * `userId` / `upstreamId` filters.
  */
 
 import { Hono } from 'hono'
-import type { UsageResponse } from '@ctxlayer/shared'
+import { UsageRange, type UsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { dailyTotals, topTools, topUpstreams } from '../db/queries/usage-read'
+import { dailyTotals, topTools, topUpstreams, rangeCutoff } from '../db/queries/usage-read'
 
 export const usageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 usageRoute.use('*', requireUser)
 
 usageRoute.get('/', async (c) => {
-  const url = new URL(c.req.url)
-  const daysBack = clampDays(url.searchParams.get('days'))
+  const range = parseRange(new URL(c.req.url).searchParams.get('range'))
   const user = c.get('user')
 
-  const scope = { daysBack, userId: user.userId }
+  const scope = { sinceDay: rangeCutoff(range), userId: user.userId }
   const [daily, tools, upstreams] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
@@ -31,7 +29,7 @@ usageRoute.get('/', async (c) => {
   ])
 
   const body: UsageResponse = {
-    daysBack,
+    range,
     dailyTotals: daily,
     topTools: tools,
     topUpstreams: upstreams
@@ -39,8 +37,8 @@ usageRoute.get('/', async (c) => {
   return c.json(body)
 })
 
-export function clampDays(raw: string | null): number {
-  const n = raw ? Number(raw) : 30
-  if (!Number.isFinite(n) || n < 1) return 30
-  return Math.min(Math.floor(n), 365)
+// Parse the `range` query param; defaults to last 30 days on anything invalid.
+export function parseRange(raw: string | null): UsageRange {
+  const parsed = UsageRange.safeParse(raw)
+  return parsed.success ? parsed.data : '30d'
 }

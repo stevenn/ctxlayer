@@ -74,6 +74,7 @@ import type {
   OAuthClientsResponse as OAuthClientsResponseT,
   OAuthClientsPruneResponse as OAuthClientsPruneResponseT,
   UsageResponse as UsageResponseT,
+  UsageRange as UsageRangeT,
   CreateUpstreamRequest as CreateUpstreamRequestT,
   CreateSkillRequest as CreateSkillRequestT,
   RefreshToolsResponse as RefreshToolsResponseT,
@@ -692,7 +693,7 @@ export function adminPatchUserRole(userId: string, body: UpdateUserRoleRequestT)
 // ----- usage --------------------------------------------------------------
 
 export interface FetchUsageOpts {
-  days?: number
+  range?: UsageRangeT
 }
 
 export function fetchUsage(
@@ -700,7 +701,7 @@ export function fetchUsage(
   signal?: AbortSignal
 ): Promise<UsageResponseT> {
   const params = new URLSearchParams()
-  if (opts.days) params.set('days', String(opts.days))
+  if (opts.range) params.set('range', opts.range)
   const qs = params.toString()
   const path = qs ? `/api/usage?${qs}` : '/api/usage'
   return request(path, (b) => UsageResponse.parse(b), { signal })
@@ -716,7 +717,7 @@ export function fetchAdminUsage(
   signal?: AbortSignal
 ): Promise<AdminUsageResponseT> {
   const params = new URLSearchParams()
-  if (opts.days) params.set('days', String(opts.days))
+  if (opts.range) params.set('range', opts.range)
   if (opts.userId) params.set('userId', opts.userId)
   if (opts.upstreamId) params.set('upstreamId', opts.upstreamId)
   const qs = params.toString()

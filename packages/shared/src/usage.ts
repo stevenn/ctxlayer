@@ -1,13 +1,39 @@
 import { z } from 'zod'
 
 /**
- * Response shapes for the M6 usage dashboards.
+ * Response shapes for the usage dashboards.
  *
- * `dailyTotals` is the time-series for the line/bar chart;
- * `topTools` / `topUpstreams` / `topUsers` are the leaderboard tables.
+ * `dailyTotals` is the time-series for the bar chart;
+ * `topTools` / `topUpstreams` / `topUsers` are the leaderboard tables —
+ * all scoped to the same `range` window, so they follow the time filter.
  * The admin response includes the user breakdown; the per-user
  * `/api/usage` omits it (the caller IS the user).
  */
+
+// Selectable time windows for the dashboards. All but `all` are
+// inclusive-of-today spans (e.g. `7d` = today + the 6 prior days).
+export const UsageRange = z.enum(['1d', '2d', '7d', '30d', '90d', 'all'])
+export type UsageRange = z.infer<typeof UsageRange>
+
+// Days each range spans, for cutoff math + chart fill. `all` → null
+// (no lower bound — the server omits the day filter entirely).
+export const USAGE_RANGE_DAYS: Record<UsageRange, number | null> = {
+  '1d': 1,
+  '2d': 2,
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+  all: null
+}
+
+export const USAGE_RANGE_LABEL: Record<UsageRange, string> = {
+  '1d': 'Today',
+  '2d': 'Last 2 days',
+  '7d': 'Last 7 days',
+  '30d': 'Last 30 days',
+  '90d': 'Last 90 days',
+  all: 'All time'
+}
 
 export const UsageDailyTotal = z.object({
   day: z.number().int(), // unix seconds, midnight UTC
@@ -58,7 +84,7 @@ export const UsageTopUser = z.object({
 export type UsageTopUser = z.infer<typeof UsageTopUser>
 
 export const UsageResponse = z.object({
-  daysBack: z.number().int().min(1),
+  range: UsageRange,
   dailyTotals: z.array(UsageDailyTotal),
   topTools: z.array(UsageTopTool),
   topUpstreams: z.array(UsageTopUpstream)
