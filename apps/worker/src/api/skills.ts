@@ -32,17 +32,19 @@ import {
   listSkillRevisions,
   listSkillsForAdmin,
   patchSkill,
+  pruneAutosaveSkillRevisions,
   recordSkillRevision,
   sealSkillRevision,
   softDeleteSkill,
   type SkillRevisionRow,
   type SkillWithUsersRow
 } from '../db/queries/skills'
-import { decideRevision } from '../db/revision-policy'
+import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { listTagsForSkill, replaceTagsForSkill } from '../db/queries/skill-tags'
 import {
   contentDigest,
+  deleteRevisionObjects,
   readRevision,
   readSnapshot,
   restoreFromRevision,
@@ -202,6 +204,16 @@ skillsRoute.put('/:id/content', requireAdmin, async (c) => {
       contentHash: put.contentHash,
       kind: decision.kind
     })
+    // Retention: prune the oldest autosaves (D1) and drop their R2 bodies
+    // after the response. Same policy as docs.
+    const prunedKeys = await pruneAutosaveSkillRevisions(c.env, id, MAX_RETAINED_AUTOSAVES)
+    if (prunedKeys.length > 0) {
+      c.executionCtx.waitUntil(
+        deleteRevisionObjects(c.env, prunedKeys).catch((err) =>
+          console.error('autosave prune R2 cleanup failed', err)
+        )
+      )
+    }
   }
   // Schema-reference linter runs after save. Warning-only — findings
   // ride along but don't block. Lint failures themselves never fail

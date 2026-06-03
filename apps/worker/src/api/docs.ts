@@ -39,6 +39,7 @@ import {
   listDocs,
   listRevisions,
   patchDoc,
+  pruneAutosaveRevisions,
   recordRevision,
   sealRevision,
   setDocLock,
@@ -47,10 +48,11 @@ import {
   type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
-import { decideRevision } from '../db/revision-policy'
+import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { audit } from '../audit/log'
 import {
   contentDigest,
+  deleteRevisionObjects,
   readRevision,
   readSnapshot,
   restoreFromRevision,
@@ -177,6 +179,17 @@ docsRoute.put('/:id/content', async (c) => {
       contentHash: put.contentHash,
       kind: decision.kind
     })
+    // Retention: a new row may push the autosave count over the cap.
+    // Prune the oldest autosaves (D1) now; drop their R2 bodies after the
+    // response (best-effort — orphaned objects are harmless).
+    const prunedKeys = await pruneAutosaveRevisions(c.env, id, MAX_RETAINED_AUTOSAVES)
+    if (prunedKeys.length > 0) {
+      c.executionCtx.waitUntil(
+        deleteRevisionObjects(c.env, prunedKeys).catch((err) =>
+          console.error('autosave prune R2 cleanup failed', err)
+        )
+      )
+    }
   }
   c.executionCtx.waitUntil(
     c.env.DOC_REINDEX_QUEUE.send({ docId: id, revisionId }).catch((err) =>

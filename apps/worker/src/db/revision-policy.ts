@@ -24,6 +24,18 @@ export type RevisionKind = 'autosave' | 'explicit'
  */
 export const AUTOSAVE_COALESCE_WINDOW_SECONDS = 5 * 60
 
+/**
+ * Retention cap: how many of the most-recent *autosave* revisions to keep
+ * per doc/skill. Coalescing already bounds autosaves to ~1 row per author
+ * per window, but those still accrue over a doc's lifetime — this prunes
+ * the oldest ones after each new revision. Explicit checkpoints are never
+ * pruned (they're the durable history) and the live head is never pruned
+ * (it may be an autosave holding the current content). At 20 with a 5-min
+ * window that's ~100 min of recent crash-recovery granularity; raise it if
+ * you want a longer autosave tail.
+ */
+export const MAX_RETAINED_AUTOSAVES = 20
+
 /** The current head revision of a doc/skill (its `current_rev_id` row). */
 export interface HeadRevision {
   id: string

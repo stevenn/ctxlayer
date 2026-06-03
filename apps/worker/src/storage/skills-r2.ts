@@ -66,6 +66,13 @@ export async function readSnapshot(env: Env, skillId: string): Promise<DocConten
   return parse(await obj.arrayBuffer())
 }
 
+/** Bulk delete pruned skill revision bodies. Mirrors docs-r2. */
+export async function deleteRevisionObjects(env: Env, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await env.DOCS_BUCKET.delete(keys.slice(i, i + 1000))
+  }
+}
+
 export async function readRevision(
   env: Env,
   skillId: string,

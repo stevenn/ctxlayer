@@ -360,6 +360,38 @@ export async function sealSkillRevision(
     .run()
 }
 
+/** Retention prune for skill autosaves. Mirrors pruneAutosaveRevisions. */
+export async function pruneAutosaveSkillRevisions(
+  env: Env,
+  skillId: string,
+  keep: number
+): Promise<string[]> {
+  const headRow = await env.DB.prepare(`SELECT current_rev_id FROM skills WHERE id = ?1`)
+    .bind(skillId)
+    .first<{ current_rev_id: string | null }>()
+  const headId = headRow?.current_rev_id ?? ''
+  const victims = await env.DB.prepare(
+    `SELECT id, r2_key FROM skill_revisions
+     WHERE skill_id = ?1 AND kind = 'autosave' AND id != ?2
+       AND id NOT IN (
+         SELECT id FROM skill_revisions
+         WHERE skill_id = ?1 AND kind = 'autosave'
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?3
+       )`
+  )
+    .bind(skillId, headId, keep)
+    .all<{ id: string; r2_key: string }>()
+  const rows = victims.results ?? []
+  if (rows.length === 0) return []
+  const ids = rows.map((r) => r.id)
+  const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ')
+  await env.DB.prepare(`DELETE FROM skill_revisions WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .run()
+  return rows.map((r) => r.r2_key)
+}
+
 export async function listSkillRevisions(env: Env, skillId: string): Promise<SkillRevisionRow[]> {
   const res = await env.DB.prepare(
     `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind

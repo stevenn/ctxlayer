@@ -472,6 +472,45 @@ export async function sealRevision(env: Env, docId: string, revisionId: string):
     .run()
 }
 
+/**
+ * Retention prune: delete all but the `keep` most-recent autosave
+ * revisions for a doc, returning the R2 keys of the deleted rows so the
+ * caller can drop their bodies. Explicit revisions are never touched, and
+ * the doc's current head is always spared (it may be the rolling autosave
+ * holding live content). Two statements (select victims → delete by id) so
+ * the freed R2 keys come back without relying on DELETE … RETURNING.
+ */
+export async function pruneAutosaveRevisions(
+  env: Env,
+  docId: string,
+  keep: number
+): Promise<string[]> {
+  const headRow = await env.DB.prepare(`SELECT current_rev_id FROM documents WHERE id = ?1`)
+    .bind(docId)
+    .first<{ current_rev_id: string | null }>()
+  const headId = headRow?.current_rev_id ?? ''
+  const victims = await env.DB.prepare(
+    `SELECT id, r2_key FROM doc_revisions
+     WHERE doc_id = ?1 AND kind = 'autosave' AND id != ?2
+       AND id NOT IN (
+         SELECT id FROM doc_revisions
+         WHERE doc_id = ?1 AND kind = 'autosave'
+         ORDER BY created_at DESC, id DESC
+         LIMIT ?3
+       )`
+  )
+    .bind(docId, headId, keep)
+    .all<{ id: string; r2_key: string }>()
+  const rows = victims.results ?? []
+  if (rows.length === 0) return []
+  const ids = rows.map((r) => r.id)
+  const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ')
+  await env.DB.prepare(`DELETE FROM doc_revisions WHERE id IN (${placeholders})`)
+    .bind(...ids)
+    .run()
+  return rows.map((r) => r.r2_key)
+}
+
 export async function listRevisions(env: Env, docId: string): Promise<RevisionRow[]> {
   const res = await env.DB.prepare(
     `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind

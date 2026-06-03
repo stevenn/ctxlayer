@@ -149,6 +149,18 @@ export async function writeMaterializedSnapshot(
   return contentHash
 }
 
+/**
+ * Best-effort bulk delete of revision bodies whose D1 rows the retention
+ * prune removed. Chunked to R2's 1000-key-per-call limit. An orphaned
+ * object (delete fails) is harmless — nothing references it — so callers
+ * run this in waitUntil and only log failures.
+ */
+export async function deleteRevisionObjects(env: Env, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await env.DOCS_BUCKET.delete(keys.slice(i, i + 1000))
+  }
+}
+
 /** Load a specific revision. Returns null if missing (e.g. R2 pruned). */
 export async function readRevision(
   env: Env,
