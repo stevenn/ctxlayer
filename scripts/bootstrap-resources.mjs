@@ -112,23 +112,31 @@ if (r2.status === 0) {
 
 // ----- Vectorize --------------------------------------------------------
 // Vectorize is referenced by index name (no id). Check existence by trying
-// to list and grepping the name; create if missing.
-console.log(`\nEnsuring Vectorize index "${VECTORIZE_NAME}"…`)
+// to list and grepping the name; create if missing. Two indexes: the dense
+// bge index + the lexical hashing index for hybrid keyword recall
+// (rag/lexical-embed.ts).
 const list = spawnSync('wrangler', ['vectorize', 'list'], {
   stdio: ['ignore', 'pipe', 'pipe'],
   encoding: 'utf8'
 })
-const exists = (list.stdout ?? '').includes(VECTORIZE_NAME)
-if (exists) {
-  console.log(`✓ Vectorize index already exists`)
-} else {
+const listed = list.stdout ?? ''
+const VECTORIZE_INDEXES = [
+  { name: VECTORIZE_NAME, dims: 768, desc: 'ctxlayer doc chunks (bge-base-en-v1.5 embeddings)' },
+  { name: `${VECTORIZE_NAME}-lexical`, dims: 1536, desc: 'ctxlayer lexical hashing vectors (hybrid keyword recall)' }
+]
+for (const idx of VECTORIZE_INDEXES) {
+  console.log(`\nEnsuring Vectorize index "${idx.name}"…`)
+  if (listed.includes(idx.name)) {
+    console.log(`✓ Vectorize index already exists`)
+    continue
+  }
   run([
     'vectorize',
     'create',
-    VECTORIZE_NAME,
-    '--dimensions=768',
+    idx.name,
+    `--dimensions=${idx.dims}`,
     '--metric=cosine',
-    '--description=ctxlayer doc chunks (bge-base-en-v1.5 embeddings)'
+    `--description=${idx.desc}`
   ])
   console.log(`✓ Vectorize index created`)
 }

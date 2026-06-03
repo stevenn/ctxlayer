@@ -14,6 +14,7 @@
  */
 
 import type { Env } from '../env'
+import { lexicalVector } from './lexical-embed'
 
 export interface ChunkVector {
   /** Stable across revisions: `${docId}:${chunkIdx}`. */
@@ -70,47 +71,88 @@ export async function upsertChunks(env: Env, input: UpsertInput): Promise<void> 
     if (!values) {
       throw new Error(`rag/index: missing vector at index ${i}`)
     }
-    return {
-      id: `${input.docId}:${c.idx}`,
-      values,
-      metadata: {
-        docId: input.docId,
-        chunkIdx: c.idx,
-        revisionId: input.revisionId,
-        title: input.title,
-        headings: c.headings,
-        tag_teams: tags.teams,
-        tag_products: tags.products,
-        is_global: isGlobal,
-        text: c.text
-      }
-    }
+    return { id: `${input.docId}:${c.idx}`, values, metadata: chunkMeta(input, tags, isGlobal, c) }
   })
 
   // Step 1: clean up orphans. Vectorize doesn't have a delete-by-prefix
   // API; we compute the exact ids that should disappear.
-  const newCount = input.chunks.length
-  if (input.previousChunkCount > newCount) {
-    const orphans: string[] = []
-    for (let i = newCount; i < input.previousChunkCount; i++) {
-      orphans.push(`${input.docId}:${i}`)
-    }
-    if (orphans.length > 0) {
-      await env.DOCS_INDEX.deleteByIds(orphans).catch((err) => {
-        // Non-fatal: stale orphans are bad but not as bad as failing
-        // the whole reindex. Log + continue so the new chunks still
-        // land.
-        console.warn('rag/index: orphan delete failed', {
-          docId: input.docId,
-          orphans: orphans.length,
-          err: err instanceof Error ? err.message : String(err)
-        })
+  const orphans = orphanIds(input.docId, input.chunks.length, input.previousChunkCount)
+  if (orphans.length > 0) {
+    await env.DOCS_INDEX.deleteByIds(orphans).catch((err) => {
+      // Non-fatal: stale orphans are bad but not as bad as failing the
+      // whole reindex. Log + continue so the new chunks still land.
+      console.warn('rag/index: orphan delete failed', {
+        docId: input.docId,
+        orphans: orphans.length,
+        err: err instanceof Error ? err.message : String(err)
       })
-    }
+    })
   }
 
   // Step 2: upsert the new chunks.
   if (payload.length > 0) {
     await env.DOCS_INDEX.upsert(payload)
   }
+
+  // Step 3: mirror into the lexical index for hybrid keyword recall.
+  await upsertLexicalChunks(env, input, tags, isGlobal, orphans)
+}
+
+/**
+ * Mirror the chunks into the lexical (hashing-trick) index, if it's
+ * provisioned. Best-effort: the dense index is the source of truth, so a
+ * lexical-index failure logs + returns rather than failing the reindex
+ * (which would loop the message). Chunks with no lexical tokens are
+ * skipped — dense still covers them.
+ */
+async function upsertLexicalChunks(
+  env: Env,
+  input: UpsertInput,
+  tags: { teams: string[]; products: string[] },
+  isGlobal: boolean,
+  orphans: string[]
+): Promise<void> {
+  const index = env.DOCS_LEXICAL_INDEX
+  if (!index) return
+  try {
+    const payload: ChunkVector[] = []
+    for (const c of input.chunks) {
+      const values = lexicalVector(c.text)
+      if (!values) continue
+      payload.push({ id: `${input.docId}:${c.idx}`, values, metadata: chunkMeta(input, tags, isGlobal, c) })
+    }
+    if (orphans.length > 0) await index.deleteByIds(orphans).catch(() => {})
+    if (payload.length > 0) await index.upsert(payload)
+  } catch (err) {
+    console.warn('rag/index: lexical upsert failed (non-fatal)', {
+      docId: input.docId,
+      err: err instanceof Error ? err.message : String(err)
+    })
+  }
+}
+
+function chunkMeta(
+  input: UpsertInput,
+  tags: { teams: string[]; products: string[] },
+  isGlobal: boolean,
+  c: UpsertInput['chunks'][number]
+): ChunkMetadata {
+  return {
+    docId: input.docId,
+    chunkIdx: c.idx,
+    revisionId: input.revisionId,
+    title: input.title,
+    headings: c.headings,
+    tag_teams: tags.teams,
+    tag_products: tags.products,
+    is_global: isGlobal,
+    text: c.text
+  }
+}
+
+/** Ids `${docId}:${i}` for chunk indices that no longer exist after a shrink. */
+function orphanIds(docId: string, newCount: number, previousChunkCount: number): string[] {
+  const orphans: string[] = []
+  for (let i = newCount; i < previousChunkCount; i++) orphans.push(`${docId}:${i}`)
+  return orphans
 }

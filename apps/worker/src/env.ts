@@ -31,6 +31,11 @@ export interface Env {
   OAUTH_KV: KVNamespace
   DOCS_BUCKET: R2Bucket
   DOCS_INDEX: VectorizeIndex
+  // Optional second Vectorize index holding the lexical (hashing-trick)
+  // vectors for hybrid keyword recall (rag/lexical-embed.ts). Optional so
+  // the code guards on its presence and degrades to dense-only when the
+  // index/binding isn't provisioned yet.
+  DOCS_LEXICAL_INDEX?: VectorizeIndex
   AI: Ai
   USAGE_QUEUE: Queue
   DOC_REINDEX_QUEUE: Queue

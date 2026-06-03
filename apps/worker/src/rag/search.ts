@@ -27,6 +27,7 @@ import type {
 import { headingAnchor, significantTerms } from '@ctxlayer/shared'
 import type { SuggestedFilter } from '@ctxlayer/shared'
 import { embedQueries } from './embedder'
+import { lexicalVector } from './lexical-embed'
 import { bestSnippet } from './snippet'
 import { rerankCandidates, type Candidate } from './reranker'
 import { isLocalRemoteBindingError } from './ai-util'
@@ -53,6 +54,9 @@ const VECTORIZE_TOPK_MAX = 50
 // reranker. Replaces the old blunt 0.5 floor (the reranker now does the
 // real relevance gating).
 const CANDIDATE_FLOOR = 0.3
+// Min lexical cosine for a hashing-index match to count as a keyword hit.
+// Low — lexical recall feeds the reranker, which does the real gating.
+const LEXICAL_FLOOR = 0.1
 // Final gate on the reranker's sigmoid score. 0.5 is the neutral decision
 // boundary (logit ≥ 0 → "more relevant than not"). Tuned up from an initial
 // permissive 0.15 after observing live distributions: bge-reranker-base
@@ -131,17 +135,66 @@ function dedupeQueries(queries: string[]): string[] {
   return out.slice(0, MAX_QUERIES)
 }
 
+interface MergedCandidate {
+  metadata: ChunkMetadata
+  dense: number
+  lex: number
+}
+
+/** Fold a Vectorize match into the candidate map under the given modality. */
+function foldMatch(
+  map: Map<string, MergedCandidate>,
+  m: { score: number; metadata?: unknown },
+  modality: 'dense' | 'lex'
+): void {
+  const metadata = m.metadata as ChunkMetadata
+  if (!metadata) return
+  const id = `${metadata.docId}:${metadata.chunkIdx}`
+  const prev = map.get(id) ?? { metadata, dense: 0, lex: 0 }
+  prev.metadata = metadata
+  prev[modality] = Math.max(prev[modality], m.score)
+  map.set(id, prev)
+}
+
 /**
- * Dense candidate generation: embed the query set (with the bge query
- * instruction), query Vectorize for each, merge by chunk id keeping the
- * best cosine, scope-filter (git docs bypass), low-floor, and return up to
- * `limit` candidates sorted by cosine. No final slice/snippet here — the
- * reranker takes it from these.
+ * Query the lexical hashing index for keyword recall. Best-effort: missing
+ * binding, no lexical tokens, or a query error all yield []. The dense
+ * stage is always present; this only ADDS candidates.
+ */
+async function lexicalMatches(
+  env: Env,
+  query: string | undefined,
+  topK: number
+): Promise<Array<{ score: number; metadata?: unknown }>> {
+  const index = env.DOCS_LEXICAL_INDEX
+  if (!index || !query) return []
+  const v = lexicalVector(query)
+  if (!v) return []
+  try {
+    const res = await index.query(v, { topK, returnMetadata: 'all' })
+    return res.matches ?? []
+  } catch (err) {
+    if (!isLocalRemoteBindingError(err)) {
+      console.warn('rag/search: lexical query failed (non-fatal)', {
+        err: err instanceof Error ? err.message : String(err)
+      })
+    }
+    return []
+  }
+}
+
+/**
+ * Hybrid candidate generation. Dense: embed the query set (bge
+ * query-instruction) and query the dense index per vector. Lexical: hash
+ * `lexicalQuery` and query the lexical index (keyword recall). Union both
+ * by chunk id, scope-filter (git docs bypass), keep anything that clears
+ * EITHER modality's floor, and return up to `limit`. No final slice/snippet
+ * here — the reranker re-scores from these.
  */
 export async function retrieveCandidates(
   env: Env,
   queries: string[],
-  opts: { effective: EffectiveScope; limit?: number }
+  opts: { effective: EffectiveScope; lexicalQuery?: string; limit?: number }
 ): Promise<Candidate[]> {
   const cleaned = queries.map((q) => q.trim()).filter(Boolean)
   if (cleaned.length === 0) return []
@@ -152,11 +205,11 @@ export async function retrieveCandidates(
   // Workers AI + Vectorize don't run under a plain `wrangler dev` (they
   // throw "needs to be run remotely"); locally there are no vectors anyway,
   // so degrade to empty results instead of a 500. Real errors propagate.
-  let results: Awaited<ReturnType<typeof env.DOCS_INDEX.query>>[]
+  let denseResults: Awaited<ReturnType<typeof env.DOCS_INDEX.query>>[]
   try {
     const { vectors } = await embedQueries(env, cleaned)
     if (vectors.length === 0) return []
-    results = await Promise.all(
+    denseResults = await Promise.all(
       vectors.map((v) => env.DOCS_INDEX.query(v, { topK, returnMetadata: 'all' }))
     )
   } catch (err) {
@@ -167,29 +220,24 @@ export async function retrieveCandidates(
     throw err
   }
 
-  // Merge across queries by chunk id, keeping the best cosine (scope is
-  // applied below, not here, so git docs can bypass it).
-  const best = new Map<string, { metadata: ChunkMetadata; score: number }>()
-  for (const result of results) {
-    for (const m of result.matches ?? []) {
-      const metadata = m.metadata as unknown as ChunkMetadata
-      const id = `${metadata.docId}:${metadata.chunkIdx}`
-      const prev = best.get(id)
-      if (!prev || m.score > prev.score) best.set(id, { metadata, score: m.score })
-    }
-  }
+  const lexResults = await lexicalMatches(env, opts.lexicalQuery, topK)
 
-  const merged = [...best.values()]
+  // Union dense + lexical by chunk id, keeping the best score per modality.
+  const map = new Map<string, MergedCandidate>()
+  for (const result of denseResults) for (const m of result.matches ?? []) foldMatch(map, m, 'dense')
+  for (const m of lexResults) foldMatch(map, m, 'lex')
+
+  const merged = [...map.values()]
   // Git-synced docs are always searchable regardless of their team/product
   // tag (the tag organizes, it doesn't gate search).
   const gitDocIds = await gitDocIdsAmong(env, [...new Set(merged.map((c) => c.metadata.docId))])
 
   return merged
     .filter((c) => gitDocIds.has(c.metadata.docId) || passesScope(c.metadata, opts.effective))
-    .filter((c) => c.score >= CANDIDATE_FLOOR)
-    .sort((a, b) => b.score - a.score)
+    .filter((c) => c.dense >= CANDIDATE_FLOOR || c.lex >= LEXICAL_FLOOR)
+    .sort((a, b) => Math.max(b.dense, b.lex) - Math.max(a.dense, a.lex))
     .slice(0, limit)
-    .map((c) => ({ metadata: c.metadata, denseScore: c.score }))
+    .map((c) => ({ metadata: c.metadata, denseScore: c.dense }))
 }
 
 /** Candidate → SearchHit, attaching the matched-span snippet. */
@@ -223,7 +271,12 @@ export async function searchDocs(
 ): Promise<{ hits: SearchHit[]; interpretation: QueryUnderstanding }> {
   const u = await understandQuery(env, input.query, input.available)
   const queries = dedupeQueries([u.rewrittenQuery, ...u.expansions, input.query])
-  const candidates = await retrieveCandidates(env, queries, { effective: input.effective })
+  // Lexical recall keys off the RAW user query — its literal terms are what
+  // keyword matching is for (the rewrite is for dense semantic recall).
+  const candidates = await retrieveCandidates(env, queries, {
+    effective: input.effective,
+    lexicalQuery: input.query
+  })
   if (candidates.length === 0) return { hits: [], interpretation: u }
 
   // Rerank against the RAW query — cross-encoders handle natural language
