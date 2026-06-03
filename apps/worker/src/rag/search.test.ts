@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { effectiveScope, searchChunks } from './search'
+import { effectiveScope, retrieveCandidates } from './search'
 import type { ChunkMetadata } from './index'
 import type { Env } from '../env'
 
@@ -23,6 +23,8 @@ function chunk(over: Partial<ChunkMetadata>): ChunkMetadata {
 
 // Stub Env: AI.run echoes one 768-d vector per input text; DOCS_INDEX
 // returns the supplied matches for every query (vector is ignored).
+// gitDocIdsAmong runs against DB; the stub returns no git docs so the
+// scope filter alone governs these cases.
 function makeEnv(matches: Array<{ score: number; metadata: ChunkMetadata }>): Env {
   return {
     AI: {
@@ -34,8 +36,6 @@ function makeEnv(matches: Array<{ score: number; metadata: ChunkMetadata }>): En
     DOCS_INDEX: {
       query: async () => ({ matches })
     },
-    // gitDocIdsAmong runs against DB; stub returns no git docs so the
-    // scope filter alone governs these cases.
     DB: {
       prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) })
     }
@@ -70,8 +70,8 @@ describe('effectiveScope', () => {
   })
 })
 
-describe('searchChunks', () => {
-  it('keeps global + in-scope chunks, drops out-of-scope, sorts by score', async () => {
+describe('retrieveCandidates', () => {
+  it('keeps global + in-scope chunks, drops out-of-scope, sorts by cosine', async () => {
     const env = makeEnv([
       { score: 0.9, metadata: chunk({ docId: 'a', chunkIdx: 0, is_global: true }) },
       {
@@ -83,25 +83,22 @@ describe('searchChunks', () => {
         metadata: chunk({ docId: 'c', chunkIdx: 0, is_global: false, tag_teams: ['t2'] })
       }
     ])
-    const hits = await searchChunks(env, ['q'], {
-      k: 8,
+    const candidates = await retrieveCandidates(env, ['q'], {
       effective: { teams: ['t1'], products: [], includeGlobal: true, all: false }
     })
-    expect(hits.map((h) => h.docId)).toEqual(['a', 'b'])
-    expect(hits[0]?.score).toBe(0.9)
+    expect(candidates.map((c) => c.metadata.docId)).toEqual(['a', 'b'])
+    expect(candidates[0]?.denseScore).toBe(0.9)
   })
 
-  it('respects k', async () => {
+  it('drops candidates below the low candidate floor', async () => {
     const env = makeEnv([
       { score: 0.9, metadata: chunk({ docId: 'a', chunkIdx: 0 }) },
-      { score: 0.8, metadata: chunk({ docId: 'b', chunkIdx: 0 }) }
+      { score: 0.1, metadata: chunk({ docId: 'b', chunkIdx: 0 }) } // below CANDIDATE_FLOOR (0.3)
     ])
-    const hits = await searchChunks(env, ['q'], {
-      k: 1,
+    const candidates = await retrieveCandidates(env, ['q'], {
       effective: { teams: [], products: [], includeGlobal: true, all: true }
     })
-    expect(hits).toHaveLength(1)
-    expect(hits[0]?.docId).toBe('a')
+    expect(candidates.map((c) => c.metadata.docId)).toEqual(['a'])
   })
 
   it('merges duplicate chunk ids across multiple queries', async () => {
@@ -110,22 +107,23 @@ describe('searchChunks', () => {
       { score: 0.8, metadata: chunk({ docId: 'a', chunkIdx: 1 }) }
     ])
     // Two queries → query() runs twice, same matches each time. The
-    // chunk-id dedupe must collapse them, not return four hits.
-    const hits = await searchChunks(env, ['q1', 'q2'], {
-      k: 8,
+    // chunk-id dedupe must collapse them, not return four candidates.
+    const candidates = await retrieveCandidates(env, ['q1', 'q2'], {
       effective: { teams: [], products: [], includeGlobal: true, all: true }
     })
-    expect(hits).toHaveLength(2)
+    expect(candidates).toHaveLength(2)
   })
 
-  it('truncates long snippets with an ellipsis', async () => {
-    const long = 'x'.repeat(2000)
-    const env = makeEnv([{ score: 0.5, metadata: chunk({ text: long }) }])
-    const hits = await searchChunks(env, ['q'], {
-      k: 8,
-      effective: { teams: [], products: [], includeGlobal: true, all: true }
+  it('respects the candidate limit', async () => {
+    const env = makeEnv([
+      { score: 0.9, metadata: chunk({ docId: 'a', chunkIdx: 0 }) },
+      { score: 0.8, metadata: chunk({ docId: 'b', chunkIdx: 0 }) },
+      { score: 0.7, metadata: chunk({ docId: 'c', chunkIdx: 0 }) }
+    ])
+    const candidates = await retrieveCandidates(env, ['q'], {
+      effective: { teams: [], products: [], includeGlobal: true, all: true },
+      limit: 2
     })
-    expect(hits[0]?.snippet).toHaveLength(600)
-    expect(hits[0]?.snippet.endsWith('…')).toBe(true)
+    expect(candidates.map((c) => c.metadata.docId)).toEqual(['a', 'b'])
   })
 })

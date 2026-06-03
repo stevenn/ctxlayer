@@ -20,6 +20,23 @@ export interface EmbedResult {
   vectors: number[][]
 }
 
+// bge-base is trained for ASYMMETRIC retrieval: the QUERY is prefixed with
+// this instruction, the passages are not. Passages were indexed without it,
+// so adding it query-side is the trained-correct setup AND needs no
+// reindex. See https://huggingface.co/BAAI/bge-base-en-v1.5.
+export const QUERY_INSTRUCTION = 'Represent this sentence for searching relevant passages:'
+
+/**
+ * Embed search QUERIES (not passages): prepends the bge query instruction
+ * before delegating to `embed`. Use this on the retrieval side only.
+ */
+export async function embedQueries(env: Env, texts: string[]): Promise<EmbedResult> {
+  return embed(
+    env,
+    texts.map((t) => `${QUERY_INSTRUCTION} ${t}`)
+  )
+}
+
 export async function embed(env: Env, texts: string[]): Promise<EmbedResult> {
   if (texts.length === 0) return { vectors: [] }
   const all: number[][] = []
