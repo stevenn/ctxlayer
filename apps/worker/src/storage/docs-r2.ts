@@ -116,6 +116,18 @@ export async function hashContent(content: DocContent): Promise<string> {
 }
 
 /**
+ * Hash + byte size in one serialize pass. Used by the save handler to make
+ * the coalescing decision (dedup against the head revision's hash) before
+ * deciding whether to write a new R2 object at all.
+ */
+export async function contentDigest(
+  content: DocContent
+): Promise<{ contentHash: string; byteSize: number }> {
+  const body = serialize(content)
+  return { contentHash: await sha256Hex(body), byteSize: body.byteLength }
+}
+
+/**
  * Write ONLY the materialised snapshot (no new revision). Used by the
  * collab DO to reconcile `snapshot.json` from the authoritative Y.Doc so
  * MCP `get_doc` / `GET /content` reflect collab edits even when the

@@ -49,6 +49,17 @@ export async function writeRevisionAndSnapshot(
   return { key: revisionKey(skillId, revisionId), byteSize, contentHash }
 }
 
+/**
+ * Hash + byte size in one serialize pass — mirrors docs-r2's contentDigest.
+ * Lets the skill save handler dedup/coalesce before touching R2.
+ */
+export async function contentDigest(
+  content: DocContent
+): Promise<{ contentHash: string; byteSize: number }> {
+  const body = serialize(content)
+  return { contentHash: await sha256Hex(body), byteSize: body.byteLength }
+}
+
 export async function readSnapshot(env: Env, skillId: string): Promise<DocContent | null> {
   const obj = await env.DOCS_BUCKET.get(snapshotKey(skillId))
   if (!obj) return null

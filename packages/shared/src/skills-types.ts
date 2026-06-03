@@ -127,7 +127,8 @@ export const SkillRevisionSummary = z.object({
   authorId: z.string().nullish(),
   createdAt: z.number(),
   byteSize: z.number(),
-  contentHash: z.string()
+  contentHash: z.string(),
+  kind: z.enum(['autosave', 'explicit']).default('explicit')
 })
 export type SkillRevisionSummary = z.infer<typeof SkillRevisionSummary>
 

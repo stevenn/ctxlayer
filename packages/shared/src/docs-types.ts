@@ -170,7 +170,10 @@ export const RevisionSummary = z.object({
   authorId: z.string().nullish(),
   createdAt: z.number(),
   byteSize: z.number(),
-  contentHash: z.string()
+  contentHash: z.string(),
+  // 'autosave' = a coalescing rolling checkpoint; 'explicit' = a user Save
+  // (or restore). Defaulted for forward-compat with pre-coalescing rows.
+  kind: z.enum(['autosave', 'explicit']).default('explicit')
 })
 export type RevisionSummary = z.infer<typeof RevisionSummary>
 

@@ -13,6 +13,7 @@
 
 import type { Env } from '../../env'
 import { suggestSlug } from '@ctxlayer/shared'
+import type { HeadRevision, RevisionKind } from '../revision-policy'
 
 export interface SkillRow {
   id: string
@@ -75,6 +76,7 @@ export interface SkillRevisionRow {
   byte_size: number
   content_hash: string
   created_at: number
+  kind: RevisionKind
 }
 
 /**
@@ -253,6 +255,8 @@ export interface RecordSkillRevisionInput {
   r2Key: string
   byteSize: number
   contentHash: string
+  // Defaults to 'explicit'. See db/revision-policy.ts.
+  kind?: RevisionKind
 }
 
 /**
@@ -266,8 +270,9 @@ export async function recordSkillRevision(
 ): Promise<SkillRevisionRow> {
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
-    `INSERT INTO skill_revisions (id, skill_id, author_id, r2_key, byte_size, content_hash, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+    `INSERT INTO skill_revisions
+       (id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
   )
     .bind(
       input.revisionId,
@@ -276,7 +281,8 @@ export async function recordSkillRevision(
       input.r2Key,
       input.byteSize,
       input.contentHash,
-      now
+      now,
+      input.kind ?? 'explicit'
     )
     .run()
   await env.DB.prepare(
@@ -285,7 +291,7 @@ export async function recordSkillRevision(
     .bind(input.revisionId, input.r2Key, now, input.skillId)
     .run()
   const row = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM skill_revisions WHERE id = ?1`
   )
     .bind(input.revisionId)
@@ -294,9 +300,69 @@ export async function recordSkillRevision(
   return row
 }
 
+/** Skill's current head revision, or null. Mirrors getHeadRevision. */
+export async function getHeadSkillRevision(
+  env: Env,
+  skillId: string
+): Promise<HeadRevision | null> {
+  const row = await env.DB.prepare(
+    `SELECT r.id, r.author_id, r.content_hash, r.created_at, r.kind
+     FROM skills s
+     JOIN skill_revisions r ON r.id = s.current_rev_id
+     WHERE s.id = ?1 AND s.deleted_at IS NULL`
+  )
+    .bind(skillId)
+    .first<{
+      id: string
+      author_id: string | null
+      content_hash: string
+      created_at: number
+      kind: RevisionKind
+    }>()
+  if (!row) return null
+  return {
+    id: row.id,
+    authorId: row.author_id,
+    contentHash: row.content_hash,
+    createdAt: row.created_at,
+    kind: row.kind
+  }
+}
+
+/** Overwrite the rolling autosave head in place. Mirrors amendRevision. */
+export async function amendSkillRevision(
+  env: Env,
+  input: { skillId: string; revisionId: string; byteSize: number; contentHash: string }
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `UPDATE skill_revisions SET byte_size = ?1, content_hash = ?2 WHERE id = ?3`
+  )
+    .bind(input.byteSize, input.contentHash, input.revisionId)
+    .run()
+  await env.DB.prepare(`UPDATE skills SET updated_at = ?1 WHERE id = ?2`)
+    .bind(now, input.skillId)
+    .run()
+}
+
+/** Promote a head autosave revision to 'explicit'. Mirrors sealRevision. */
+export async function sealSkillRevision(
+  env: Env,
+  skillId: string,
+  revisionId: string
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(`UPDATE skill_revisions SET kind = 'explicit' WHERE id = ?1`)
+    .bind(revisionId)
+    .run()
+  await env.DB.prepare(`UPDATE skills SET updated_at = ?1 WHERE id = ?2`)
+    .bind(now, skillId)
+    .run()
+}
+
 export async function listSkillRevisions(env: Env, skillId: string): Promise<SkillRevisionRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM skill_revisions WHERE skill_id = ?1 ORDER BY created_at DESC LIMIT 100`
   )
     .bind(skillId)
@@ -310,7 +376,7 @@ export async function getSkillRevision(
   revisionId: string
 ): Promise<SkillRevisionRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM skill_revisions WHERE skill_id = ?1 AND id = ?2`
   )
     .bind(skillId, revisionId)

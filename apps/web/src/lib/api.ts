@@ -371,18 +371,27 @@ export function fetchDocContent(id: string, signal?: AbortSignal): Promise<DocCo
   })
 }
 
+// `explicit` distinguishes a user Save (cuts a distinct revision) from a
+// background autosave (coalesces into the rolling autosave revision —
+// `?mode=autosave`). Default is explicit so any caller that doesn't opt in
+// (e.g. doc import) keeps the old "every save is a checkpoint" behaviour.
 // `signal` lets callers attach a timeout (AbortSignal.timeout) so a hung
 // request can't wedge the autosave's in-flight guard indefinitely.
 export function putDocContent(
   id: string,
   content: DocContentT,
-  signal?: AbortSignal
+  opts: { explicit?: boolean; signal?: AbortSignal } = {}
 ): Promise<{ revisionId: string; byteSize: number; contentHash: string }> {
-  return request(`/api/docs/${encodeURIComponent(id)}/content`, (b) => PutContentResult.parse(b), {
-    method: 'PUT',
-    body: JSON.stringify(DocContent.parse(content)),
-    signal
-  })
+  const qs = opts.explicit === false ? '?mode=autosave' : ''
+  return request(
+    `/api/docs/${encodeURIComponent(id)}/content${qs}`,
+    (b) => PutContentResult.parse(b),
+    {
+      method: 'PUT',
+      body: JSON.stringify(DocContent.parse(content)),
+      signal: opts.signal
+    }
+  )
 }
 
 export function fetchRevisions(id: string, signal?: AbortSignal): Promise<RevisionSummaryT[]> {
@@ -886,18 +895,21 @@ export function fetchSkillContent(id: string, signal?: AbortSignal): Promise<Doc
   })
 }
 
+// See putDocContent: `explicit: false` opts a background autosave into
+// coalescing (`?mode=autosave`); the default cuts a distinct revision.
 export function putSkillContent(
   id: string,
   content: DocContentT,
-  signal?: AbortSignal
+  opts: { explicit?: boolean; signal?: AbortSignal } = {}
 ): Promise<SkillContentSaveResultT> {
+  const qs = opts.explicit === false ? '?mode=autosave' : ''
   return request(
-    `/api/skills/${encodeURIComponent(id)}/content`,
+    `/api/skills/${encodeURIComponent(id)}/content${qs}`,
     (b) => SkillContentSaveResult.parse(b),
     {
       method: 'PUT',
       body: JSON.stringify(DocContent.parse(content)),
-      signal
+      signal: opts.signal
     }
   )
 }

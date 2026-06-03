@@ -7,6 +7,7 @@
 
 import type { Env } from '../../env'
 import { slugifyBody, suggestSlug } from '@ctxlayer/shared'
+import type { HeadRevision, RevisionKind } from '../revision-policy'
 
 export interface DocumentRow {
   id: string
@@ -79,6 +80,7 @@ export interface RevisionRow {
   byte_size: number
   content_hash: string
   created_at: number
+  kind: RevisionKind
 }
 
 export async function listDocs(env: Env): Promise<DocumentWithUsersRow[]> {
@@ -357,6 +359,9 @@ export interface RecordRevisionInput {
   r2Key: string
   byteSize: number
   contentHash: string
+  // Defaults to 'explicit'. Autosaves pass 'autosave' so the next one can
+  // coalesce into this row (see db/revision-policy.ts).
+  kind?: RevisionKind
 }
 
 /**
@@ -368,8 +373,9 @@ export interface RecordRevisionInput {
 export async function recordRevision(env: Env, input: RecordRevisionInput): Promise<RevisionRow> {
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
-    `INSERT INTO doc_revisions (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)`
+    `INSERT INTO doc_revisions
+       (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
   )
     .bind(
       input.revisionId,
@@ -378,7 +384,8 @@ export async function recordRevision(env: Env, input: RecordRevisionInput): Prom
       input.r2Key,
       input.byteSize,
       input.contentHash,
-      now
+      now,
+      input.kind ?? 'explicit'
     )
     .run()
   await env.DB.prepare(
@@ -387,7 +394,7 @@ export async function recordRevision(env: Env, input: RecordRevisionInput): Prom
     .bind(input.revisionId, input.r2Key, now, input.docId)
     .run()
   const row = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM doc_revisions WHERE id = ?1`
   )
     .bind(input.revisionId)
@@ -396,9 +403,78 @@ export async function recordRevision(env: Env, input: RecordRevisionInput): Prom
   return row
 }
 
+/**
+ * The doc's current head revision (its `current_rev_id` row), or null if
+ * it has none yet. Backs the autosave-coalescing decision: the policy
+ * folds an autosave into this row when it's an open, same-author,
+ * in-window autosave. Returns only the fields the policy needs.
+ */
+export async function getHeadRevision(env: Env, docId: string): Promise<HeadRevision | null> {
+  const row = await env.DB.prepare(
+    `SELECT r.id, r.author_id, r.content_hash, r.created_at, r.kind
+     FROM documents d
+     JOIN doc_revisions r ON r.id = d.current_rev_id
+     WHERE d.id = ?1 AND d.deleted_at IS NULL`
+  )
+    .bind(docId)
+    .first<{
+      id: string
+      author_id: string | null
+      content_hash: string
+      created_at: number
+      kind: RevisionKind
+    }>()
+  if (!row) return null
+  return {
+    id: row.id,
+    authorId: row.author_id,
+    contentHash: row.content_hash,
+    createdAt: row.created_at,
+    kind: row.kind
+  }
+}
+
+/**
+ * Overwrite the rolling autosave head in place: refresh its byte_size +
+ * content_hash (the R2 object was already overwritten at the same revision
+ * id) and bump the parent doc's updated_at. created_at stays put — it's
+ * the coalesce-window anchor, so the row ages out after the window even
+ * under continuous typing. current_rev_id / r2_snapshot are unchanged
+ * (same revision id).
+ */
+export async function amendRevision(
+  env: Env,
+  input: { docId: string; revisionId: string; byteSize: number; contentHash: string }
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(
+    `UPDATE doc_revisions SET byte_size = ?1, content_hash = ?2 WHERE id = ?3`
+  )
+    .bind(input.byteSize, input.contentHash, input.revisionId)
+    .run()
+  await env.DB.prepare(`UPDATE documents SET updated_at = ?1 WHERE id = ?2`)
+    .bind(now, input.docId)
+    .run()
+}
+
+/**
+ * Promote a head autosave revision to 'explicit' — the user clicked Save
+ * on content identical to the rolling autosave. Freezes it as a checkpoint
+ * so the next autosave cuts a new row instead of overwriting this one.
+ */
+export async function sealRevision(env: Env, docId: string, revisionId: string): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(`UPDATE doc_revisions SET kind = 'explicit' WHERE id = ?1`)
+    .bind(revisionId)
+    .run()
+  await env.DB.prepare(`UPDATE documents SET updated_at = ?1 WHERE id = ?2`)
+    .bind(now, docId)
+    .run()
+}
+
 export async function listRevisions(env: Env, docId: string): Promise<RevisionRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM doc_revisions WHERE doc_id = ?1 ORDER BY created_at DESC LIMIT 100`
   )
     .bind(docId)
@@ -412,7 +488,7 @@ export async function getRevision(
   revisionId: string
 ): Promise<RevisionRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at
+    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM doc_revisions WHERE doc_id = ?1 AND id = ?2`
   )
     .bind(docId, revisionId)
