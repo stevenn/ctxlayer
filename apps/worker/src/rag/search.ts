@@ -53,10 +53,12 @@ const VECTORIZE_TOPK_MAX = 50
 // reranker. Replaces the old blunt 0.5 floor (the reranker now does the
 // real relevance gating).
 const CANDIDATE_FLOOR = 0.3
-// Final gate on the reranker's sigmoid score. Deliberately permissive: the
-// reranker's value is ORDERING, not filtering — a high floor risks empty
-// results. Tune up once live score distributions are observed.
-const RERANK_FLOOR = 0.15
+// Final gate on the reranker's sigmoid score. 0.5 is the neutral decision
+// boundary (logit ≥ 0 → "more relevant than not"). Tuned up from an initial
+// permissive 0.15 after observing live distributions: bge-reranker-base
+// emits small-magnitude logits on long code/doc passages, so scores cluster
+// just above 0.5 and a higher floor would clip relevant borderline hits.
+const RERANK_FLOOR = 0.5
 // When the reranker is unavailable (dev / failure) we fall back to dense
 // order and gate on cosine, preserving the pre-rerank behaviour.
 const DENSE_FALLBACK_FLOOR = 0.5
