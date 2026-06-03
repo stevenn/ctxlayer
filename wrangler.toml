@@ -49,6 +49,7 @@ run_worker_first = [
 #   wrangler kv namespace create OAUTH_KV
 #   wrangler r2 bucket create ctxlayer-docs
 #   wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine
+#   wrangler vectorize create ctxlayer-docs-lexical --dimensions 1536 --metric cosine
 # ---------------------------------------------------------------------------
 
 [[d1_databases]]
@@ -76,6 +77,16 @@ index_name = "ctxlayer-docs"
 # soft-skips the resulting "needs to be run remotely" error in
 # dev (see queues/reindex-consumer.ts). For RAG validation use
 # `wrangler dev --remote` or deploy.
+
+# Hybrid keyword recall: a second index holding lexical (hashing-trick)
+# vectors — see rag/lexical-embed.ts. The code guards on this binding, so
+# search degrades to dense-only until it's provisioned. To enable:
+#   wrangler vectorize create ctxlayer-docs-lexical --dimensions 1536 --metric cosine
+# then redeploy and run a full reindex (POST /api/admin/docs/reindex) to
+# populate it.
+[[vectorize]]
+binding = "DOCS_LEXICAL_INDEX"
+index_name = "ctxlayer-docs-lexical"
 
 [ai]
 binding = "AI"

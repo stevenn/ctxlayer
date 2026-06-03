@@ -7,8 +7,9 @@
 
 // Common English function words that carry no retrieval signal. Kept small
 // and deliberately conservative — over-stripping hurts more than a couple
-// of stopwords slipping through.
-const STOPWORDS = new Set([
+// of stopwords slipping through. Exported so the worker's lexical hashing
+// index (rag/lexical-embed.ts) tokenizes the same way.
+export const STOPWORDS = new Set([
   'the', 'and', 'for', 'with', 'how', 'does', 'what', 'are', 'you', 'your',
   'from', 'that', 'this', 'into', 'can', 'will', 'when', 'where', 'which',
   'was', 'has', 'have', 'about', 'why', 'who'
