@@ -20,8 +20,13 @@ export const McpSearchHit = z.object({
   docId: z.string(),
   chunkIdx: z.number(),
   title: z.string(),
-  headings: z.array(z.string()),
+  // Dense cosine similarity of the chunk vector. Results are ordered by
+  // `rerankScore` when present (the cross-encoder ran), else by `score`.
   score: z.number(),
+  headings: z.array(z.string()),
+  // Cross-encoder relevance in [0,1] (sigmoid of the reranker logit).
+  // Absent when the reranker was skipped / fell back to dense order.
+  rerankScore: z.number().optional(),
   snippet: z.string()
 })
 export type McpSearchHit = z.infer<typeof McpSearchHit>
@@ -38,7 +43,9 @@ export const SearchSectionHit = z.object({
   headings: z.array(z.string()),
   anchor: z.string(),
   snippet: z.string(),
-  score: z.number()
+  // Dense cosine; `rerankScore` (when present) is the ordering signal.
+  score: z.number(),
+  rerankScore: z.number().optional()
 })
 export type SearchSectionHit = z.infer<typeof SearchSectionHit>
 
@@ -63,10 +70,11 @@ export const SuggestedFilter = z.object({
 })
 export type SuggestedFilter = z.infer<typeof SuggestedFilter>
 
-// What the query-understanding step produced. The query is embedded
-// verbatim (no auto-rewrite/expansion applied to retrieval); the LLM's
-// only effect on results is the optional `suggestedFilters` the user
-// can click. `llmUsed=false` when the LLM was skipped or fell back.
+// What the query-understanding step produced. `rewrittenQuery` +
+// `expansions` are now fed into multi-query retrieval (recall), and the
+// reranker reorders the candidates; `suggestedFilters` remain advisory
+// chips the user can click. `llmUsed=false` when the LLM was skipped or
+// fell back (then rewrittenQuery == the raw query, expansions == []).
 export const SearchInterpretation = z.object({
   rewrittenQuery: z.string(),
   expansions: z.array(z.string()).optional(),

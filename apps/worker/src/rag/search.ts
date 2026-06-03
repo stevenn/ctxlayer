@@ -1,18 +1,19 @@
 /**
- * Shared semantic-search core. One implementation behind both the MCP
- * `search_docs` tool and the REST `POST /api/search` endpoint, so the
- * two never drift.
+ * Shared semantic-search core behind both the MCP `search_docs` tool and
+ * the REST `POST /api/search` endpoint, so the two never drift.
  *
- * `searchChunks` is the pure retrieval primitive: embed N query strings
- * → query Vectorize once per vector (overshooting topK so the scope
- * post-filter has headroom) → merge by chunk id keeping the max score →
- * scope-filter → slice to k. For a single query this is byte-identical
- * to the original `search_docs` behaviour.
+ * Pipeline (both entry points):
+ *   understandQuery (LLM, cached, best-effort)
+ *     → multi-query dense recall (rewritten + expansions, bge query-instruction)
+ *     → merge + scope-filter                          [retrieveCandidates]
+ *     → cross-encoder rerank (bge-reranker-base)       [rerankCandidates]
+ *     → rerank-score floor + top-k + matched-span snippet
  *
- * `runSearch` is the REST orchestrator: resolve the caller's scope,
- * retrieve, group hits by doc, and wrap them in the interpretation
- * envelope the SPA renders. The LLM query-understanding step slots in
- * here in a later phase; for now `interpretation` echoes the raw query.
+ * `searchDocs` is the orchestrator; `retrieveCandidates` is the dense
+ * primitive (candidate generation only — no final slice/snippet, so the
+ * reranker can slot in after it). The reranker is best-effort: on any
+ * failure the result falls back to dense order, so search never errors on
+ * it.
  */
 
 import type { Env } from '../env'
@@ -23,10 +24,17 @@ import type {
   SearchResponse,
   SearchScope
 } from '@ctxlayer/shared'
-import { headingAnchor } from '@ctxlayer/shared'
+import { headingAnchor, significantTerms } from '@ctxlayer/shared'
 import type { SuggestedFilter } from '@ctxlayer/shared'
-import { embed } from './embedder'
-import { understandQuery, type AvailableScope } from './query-understanding'
+import { embedQueries } from './embedder'
+import { bestSnippet } from './snippet'
+import { rerankCandidates, type Candidate } from './reranker'
+import { isLocalRemoteBindingError } from './ai-util'
+import {
+  understandQuery,
+  type AvailableScope,
+  type QueryUnderstanding
+} from './query-understanding'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { getDocById, gitDocIdsAmong } from '../db/queries/docs'
 import { listTeams } from '../db/queries/teams'
@@ -34,17 +42,25 @@ import { listProducts } from '../db/queries/products'
 
 export const SEARCH_K_DEFAULT = 8
 export const SEARCH_K_MAX = 50
-// Overshoot topK so the scope post-filter has headroom when many chunks
-// don't match the caller's scope. Vectorize caps topK at 50 when
-// `returnMetadata: 'all'` — which we always pass to read chunk metadata
-// — so asking for more is a hard 40025 error (k≥17 once overshot ×3).
-const SEARCH_OVERSHOOT = 3
+
+// Dense queries fed to the reranker (rewritten + expansions + raw, deduped).
+const MAX_QUERIES = 4
+// Candidates fed to the cross-encoder. Vectorize caps topK at 50 when
+// `returnMetadata: 'all'` (which we always pass), so this is also the cap.
+const RERANK_CANDIDATES = 40
 const VECTORIZE_TOPK_MAX = 50
-const SNIPPET_MAX = 600
-// Minimum cosine score to count as a real hit — drops weak matches so a
-// vague query doesn't surface barely-related chunks. Tunable against the
-// live index (bge-base cosine: relevant ≳ 0.6, weak ≈ 0.45-0.55).
-const SCORE_FLOOR = 0.5
+// Low prefilter on dense candidates — just keeps obvious garbage out of the
+// reranker. Replaces the old blunt 0.5 floor (the reranker now does the
+// real relevance gating).
+const CANDIDATE_FLOOR = 0.3
+// Final gate on the reranker's sigmoid score. Deliberately permissive: the
+// reranker's value is ORDERING, not filtering — a high floor risks empty
+// results. Tune up once live score distributions are observed.
+const RERANK_FLOOR = 0.15
+// When the reranker is unavailable (dev / failure) we fall back to dense
+// order and gate on cosine, preserving the pre-rerank behaviour.
+const DENSE_FALLBACK_FLOOR = 0.5
+const SNIPPET_MAX = 400
 
 /** A single matching chunk, scope-filtered and ready to return. */
 export interface SearchHit {
@@ -52,7 +68,10 @@ export interface SearchHit {
   chunkIdx: number
   title: string
   headings: string[]
+  /** Dense cosine similarity. */
   score: number
+  /** Cross-encoder relevance in [0,1]; absent on dense fallback. */
+  rerankScore?: number
   snippet: string
 }
 
@@ -95,45 +114,45 @@ function passesScope(m: ChunkMetadata, scope: EffectiveScope): boolean {
   return false
 }
 
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s
-  return s.slice(0, n - 1) + '…'
+/** Trim, drop empties, dedupe case-insensitively, preserve order, cap. */
+function dedupeQueries(queries: string[]): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const q of queries) {
+    const trimmed = q.trim()
+    if (!trimmed) continue
+    const key = trimmed.toLowerCase()
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(trimmed)
+  }
+  return out.slice(0, MAX_QUERIES)
 }
 
 /**
- * True for the "binding needs to be run remotely" failure that
- * Workers AI + Vectorize raise under a plain `wrangler dev`. Lets the
- * search path degrade to empty results locally instead of 500-ing; real
- * production errors fall through and surface normally.
+ * Dense candidate generation: embed the query set (with the bge query
+ * instruction), query Vectorize for each, merge by chunk id keeping the
+ * best cosine, scope-filter (git docs bypass), low-floor, and return up to
+ * `limit` candidates sorted by cosine. No final slice/snippet here — the
+ * reranker takes it from these.
  */
-function isLocalRemoteBindingError(err: unknown): boolean {
-  if (err && typeof err === 'object' && (err as { remote?: unknown }).remote === true) return true
-  const msg = err instanceof Error ? err.message : String(err)
-  return /needs to be run remotely/i.test(msg)
-}
-
-/**
- * Embed one or more query strings, query Vectorize for each, merge the
- * matches by chunk id (keeping the highest score across queries), apply
- * the scope filter, and return the top `k` hits sorted by score.
- */
-export async function searchChunks(
+export async function retrieveCandidates(
   env: Env,
   queries: string[],
-  opts: { k: number; effective: EffectiveScope }
-): Promise<SearchHit[]> {
+  opts: { effective: EffectiveScope; limit?: number }
+): Promise<Candidate[]> {
   const cleaned = queries.map((q) => q.trim()).filter(Boolean)
   if (cleaned.length === 0) return []
 
-  // The embedder (Workers AI) and Vectorize don't work under a plain
-  // `wrangler dev` — they throw "needs to be run remotely". Locally
-  // there are no vectors anyway (the reindex consumer soft-skips), so
-  // degrade to empty results instead of a 500. Real errors still
-  // propagate (and surface as 500) in production.
-  const topK = Math.min(opts.k * SEARCH_OVERSHOOT, VECTORIZE_TOPK_MAX)
+  const limit = opts.limit ?? RERANK_CANDIDATES
+  const topK = Math.min(limit, VECTORIZE_TOPK_MAX)
+
+  // Workers AI + Vectorize don't run under a plain `wrangler dev` (they
+  // throw "needs to be run remotely"); locally there are no vectors anyway,
+  // so degrade to empty results instead of a 500. Real errors propagate.
   let results: Awaited<ReturnType<typeof env.DOCS_INDEX.query>>[]
   try {
-    const { vectors } = await embed(env, cleaned)
+    const { vectors } = await embedQueries(env, cleaned)
     if (vectors.length === 0) return []
     results = await Promise.all(
       vectors.map((v) => env.DOCS_INDEX.query(v, { topK, returnMetadata: 'all' }))
@@ -146,8 +165,8 @@ export async function searchChunks(
     throw err
   }
 
-  // Merge across queries by chunk id, keeping the best score (scope is
-  // applied below, not here, so we can let git docs bypass it).
+  // Merge across queries by chunk id, keeping the best cosine (scope is
+  // applied below, not here, so git docs can bypass it).
   const best = new Map<string, { metadata: ChunkMetadata; score: number }>()
   for (const result of results) {
     for (const m of result.matches ?? []) {
@@ -158,26 +177,70 @@ export async function searchChunks(
     }
   }
 
-  const candidates = [...best.values()]
-  // Git-synced docs are always searchable regardless of their team/
-  // product tag (the tag organizes, it doesn't gate search). Resolve
-  // which candidate docs are git in one query, then keep a chunk if it's
-  // git OR passes the caller's scope.
-  const gitDocIds = await gitDocIdsAmong(env, [...new Set(candidates.map((c) => c.metadata.docId))])
+  const merged = [...best.values()]
+  // Git-synced docs are always searchable regardless of their team/product
+  // tag (the tag organizes, it doesn't gate search).
+  const gitDocIds = await gitDocIdsAmong(env, [...new Set(merged.map((c) => c.metadata.docId))])
 
-  return candidates
+  return merged
     .filter((c) => gitDocIds.has(c.metadata.docId) || passesScope(c.metadata, opts.effective))
-    .filter((c) => c.score >= SCORE_FLOOR)
+    .filter((c) => c.score >= CANDIDATE_FLOOR)
     .sort((a, b) => b.score - a.score)
-    .slice(0, opts.k)
-    .map(({ metadata, score }) => ({
-      docId: metadata.docId,
-      chunkIdx: metadata.chunkIdx,
-      title: metadata.title,
-      headings: metadata.headings,
-      score,
-      snippet: truncate(metadata.text, SNIPPET_MAX)
-    }))
+    .slice(0, limit)
+    .map((c) => ({ metadata: c.metadata, denseScore: c.score }))
+}
+
+/** Candidate → SearchHit, attaching the matched-span snippet. */
+function toHit(c: Candidate, rerankScore: number | undefined, terms: string[]): SearchHit {
+  return {
+    docId: c.metadata.docId,
+    chunkIdx: c.metadata.chunkIdx,
+    title: c.metadata.title,
+    headings: c.metadata.headings,
+    score: c.denseScore,
+    rerankScore,
+    snippet: bestSnippet(c.metadata.text, terms, SNIPPET_MAX)
+  }
+}
+
+export interface SearchDocsInput {
+  query: string
+  k: number
+  effective: EffectiveScope
+  available: AvailableScope
+}
+
+/**
+ * Full retrieval chain shared by both entry points. Returns the ranked
+ * hits plus the query interpretation (so the REST layer can surface the
+ * real rewrite/expansions/filters).
+ */
+export async function searchDocs(
+  env: Env,
+  input: SearchDocsInput
+): Promise<{ hits: SearchHit[]; interpretation: QueryUnderstanding }> {
+  const u = await understandQuery(env, input.query, input.available)
+  const queries = dedupeQueries([u.rewrittenQuery, ...u.expansions, input.query])
+  const candidates = await retrieveCandidates(env, queries, { effective: input.effective })
+  if (candidates.length === 0) return { hits: [], interpretation: u }
+
+  // Rerank against the RAW query — cross-encoders handle natural language
+  // better than the keyword rewrite (which is for dense recall).
+  const terms = significantTerms(input.query)
+  const reranked = await rerankCandidates(env, input.query, candidates, {
+    k: input.k,
+    floor: RERANK_FLOOR
+  })
+
+  const hits =
+    reranked === null
+      ? candidates
+          .filter((c) => c.denseScore >= DENSE_FALLBACK_FLOOR)
+          .slice(0, input.k)
+          .map((c) => toHit(c, undefined, terms))
+      : reranked.map((r) => toHit(r.candidate, r.rerankScore, terms))
+
+  return { hits, interpretation: u }
 }
 
 export interface RunSearchInput {
@@ -187,13 +250,9 @@ export interface RunSearchInput {
 }
 
 /**
- * REST orchestrator. Predictable baseline: embed the caller's query
- * verbatim and search open-read across the whole library by default (an
- * explicit request scope still narrows it — that's how a clicked filter
- * chip works). The
- * LLM runs in PARALLEL purely to surface optional `suggestedFilters`;
- * it never rewrites the query or auto-narrows results, so it can't
- * silently distort relevance (and adds no latency to retrieval).
+ * REST orchestrator. Resolves the caller's scope, runs the shared
+ * `searchDocs` chain, groups hits by doc, and wraps them in the
+ * interpretation envelope the SPA renders.
  */
 export async function runSearch(
   env: Env,
@@ -202,21 +261,20 @@ export async function runSearch(
 ): Promise<SearchResponse> {
   const userScope = await resolveUserScope(env, userId)
   const effective = effectiveScope(input.scope, userScope)
-  const available: AvailableScope =
-    userScope.teams.length > 0 || userScope.products.length > 0
-      ? await availableScope(env, userScope)
-      : { teams: [], products: [] }
+  const available = await availableScopeFor(env, userScope)
 
   const k = input.k ?? SEARCH_K_DEFAULT
-  const [hits, u] = await Promise.all([
-    searchChunks(env, [input.query], { k, effective }),
-    understandQuery(env, input.query, available)
-  ])
+  const { hits, interpretation: u } = await searchDocs(env, {
+    query: input.query,
+    k,
+    effective,
+    available
+  })
   const results = await groupByDoc(env, hits)
 
   const interpretation: SearchInterpretation = {
-    rewrittenQuery: input.query,
-    expansions: [],
+    rewrittenQuery: u.rewrittenQuery,
+    expansions: u.expansions,
     suggestedFilters: buildSuggestedFilters(u.filters, available),
     llmUsed: u.llmUsed
   }
@@ -240,11 +298,19 @@ function buildSuggestedFilters(
   return out
 }
 
-/** The caller's reachable teams/products, with display names for the LLM. */
-async function availableScope(
+/**
+ * The caller's reachable teams/products with display names, for the LLM +
+ * the suggested-filter chips. Empty (no LLM scope hint) when the caller
+ * belongs to nothing. Exported so the MCP `search_docs` tool builds the
+ * same `available` scope the REST path does.
+ */
+export async function availableScopeFor(
   env: Env,
   userScope: { teams: string[]; products: string[] }
 ): Promise<AvailableScope> {
+  if (userScope.teams.length === 0 && userScope.products.length === 0) {
+    return { teams: [], products: [] }
+  }
   const [teams, products] = await Promise.all([listTeams(env), listProducts(env)])
   const tset = new Set(userScope.teams)
   const pset = new Set(userScope.products)
@@ -256,11 +322,12 @@ async function availableScope(
 
 /**
  * Bucket flat hits into per-doc groups, resolving slug + title from D1.
- * Docs whose row is missing (deleted between index and now, before the
- * reindex orphan-sweep catches up) are dropped so we never link to a
- * 404. N is small (≤ k distinct docs), so per-doc lookups are fine.
+ * Ordering uses `rerankScore ?? score` so the reranker's ordering carries
+ * through to the section + group sort. Docs whose row is missing (deleted
+ * between index and now) are dropped so we never link to a 404.
  */
 async function groupByDoc(env: Env, hits: SearchHit[]): Promise<SearchDocGroup[]> {
+  const rank = (h: SearchHit): number => h.rerankScore ?? h.score
   const byDoc = new Map<string, SearchHit[]>()
   for (const h of hits) {
     const arr = byDoc.get(h.docId)
@@ -276,19 +343,20 @@ async function groupByDoc(env: Env, hits: SearchHit[]): Promise<SearchDocGroup[]
     const row = rows[i]
     if (!row) return
     const sections = (byDoc.get(id) ?? [])
-      .sort((a, b) => b.score - a.score)
+      .sort((a, b) => rank(b) - rank(a))
       .map((h) => ({
         chunkIdx: h.chunkIdx,
         headings: h.headings,
         anchor: headingAnchor(h.headings),
         snippet: h.snippet,
-        score: h.score
+        score: h.score,
+        rerankScore: h.rerankScore
       }))
     groups.push({
       docId: id,
       slug: row.slug,
       title: row.title,
-      topScore: sections[0]?.score ?? 0,
+      topScore: sections[0] ? (sections[0].rerankScore ?? sections[0].score) : 0,
       sections
     })
   })

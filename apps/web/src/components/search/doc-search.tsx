@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core'
 import type { SearchDocGroup, SearchResponse, SuggestedFilter } from '@ctxlayer/shared'
+import { significantTerms, escapeRegExp } from '@ctxlayer/shared'
 import { searchDocs } from '../../lib/api'
 import { explain } from '../../lib/explain'
 
@@ -149,7 +150,11 @@ function SearchResults({
   }
 
   const { resp } = state
-  const terms = significantWords(resp.interpretation.rewrittenQuery)
+  // Highlight terms from BOTH the raw query and the LLM rewrite, so a hit
+  // surfaced via an expansion still highlights the user's own words. The
+  // server centres the snippet on the raw-query terms (shared helper), so
+  // these marks land inside the chosen window.
+  const terms = significantTerms(`${state.query} ${resp.interpretation.rewrittenQuery}`)
   return (
     <Stack gap="sm">
       <FilterBar
@@ -308,44 +313,6 @@ function ResultCard({
 }
 
 // ----- snippet highlighting ----------------------------------------------
-
-const STOPWORDS = new Set([
-  'the',
-  'and',
-  'for',
-  'with',
-  'how',
-  'does',
-  'what',
-  'are',
-  'you',
-  'your',
-  'from',
-  'that',
-  'this',
-  'into',
-  'can',
-  'will',
-  'when',
-  'where',
-  'which',
-  'was',
-  'has',
-  'have',
-  'about',
-  'why',
-  'who'
-])
-
-/** Significant words from the query, used to highlight snippet matches. */
-function significantWords(query: string): string[] {
-  const words = query.toLowerCase().match(/[a-z0-9]+/g) ?? []
-  return [...new Set(words.filter((w) => w.length >= 3 && !STOPWORDS.has(w)))]
-}
-
-function escapeRegExp(s: string): string {
-  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
 
 /**
  * Wrap occurrences of `terms` in <mark>. Semantic-only matches may have

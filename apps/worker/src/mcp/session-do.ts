@@ -20,7 +20,13 @@ import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
-import { searchChunks, effectiveScope, SEARCH_K_DEFAULT, SEARCH_K_MAX } from '../rag/search'
+import {
+  searchDocs,
+  effectiveScope,
+  availableScopeFor,
+  SEARCH_K_DEFAULT,
+  SEARCH_K_MAX
+} from '../rag/search'
 import { UpstreamProxyRegistry } from './tools-proxy'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
@@ -253,13 +259,16 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
 
-          // Shared retrieval core (also backs REST /api/search). Resolve
-          // the caller's effective scope, then embed → Vectorize → filter.
+          // Shared retrieval core (also backs REST /api/search): query
+          // understanding → multi-query dense recall → cross-encoder rerank.
           const userScope = await resolveUserScope(this.env, userId)
           const effective = effectiveScope(scope, userScope)
-          const matches = await searchChunks(this.env, [query], {
+          const available = await availableScopeFor(this.env, userScope)
+          const { hits: matches } = await searchDocs(this.env, {
+            query,
             k: k ?? SEARCH_K_DEFAULT,
-            effective
+            effective,
+            available
           })
 
           // Typed against the shared MCP contract (see `McpSearchResult`).
