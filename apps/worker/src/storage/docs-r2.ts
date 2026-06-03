@@ -116,6 +116,18 @@ export async function hashContent(content: DocContent): Promise<string> {
 }
 
 /**
+ * Hash + byte size in one serialize pass. Used by the save handler to make
+ * the coalescing decision (dedup against the head revision's hash) before
+ * deciding whether to write a new R2 object at all.
+ */
+export async function contentDigest(
+  content: DocContent
+): Promise<{ contentHash: string; byteSize: number }> {
+  const body = serialize(content)
+  return { contentHash: await sha256Hex(body), byteSize: body.byteLength }
+}
+
+/**
  * Write ONLY the materialised snapshot (no new revision). Used by the
  * collab DO to reconcile `snapshot.json` from the authoritative Y.Doc so
  * MCP `get_doc` / `GET /content` reflect collab edits even when the
@@ -135,6 +147,18 @@ export async function writeMaterializedSnapshot(
     customMetadata: { contentHash }
   })
   return contentHash
+}
+
+/**
+ * Best-effort bulk delete of revision bodies whose D1 rows the retention
+ * prune removed. Chunked to R2's 1000-key-per-call limit. An orphaned
+ * object (delete fails) is harmless — nothing references it — so callers
+ * run this in waitUntil and only log failures.
+ */
+export async function deleteRevisionObjects(env: Env, keys: string[]): Promise<void> {
+  for (let i = 0; i < keys.length; i += 1000) {
+    await env.DOCS_BUCKET.delete(keys.slice(i, i + 1000))
+  }
 }
 
 /** Load a specific revision. Returns null if missing (e.g. R2 pruned). */

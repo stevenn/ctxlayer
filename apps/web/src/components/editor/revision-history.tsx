@@ -16,6 +16,9 @@ export interface RevisionSummaryLike {
   createdAt: number
   byteSize: number
   contentHash: string
+  // 'autosave' = a coalescing rolling checkpoint; 'explicit' = a user Save.
+  // Optional for forward-compat; absent is treated as 'explicit'.
+  kind?: 'autosave' | 'explicit'
 }
 
 export interface RevisionHistoryProps {
@@ -188,6 +191,11 @@ function RevisionRow({
           {isCurrent && (
             <Badge size="xs" variant="light" color="blue">
               Current
+            </Badge>
+          )}
+          {rev.kind === 'autosave' && (
+            <Badge size="xs" variant="light" color="gray" title="Autosaved checkpoint">
+              auto
             </Badge>
           )}
         </Group>

@@ -26,6 +26,7 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
+  amendRevision,
   canEditDoc,
   canLockDoc,
   canShareDoc,
@@ -33,19 +34,25 @@ import {
   createDoc,
   editGateReason,
   getDocById,
+  getHeadRevision,
   getRevision,
   listDocs,
   listRevisions,
   patchDoc,
+  pruneAutosaveRevisions,
   recordRevision,
+  sealRevision,
   setDocLock,
   softDeleteDoc,
   type DocumentWithUsersRow,
   type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
+import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { audit } from '../audit/log'
 import {
+  contentDigest,
+  deleteRevisionObjects,
   readRevision,
   readSnapshot,
   restoreFromRevision,
@@ -130,16 +137,60 @@ docsRoute.put('/:id/content', async (c) => {
   if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
   const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  const revisionId = newRevisionId()
-  const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
-  await recordRevision(c.env, {
-    docId: id,
-    revisionId,
-    authorId: userId,
-    r2Key: put.key,
-    byteSize: put.byteSize,
-    contentHash: put.contentHash
+
+  // Coalescing policy: a background autosave folds into the rolling
+  // autosave head; only `?mode=explicit` (absent → explicit, the safe
+  // default for older clients) cuts a distinct checkpoint. Identical
+  // content is a no-op. See db/revision-policy.ts.
+  const explicit = c.req.query('mode') !== 'autosave'
+  const { contentHash, byteSize } = await contentDigest(parsed.data)
+  const head = await getHeadRevision(c.env, id)
+  const decision = decideRevision(head, {
+    contentHash,
+    userId,
+    explicit,
+    now: Math.floor(Date.now() / 1000)
   })
+
+  if (decision.action === 'noop') {
+    return c.json({ revisionId: decision.revisionId, byteSize, contentHash })
+  }
+  if (decision.action === 'seal') {
+    await sealRevision(c.env, id, decision.revisionId)
+    return c.json({ revisionId: decision.revisionId, byteSize, contentHash })
+  }
+
+  const revisionId = decision.action === 'amend' ? decision.revisionId : newRevisionId()
+  const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
+  if (decision.action === 'amend') {
+    await amendRevision(c.env, {
+      docId: id,
+      revisionId,
+      byteSize: put.byteSize,
+      contentHash: put.contentHash
+    })
+  } else {
+    await recordRevision(c.env, {
+      docId: id,
+      revisionId,
+      authorId: userId,
+      r2Key: put.key,
+      byteSize: put.byteSize,
+      contentHash: put.contentHash,
+      kind: decision.kind
+    })
+    // Retention: a new row may push the autosave count over the cap.
+    // Prune the oldest autosaves (D1) now; drop their R2 bodies after the
+    // response (best-effort — orphaned objects are harmless).
+    const prunedKeys = await pruneAutosaveRevisions(c.env, id, MAX_RETAINED_AUTOSAVES)
+    if (prunedKeys.length > 0) {
+      c.executionCtx.waitUntil(
+        deleteRevisionObjects(c.env, prunedKeys).catch((err) =>
+          console.error('autosave prune R2 cleanup failed', err)
+        )
+      )
+    }
+  }
   c.executionCtx.waitUntil(
     c.env.DOC_REINDEX_QUEUE.send({ docId: id, revisionId }).catch((err) =>
       console.error('reindex enqueue failed', err)
@@ -295,7 +346,8 @@ function toRevisionSummary(row: RevisionRow): RevisionSummary {
     authorId: row.author_id,
     createdAt: row.created_at,
     byteSize: row.byte_size,
-    contentHash: row.content_hash
+    contentHash: row.content_hash,
+    kind: row.kind
   }
 }
 

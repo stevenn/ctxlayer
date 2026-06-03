@@ -308,7 +308,10 @@ export function DocsEditor() {
       dirty = false
       inFlight = true
       try {
-        await putDocContent(id, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
+        await putDocContent(id, { blocks }, {
+          explicit: false,
+          signal: AbortSignal.timeout(SAVE_TIMEOUT_MS)
+        })
         // Autosave persisted. Surface it as "autosaved" WITHOUT clearing
         // the user-facing dirty state — the nav guard stays armed until an
         // explicit Save. Skip if the user already saved in the meantime.
@@ -374,7 +377,10 @@ export function DocsEditor() {
     const blocks = editorRef.current.getBlocks()
     setSaveState({ kind: 'saving' })
     try {
-      await putDocContent(id, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
+      await putDocContent(id, { blocks }, {
+        explicit: true,
+        signal: AbortSignal.timeout(SAVE_TIMEOUT_MS)
+      })
       baselineRef.current = blocks
       dirtyRef.current = false
       setDirty(false)

@@ -77,7 +77,10 @@ export function AdminSkillEditor() {
       const blocks = editorRef.current.getBlocks()
       setSaveState({ kind: 'saving' })
       try {
-        const res = await putSkillContent(skillId, { blocks }, AbortSignal.timeout(SAVE_TIMEOUT_MS))
+        const res = await putSkillContent(skillId, { blocks }, {
+          explicit,
+          signal: AbortSignal.timeout(SAVE_TIMEOUT_MS)
+        })
         if (explicit) {
           baselineRef.current = blocks
           dirtyRef.current = false
