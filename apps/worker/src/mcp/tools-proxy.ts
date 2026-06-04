@@ -35,8 +35,21 @@ import {
 } from '../db/queries/upstreams'
 import { listSkillsForUpstream, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import { listDocsForUpstream, type DocForUpstreamRow } from '../db/queries/doc-attachments'
+import { resolveUserScope } from '../db/queries/doc-tags'
+import { listUserRoleIds } from '../db/queries/roles'
+import {
+  accessKey,
+  indexToolAccess,
+  listToolAccessForUpstreams
+} from '../db/queries/tool-access'
 import { createUpstreamClient, type UpstreamClient } from '../upstream/upstream-client'
-import type { McpUpstreamEntry } from '@ctxlayer/shared'
+import {
+  isToolAllowed,
+  requiresFromRules,
+  type McpRestrictedTool,
+  type McpUpstreamEntry,
+  type UserPrincipals
+} from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
@@ -55,6 +68,12 @@ export type ListUpstreamsEntry = McpUpstreamEntry
 export class UpstreamProxyRegistry {
   /** upstream_id → live MCP Client */
   private clients = new Map<string, UpstreamClient>()
+  /**
+   * `accessKey(upstream_id, tool_name)` for every tool this session is
+   * allowed to call. Populated at `init()` from the per-tool ACL; also
+   * backstops the call handler (defense-in-depth).
+   */
+  private allowedToolKeys = new Set<string>()
 
   constructor(
     private readonly env: Env,
@@ -77,6 +96,20 @@ export class UpstreamProxyRegistry {
    */
   async init(server: McpServer): Promise<void> {
     const rows = await listUpstreamsVisibleToUser(this.env, this.userId)
+    if (rows.length === 0) return
+    // Resolve the caller's principals + the per-tool ACL for every
+    // visible upstream once, up front. A tool with no ACL rows inherits
+    // the upstream's visibility; a locked tool the caller doesn't match
+    // is HIDDEN here (never registered, so the agent never sees it). The
+    // allowed-key set also backstops the call handler.
+    const [principals, aclRows] = await Promise.all([
+      resolveUserPrincipals(this.env, this.userId),
+      listToolAccessForUpstreams(
+        this.env,
+        rows.map((r) => r.id)
+      )
+    ])
+    const acl = indexToolAccess(aclRows)
     for (const row of rows) {
       const conn = safeConnection(row)
       if (!conn) continue
@@ -102,6 +135,9 @@ export class UpstreamProxyRegistry {
       ])
       const pointers = perToolPointers(attSkills, attDocs)
       for (const t of tools) {
+        const key = accessKey(conn.id, t.tool_name)
+        if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
+        this.allowedToolKeys.add(key)
         this.registerTool(server, conn, t, pointers.get(t.tool_name) ?? [])
       }
     }
@@ -154,6 +190,39 @@ export class UpstreamProxyRegistry {
   static async accessibleSlugs(env: Env, userId: string): Promise<string[]> {
     const rows = await listUpstreamsVisibleToUser(env, userId)
     return rows.map((r) => r.slug)
+  }
+
+  /**
+   * Tools hidden from the caller by per-tool ACL, with what would unlock
+   * each. Powers `list_my_context.restrictedTools` — the discoverability
+   * signal that lets the agent say "that tool needs role X" instead of
+   * hitting a blank "tool not found". Scoped to upstreams the caller can
+   * already SEE (we never reveal a tool on an upstream they can't see).
+   * Reads the cached catalogue (no refresh) — best-effort advisory.
+   */
+  static async restrictedToolsForUser(env: Env, userId: string): Promise<McpRestrictedTool[]> {
+    const rows = await listUpstreamsVisibleToUser(env, userId)
+    if (rows.length === 0) return []
+    const [principals, aclRows] = await Promise.all([
+      resolveUserPrincipals(env, userId),
+      listToolAccessForUpstreams(
+        env,
+        rows.map((r) => r.id)
+      )
+    ])
+    const acl = indexToolAccess(aclRows)
+    const out: McpRestrictedTool[] = []
+    for (const row of rows) {
+      if (row.transport !== 'streamable_http' && row.transport !== 'sse') continue
+      const tools = await listCachedTools(env, row.id)
+      for (const t of tools) {
+        const rules = acl.get(accessKey(row.id, t.tool_name))
+        if (!rules || rules.length === 0) continue // open / inherit
+        if (isToolAllowed(rules, principals)) continue // caller can call it
+        out.push({ upstream: row.slug, tool: t.tool_name, requires: requiresFromRules(rules) })
+      }
+    }
+    return out
   }
 
   /**
@@ -265,6 +334,14 @@ export class UpstreamProxyRegistry {
     const upstreamToolName = row.tool_name
     const handler = async (args: unknown) => {
       if (!unmangleToolName(mangled)) return errText(`bad tool name: ${mangled}`)
+      // Defense-in-depth: only ACL-allowed tools are ever registered, so
+      // this can't fire on the normal path. It backstops a future
+      // refactor that registers more broadly. Generic code to the agent;
+      // the real reason is logged server-side per the no-leak rule.
+      if (!this.allowedToolKeys.has(accessKey(conn.id, upstreamToolName))) {
+        console.warn(`[tool-acl] blocked ${conn.slug}.${upstreamToolName} for user ${this.userId}`)
+        return errText('access_denied: tool restricted')
+      }
       const client = this.clients.get(conn.id)
       if (!client) return errText(`upstream ${conn.slug} not connected`)
       const t0 = Date.now()
@@ -362,6 +439,25 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
     return toUpstreamConnection(row)
   } catch {
     return null
+  }
+}
+
+/**
+ * The caller's group memberships (teams, products, roles), resolved in
+ * one pass for the per-tool ACL. Products are transitive via teams
+ * (resolveUserScope); roles are direct. Shared by `init()` (registration
+ * filter) and `restrictedToolsForUser()` (advisory) so both evaluate the
+ * exact same principal set.
+ */
+async function resolveUserPrincipals(env: Env, userId: string): Promise<UserPrincipals> {
+  const [scope, roleIds] = await Promise.all([
+    resolveUserScope(env, userId),
+    listUserRoleIds(env, userId)
+  ])
+  return {
+    teams: new Set(scope.teams),
+    products: new Set(scope.products),
+    roles: new Set(roleIds)
   }
 }
 

@@ -11,7 +11,7 @@
  */
 import { z } from 'zod'
 import { Idp, Role } from './api-types'
-import { TeamMemberRole, TeamRef } from './org-ia'
+import { RoleRef, TeamMemberRole, TeamRef } from './org-ia'
 
 // Team membership reference embedded in AdminUserRow.
 export const AdminUserTeam = TeamRef.extend({
@@ -29,6 +29,9 @@ export const AdminUserRow = z.object({
   createdAt: z.number().int(),
   lastSeenAt: z.number().int().nullable(),
   teams: z.array(AdminUserTeam),
+  // Cross-cutting org roles the user carries (engineering, qa, …).
+  // Inline so the admin table doesn't N+1 per row, same as `teams`.
+  roles: z.array(RoleRef),
   // Tally of stored upstream credentials. Drives the "revoke creds"
   // button visibility — no point showing it when there's nothing to
   // revoke.

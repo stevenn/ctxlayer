@@ -11,6 +11,7 @@ import {
   AdminGitSources,
   AdminUsers,
   AdminTeams,
+  AdminRoles,
   AdminProducts,
   AdminUsage,
   AdminAudit,
@@ -43,6 +44,7 @@ export function appRoutes() {
         <Route path="admin/git-sources" element={<AdminGitSources />} />
         <Route path="admin/users" element={<AdminUsers />} />
         <Route path="admin/teams" element={<AdminTeams />} />
+        <Route path="admin/roles" element={<AdminRoles />} />
         <Route path="admin/products" element={<AdminProducts />} />
         <Route path="admin/usage" element={<AdminUsage />} />
         <Route path="admin/audit" element={<AdminAudit />} />

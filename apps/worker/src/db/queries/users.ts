@@ -4,7 +4,7 @@
  */
 
 import type { Env } from '../../env'
-import type { AdminUserRow, AdminUserTeam, Idp, Role } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef } from '@ctxlayer/shared'
 import { audit } from '../../audit/log'
 
 export interface UserRow {
@@ -128,7 +128,7 @@ export async function listUserRefs(
  * separate aggregate query — small enough to be a second roundtrip.
  */
 export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
-  const [usersRes, teamsRes, credsRes] = await Promise.all([
+  const [usersRes, teamsRes, rolesRes, credsRes] = await Promise.all([
     env.DB.prepare(
       `SELECT id, email, name, avatar_url, idp, role, created_at, last_seen_at
        FROM users ORDER BY LOWER(email)`
@@ -156,6 +156,18 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
       team_display_name: string
       team_description: string | null
     }>(),
+    env.DB.prepare(
+      `SELECT ur.user_id, r.id AS role_id, r.slug AS role_slug,
+              r.display_name AS role_display_name, r.description AS role_description
+       FROM user_roles ur
+       JOIN roles r ON r.id = ur.role_id`
+    ).all<{
+      user_id: string
+      role_id: string
+      role_slug: string
+      role_display_name: string
+      role_description: string | null
+    }>(),
     env.DB.prepare(`SELECT user_id, COUNT(*) AS n FROM user_credentials GROUP BY user_id`).all<{
       user_id: string
       n: number
@@ -174,6 +186,17 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
     })
     teamsByUser.set(r.user_id, list)
   }
+  const rolesByUser = new Map<string, RoleRef[]>()
+  for (const r of rolesRes.results ?? []) {
+    const list = rolesByUser.get(r.user_id) ?? []
+    list.push({
+      id: r.role_id,
+      slug: r.role_slug,
+      displayName: r.role_display_name,
+      description: r.role_description
+    })
+    rolesByUser.set(r.user_id, list)
+  }
   const credsByUser = new Map<string, number>()
   for (const r of credsRes.results ?? []) credsByUser.set(r.user_id, r.n)
 
@@ -187,6 +210,7 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
     createdAt: u.created_at,
     lastSeenAt: u.last_seen_at,
     teams: teamsByUser.get(u.id) ?? [],
+    roles: rolesByUser.get(u.id) ?? [],
     credentialCount: credsByUser.get(u.id) ?? 0
   }))
 }

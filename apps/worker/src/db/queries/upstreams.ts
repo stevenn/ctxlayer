@@ -190,7 +190,7 @@ export async function deleteUpstream(env: Env, id: string): Promise<void> {
 
 interface VisibilityRow {
   upstream_id: string
-  scope_kind: 'everyone' | 'team' | 'product'
+  scope_kind: 'everyone' | 'team' | 'product' | 'role'
   scope_id: string
 }
 
@@ -254,6 +254,9 @@ export async function listUpstreamsVisibleToUser(
        SELECT DISTINCT tp.product_id
        FROM team_products tp
        JOIN user_teams ut ON ut.team_id = tp.team_id
+     ),
+     user_roles_cte AS (
+       SELECT role_id FROM user_roles WHERE user_id = ?1
      )
      SELECT DISTINCT u.id, u.slug, u.display_name, u.transport, u.url,
                      u.auth_strategy, u.auth_config, u.enabled,
@@ -266,6 +269,7 @@ export async function listUpstreamsVisibleToUser(
          v.scope_kind = 'everyone'
          OR (v.scope_kind = 'team'    AND v.scope_id IN (SELECT team_id FROM user_teams))
          OR (v.scope_kind = 'product' AND v.scope_id IN (SELECT product_id FROM user_products))
+         OR (v.scope_kind = 'role'    AND v.scope_id IN (SELECT role_id FROM user_roles_cte))
        )
      ORDER BY u.display_name`
   )

@@ -13,8 +13,9 @@ import { foldersRoute } from './api/folders'
 import { searchRoute } from './api/search'
 import { gitDocsRoute, gitSourcesUserRoute } from './api/git'
 import { usersRoute } from './api/users'
-import { teamsRoute, productsRoute } from './api/teams'
+import { teamsRoute, productsRoute, rolesRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
+import { adminRolesRoute } from './api/admin-roles'
 import { adminProductsRoute, adminTeamProductsRoute } from './api/admin-products'
 import { adminAuditRoute } from './api/admin-audit'
 import { adminOAuthClientsRoute } from './api/admin-oauth-clients'
@@ -57,6 +58,7 @@ app.route('/api/auth', authRoute)
 app.route('/api/users', usersRoute)
 app.route('/api/teams', teamsRoute)
 app.route('/api/products', productsRoute)
+app.route('/api/roles', rolesRoute)
 // Docs CRUD, per-doc ACL, and tags share the same /api/docs prefix;
 // the sub-routers each match disjoint subpaths so mount order does
 // not matter.
@@ -83,6 +85,7 @@ app.route('/api/doc-attachments', docAttachmentsRoute)
 // Admin REST. All inner routes gate on requireAdmin so non-admins
 // hitting these endpoints get 403, not 401.
 app.route('/api/admin/teams', adminTeamsRoute)
+app.route('/api/admin/roles', adminRolesRoute)
 app.route('/api/admin/products', adminProductsRoute)
 app.route('/api/admin/team-products', adminTeamProductsRoute)
 app.route('/api/admin/upstreams', adminUpstreamsRoute)

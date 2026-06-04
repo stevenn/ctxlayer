@@ -37,6 +37,13 @@ import {
   UpdateUserRoleRequest,
   PasteBearerRequest,
   ProductRef,
+  RoleRef,
+  AdminRoleRow,
+  CreateRoleRequest,
+  UpdateRoleRequest,
+  SetUserRolesRequest,
+  ReplaceToolAccessRequest,
+  UpstreamToolAccessResponse,
   RefreshToolsResponse,
   ReplaceVisibilityRequest,
   UpdateSkillRequest,
@@ -109,6 +116,12 @@ import type {
   MeResponse as MeResponseT,
   PasteBearerRequest as PasteBearerRequestT,
   ProductRef as ProductRefT,
+  RoleRef as RoleRefT,
+  AdminRoleRow as AdminRoleRowT,
+  CreateRoleRequest as CreateRoleRequestT,
+  UpdateRoleRequest as UpdateRoleRequestT,
+  UpstreamToolAccessResponse as UpstreamToolAccessResponseT,
+  ToolAccessRule as ToolAccessRuleT,
   RevisionSummary as RevisionSummaryT,
   RestoreRequest as RestoreRequestT,
   SearchRequest as SearchRequestT,
@@ -519,6 +532,7 @@ export function putDocTags(id: string, tags: DocTagsT): Promise<void> {
 
 const TeamList = z.array(TeamRef)
 const ProductList = z.array(ProductRef)
+const RoleList = z.array(RoleRef)
 const TeamMemberList = z.array(TeamMemberRow)
 const TeamProductsList = z.array(TeamProductsAssignment)
 
@@ -528,6 +542,10 @@ export function fetchTeams(signal?: AbortSignal): Promise<TeamRefT[]> {
 
 export function fetchProducts(signal?: AbortSignal): Promise<ProductRefT[]> {
   return request('/api/products', (b) => ProductList.parse(b), { signal })
+}
+
+export function fetchRoles(signal?: AbortSignal): Promise<RoleRefT[]> {
+  return request('/api/roles', (b) => RoleList.parse(b), { signal })
 }
 
 // ----- admin teams --------------------------------------------------------
@@ -576,6 +594,39 @@ export function addTeamMember(teamId: string, body: AddTeamMemberRequestT): Prom
 export function removeTeamMember(teamId: string, userId: string): Promise<void> {
   const path = `/api/admin/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`
   return request(path, () => undefined, { method: 'DELETE' })
+}
+
+// ----- admin roles --------------------------------------------------------
+
+const AdminRoleList = z.array(AdminRoleRow)
+
+export function fetchAdminRoles(signal?: AbortSignal): Promise<AdminRoleRowT[]> {
+  return request('/api/admin/roles', (b) => AdminRoleList.parse(b), { signal })
+}
+
+export function adminCreateRole(input: CreateRoleRequestT): Promise<RoleRefT> {
+  return request('/api/admin/roles', (b) => RoleRef.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(CreateRoleRequest.parse(input))
+  })
+}
+
+export function adminPatchRole(id: string, patch: UpdateRoleRequestT): Promise<void> {
+  return request(`/api/admin/roles/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'PATCH',
+    body: JSON.stringify(UpdateRoleRequest.parse(patch))
+  })
+}
+
+export function adminDeleteRole(id: string): Promise<void> {
+  return request(`/api/admin/roles/${encodeURIComponent(id)}`, () => undefined, { method: 'DELETE' })
+}
+
+export function putUserRoles(userId: string, roleIds: string[]): Promise<void> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/roles`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(SetUserRolesRequest.parse({ roleIds }))
+  })
 }
 
 // ----- admin products + team↔product matrix ------------------------------
@@ -674,6 +725,28 @@ export function fetchAdminUpstreamTools(
     (b) => UpstreamToolsResponse.parse(b),
     { signal }
   )
+}
+
+export function fetchUpstreamToolAccess(
+  id: string,
+  signal?: AbortSignal
+): Promise<UpstreamToolAccessResponseT> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/tool-access`,
+    (b) => UpstreamToolAccessResponse.parse(b),
+    { signal }
+  )
+}
+
+export function putUpstreamToolAccess(
+  id: string,
+  toolName: string,
+  rules: ToolAccessRuleT[]
+): Promise<void> {
+  return request(`/api/admin/upstreams/${encodeURIComponent(id)}/tool-access`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(ReplaceToolAccessRequest.parse({ toolName, rules }))
+  })
 }
 
 export function adminPutSharedCredentials(id: string, body: PasteBearerRequestT): Promise<void> {

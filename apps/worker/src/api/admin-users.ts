@@ -14,7 +14,7 @@
  */
 
 import { Hono } from 'hono'
-import { UpdateUserRoleRequest } from '@ctxlayer/shared'
+import { SetUserRolesRequest, UpdateUserRoleRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
@@ -25,6 +25,7 @@ import {
   revokeAllUserCredentials,
   updateUserRole
 } from '../db/queries/users'
+import { setUserRoles } from '../db/queries/roles'
 import { audit } from '../audit/log'
 
 export const adminUsersRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -77,6 +78,33 @@ adminUsersRoute.patch('/:id', requireCsrf, async (c) => {
   return new Response(null, { status: 204 })
 })
 
+// Replace a user's entire org-role set. CSRF gated per-mutation (this
+// router doesn't apply requireCsrf router-wide). A bad role id fails the
+// FK insert inside the batch → 400.
+adminUsersRoute.put('/:id/roles', requireCsrf, async (c) => {
+  const targetId = c.req.param('id')
+  const actor = c.get('user')
+  const target = await findById(c.env, targetId)
+  if (!target) return c.json({ error: 'not_found' }, 404)
+  const parsed = SetUserRolesRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) {
+    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  }
+  try {
+    await setUserRoles(c.env, targetId, parsed.data.roleIds)
+  } catch (err) {
+    if (isForeignKeyViolation(err)) return c.json({ error: 'unknown_role' }, 400)
+    throw err
+  }
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'user.roles_set',
+    target: targetId,
+    meta: { roleIds: parsed.data.roleIds, targetEmail: target.email }
+  })
+  return new Response(null, { status: 204 })
+})
+
 adminUsersRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   const targetId = c.req.param('id')
   const actor = c.get('user')
@@ -92,3 +120,8 @@ adminUsersRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   })
   return c.json({ removed })
 })
+
+function isForeignKeyViolation(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err)
+  return /FOREIGN KEY constraint failed/i.test(msg)
+}
