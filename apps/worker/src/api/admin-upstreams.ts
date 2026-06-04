@@ -12,8 +12,11 @@ import { Hono } from 'hono'
 import {
   CreateUpstreamRequest,
   PasteBearerRequest,
+  ReplaceToolAccessRequest,
   ReplaceVisibilityRequest,
-  UpdateUpstreamRequest
+  UpdateUpstreamRequest,
+  type ToolAccessEntry,
+  type ToolAccessRule
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
@@ -38,6 +41,7 @@ import { seal } from '../crypto/aead'
 import { audit } from '../audit/log'
 import { listSkillsForUpstream } from '../db/queries/skill-attachments'
 import { listDocsForUpstream } from '../db/queries/doc-attachments'
+import { listToolAccessForUpstream, replaceToolAccessForTool } from '../db/queries/tool-access'
 import { groupAttachmentsForTools } from './upstreams-attachments'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -138,6 +142,52 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   }
   await replaceVisibility(c.env, id, parsed.data.rules)
+  return new Response(null, { status: 204 })
+})
+
+/**
+ * Per-tool ACL for one upstream. GET returns the current rule sets
+ * grouped by tool, each flagged `orphaned` when its tool_name is no
+ * longer in the cached catalogue (an upstream rename strands the rule —
+ * surfaced, never silently dropped, or the renamed tool re-opens). A
+ * tool absent from this list has no rules and inherits upstream
+ * visibility (open to anyone who can see the upstream).
+ */
+adminUpstreamsRoute.get('/:id/tool-access', async (c) => {
+  const id = c.req.param('id')
+  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const [rows, tools] = await Promise.all([
+    listToolAccessForUpstream(c.env, id),
+    listCachedTools(c.env, id)
+  ])
+  const live = new Set(tools.map((t) => t.tool_name))
+  const byTool = new Map<string, ToolAccessRule[]>()
+  for (const r of rows) {
+    const list = byTool.get(r.tool_name) ?? []
+    list.push({
+      principalKind: r.principal_kind,
+      principalId: r.principal_kind === 'everyone' ? null : r.principal_id
+    })
+    byTool.set(r.tool_name, list)
+  }
+  const entries: ToolAccessEntry[] = [...byTool.entries()].map(([toolName, rules]) => ({
+    toolName,
+    rules,
+    orphaned: !live.has(toolName)
+  }))
+  return c.json({ upstreamId: id, entries })
+})
+
+// Replace the ENTIRE rule set for one tool. Empty `rules` reverts the
+// tool to inherit (open).
+adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
+  const id = c.req.param('id')
+  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const parsed = ReplaceToolAccessRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) {
+    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  }
+  await replaceToolAccessForTool(c.env, id, parsed.data.toolName, parsed.data.rules)
   return new Response(null, { status: 204 })
 })
 

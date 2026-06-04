@@ -17,7 +17,8 @@ export const SLUG_PREFIX = {
   upstream: 'up',
   gitSource: 'repo',
   team: 'team',
-  product: 'prod'
+  product: 'prod',
+  role: 'role'
 } as const
 export type SlugEntity = keyof typeof SLUG_PREFIX
 
@@ -30,7 +31,8 @@ const SLUG_MAX: Record<SlugEntity, number> = {
   upstream: 24,
   gitSource: 96,
   team: 96,
-  product: 96
+  product: 96,
+  role: 96
 }
 
 /**

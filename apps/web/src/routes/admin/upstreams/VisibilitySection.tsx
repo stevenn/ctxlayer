@@ -1,18 +1,26 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Button, Checkbox, Group, Stack, Text } from '@mantine/core'
-import type { AdminUpstreamRow, ProductRef, TeamRef, VisibilityRulePayload } from '@ctxlayer/shared'
+import type {
+  AdminUpstreamRow,
+  ProductRef,
+  RoleRef,
+  TeamRef,
+  VisibilityRulePayload
+} from '@ctxlayer/shared'
 import { Section, SubSection } from './helpers'
 
 export function VisibilitySection({
   row,
   teams,
   products,
+  roles,
   busy,
   onSave
 }: {
   row: AdminUpstreamRow
   teams: TeamRef[] | null
   products: ProductRef[] | null
+  roles: RoleRef[] | null
   busy: boolean
   onSave: (rules: VisibilityRulePayload[]) => void
 }) {
@@ -25,23 +33,27 @@ export function VisibilitySection({
   const [everyone, setEveryone] = useState(initial.everyone)
   const [teamIds, setTeamIds] = useState(initial.teamIds)
   const [productIds, setProductIds] = useState(initial.productIds)
+  const [roleIds, setRoleIds] = useState(initial.roleIds)
 
   useEffect(() => {
     setEveryone(initial.everyone)
     setTeamIds(initial.teamIds)
     setProductIds(initial.productIds)
+    setRoleIds(initial.roleIds)
   }, [initial])
 
   const dirty =
     everyone !== initial.everyone ||
     !setsEqual(teamIds, initial.teamIds) ||
-    !setsEqual(productIds, initial.productIds)
+    !setsEqual(productIds, initial.productIds) ||
+    !setsEqual(roleIds, initial.roleIds)
 
   const save = () => {
     const rules: VisibilityRulePayload[] = []
     if (everyone) rules.push({ scopeKind: 'everyone', scopeId: null })
     for (const id of teamIds) rules.push({ scopeKind: 'team', scopeId: id })
     for (const id of productIds) rules.push({ scopeKind: 'product', scopeId: id })
+    for (const id of roleIds) rules.push({ scopeKind: 'role', scopeId: id })
     onSave(rules)
   }
 
@@ -110,6 +122,31 @@ export function VisibilitySection({
           )}
         </SubSection>
 
+        <SubSection title="Roles">
+          {!roles && (
+            <Text c="dimmed" fz="xs">
+              Loading…
+            </Text>
+          )}
+          {roles && roles.length === 0 && (
+            <Text c="dimmed" fz="xs">
+              No roles yet — create some on Admin · Roles.
+            </Text>
+          )}
+          {roles && roles.length > 0 && (
+            <Stack gap={4}>
+              {roles.map((r) => (
+                <Checkbox
+                  key={r.id}
+                  label={r.displayName}
+                  checked={roleIds.has(r.id)}
+                  onChange={(e) => setRoleIds(toggleId(roleIds, r.id, e.currentTarget.checked))}
+                />
+              ))}
+            </Stack>
+          )}
+        </SubSection>
+
         <Group justify="flex-end" gap="xs">
           <Button onClick={save} loading={busy} disabled={!dirty}>
             Save visibility
@@ -124,16 +161,19 @@ function deriveInitialVisibility(rules: VisibilityRulePayload[]): {
   everyone: boolean
   teamIds: Set<string>
   productIds: Set<string>
+  roleIds: Set<string>
 } {
   const teamIds = new Set<string>()
   const productIds = new Set<string>()
+  const roleIds = new Set<string>()
   let everyone = false
   for (const r of rules) {
     if (r.scopeKind === 'everyone') everyone = true
     else if (r.scopeKind === 'team' && r.scopeId) teamIds.add(r.scopeId)
     else if (r.scopeKind === 'product' && r.scopeId) productIds.add(r.scopeId)
+    else if (r.scopeKind === 'role' && r.scopeId) roleIds.add(r.scopeId)
   }
-  return { everyone, teamIds, productIds }
+  return { everyone, teamIds, productIds, roleIds }
 }
 
 function toggleId(current: Set<string>, id: string, on: boolean): Set<string> {

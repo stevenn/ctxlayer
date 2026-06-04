@@ -60,7 +60,7 @@ describe('prefixedSlug', () => {
 describe('SLUG_PREFIX', () => {
   it('covers every slug-bearing entity', () => {
     expect(Object.keys(SLUG_PREFIX).sort()).toEqual(
-      ['doc', 'gitSource', 'product', 'skill', 'team', 'upstream'].sort()
+      ['doc', 'gitSource', 'product', 'role', 'skill', 'team', 'upstream'].sort()
     )
   })
 })

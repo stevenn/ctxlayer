@@ -172,9 +172,10 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         rec('list_my_context', undefined, async () => {
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
-          const [scope, accessibleUpstreams] = await Promise.all([
+          const [scope, accessibleUpstreams, restrictedTools] = await Promise.all([
             resolveUserScope(this.env, userId),
-            UpstreamProxyRegistry.accessibleSlugs(this.env, userId)
+            UpstreamProxyRegistry.accessibleSlugs(this.env, userId),
+            UpstreamProxyRegistry.restrictedToolsForUser(this.env, userId)
           ])
           // Typed against the shared MCP contract so the serialised shape
           // can't drift from `McpMyContext`.
@@ -182,6 +183,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             teams: scope.teams,
             products: scope.products,
             accessibleUpstreams,
+            restrictedTools,
             defaultScope: scope
           }
           return {

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Drawer, Stack, Text } from '@mantine/core'
-import type { AdminUpstreamRow, ProductRef, TeamRef } from '@ctxlayer/shared'
+import type { AdminUpstreamRow, ProductRef, RoleRef, TeamRef } from '@ctxlayer/shared'
 import {
   adminDeleteSharedCredentials,
   adminDeleteUpstream,
@@ -11,6 +11,7 @@ import {
   deleteUpstreamCredentials,
   fetchAdminUpstream,
   fetchProducts,
+  fetchRoles,
   fetchTeams,
   putUpstreamCredentials
 } from '../../../lib/api'
@@ -19,6 +20,7 @@ import { explain } from './helpers'
 import { ConnectionSection } from './ConnectionSection'
 import { DetailsSection } from './DetailsSection'
 import { ToolsCacheSection } from './ToolsCacheSection'
+import { ToolAccessSection } from './ToolAccessSection'
 import { VisibilitySection } from './VisibilitySection'
 
 export function UpstreamDrawer({
@@ -36,6 +38,7 @@ export function UpstreamDrawer({
   const [row, setRow] = useState<AdminUpstreamRow | null>(null)
   const [teams, setTeams] = useState<TeamRef[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
+  const [roles, setRoles] = useState<RoleRef[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -49,11 +52,17 @@ export function UpstreamDrawer({
 
   useEffect(() => {
     const ctrl = new AbortController()
-    Promise.all([reload(ctrl.signal), fetchTeams(ctrl.signal), fetchProducts(ctrl.signal)]).then(
-      ([_, t, p]) => {
+    Promise.all([
+      reload(ctrl.signal),
+      fetchTeams(ctrl.signal),
+      fetchProducts(ctrl.signal),
+      fetchRoles(ctrl.signal)
+    ]).then(
+      ([_, t, p, r]) => {
         if (ctrl.signal.aborted) return
         setTeams(t)
         setProducts(p)
+        setRoles(r)
       },
       (err) => {
         if (!ctrl.signal.aborted) setError(explain(err))
@@ -127,6 +136,7 @@ export function UpstreamDrawer({
           row={row}
           teams={teams}
           products={products}
+          roles={roles}
           busy={busy}
           onSave={(rules) =>
             withBusy(async () => {
@@ -196,6 +206,13 @@ export function UpstreamDrawer({
               onChanged()
             }, 'Refresh tools')
           }
+        />
+
+        <ToolAccessSection
+          upstreamId={upstreamId}
+          teams={teams}
+          products={products}
+          roles={roles}
         />
       </Stack>
     </Drawer>

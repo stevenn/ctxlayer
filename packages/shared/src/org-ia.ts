@@ -20,6 +20,19 @@ export type ProductRef = z.infer<typeof ProductRef>
 export const TeamMemberRole = z.enum(['member', 'lead'])
 export type TeamMemberRole = z.infer<typeof TeamMemberRole>
 
+// Cross-cutting org role (engineering, qa, product, …). Orthogonal to
+// teams: a user belongs to a team AND carries one-or-more roles. NOTE
+// the deliberate name clash with the auth-level `Role` (user|admin) in
+// api-types and the within-team `TeamMemberRole` — these are three
+// different axes. DB-side this is the `roles` table.
+export const RoleRef = z.object({
+  id: z.string(),
+  slug: z.string(),
+  displayName: z.string(),
+  description: z.string().nullable().optional()
+})
+export type RoleRef = z.infer<typeof RoleRef>
+
 export const TeamMembership = TeamRef.extend({
   role: TeamMemberRole
 })
@@ -31,7 +44,9 @@ export type TeamMembership = z.infer<typeof TeamMembership>
 // was unused, so it was removed.
 
 // Visibility rules on an upstream. Additive: any rule grants access.
-export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product'])
+// 'role' (added with per-tool ACL) gates a whole upstream by org role,
+// the same way 'team' / 'product' do.
+export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'])
 export const VisibilityRule = z.object({
   scopeKind: VisibilityScopeKind,
   scopeId: z.string().nullable()
@@ -102,6 +117,43 @@ export const AdminTeamRow = TeamRef.extend({
   updatedAt: z.number()
 })
 export type AdminTeamRow = z.infer<typeof AdminTeamRow>
+
+// ----- Roles (mirror teams: same idp_group sync hook) --------------------
+export const CreateRoleRequest = z.object({
+  slug: prefixedSlug('role'),
+  displayName: z.string().min(1).max(200),
+  description: z.string().max(2000).nullish(),
+  idpGroup: z.string().max(200).nullish(),
+  managedByIdp: z.boolean().optional()
+})
+export type CreateRoleRequest = z.infer<typeof CreateRoleRequest>
+
+export const UpdateRoleRequest = z.object({
+  // Renamable; a new slug must carry the `role-` prefix. Same send-only-
+  // when-changed rule as teams keeps grandfathered roles editable.
+  slug: prefixedSlug('role').optional(),
+  displayName: z.string().min(1).max(200).optional(),
+  description: z.string().max(2000).nullish(),
+  idpGroup: z.string().max(200).nullish(),
+  managedByIdp: z.boolean().optional()
+})
+export type UpdateRoleRequest = z.infer<typeof UpdateRoleRequest>
+
+// Admin-enriched role row: RoleRef + IdP/group-sync prep + member tally.
+export const AdminRoleRow = RoleRef.extend({
+  idpGroup: z.string().nullable(),
+  managedByIdp: z.boolean(),
+  memberCount: z.number().int().min(0),
+  createdAt: z.number(),
+  updatedAt: z.number()
+})
+export type AdminRoleRow = z.infer<typeof AdminRoleRow>
+
+// Replace a user's entire role set in one PUT (mirrors team-products).
+export const SetUserRolesRequest = z.object({
+  roleIds: z.array(z.string())
+})
+export type SetUserRolesRequest = z.infer<typeof SetUserRolesRequest>
 
 export const CreateProductRequest = z.object({
   slug: prefixedSlug('product'),

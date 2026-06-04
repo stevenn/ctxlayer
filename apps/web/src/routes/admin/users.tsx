@@ -5,18 +5,21 @@ import {
   Button,
   Drawer,
   Group,
+  MultiSelect,
   Stack,
   Switch,
   Text,
   TextInput,
   Title
 } from '@mantine/core'
-import type { AdminUserRow, AdminUserTeam, Role } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Role, RoleRef } from '@ctxlayer/shared'
 import {
   type ApiError,
   adminPatchUserRole,
   adminRevokeUserCredentials,
-  fetchAdminUsers
+  fetchAdminUsers,
+  fetchRoles,
+  putUserRoles
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { useDialogs } from '../../lib/dialogs'
@@ -92,6 +95,7 @@ export function AdminUsers() {
               <th>IdP</th>
               <th>Role</th>
               <th>Teams</th>
+              <th>Roles</th>
               <th>Creds</th>
               <th>Last seen</th>
             </tr>
@@ -112,6 +116,9 @@ export function AdminUsers() {
                 </td>
                 <td className="text-muted">
                   {u.teams.length === 0 ? '—' : u.teams.map((t) => t.slug).join(', ')}
+                </td>
+                <td className="text-muted">
+                  {u.roles.length === 0 ? '—' : u.roles.map((r) => r.displayName).join(', ')}
                 </td>
                 <td className="text-muted">{u.credentialCount}</td>
                 <td className="text-muted">{relativeTime(u.lastSeenAt)}</td>
@@ -146,12 +153,28 @@ function UserDrawer({
   // Local switch state mirrors server until persisted (optimistic UI
   // would be nice but we want to surface the last-admin guard error).
   const [isAdmin, setIsAdmin] = useState(user.role === 'admin')
+  const [allRoles, setAllRoles] = useState<RoleRef[] | null>(null)
+  const [roleIds, setRoleIds] = useState<string[]>(user.roles.map((r) => r.id))
 
   useEffect(() => {
     setIsAdmin(user.role === 'admin')
+    setRoleIds(user.roles.map((r) => r.id))
     setError(null)
     setInfo(null)
   }, [user])
+
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchRoles(ctrl.signal).then(
+      (r) => {
+        if (!ctrl.signal.aborted) setAllRoles(r)
+      },
+      () => {
+        /* roles list is best-effort; the section just shows a loader */
+      }
+    )
+    return () => ctrl.abort()
+  }, [])
 
   async function withBusy(fn: () => Promise<void>, label: string) {
     setBusy(true)
@@ -182,6 +205,19 @@ function UserDrawer({
       },
       next ? 'Promote to admin' : 'Demote to user'
     )
+
+  const saveRoles = (next: string[]) =>
+    withBusy(async () => {
+      const prev = roleIds
+      setRoleIds(next)
+      try {
+        await putUserRoles(user.id, next)
+      } catch (err) {
+        setRoleIds(prev) // bounce back on failure
+        throw err
+      }
+      onChanged()
+    }, 'Update roles')
 
   const revokeCreds = () =>
     withBusy(async () => {
@@ -261,6 +297,30 @@ function UserDrawer({
               ))}
             </Stack>
           )}
+        </Section>
+
+        <Section title="Roles">
+          <Stack gap={6}>
+            <Text fz="xs" c="dimmed">
+              Cross-cutting org roles (engineering, qa, …). Gate upstreams + tools. Manage the set
+              on Admin · Roles.
+            </Text>
+            <MultiSelect
+              placeholder={allRoles ? 'Assign roles…' : 'Loading roles…'}
+              data={(allRoles ?? []).map((r) => ({ value: r.id, label: r.displayName }))}
+              value={roleIds}
+              onChange={saveRoles}
+              disabled={busy || !allRoles}
+              searchable
+              clearable
+              comboboxProps={{ withinPortal: true }}
+            />
+            {allRoles && allRoles.length === 0 && (
+              <Text fz="xs" c="dimmed">
+                No roles defined yet — create some on Admin · Roles.
+              </Text>
+            )}
+          </Stack>
         </Section>
 
         <Section title="Upstream credentials">
