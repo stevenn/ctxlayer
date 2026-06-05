@@ -13,7 +13,8 @@ import {
   CreateGitSourceRequest,
   GitSetCredentialRequest,
   ReplaceVisibilityRequest,
-  UpdateGitSourceRequest
+  UpdateGitSourceRequest,
+  isSameOrigin
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
@@ -59,6 +60,10 @@ adminGitSourcesRoute.post('/', async (c) => {
   if ((input.provider === 'github' || input.provider === 'azure') && !input.owner) {
     return c.json({ error: 'owner_required' }, 400)
   }
+  // Self-loop guard: base URL must not be this ctxlayer deployment.
+  if (input.baseUrl && isSameOrigin(input.baseUrl, c.env.PUBLIC_BASE_URL)) {
+    return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
   try {
     const row = await createGitSource(c.env, { ...input, createdBy: c.get('user').userId })
     const hydrated = await gitAdminRowFor(c.env, row.id, c.get('user').userId)
@@ -75,6 +80,9 @@ adminGitSourcesRoute.patch('/:id', async (c) => {
   if (!before) return c.json({ error: 'not_found' }, 404)
   const parsed = UpdateGitSourceRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (parsed.data.baseUrl && isSameOrigin(parsed.data.baseUrl, c.env.PUBLIC_BASE_URL)) {
+    return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
   await patchGitSource(c.env, id, parsed.data)
 
   // Product changed → re-tag every synced doc + reindex so search scope

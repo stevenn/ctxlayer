@@ -15,6 +15,7 @@ import {
   ReplaceToolAccessRequest,
   ReplaceVisibilityRequest,
   UpdateUpstreamRequest,
+  isSameOrigin,
   type ToolAccessEntry,
   type ToolAccessRule
 } from '@ctxlayer/shared'
@@ -68,6 +69,13 @@ adminUpstreamsRoute.post('/', async (c) => {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   }
   const input = parsed.data
+  // Self-loop guard: an upstream must not point back at this ctxlayer
+  // deployment (host+port match against PUBLIC_BASE_URL), or the proxy
+  // would call into itself. Enforced here, not in the shared schema,
+  // which can't see env.
+  if (isSameOrigin(input.url, c.env.PUBLIC_BASE_URL)) {
+    return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
   try {
     const row = await createUpstream(c.env, {
       slug: input.slug,
@@ -120,6 +128,9 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
   const parsed = UpdateUpstreamRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  }
+  if (parsed.data.url && isSameOrigin(parsed.data.url, c.env.PUBLIC_BASE_URL)) {
+    return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
   await patchUpstream(c.env, id, {
     ...parsed.data,

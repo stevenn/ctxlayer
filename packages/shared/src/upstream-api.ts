@@ -15,7 +15,7 @@ import { z } from 'zod'
 import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
 import { prefixedSlug } from './slug'
-import { isHttpsOrLoopback, isOwnWorkersHost } from './url-trust'
+import { isHttpsOrLoopback } from './url-trust'
 
 // Remote HTTP transports are the only dialable kinds; admin POST/PATCH
 // validate against this set. Matches `UpstreamTransport` from mcp-types.
@@ -41,17 +41,17 @@ const ReservedSlugs = new Set([
 
 /**
  * Outbound upstream URLs must be https in production (http allowed only
- * for loopback in dev), and must never point at one of our own Cloudflare
- * hosts — that would let the proxy loop back into itself. Both rules live
- * in `url-trust.ts`, shared with the git-source validator so they can't
- * drift. Private-range egress is additionally blocked at the fetch layer
- * by the runtime's `global_fetch_strictly_public` flag (set in wrangler.toml).
+ * for loopback in dev). The self-loop guard — rejecting ctxlayer's OWN
+ * deployment host so the proxy can't call back into itself — is enforced
+ * SERVER-SIDE in the admin handler (it needs `PUBLIC_BASE_URL`, which this
+ * env-less shared schema can't see; see `isSameOrigin` in `url-trust.ts`).
+ * Private-range egress is additionally blocked at the fetch layer by the
+ * runtime's `global_fetch_strictly_public` flag (set in wrangler.toml).
  */
 export const UpstreamUrl = z
   .string()
   .url()
   .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
-  .refine((v) => !isOwnWorkersHost(v), 'must not be a workers.dev / cloudflareworkers.com host')
 
 export const CreateUpstreamRequest = z.object({
   // `up-` prefix enforced on new upstreams; it rides into every proxied

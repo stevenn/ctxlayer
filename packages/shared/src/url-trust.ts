@@ -29,13 +29,35 @@ export function hostOf(u: string): string {
   return host.toLowerCase()
 }
 
+/** Host + normalized port (scheme default filled in), sans userinfo. */
+function authorityOf(u: string): { host: string; port: string } {
+  const host = hostOf(u)
+  if (host === '') return { host: '', port: '' }
+  const m = u.match(/^([a-z]+):\/\/([^/?#]+)/i)
+  const scheme = (m?.[1] ?? '').toLowerCase()
+  let authority = m?.[2] ?? ''
+  const at = authority.lastIndexOf('@')
+  if (at >= 0) authority = authority.slice(at + 1)
+  const colon = authority.indexOf(':')
+  const explicitPort = colon >= 0 ? authority.slice(colon + 1) : ''
+  const port = explicitPort || (scheme === 'http' ? '80' : '443')
+  return { host, port }
+}
+
 /**
- * Our own Cloudflare hosts. Registering one as an upstream/git target would
- * let the proxy loop back into itself, so they're rejected at the boundary.
- * (The runtime's `global_fetch_strictly_public` flag blocks RFC 1918 +
- * link-local egress; this guard closes the self-loop hole it doesn't cover.)
+ * True when two URLs share the same origin authority (host + normalized
+ * port). The self-loop guard: an admin must not register ctxlayer's own
+ * deployment (`PUBLIC_BASE_URL`) as an upstream / git base, or the proxy
+ * loops back into itself. Enforced SERVER-SIDE in the admin REST handler
+ * because only the worker knows its own `PUBLIC_BASE_URL` — the shared
+ * Zod schema can't see env, which is why the old TLD-wide heuristic
+ * wrongly blocked every other Cloudflare-hosted MCP. Port-aware so a dev
+ * MCP on a different localhost port is NOT mistaken for the dev server.
+ * (The runtime's `global_fetch_strictly_public` flag covers RFC 1918 +
+ * link-local egress; this closes the self-loop hole it doesn't.)
  */
-export function isOwnWorkersHost(u: string): boolean {
-  const h = hostOf(u)
-  return h !== '' && (h.endsWith('workers.dev') || h.endsWith('cloudflareworkers.com'))
+export function isSameOrigin(a: string, b: string): boolean {
+  const x = authorityOf(a)
+  const y = authorityOf(b)
+  return x.host !== '' && x.host === y.host && x.port === y.port
 }

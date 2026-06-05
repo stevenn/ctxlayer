@@ -2,7 +2,7 @@ import { z } from 'zod'
 import { FolderPath } from './docs-types'
 import { VisibilityRulePayload } from './upstream-api'
 import { prefixedSlug } from './slug'
-import { isHttpsOrLoopback, isOwnWorkersHost } from './url-trust'
+import { isHttpsOrLoopback } from './url-trust'
 
 // ----- enums -------------------------------------------------------------
 
@@ -36,13 +36,13 @@ export const GitSourceSlug = z
 export const GitFolderRoot = z.union([z.literal(''), FolderPath])
 
 // Base URL trust boundary — same rules as UpstreamUrl, shared via
-// `url-trust.ts`: https only (http allowed only for loopback in dev),
-// and never our own workers hosts (avoids the proxy looping back).
+// `url-trust.ts`: https only (http allowed only for loopback in dev). The
+// self-loop guard (never ctxlayer's own host) is enforced server-side in
+// the admin handler via `isSameOrigin`, since it needs `PUBLIC_BASE_URL`.
 export const GitBaseUrl = z
   .string()
   .url()
   .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
-  .refine((v) => !isOwnWorkersHost(v), 'must not be a workers.dev / cloudflareworkers.com host')
 
 // ----- admin row + requests ----------------------------------------------
 

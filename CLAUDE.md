@@ -88,9 +88,14 @@ any of these on a new endpoint or proxy hop is a regression.
 - **Validate upstream URLs at the trust boundary.** Admin can register
   any URL on `/api/admin/upstreams`; the `global_fetch_strictly_public`
   compatibility flag (set in `wrangler.toml`) blocks RFC 1918 ranges at
-  the runtime, but defensive checks (https-only, hostname not in
-  `cloudflareworkers.com`/`workers.dev` to avoid loops) belong in the
-  admin REST handler too.
+  the runtime. https-only lives in the shared Zod schema (`UpstreamUrl`
+  / `GitBaseUrl`). The **self-loop guard** — the URL must not be this
+  deployment's own origin — lives in the admin REST handler via
+  `isSameOrigin(url, env.PUBLIC_BASE_URL)` (host + normalized port),
+  because the env-less shared schema can't see `PUBLIC_BASE_URL`. **Do
+  NOT re-introduce a blanket `workers.dev`/`cloudflareworkers.com` TLD
+  reject** — it wrongly blocked every legitimate Cloudflare-hosted
+  upstream MCP (ctxlayer itself is one). See `url-trust.ts`.
 - **Clear the IdP state cookie on every completion path.**
   `idp/complete-mcp.ts` and the IdP `/callback` success branches both
   set `clearStateCookie()`. Any new completion path (additional IdP,
