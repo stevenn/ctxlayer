@@ -214,6 +214,16 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
+    // TEMP diagnostic — metadata only, NO token values (per the
+    // no-token-logging rule). Tells us whether this upstream issues a
+    // refresh_token + expiry, i.e. whether auto-refresh can work at all.
+    // Fires on both the initial code-exchange and any refresh. Remove
+    // once the user_oauth refresh fix lands.
+    console.log(
+      `[oauth] ${this.upstream.slug} saveTokens: has_refresh=${!!tokens.refresh_token} expires_in=${
+        tokens.expires_in ?? 'absent'
+      }`
+    )
     const now = Math.floor(Date.now() / 1000)
     const stored: StoredOAuthTokens = {
       access_token: tokens.access_token,
