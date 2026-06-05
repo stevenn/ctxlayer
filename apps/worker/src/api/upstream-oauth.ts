@@ -106,37 +106,44 @@ async function runStart(
   c: StartCtx,
   upstream: UpstreamServerRow,
   userId: string,
-  returnTo: OAuthReturnTarget
+  returnTo: OAuthReturnTarget,
+  // When true (the normal entry), an AUTHORIZED token that turns out to be
+  // dead at the upstream's MCP layer triggers a wipe + a forced interactive
+  // re-auth. The recursive call passes false to stop after one heal.
+  selfHeal = true
 ) {
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, undefined, returnTo)
   const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
   if (result === 'AUTHORIZED') {
-    // Tokens already on file and valid — no new dance needed. Still
-    // fire a catalogue refresh so the admin "Reconnect" button doubles
-    // as a force-refresh and the SPA reflects the latest tool set on
-    // return. Best-effort.
+    // Tokens on file and accepted by auth() (possibly just refreshed).
+    // Reconnect doubles as a force-refresh, so re-warm the catalogue — but
+    // SYNCHRONOUSLY, because a user_oauth token can satisfy auth() (even a
+    // fresh refresh) yet still be rejected by the upstream at the MCP layer
+    // with "session expired / re-authenticate" (Linear's -32002). auth()
+    // never sees that rejection, so the reconnect silently loops on the
+    // refresh path and never prompts a real login. If the probe shows the
+    // token is dead, wipe it and fall through to a full interactive
+    // authorization (once) — that's the only thing that re-establishes the
+    // upstream session.
     const access = (await provider.tokens())?.access_token ?? null
-    c.executionCtx.waitUntil(
-      refreshCatalogueByUpstreamId(c.env, upstream.id, access).then(
-        (r) => {
-          if (r.ok) {
-            console.log(
-              `[catalogue] ${r.slug}: re-warmed ${r.toolsCount} tools after AUTHORIZED reconnect`
-            )
-          } else {
-            console.warn(
-              `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh failed (${r.reason})${
-                r.message ? `: ${r.message}` : ''
-              }`
-            )
-          }
-        },
-        (err) => {
-          const msg = err instanceof Error ? err.message : String(err)
-          console.error(`[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh threw: ${msg}`)
-        }
+    const probe = await refreshCatalogueByUpstreamId(c.env, upstream.id, access)
+    if (probe.ok) {
+      console.log(
+        `[catalogue] ${probe.slug}: re-warmed ${probe.toolsCount} tools after AUTHORIZED reconnect`
       )
-    )
+    } else if (selfHeal && isReauthSignal(probe.message)) {
+      console.warn(
+        `[oauth] ${upstream.slug}: token accepted by auth() but rejected at MCP layer (${probe.reason}); wiping creds + forcing interactive re-auth`
+      )
+      await deleteUserCredential(c.env, userId, upstream.id)
+      return runStart(c, upstream, userId, returnTo, false)
+    } else {
+      console.warn(
+        `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh failed (${probe.reason})${
+          probe.message ? `: ${probe.message}` : ''
+        }`
+      )
+    }
     return c.redirect(
       `${spaReturnUrl(c.env, returnTo)}?oauth_connected=${encodeURIComponent(upstream.slug)}`,
       302
@@ -241,4 +248,17 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
 
 function errMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err)
+}
+
+/**
+ * Does an upstream catalogue-refresh error message signal that the token
+ * was rejected for AUTH reasons (so a wipe + re-auth is warranted) vs a
+ * transient network/5xx (where wiping creds would be wrong)? Narrow on
+ * purpose — we delete stored creds on a match. Linear surfaces a JSON-RPC
+ * -32002 "Session expired. Please re-authenticate." at the MCP layer; the
+ * generic auth phrases cover other upstreams.
+ */
+export function isReauthSignal(msg: string | undefined | null): boolean {
+  if (!msg) return false
+  return /(-32002|session expired|re-?authenticate|invalid[_ ]token|unauthorized|\b401\b)/i.test(msg)
 }
