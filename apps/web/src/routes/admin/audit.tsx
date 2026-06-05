@@ -298,6 +298,14 @@ function colorForPrefix(prefix: string): string {
       return 'cyan'
     case 'upstream':
       return 'orange'
+    case 'git_source':
+      return 'lime'
+    case 'team':
+      return 'teal'
+    case 'product':
+      return 'grape'
+    case 'role':
+      return 'indigo'
     case 'credential':
       return 'red'
     default:

@@ -9,6 +9,7 @@ import { CreateProductRequest, TeamProductsPayload, UpdateProductRequest } from 
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { audit } from '../audit/log'
 import {
   createProduct,
   deleteProduct,
@@ -31,6 +32,12 @@ adminProductsRoute.post('/', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     const row = await createProduct(c.env, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'product.create',
+      target: row.id,
+      meta: { slug: parsed.data.slug }
+    })
     return c.json(toProductRef(row), 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -45,6 +52,12 @@ adminProductsRoute.patch('/:id', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     await patchProduct(c.env, id, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'product.update',
+      target: id,
+      meta: { fields: Object.keys(parsed.data) }
+    })
     return new Response(null, { status: 204 })
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -54,7 +67,16 @@ adminProductsRoute.patch('/:id', async (c) => {
 
 adminProductsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
+  const row = await getProductById(c.env, id)
   await deleteProduct(c.env, id)
+  if (row) {
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'product.delete',
+      target: id,
+      meta: { slug: row.slug }
+    })
+  }
   return new Response(null, { status: 204 })
 })
 
@@ -73,6 +95,12 @@ adminTeamProductsRoute.put('/', async (c) => {
   const parsed = TeamProductsPayload.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   await replaceTeamProducts(c.env, parsed.data.rules)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'product.team_links_set',
+    target: null,
+    meta: { rules: parsed.data.rules.length }
+  })
   return new Response(null, { status: 204 })
 })
 

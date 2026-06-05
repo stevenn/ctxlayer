@@ -115,6 +115,12 @@ adminUpstreamsRoute.post('/', async (c) => {
       )
     }
     const hydrated = await adminRowFor(c.env, row.id, c.get('user').userId)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'upstream.create',
+      target: row.id,
+      meta: { slug: row.slug }
+    })
     return c.json(hydrated, 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -136,11 +142,27 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
     ...parsed.data,
     authConfig: clampTimeouts(parsed.data.authConfig)
   })
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'upstream.update',
+    target: id,
+    meta: { fields: Object.keys(parsed.data) }
+  })
   return new Response(null, { status: 204 })
 })
 
 adminUpstreamsRoute.delete('/:id', async (c) => {
-  await deleteUpstream(c.env, c.req.param('id'))
+  const id = c.req.param('id')
+  const row = await getUpstreamById(c.env, id)
+  await deleteUpstream(c.env, id)
+  if (row) {
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'upstream.delete',
+      target: id,
+      meta: { slug: row.slug }
+    })
+  }
   return new Response(null, { status: 204 })
 })
 
@@ -153,6 +175,12 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   }
   await replaceVisibility(c.env, id, parsed.data.rules)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'upstream.visibility_set',
+    target: id,
+    meta: { rules: parsed.data.rules.length }
+  })
   return new Response(null, { status: 204 })
 })
 
@@ -199,6 +227,12 @@ adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   }
   await replaceToolAccessForTool(c.env, id, parsed.data.toolName, parsed.data.rules)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'upstream.tool_access_set',
+    target: id,
+    meta: { tool: parsed.data.toolName, rules: parsed.data.rules.length }
+  })
   return new Response(null, { status: 204 })
 })
 
