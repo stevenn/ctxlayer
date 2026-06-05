@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Checkbox, Group, Radio, Stack, Text } from '@mantine/core'
+import { Alert, Badge, Button, Checkbox, Group, Radio, SimpleGrid, Stack, Text } from '@mantine/core'
 import type { ProductRef, RoleRef, TeamRef, ToolAccessRule } from '@ctxlayer/shared'
 import { fetchAdminUpstreamTools, fetchUpstreamToolAccess, putUpstreamToolAccess } from '../../../lib/api'
 import { explain } from './helpers'
@@ -250,14 +250,15 @@ function ToolAccessRow({
           )}
           <Radio.Group value={mode} onChange={(v) => setMode(v as 'open' | 'restrict')}>
             <Group gap="md">
-              <Radio value="open" label="Open (inherit upstream)" />
-              <Radio value="restrict" label="Restrict to…" />
+              <Radio size="xs" value="open" label="Open (inherit upstream)" />
+              <Radio size="xs" value="restrict" label="Restrict to…" />
             </Group>
           </Radio.Group>
 
           {mode === 'restrict' && (
-            <Stack gap="sm" pl={4}>
+            <Stack gap="xs" pl={4}>
               <Checkbox
+                size="xs"
                 label="Everyone signed in (who can see this upstream)"
                 checked={everyone}
                 onChange={(e) => setEveryone(e.currentTarget.checked)}
@@ -328,16 +329,17 @@ function PrincipalGroup({
         </Text>
       )}
       {items && items.length > 0 && (
-        <Stack gap={4}>
+        <SimpleGrid cols={2} spacing={6} verticalSpacing={4}>
           {items.map((it) => (
             <Checkbox
+              size="xs"
               key={it.id}
               label={it.displayName}
               checked={selected.has(it.id)}
               onChange={(e) => onToggle(it.id, e.currentTarget.checked)}
             />
           ))}
-        </Stack>
+        </SimpleGrid>
       )}
     </SubSection>
   )
