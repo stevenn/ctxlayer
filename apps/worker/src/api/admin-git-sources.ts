@@ -66,6 +66,12 @@ adminGitSourcesRoute.post('/', async (c) => {
   }
   try {
     const row = await createGitSource(c.env, { ...input, createdBy: c.get('user').userId })
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'git_source.create',
+      target: row.id,
+      meta: { slug: row.slug }
+    })
     const hydrated = await gitAdminRowFor(c.env, row.id, c.get('user').userId)
     return c.json(hydrated, 201)
   } catch (err) {
@@ -84,6 +90,12 @@ adminGitSourcesRoute.patch('/:id', async (c) => {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
   await patchGitSource(c.env, id, parsed.data)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'git_source.update',
+    target: id,
+    meta: { fields: Object.keys(parsed.data) }
+  })
 
   // Product changed → re-tag every synced doc + reindex so search scope
   // reflects the new product. Done in the background; the admin gets 204
@@ -109,7 +121,17 @@ adminGitSourcesRoute.patch('/:id', async (c) => {
 })
 
 adminGitSourcesRoute.delete('/:id', async (c) => {
-  await deleteGitSource(c.env, c.req.param('id'))
+  const id = c.req.param('id')
+  const row = await getGitSourceById(c.env, id)
+  await deleteGitSource(c.env, id)
+  if (row) {
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'git_source.delete',
+      target: id,
+      meta: { slug: row.slug }
+    })
+  }
   return new Response(null, { status: 204 })
 })
 
@@ -119,6 +141,12 @@ adminGitSourcesRoute.put('/:id/visibility', async (c) => {
   const parsed = ReplaceVisibilityRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   await replaceGitSourceVisibility(c.env, id, parsed.data.rules)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'git_source.visibility_set',
+    target: id,
+    meta: { rules: parsed.data.rules.length }
+  })
   return new Response(null, { status: 204 })
 })
 

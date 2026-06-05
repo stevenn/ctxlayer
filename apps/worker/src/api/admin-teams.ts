@@ -10,6 +10,7 @@ import { AddTeamMemberRequest, CreateTeamRequest, UpdateTeamRequest } from '@ctx
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { audit } from '../audit/log'
 import {
   addTeamMember,
   createTeam,
@@ -36,6 +37,12 @@ adminTeamsRoute.post('/', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     const row = await createTeam(c.env, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'team.create',
+      target: row.id,
+      meta: { slug: row.slug }
+    })
     return c.json(toAdminTeamRow(row), 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -50,6 +57,12 @@ adminTeamsRoute.patch('/:id', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     await patchTeam(c.env, id, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'team.update',
+      target: id,
+      meta: { fields: Object.keys(parsed.data) }
+    })
     return new Response(null, { status: 204 })
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -59,7 +72,16 @@ adminTeamsRoute.patch('/:id', async (c) => {
 
 adminTeamsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
+  const row = await getTeamById(c.env, id)
   await deleteTeam(c.env, id)
+  if (row) {
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'team.delete',
+      target: id,
+      meta: { slug: row.slug }
+    })
+  }
   return new Response(null, { status: 204 })
 })
 
@@ -77,6 +99,12 @@ adminTeamsRoute.post('/:id/members', async (c) => {
   const parsed = AddTeamMemberRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   await addTeamMember(c.env, id, parsed.data.userId, parsed.data.role ?? 'member')
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'team.member_add',
+    target: id,
+    meta: { userId: parsed.data.userId, role: parsed.data.role ?? 'member' }
+  })
   return new Response(null, { status: 204 })
 })
 
@@ -84,6 +112,12 @@ adminTeamsRoute.delete('/:id/members/:userId', async (c) => {
   const id = c.req.param('id')
   const userId = c.req.param('userId')
   await removeTeamMember(c.env, id, userId)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'team.member_remove',
+    target: id,
+    meta: { userId }
+  })
   return new Response(null, { status: 204 })
 })
 

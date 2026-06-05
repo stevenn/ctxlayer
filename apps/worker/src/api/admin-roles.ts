@@ -11,6 +11,7 @@ import { CreateRoleRequest, UpdateRoleRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { audit } from '../audit/log'
 import {
   createRole,
   deleteRole,
@@ -31,6 +32,12 @@ adminRolesRoute.post('/', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     const row = await createRole(c.env, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'role.create',
+      target: row.id,
+      meta: { slug: parsed.data.slug }
+    })
     return c.json(toRoleRef(row), 201)
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -45,6 +52,12 @@ adminRolesRoute.patch('/:id', async (c) => {
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   try {
     await patchRole(c.env, id, parsed.data)
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'role.update',
+      target: id,
+      meta: { fields: Object.keys(parsed.data) }
+    })
     return new Response(null, { status: 204 })
   } catch (err) {
     if (isUniqueViolation(err)) return c.json({ error: 'slug_taken' }, 409)
@@ -53,7 +66,17 @@ adminRolesRoute.patch('/:id', async (c) => {
 })
 
 adminRolesRoute.delete('/:id', async (c) => {
-  await deleteRole(c.env, c.req.param('id'))
+  const id = c.req.param('id')
+  const row = await getRoleById(c.env, id)
+  await deleteRole(c.env, id)
+  if (row) {
+    await audit(c.env, {
+      actorId: c.get('user').userId,
+      action: 'role.delete',
+      target: id,
+      meta: { slug: row.slug }
+    })
+  }
   return new Response(null, { status: 204 })
 })
 
