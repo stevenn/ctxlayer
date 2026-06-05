@@ -24,12 +24,16 @@ export type SupportedTransport = z.infer<typeof SupportedTransport>
 
 // Slug rules for an upstream: matches MCP tool-name allowed alphabet
 // (`[a-zA-Z0-9_-]`) but stricter (lowercase + leading letter) so it
-// stays readable when used as the `${slug}__${tool}` prefix.
+// stays readable when used as the `${slug}__${tool}` prefix. Dashes are
+// allowed — the entity-prefix convention emits `up-<body>`, and the
+// read shape must accept what `prefixedSlug('upstream')` produces (a
+// dash-free regex here silently broke the admin list once the first
+// prefixed upstream was created).
 export const UpstreamSlug = z
   .string()
   .min(1)
   .max(24)
-  .regex(/^[a-z][a-z0-9_]*$/, 'lowercase letter, then letters/digits/underscores (≤24)')
+  .regex(/^[a-z][a-z0-9_-]*$/, 'lowercase letter, then letters/digits/dashes/underscores (≤24)')
 
 const ReservedSlugs = new Set([
   'list_upstreams',

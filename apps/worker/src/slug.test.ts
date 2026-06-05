@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { SLUG_PREFIX, prefixedSlug, slugifyBody, suggestSlug } from '@ctxlayer/shared'
+import { SLUG_PREFIX, UpstreamSlug, prefixedSlug, slugifyBody, suggestSlug } from '@ctxlayer/shared'
 
 describe('slugifyBody', () => {
   it('lowercases, dashes, strips diacritics, falls back to untitled', () => {
@@ -54,6 +54,21 @@ describe('prefixedSlug', () => {
   it('upstream prefix is dash-based and excludes the old underscore form', () => {
     expect(prefixedSlug('upstream').safeParse('up-notion').success).toBe(true)
     expect(prefixedSlug('upstream').safeParse('notion').success).toBe(false)
+  })
+})
+
+describe('UpstreamSlug (read shape) accepts created slugs', () => {
+  it('accepts the dash-bearing up- slugs the create shape produces', () => {
+    // Regression: the read regex forbade dashes, so any up-<body> upstream
+    // (the prefix convention) failed AdminUpstreamRow parse and broke the
+    // admin list with "unexpected response shape". Create-shape output MUST
+    // satisfy the read shape.
+    for (const s of ['up-notion', 'up-yuki-ia-mcp', suggestSlug('upstream', 'Yuki IA MCP')]) {
+      expect(prefixedSlug('upstream').safeParse(s).success).toBe(true)
+      expect(UpstreamSlug.safeParse(s).success).toBe(true)
+    }
+    // grandfathered (pre-prefix) slugs still validate on read
+    expect(UpstreamSlug.safeParse('driver').success).toBe(true)
   })
 })
 
