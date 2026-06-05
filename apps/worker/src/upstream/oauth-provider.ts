@@ -214,22 +214,29 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    // TEMP diagnostic — metadata only, NO token values (per the
-    // no-token-logging rule). Tells us whether this upstream issues a
-    // refresh_token + expiry, i.e. whether auto-refresh can work at all.
-    // Fires on both the initial code-exchange and any refresh. Remove
-    // once the user_oauth refresh fix lands.
-    console.log(
-      `[oauth] ${this.upstream.slug} saveTokens: has_refresh=${!!tokens.refresh_token} expires_in=${
-        tokens.expires_in ?? 'absent'
-      }`
-    )
     const now = Math.floor(Date.now() / 1000)
+    // Carry the prior refresh_token (+ scope) forward when a refresh
+    // response omits them. Providers commonly return ONLY a new
+    // access_token on refresh and keep the existing refresh_token valid;
+    // blindly overwriting with `undefined` DESTROYS our ability to refresh
+    // again, leaving the upstream permanently needing interactive re-auth.
+    // That was the Linear user_oauth death: a refresh that didn't re-issue
+    // a refresh_token wiped ours → next refresh impossible → -32002. Only
+    // read the prior creds when we actually need to backfill.
+    const prior = !tokens.refresh_token || !tokens.scope ? await this.tokens() : undefined
+    const merged = mergeRefreshableTokens(tokens, prior)
+    // Grant-level observability — metadata only, NO token values (per the
+    // no-token-logging rule). Low-volume (only on a token grant/refresh).
+    console.log(
+      `[oauth] ${this.upstream.slug} saveTokens: has_refresh=${!!tokens.refresh_token} ` +
+        `kept_prior_refresh=${!tokens.refresh_token && !!merged.refresh_token} ` +
+        `expires_in=${tokens.expires_in ?? 'absent'}`
+    )
     const stored: StoredOAuthTokens = {
       access_token: tokens.access_token,
       token_type: tokens.token_type,
-      refresh_token: tokens.refresh_token,
-      scope: tokens.scope,
+      refresh_token: merged.refresh_token,
+      scope: merged.scope,
       expires_at: tokens.expires_in ? now + tokens.expires_in : undefined
     }
     const sealed = await sealSecret(JSON.stringify(stored), this.env.ENCRYPTION_KEY)
@@ -274,6 +281,23 @@ export async function deleteVerifierState(env: Env, stateToken: string): Promise
 
 function verifierKey(state: string): string {
   return `outbound:verifier:${state}`
+}
+
+/**
+ * Carry the prior refresh_token + scope forward when a refresh response
+ * omits them (the access_token always comes from the new response). Keeps
+ * a non-rotating provider's refresh_token alive across refreshes, so a
+ * refresh that returns only a new access_token can't wipe our ability to
+ * refresh again. Pure — unit-tested in oauth-provider.test.ts.
+ */
+export function mergeRefreshableTokens(
+  incoming: OAuthTokens,
+  prior: OAuthTokens | undefined
+): { refresh_token?: string; scope?: string } {
+  return {
+    refresh_token: incoming.refresh_token ?? prior?.refresh_token,
+    scope: incoming.scope ?? prior?.scope
+  }
 }
 
 function parseAuthConfig(json: string): UpstreamAuthConfig {

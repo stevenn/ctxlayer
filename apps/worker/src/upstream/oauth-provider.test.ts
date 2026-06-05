@@ -8,7 +8,7 @@
  * mostly assert that the mock behaves the way we mocked it.
  */
 import { describe, expect, it } from 'vitest'
-import { UpstreamOAuthProvider } from './oauth-provider'
+import { UpstreamOAuthProvider, mergeRefreshableTokens } from './oauth-provider'
 import type { Env } from '../env'
 import type { UpstreamServerRow } from '../db/queries/upstreams'
 
@@ -217,5 +217,54 @@ describe('UpstreamOAuthProvider', () => {
     expect(provider.capturedRedirect).toBeNull()
     provider.redirectToAuthorization(new URL('https://upstream.example/authorize?x=1'))
     expect(provider.capturedRedirect?.toString()).toBe('https://upstream.example/authorize?x=1')
+  })
+
+  it('saveTokens keeps the stored refresh_token when a later refresh omits it', async () => {
+    const up = makeUpstream()
+    const env = makeEnv(up, makeKv().kv)
+    const provider = new UpstreamOAuthProvider(env, up.row, 'user-1')
+    // Initial grant: full tokens incl. refresh_token + scope.
+    await provider.saveTokens({
+      access_token: 'at1',
+      token_type: 'Bearer',
+      refresh_token: 'rt1',
+      scope: 'read write',
+      expires_in: 3600
+    })
+    // Refresh that returns a NEW access token but NO refresh_token (the
+    // provider keeps the old one valid). This must NOT wipe rt1.
+    await provider.saveTokens({
+      access_token: 'at2',
+      token_type: 'Bearer',
+      expires_in: 3600
+    })
+    const out = await provider.tokens()
+    expect(out?.access_token).toBe('at2') // new access token took effect
+    expect(out?.refresh_token).toBe('rt1') // refresh_token preserved
+    expect(out?.scope).toBe('read write') // scope preserved
+  })
+})
+
+describe('mergeRefreshableTokens', () => {
+  it('uses the incoming refresh_token when present (rotation)', () => {
+    const out = mergeRefreshableTokens(
+      { access_token: 'a', token_type: 'Bearer', refresh_token: 'NEW' },
+      { access_token: 'old', token_type: 'Bearer', refresh_token: 'OLD' }
+    )
+    expect(out.refresh_token).toBe('NEW')
+  })
+
+  it('preserves the prior refresh_token + scope when the refresh omits them', () => {
+    const out = mergeRefreshableTokens(
+      { access_token: 'a', token_type: 'Bearer' },
+      { access_token: 'old', token_type: 'Bearer', refresh_token: 'OLD', scope: 'read write' }
+    )
+    expect(out.refresh_token).toBe('OLD')
+    expect(out.scope).toBe('read write')
+  })
+
+  it('is undefined when neither side has a refresh_token', () => {
+    const out = mergeRefreshableTokens({ access_token: 'a', token_type: 'Bearer' }, undefined)
+    expect(out.refresh_token).toBeUndefined()
   })
 })
