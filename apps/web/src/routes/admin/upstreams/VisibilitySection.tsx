@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Button, Checkbox, Group, Stack, Text } from '@mantine/core'
+import { Button, Checkbox, Group, SimpleGrid, Stack, Text } from '@mantine/core'
 import type {
   AdminUpstreamRow,
   ProductRef,
@@ -82,7 +82,7 @@ export function VisibilitySection({
             </Text>
           )}
           {teams && teams.length > 0 && (
-            <Stack gap={4}>
+            <SimpleGrid cols={2} spacing={6} verticalSpacing={4}>
               {teams.map((t) => (
                 <Checkbox
                   key={t.id}
@@ -91,7 +91,7 @@ export function VisibilitySection({
                   onChange={(e) => setTeamIds(toggleId(teamIds, t.id, e.currentTarget.checked))}
                 />
               ))}
-            </Stack>
+            </SimpleGrid>
           )}
         </SubSection>
 
@@ -107,7 +107,7 @@ export function VisibilitySection({
             </Text>
           )}
           {products && products.length > 0 && (
-            <Stack gap={4}>
+            <SimpleGrid cols={2} spacing={6} verticalSpacing={4}>
               {products.map((p) => (
                 <Checkbox
                   key={p.id}
@@ -118,7 +118,7 @@ export function VisibilitySection({
                   }
                 />
               ))}
-            </Stack>
+            </SimpleGrid>
           )}
         </SubSection>
 
@@ -134,7 +134,7 @@ export function VisibilitySection({
             </Text>
           )}
           {roles && roles.length > 0 && (
-            <Stack gap={4}>
+            <SimpleGrid cols={2} spacing={6} verticalSpacing={4}>
               {roles.map((r) => (
                 <Checkbox
                   key={r.id}
@@ -143,7 +143,7 @@ export function VisibilitySection({
                   onChange={(e) => setRoleIds(toggleId(roleIds, r.id, e.currentTarget.checked))}
                 />
               ))}
-            </Stack>
+            </SimpleGrid>
           )}
         </SubSection>
 
