@@ -5,6 +5,10 @@ dist/
 .dev.vars
 .dev.vars.local
 .prod.vars
+# Per-environment rendered wrangler configs (e.g. wrangler.dev.toml), generated
+# at deploy time. The base `wrangler.toml` has no middle segment so it is NOT
+# matched and stays tracked.
+wrangler.*.toml
 *.log
 .DS_Store
 .env

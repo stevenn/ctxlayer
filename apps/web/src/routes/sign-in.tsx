@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { Alert, Button, Stack, Text, Title } from '@mantine/core'
+import { Alert, Button, Group, Stack, Text, Title } from '@mantine/core'
 import { fetchConfig } from '../lib/api'
 import type { KnownIdp } from '@ctxlayer/shared'
+import { BrandMark } from '../components/brand-mark'
 
 const PROVIDER_LABEL: Record<KnownIdp, string> = {
   google: 'Sign in with Google',
@@ -48,9 +49,12 @@ export function SignIn() {
       <div className="auth-card">
         <Stack gap="lg">
           <div>
-            <Title order={2} fz={22} fw={700} mb={4}>
-              ctxlayer
-            </Title>
+            <Group gap={8} mb={4} align="center">
+              <BrandMark size={26} />
+              <Title order={2} fz={22} fw={700}>
+                ctxlayer
+              </Title>
+            </Group>
             <Text c="dimmed" fz="sm">
               The agent context layer for your org.
             </Text>

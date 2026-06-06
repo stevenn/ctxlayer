@@ -4,8 +4,11 @@
  * gitignored `.prod.vars` so the committed wrangler.toml stays a clean public
  * template. Usage:
  *
- *   bun scripts/deploy.mjs            # wrangler deploy
- *   bun scripts/deploy.mjs --preview  # wrangler versions upload
+ *   bun scripts/deploy.mjs                         # wrangler deploy (base wrangler.toml)
+ *   bun scripts/deploy.mjs --preview               # wrangler versions upload
+ *   bun scripts/deploy.mjs --config wrangler.dev.toml
+ *                                                  # per-host deploy (multi-tenant; pass
+ *                                                  #   PUBLIC_BASE_URL=https://<host> in the env)
  *
  * `.prod.vars` holds NON-SECRET plaintext config only (deployment origin).
  * Real secrets (ENCRYPTION_KEY, IdP creds, …) go via `wrangler secret put`.
@@ -17,6 +20,10 @@ import { dirname, join } from 'node:path'
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..')
 const preview = process.argv.includes('--preview')
+// Optional per-host config (multi-tenant). When set, passed to wrangler as
+// `-c <path>` so the same GIT_SHA/BUILT_AT stamping covers every tenant.
+const configIdx = process.argv.indexOf('--config')
+const configPath = configIdx !== -1 ? process.argv[configIdx + 1] : null
 
 // Parse a `.prod.vars` (KEY=VALUE lines, `#` comments). Returns {} if absent.
 function loadProdVars() {
@@ -56,7 +63,10 @@ const vars = [
   ['BUILT_AT', builtAt]
 ]
 const varArgs = vars.flatMap(([k, v]) => ['--var', `${k}:${v}`])
-const wranglerArgs = preview ? ['versions', 'upload', ...varArgs] : ['deploy', ...varArgs]
+const configArgs = configPath ? ['-c', configPath] : []
+const wranglerArgs = preview
+  ? ['versions', 'upload', ...configArgs, ...varArgs]
+  : ['deploy', ...configArgs, ...varArgs]
 
 console.error(`[deploy] PUBLIC_BASE_URL=${publicBaseUrl}`)
 console.error(`[deploy] wrangler ${wranglerArgs.join(' ')}`)

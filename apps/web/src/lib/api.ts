@@ -17,6 +17,7 @@ import {
   FolderRenameRequest,
   FolderTreeResponse,
   HealthResponse,
+  VersionResponse,
   SetLockedRequest,
   SkillAttachmentRef,
   SkillContentSaveResult,
@@ -105,6 +106,7 @@ import type {
   FolderRenameRequest as FolderRenameRequestT,
   FolderTreeResponse as FolderTreeResponseT,
   HealthResponse as HealthResponseT,
+  VersionResponse as VersionResponseT,
   SetLockedRequest as SetLockedRequestT,
   SkillAttachmentRef as SkillAttachmentRefT,
   SkillContentSaveResult as SkillContentSaveResultT,
@@ -217,6 +219,12 @@ export function fetchHealth(signal?: AbortSignal): Promise<HealthResponseT> {
 
 export function fetchConfig(signal?: AbortSignal): Promise<ConfigResponseT> {
   return request('/api/config', (b) => ConfigResponse.parse(b), { signal })
+}
+
+// Build provenance for the footer version stamp. `gitSha`/`builtAt` are
+// injected at deploy time by scripts/deploy.mjs (empty in local dev).
+export function fetchVersion(signal?: AbortSignal): Promise<VersionResponseT> {
+  return request('/api/version', (b) => VersionResponse.parse(b), { signal })
 }
 
 export function signOut(): Promise<void> {

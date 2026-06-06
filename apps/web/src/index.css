@@ -28,6 +28,7 @@
 
   --danger: #f87171;
   --success: #34d399;
+  --brand: #f38020; /* ctxlayer orange — matches the marketing site logo */
 
   --sidebar-w: 220px;
   --header-h: 56px;
@@ -195,6 +196,22 @@ a:hover {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+/* Logo mark — keep brand orange even when the brand link hovers to accent
+   (explicit colour on the SVG element wins over the inherited currentColor). */
+.brand-mark {
+  color: var(--brand);
+  flex: none;
+}
+
+/* Build-provenance stamp under the user chip. */
+.app-version {
+  padding: 0 10px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.02em;
   color: var(--text-dim);
 }
 

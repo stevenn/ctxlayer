@@ -1,9 +1,10 @@
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { Button, Group, Stack, Text } from '@mantine/core'
-import { ApiError, ApiSchemaError, fetchMe, signOut } from '../lib/api'
-import type { MeResponse } from '@ctxlayer/shared'
+import { ApiError, ApiSchemaError, fetchMe, fetchVersion, signOut } from '../lib/api'
+import type { MeResponse, VersionResponse } from '@ctxlayer/shared'
 import { ThemeToggle } from './theme-toggle'
+import { BrandMark } from './brand-mark'
 
 type Status =
   | { kind: 'loading' }
@@ -130,7 +131,8 @@ export function Shell() {
     <div className="shell">
       <aside className="sidebar">
         <Link to="/app/search" className="sidebar-brand">
-          ctxlayer
+          <BrandMark size={20} />
+          <span>ctxlayer</span>
         </Link>
 
         {PRIMARY_NAV.map((item) => (
@@ -151,6 +153,7 @@ export function Shell() {
             <span className="user-chip-email">{me.email}</span>
             <span className="user-chip-role">{me.role}</span>
           </div>
+          <AppVersion />
         </div>
       </aside>
 
@@ -168,6 +171,35 @@ export function Shell() {
           <Outlet />
         </main>
       </div>
+    </div>
+  )
+}
+
+// Build-provenance stamp shown under the user chip. Reads /api/version
+// (injected at deploy time) so each environment/tenant advertises exactly
+// which commit it runs — we never auto-upgrade, so this is the truth signal.
+// Best-effort: a failed fetch or a local `bun run dev` (empty sha) shows
+// `local` and never blocks the shell.
+function AppVersion() {
+  const [v, setV] = useState<VersionResponse | null>(null)
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchVersion(ctrl.signal).then(
+      (res) => {
+        if (!ctrl.signal.aborted) setV(res)
+      },
+      () => {
+        /* version stamp is best-effort — ignore failures */
+      }
+    )
+    return () => ctrl.abort()
+  }, [])
+  const sha = v?.gitSha?.trim()
+  const date = v?.builtAt ? v.builtAt.slice(0, 10) : ''
+  const label = sha ? (date ? `${sha} · ${date}` : sha) : 'local'
+  return (
+    <div className="app-version" title={v?.builtAt || 'local build'}>
+      {label}
     </div>
   )
 }
