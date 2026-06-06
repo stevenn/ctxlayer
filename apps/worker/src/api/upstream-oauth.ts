@@ -44,7 +44,7 @@ import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 // dance — `return_to=admin` lands them on the admin upstreams page
 // instead of /upstreams, so admin onboarding flows don't context-switch.
 const RETURN_PATHS: Record<OAuthReturnTarget, string> = {
-  user: '/upstreams',
+  user: '/app/upstreams',
   admin: '/app/admin/upstreams'
 }
 
