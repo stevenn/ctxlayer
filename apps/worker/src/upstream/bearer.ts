@@ -28,6 +28,16 @@ import {
 } from '../db/queries/upstreams'
 import { UpstreamOAuthProvider } from './oauth-provider'
 
+// Refresh a user_oauth access token only when it's within this many
+// seconds of expiry. Going through the SDK's auth() on EVERY bearer
+// resolution eagerly refreshes — and thus ROTATES — the refresh token;
+// with single-use rotating refresh tokens, repeated session reconnects
+// churned the rotations until all upstreams' refresh tokens were
+// invalidated ("Invalid refresh token" / reuse-detection). Using a still-
+// fresh access token directly avoids that, so we refresh ~once per token
+// lifetime instead of once per session init.
+const OAUTH_REFRESH_BUFFER_S = 5 * 60
+
 export async function resolveUserUpstreamBearer(
   env: Env,
   row: UpstreamServerRow,
@@ -54,6 +64,18 @@ export async function resolveUserUpstreamBearer(
   if (conn.authStrategy === 'user_oauth') {
     const provider = new UpstreamOAuthProvider(env, row, userId)
     try {
+      // Fast path: a still-fresh access token is used as-is, WITHOUT
+      // invoking auth() — so we don't refresh (and rotate the refresh
+      // token) on every session init. Only when the token is near expiry
+      // (or its expiry is unknown) do we go through auth() to refresh.
+      const existing = await provider.tokens()
+      if (
+        existing?.access_token &&
+        existing.expires_in !== undefined &&
+        existing.expires_in > OAUTH_REFRESH_BUFFER_S
+      ) {
+        return existing.access_token
+      }
       const result = await mcpAuth(provider, { serverUrl: conn.url })
       if (result === 'AUTHORIZED') {
         return (await provider.tokens())?.access_token ?? null
