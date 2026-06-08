@@ -70,7 +70,7 @@ milestone-driven plan is retired — see `CLAUDE.md`).
 
 These steps are for **local development of this codebase**. End users of a
 deployed ctxlayer and operators standing it up don't need any of this; see
-[Deploying ctxlayer](#deploying-ctxlayer) below.
+[Deploying ctxlayer](#deploying-ctxlayer-to-production) below.
 
 ```bash
 brew install mkcert nss           # macOS contributors only; see docs/plan/G-conventions.md G11 for Linux/Windows

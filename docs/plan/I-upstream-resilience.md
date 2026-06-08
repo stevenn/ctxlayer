@@ -133,7 +133,7 @@ written for. Two independent levers fix this — one we own, one Driver owns.
 
 | Failure | Root cause | Primary owner | Lever |
 |---|---|---|---|
-| `gather_task_context` timeout | 150s inactivity cap is the real ceiling for a silent upstream; keepalive inert | **ctxlayer** (raise/scope the cap) → **Driver** (emit progress, then 300s cap governs) | [WI-1](#wi-1-per-upstream-timeout-overrides), [WI-2](#wi-2-driver-side-emit-progress), [WI-3](#wi-3-revisit-the-global-ceilings) |
+| `gather_task_context` timeout | 150s inactivity cap is the real ceiling for a silent upstream; keepalive inert | **ctxlayer** (raise/scope the cap) → **Driver** (emit progress, then 300s cap governs) | [WI-1](#wi-1-per-upstream-timeout-overrides), [WI-2](#wi-2-driver-side-emit-progress), [WI-3](#wi-3-revisit-the-global-ceilings-only-after-i52) |
 | `get_code_map` 1.4 MB | no response-size guard anywhere in the proxy | **ctxlayer** (cap/guard) → Driver (saner default page size) | [WI-4](#wi-4-response-size-guardrail) |
 
 ---

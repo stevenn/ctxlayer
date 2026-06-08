@@ -221,7 +221,7 @@ boot SQLite-backed in that mode.
 
 The full production install (resource provisioning, IdP setup, custom
 domain) lives in **[README.md → Deploying ctxlayer to
-production](../README.md#deploying-ctxlayer-to-production)**. The
+production](README.md#deploying-ctxlayer-to-production)**. The
 condensed dev-loop sequence is unchanged: `bun run bootstrap` →
 `bun run migrate:remote` → `wrangler secret put` for the IdP creds +
 `ENCRYPTION_KEY` + `SESSION_COOKIE_SECRET` + `ADMIN_EMAILS` → first
@@ -233,7 +233,7 @@ For local dev to keep working with the prod base URL committed to
 `wrangler.toml`, put `PUBLIC_BASE_URL=https://localhost:8787` in
 `.dev.vars` to override `[vars]`. The full production-install steps live
 in **[README.md → Deploying ctxlayer to
-production](../README.md#deploying-ctxlayer-to-production)**.
+production](README.md#deploying-ctxlayer-to-production)**.
 
 Local dev runs over HTTPS (mkcert; first `bun run dev` provisions
 `.dev-tls/`). The `__Host-ctx_session` cookie carries an HMAC-signed
