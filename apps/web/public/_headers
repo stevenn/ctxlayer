@@ -1,0 +1,35 @@
+# Security headers for the SPA, applied by Workers Assets.
+#
+# The SPA shell (and every `not_found_handling = "single-page-application"`
+# fallback path) is served directly by Workers Assets — those responses
+# never pass through the Hono worker, so headers can't be set in code.
+# A `_headers` file at the assets root is the supported mechanism; Vite
+# copies `apps/web/public/*` verbatim into `dist/`, so this lands at
+# `dist/_headers` and ships with every (incl. per-tenant) deploy.
+#
+# CSP is tuned to the actual bundle — do NOT loosen without re-checking:
+#   script-src 'self'        all JS is same-origin hashed chunks; no
+#                            inline/eval/wasm. Mantine <ColorSchemeScript>
+#                            is React-rendered inside #root, so it's a CSR
+#                            no-op (React-rendered <script> never executes).
+#   style-src  'unsafe-inline'  Mantine + BlockNote inject runtime <style>
+#                            tags and style="" attrs; a static file can't
+#                            carry a per-request nonce.
+#   img-src    data: blob: https:  data: favicon, paste/upload previews,
+#                            and external images embedded in docs.
+#   font-src   'self'        woff/woff2 are bundled same-origin.
+#   connect-src 'self' wss:  relative-path fetch is same-origin ('self');
+#                            the collab editor opens wss://<this-host>/collab.
+#                            'self' SHOULD cover same-origin wss per CSP3 but
+#                            Safari (+ older engines) don't honour that carve-
+#                            out and a blocked `new WebSocket()` THROWS — so
+#                            allow the wss: scheme. Can't pin the host: one
+#                            shared build serves every tenant. No script
+#                            injection vector (script-src 'self', no eval) so
+#                            a scheme-wide wss: is low-risk.
+#   media-src  https:        BlockNote video/audio blocks.
+/*
+  Content-Security-Policy: default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self'; connect-src 'self' wss:; media-src 'self' https: data: blob:; form-action 'self'; frame-src 'none'; upgrade-insecure-requests
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Frame-Options: DENY

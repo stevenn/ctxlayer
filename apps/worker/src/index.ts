@@ -44,6 +44,7 @@ import { pruneUsageEvents } from './db/queries/usage'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { listEnabledGitSources } from './db/queries/git-sources'
 import { isGitSyncDue } from './git/sync'
+import { withHsts } from './util/security-headers'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -145,7 +146,10 @@ const oauthProvider = new OAuthProvider<Env>(
 )
 
 const worker: ExportedHandler<Env> = {
-  fetch: (req, env, ctx) => oauthProvider.fetch(req, env, ctx),
+  // HSTS on every worker-served response (asset responses get it from
+  // dist/_headers — see util/security-headers.ts). Skipped on localhost so
+  // dev doesn't pin the browser's whole `localhost` to HTTPS.
+  fetch: async (req, env, ctx) => withHsts(req, await oauthProvider.fetch(req, env, ctx)),
   async queue(batch, env, ctx) {
     const queue = batch.queue as QueueName
     if (queue === 'ctxlayer-usage') return usageConsumer(batch, env, ctx)

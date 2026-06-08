@@ -13,7 +13,7 @@
  * `.prod.vars` holds NON-SECRET plaintext config only (deployment origin).
  * Real secrets (ENCRYPTION_KEY, IdP creds, …) go via `wrangler secret put`.
  */
-import { readFileSync, existsSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
@@ -67,6 +67,28 @@ const configArgs = configPath ? ['-c', configPath] : []
 const wranglerArgs = preview
   ? ['versions', 'upload', ...configArgs, ...varArgs]
   : ['deploy', ...configArgs, ...varArgs]
+
+// HSTS for the static-asset responses (the SPA shell + /assets/*, which
+// bypass the worker). We inject it here — at deploy/preview time — rather
+// than committing it into `apps/web/public/_headers`, because an HSTS
+// header served by `wrangler dev` over https://localhost would pin the
+// browser's whole `localhost` to HTTPS and break other local dev servers.
+// Real deploys (incl. `--preview`) are always HTTPS hosts. Idempotent so
+// the per-tenant loop in ops `release-all.sh` (one build, many deploys)
+// doesn't append duplicates. Matches the worker-side value in
+// apps/worker/src/util/security-headers.ts.
+function injectAssetHsts() {
+  const headersPath = join(repoRoot, 'apps/web/dist/_headers')
+  if (!existsSync(headersPath)) return
+  const current = readFileSync(headersPath, 'utf8')
+  if (/strict-transport-security/i.test(current)) return
+  // The file has a single `/*` rule (all paths); appending an indented
+  // header line at EOF attaches it to that rule.
+  const line = '  Strict-Transport-Security: max-age=31536000; includeSubDomains'
+  writeFileSync(headersPath, `${current.replace(/\s*$/, '')}\n${line}\n`)
+  console.error('[deploy] injected HSTS into apps/web/dist/_headers')
+}
+injectAssetHsts()
 
 console.error(`[deploy] PUBLIC_BASE_URL=${publicBaseUrl}`)
 console.error(`[deploy] wrangler ${wranglerArgs.join(' ')}`)
