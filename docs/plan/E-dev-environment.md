@@ -1,5 +1,15 @@
 # Dev environment and team experience
 
+> **Status (reference, not a checklist).** This was the original design
+> intent for the dev/team experience; parts shipped, parts didn't. The
+> authoritative contributor on-ramp is **[`CONTRIBUTING.md`](../../CONTRIBUTING.md)**
+> + the README [Quickstart](../../README.md#quickstart-contributors-hacking-on-ctxlayer);
+> trust those and the code over this doc. Specifically **not** built as
+> described below: a `bun run setup` wizard (copy `.dev.vars.example`
+> yourself), the `env:check` SessionStart step (the hook only runs
+> `bun install --frozen-lockfile`), and the GitHub Actions CI in E4 —
+> **there is no hosted CI**; run `bun run verify` yourself before a PR.
+
 The repo is built to be operated **primarily from cloud Claude sessions (including mobile)** with local dev as a fallback. Every workflow that a human would do via VS Code must also be doable by typing into a chat box.
 
 ### E1. Cloud-native session bootstrap
@@ -20,7 +30,7 @@ The repo is built to be operated **primarily from cloud Claude sessions (includi
 - `bun run dev` starts:
   - Vite dev server for the SPA on `:5173`.
   - `wrangler dev --persist-to .wrangler/state` for the Worker on `:8787` with **Miniflare** local emulation: D1 (sqlite file), KV (sqlite), R2 (filesystem), Queues (in-memory), Durable Objects.
-- `.dev.vars.example` checked in with placeholders; `.dev.vars` gitignored. `bun run setup` copies the example and prompts for the secrets you need (or accepts a `--non-interactive` flag for cloud sessions to use sensible test defaults).
+- `.dev.vars.example` checked in with placeholders; `.dev.vars` gitignored. Copy it (`cp .dev.vars.example .dev.vars`) and fill in the secrets — see the README's "Filling in `.dev.vars`" for which ones you actually need to sign in locally. (There is no `bun run setup` wizard; the predev hooks provision TLS + `apps/web/dist`.)
 
 ### E3. Test harness (cloud + local parity)
 
@@ -37,6 +47,11 @@ Special harnesses (planned, not all shipped):
 - `tests/fixtures/fake-upstream-mcp/` — a tiny in-process MCP server (Streamable HTTP) that the integration tests register as an upstream. Verifies proxy + namespacing + error surfacing end-to-end. 🚧 not yet built.
 
 ### E4. CI/CD
+
+> 🚧 **Not implemented.** There is no hosted CI today — no `.github/workflows`.
+> `bun run verify` is the gate and contributors run it locally before a PR;
+> deploys are manual (`bun run deploy` / `deploy:preview`). The design below
+> is kept as intent.
 
 - **GitHub Actions** workflows:
   - `pr.yml`: install → typecheck → lint → unit + integration tests → `wrangler versions deploy --preview` → post preview URL as PR comment.
@@ -88,7 +103,7 @@ Added by Section E:
 2. Run `/smoke` to confirm the preview deploy works.
 3. Read `CLAUDE.md` (5min).
 4. Run `bun run verify` locally OR in the cloud session.
-5. Pick a "good first issue" labelled task — every milestone backlog item is sized to fit one PR ≤ 400 LoC.
+5. Skim `CONTRIBUTING.md` for the change loop, pick something small, and keep the PR focused (the ~200 LoC module cap keeps changes reviewable).
 
 ---
 

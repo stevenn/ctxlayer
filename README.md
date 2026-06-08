@@ -15,8 +15,8 @@ Agent context layer — an MCP service on Cloudflare that:
   register its URL as a `streamable_http` upstream), centralising per-user
   credentials sealed at rest;
 - exposes a React + Vite SPA for self-onboarding, BlockNote + Yjs
-  collaborative markdown editing, admin upstream management, and (later)
-  usage analytics.
+  collaborative markdown editing, admin upstream management, and usage
+  analytics.
 
 ## Screenshots
 
@@ -32,11 +32,15 @@ Agent context layer — an MCP service on Cloudflare that:
   <em>Per-upstream config — transport, auth strategy, resilience caps, and team/product visibility</em>
 </p>
 
-The architecture & data-model reference is **[`docs/PLAN.md`](docs/PLAN.md)**
-(the milestone-driven plan that built ctxlayer is retired; PLAN.md is now a
-reference, not a roadmap). Briefing for AI agents working in this repo is
-**[`CLAUDE.md`](CLAUDE.md)** / **[`AGENTS.md`](AGENTS.md)**. Architectural
-conventions and gotchas live in `docs/plan/G-conventions.md`.
+New here? **[`CONTRIBUTING.md`](CONTRIBUTING.md)** is the human-contributor
+on-ramp (setup, the change loop, conventions); the
+[Quickstart](#quickstart-contributors-hacking-on-ctxlayer) below is the
+copy-pasteable version. The architecture & data-model reference is
+**[`docs/PLAN.md`](docs/PLAN.md)** (the milestone-driven plan that built
+ctxlayer is retired; PLAN.md is now a reference, not a roadmap). Briefing for
+AI agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
+**[`AGENTS.md`](AGENTS.md)**. Architectural conventions and gotchas live in
+`docs/plan/G-conventions.md`.
 
 > **Integration surfaces.** The supported, stable contract for external
 > clients is the **MCP** surface (`/mcp`, `/sse`) plus the OAuth provider.
@@ -75,7 +79,7 @@ cp .dev.vars.example .dev.vars    # then edit it — see "Filling in .dev.vars" 
 bun run migrate:local             # apply D1 migrations to the local (miniflare) DB
 bun run seed:local                # load fixture teams / products / upstreams / docs
 bun run dev                       # or split-terminals: dev:worker + dev:web (recommended)
-bun run verify                    # typecheck + unit + integration tests (all offline)
+bun run verify                    # typecheck + lint (Biome) + unit + integration tests (all offline)
 ```
 
 #### Filling in `.dev.vars`
@@ -443,6 +447,16 @@ A few rules the worker enforces that are operator-visible:
   the configured allowlist; acceptable for the UX win of telling a
   legitimate user *why* they were rejected. If your threat model
   needs that hidden, collapse to a generic `access_denied` server-side.
+- **The SPA ships hardened response headers.** A
+  `Content-Security-Policy` (tight `script-src 'self'`, no inline/eval),
+  plus `X-Frame-Options: DENY` / `frame-ancestors 'none'` (clickjacking)
+  and `nosniff`, live in `apps/web/public/_headers` — Workers Assets
+  serves the SPA shell directly, so these can't be set in worker code.
+  `Strict-Transport-Security` (HSTS) is **not** committed there; it's
+  injected into `dist/_headers` at deploy time by `scripts/deploy.mjs`,
+  so a localhost dev build never pins HSTS for `localhost`. Tune the CSP
+  in lockstep with the bundle — the file documents why each directive is
+  what it is.
 
 ## Useful scripts
 
@@ -453,8 +467,10 @@ A few rules the worker enforces that are operator-visible:
 | `bun run dev:web` | Vite dev only (`https://localhost:5173`) |
 | `bun run build` | Web (Vite) + worker (wrangler dry-run) |
 | `bun run typecheck` | TypeScript across all workspaces |
-| `bun run test` | Vitest unit tests across all workspaces |
-| `bun run verify` | typecheck + test + smoke |
+| `bun run lint` / `format` | Biome lint (read-only) / format-write across the repo |
+| `bun run test` / `test:int` | Vitest unit tests / worker integration tests (miniflare D1) |
+| `bun run verify` | typecheck + lint + test + test:int — the pre-PR gate, fully offline |
+| `bun run verify:full` | `verify` **plus** `smoke` (needs a running Worker or preview URL) |
 | `bun run smoke` | Hit `/api/health`, `/api/version`, `/api/config`, `/api/me`, `/.well-known/oauth-authorization-server`, `POST /mcp`, `/sign-in`. Pass `SMOKE_ME_OK=1` if your CI sends a session cookie. |
 | `bun run bootstrap` | Provision D1 / KV / R2 / Vectorize / queues and patch IDs into `wrangler.toml` |
 | `bun run migrate:local` / `migrate:remote` | Apply D1 migrations |

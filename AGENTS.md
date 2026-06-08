@@ -6,9 +6,9 @@ verifies over interactive flows.
 
 ## Golden path for any change
 
-1. `bun run verify` — typecheck + unit + integration tests, all offline.
-   `bun run verify:full` additionally runs the `smoke` suite, which needs a
-   running local Worker (`bun run dev:worker`) or a preview URL.
+1. `bun run verify` — typecheck + lint (Biome) + unit + integration tests,
+   all offline. `bun run verify:full` additionally runs the `smoke` suite,
+   which needs a running local Worker (`bun run dev:worker`) or a preview URL.
 2. Commit with a present-tense, "why" focused message.
 3. `git push -u origin <branch>` and open a PR with `gh pr create`.
 4. There is no hosted CI — run `bun run verify` yourself before pushing.
