@@ -128,6 +128,10 @@ export const AdminUpstreamRow = z.object({
   // false for non-shared_bearer upstreams. Drives the admin drawer
   // shared-bearer section.
   sharedCredentialConfigured: z.boolean(),
+  // True iff a static-OAuth client secret is sealed on this upstream. The
+  // secret itself is never returned; this flag drives the "secret set"
+  // placeholder in the OAuth-client form. False for DCR / public clients.
+  clientSecretConfigured: z.boolean().default(false),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

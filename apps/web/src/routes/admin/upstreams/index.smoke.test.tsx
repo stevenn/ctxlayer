@@ -28,6 +28,7 @@ const { upstreams } = vi.hoisted(() => {
       toolsCachedAt: 1_700_000_000,
       currentUserConnected: true,
       sharedCredentialConfigured: false,
+      clientSecretConfigured: false,
       createdAt: 1_700_000_000,
       updatedAt: 1_700_000_500
     }

@@ -40,9 +40,9 @@ export const AUTH_OPTIONS: {
   },
   {
     value: 'user_oauth',
-    label: 'User OAuth (DCR + PKCE)',
+    label: 'User OAuth (PKCE)',
     description:
-      'Each user authorises at the upstream. ctxlayer dynamically registers itself and transparently refreshes.',
+      'Each user authorises at the upstream; ctxlayer refreshes transparently. Auto-registers via DCR, or set a pre-registered client below for IdPs without DCR (e.g. Entra / Azure DevOps).',
     enabled: true
   }
 ]

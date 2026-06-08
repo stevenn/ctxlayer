@@ -25,6 +25,11 @@ const OauthAuthConfig = z
     scopes: z.array(z.string()).optional(),
     clientId: z.string().optional(),
     clientSecretCiphertext: z.string().optional(),
+    // Write-only input from the admin form. The admin handler SEALS this
+    // into `clientSecretCiphertext` and STRIPS it before persisting — it is
+    // never stored plaintext and never returned on read. Present in the
+    // schema only so the form's PATCH/POST body validates.
+    clientSecret: z.string().optional(),
     client_id: z.string().optional(),
     client_secret: z.string().optional(),
     client_info: z.record(z.string(), z.unknown()).optional()
@@ -57,3 +62,16 @@ export const UpstreamAuthConfig = z.object({
   maxResponseBytes: z.number().int().positive().optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>
+
+/**
+ * A `user_oauth` upstream runs in "pre-registered / static" mode — skip RFC
+ * 9728 discovery + RFC 7591 DCR and use admin-supplied endpoints — when it
+ * carries an explicit `clientId` + `authorizeUrl` + `tokenUrl`. This is the
+ * path for identity providers that don't support DCR (e.g. Microsoft Entra
+ * ID, which fronts the Azure DevOps MCP). Absent those, `user_oauth` stays in
+ * the default DCR mode driven by the MCP SDK's `auth()` orchestrator.
+ */
+export function isStaticOAuthConfig(cfg: UpstreamAuthConfig | undefined | null): boolean {
+  const o = cfg?.oauth
+  return Boolean(o?.clientId && o?.authorizeUrl && o?.tokenUrl)
+}

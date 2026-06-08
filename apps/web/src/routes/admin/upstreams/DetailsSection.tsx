@@ -7,6 +7,12 @@ import type {
   UpstreamAuthConfig
 } from '@ctxlayer/shared'
 import { AUTH_OPTIONS, Section, TRANSPORT_OPTIONS } from './helpers'
+import {
+  OAuthClientFields,
+  buildStaticOAuth,
+  oauthFieldsFromConfig,
+  type OAuthClientFieldValues
+} from './OAuthClientFields'
 
 // Advanced-field conversions (WI-1/WI-4). The drawer edits seconds / KB;
 // the wire format is ms / bytes. Blank / non-positive ⇒ undefined ⇒ the
@@ -47,6 +53,13 @@ export function DetailsSection({
   const [url, setUrl] = useState(row.url)
   const [authStrategy, setAuthStrategy] = useState<AuthStrategy>(row.authStrategy)
   const [enabled, setEnabled] = useState(row.enabled)
+  // Static (pre-registered) OAuth client — for IdPs that don't support DCR
+  // (e.g. Entra fronting Azure DevOps). The secret is write-only: the server
+  // seals it and never returns it, so it starts blank and
+  // `row.clientSecretConfigured` drives the "already set" placeholder.
+  const [oauthFields, setOauthFields] = useState<OAuthClientFieldValues>(
+    oauthFieldsFromConfig(row.authConfig.oauth)
+  )
   // Advanced (WI-1/WI-4) per-upstream overrides.
   const tmo = row.authConfig.timeouts
   const [callSec, setCallSec] = useState<number | ''>(msToSec(tmo?.callMs))
@@ -63,6 +76,7 @@ export function DetailsSection({
     setUrl(row.url)
     setAuthStrategy(row.authStrategy)
     setEnabled(row.enabled)
+    setOauthFields(oauthFieldsFromConfig(row.authConfig.oauth))
     const t = row.authConfig.timeouts
     setCallSec(msToSec(t?.callMs))
     setMaxCallSec(msToSec(t?.maxCallMs))
@@ -80,11 +94,19 @@ export function DetailsSection({
       timeouts.callMs !== undefined ||
       timeouts.maxCallMs !== undefined ||
       timeouts.listMs !== undefined
-    return {
+    const cfg: UpstreamAuthConfig = {
       ...row.authConfig,
       timeouts: hasTimeout ? timeouts : undefined,
       maxResponseBytes: kbToBytes(maxRespKb)
     }
+    if (authStrategy === 'user_oauth') {
+      // Emit an oauth block only when a static field was supplied; otherwise
+      // leave it untouched (DCR path). The server preserves the sealed secret
+      // when `clientSecret` is absent.
+      const oauth = buildStaticOAuth(oauthFields)
+      if (oauth) cfg.oauth = oauth
+    }
+    return cfg
   }
 
   return (
@@ -125,6 +147,13 @@ export function DetailsSection({
           allowDeselect={false}
           description={AUTH_OPTIONS.find((o) => o.value === authStrategy)?.description}
         />
+        {authStrategy === 'user_oauth' && (
+          <OAuthClientFields
+            values={oauthFields}
+            onChange={(patch) => setOauthFields((v) => ({ ...v, ...patch }))}
+            secretConfigured={row.clientSecretConfigured}
+          />
+        )}
         <Switch
           label="Enabled"
           checked={enabled}
