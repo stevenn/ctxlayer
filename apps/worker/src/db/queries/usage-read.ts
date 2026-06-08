@@ -84,7 +84,15 @@ export function rangeCutoff(range: UsageRange, offsetSec: number): number | null
 // Build the WHERE clause for a scope. `dayCol` is the (possibly
 // table-qualified) day column for this query; the day filter is omitted
 // entirely when `sinceDay` is null (the `all` range).
+// `dayCol` is interpolated into identifier position (SQL identifiers can't be
+// bound parameters). It is therefore constrained to the exact set the callers
+// pass — all hardcoded literals today. The guard turns any future
+// user-controlled value into a hard error instead of a SQL-injection vector,
+// and keeps the parameterized `?` binds the only path user data ever takes.
+const DAY_COLUMNS = new Set(['day', 'r.day', 'u.day'])
+
 function whereFor(scope: UsageScope, dayCol: string): { where: string; binds: unknown[] } {
+  if (!DAY_COLUMNS.has(dayCol)) throw new Error('whereFor: unrecognized day column')
   const where: string[] = []
   const binds: unknown[] = []
   if (scope.sinceDay != null) {
