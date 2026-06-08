@@ -8,3 +8,10 @@
 # Your deployment's public origin. Bakes into OAuth callback URLs + the MCP
 # base URL, so it must match the hostname your IdP apps are registered against.
 PUBLIC_BASE_URL=https://your-worker.workers.dev
+
+# GitHub sign-in allowlist (comma-separated logins). A personal-login allowlist,
+# so it's injected from here instead of committed to wrangler.toml [vars]. Leave
+# unset to keep the GitHub-users path disabled (ALLOWED_GITHUB_ORG and Google
+# still work). Do NOT `wrangler secret put` this — that collides with the empty
+# [vars] default (Cloudflare error 10053).
+# ALLOWED_GITHUB_USERS=alice,bob

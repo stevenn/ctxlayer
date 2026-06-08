@@ -358,9 +358,9 @@ routing side.
 Finalise the deployment so everything points at the real hostname:
 
 1. Set `PUBLIC_BASE_URL=https://ctxlayer.acme.com` in your gitignored
-   `.prod.vars` (copy from `.prod.vars.example`). `scripts/deploy.mjs`
-   injects it at deploy time, so the committed `wrangler.toml` stays a
-   generic template. Redeploy.
+   `.prod.vars` (copy from `.prod.vars.example`; the same file carries
+   `ALLOWED_GITHUB_USERS`). `scripts/deploy.mjs` injects both at deploy
+   time, so the committed `wrangler.toml` stays a generic template. Redeploy.
 2. Update the **GitHub OAuth App** callback URL to
    `https://ctxlayer.acme.com/idp/github/callback`
    (GitHub OAuth apps allow only one callback URL — swap, don't add).
