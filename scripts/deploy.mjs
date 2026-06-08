@@ -41,6 +41,13 @@ function loadProdVars() {
 
 const fileVars = loadProdVars()
 const publicBaseUrl = process.env.PUBLIC_BASE_URL || fileVars.PUBLIC_BASE_URL
+// Personal-login allowlist for the BASE deploy only. Injected from `.prod.vars`
+// (or the env) so the committed wrangler.toml stays a generic public template,
+// exactly like PUBLIC_BASE_URL. Tenant (`--config`) deploys are intentionally
+// excluded below: their allowlist is the per-host rendered [vars] (the ops
+// registry), and a global value here would clobber it (e.g. wrongly enable a
+// Google-only tenant's GitHub). Absent → the committed "" default stands.
+const githubUsers = process.env.ALLOWED_GITHUB_USERS ?? fileVars.ALLOWED_GITHUB_USERS
 
 if (!publicBaseUrl || /YOUR-WORKER|example\.workers\.dev/.test(publicBaseUrl)) {
   console.error(
@@ -62,6 +69,8 @@ const vars = [
   ['GIT_SHA', sha],
   ['BUILT_AT', builtAt]
 ]
+// Base deploy only — see githubUsers above. Tenant configs carry their own.
+if (!configPath && githubUsers) vars.push(['ALLOWED_GITHUB_USERS', githubUsers])
 const varArgs = vars.flatMap(([k, v]) => ['--var', `${k}:${v}`])
 const configArgs = configPath ? ['-c', configPath] : []
 const wranglerArgs = preview

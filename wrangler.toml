@@ -183,8 +183,14 @@ ALLOWED_GOOGLE_EMAILS = ""           # comma-separated emails for solo / persona
 # when they're a member of ALLOWED_GITHUB_ORG OR their login is in
 # ALLOWED_GITHUB_USERS. Both empty disables GitHub.
 ALLOWED_GITHUB_ORG = ""              # e.g. "acme-inc" (org slug)
-# ALLOWED_GITHUB_USERS and ADMIN_EMAILS are intentionally not declared
-# here: in prod they're set via `wrangler secret put` (so personal
-# logins / admin emails don't get committed); in local dev `.dev.vars`
-# supplies them. Declaring an empty default would block `wrangler
-# secret put` with code 10053 ("binding name already in use").
+# Personal-login allowlist. Like PUBLIC_BASE_URL, the committed value is an
+# empty placeholder; the real prod value is injected at deploy time by
+# scripts/deploy.mjs from a gitignored `.prod.vars` (so logins aren't
+# committed), and `.dev.vars` supplies it for local dev.
+ALLOWED_GITHUB_USERS = ""            # e.g. "octocat,hubot" (comma-sep GitHub logins)
+# ADMIN_EMAILS is the one binding still set via `wrangler secret put` (admin
+# identity, not an allowlist); in local dev `.dev.vars` supplies it. Declaring
+# an empty default here would block the secret with code 10053 ("binding name
+# already in use") — the same trap now applies in reverse to
+# ALLOWED_GITHUB_USERS, so delete any old ALLOWED_GITHUB_USERS secret before the
+# first deploy that injects the var.

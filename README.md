@@ -240,11 +240,16 @@ unset, and the allowlist is what actually decides who can sign in.
      **approve third-party access** under
      *Organization → Settings → Third-party access → OAuth app policy*.
    - Org-owned OAuth apps skip that approval flow.
-5. Set the secrets and allowlist on the worker:
+5. Set the client creds (secrets) and the login allowlist (a non-secret
+   `[vars]` value, injected at deploy from `.prod.vars`):
    ```bash
    wrangler secret put GITHUB_CLIENT_ID
    wrangler secret put GITHUB_CLIENT_SECRET
-   wrangler secret put ALLOWED_GITHUB_USERS    # comma-separated logins, e.g. "alice,bob"
+   # ALLOWED_GITHUB_USERS is a [vars] value — do NOT `wrangler secret put` it
+   # (that collides with the empty [vars] default: Cloudflare error 10053).
+   # Put the logins in the gitignored .prod.vars; scripts/deploy.mjs injects
+   # them at deploy time (same pattern as PUBLIC_BASE_URL):
+   echo 'ALLOWED_GITHUB_USERS=alice,bob' >> .prod.vars   # comma-separated logins
    #   — or, instead of (or in addition to) ALLOWED_GITHUB_USERS —
    # ALLOWED_GITHUB_ORG is declared in wrangler.toml [vars]; edit the
    # value to your org slug ("acme-inc") and deploy. Leaving both empty
@@ -274,23 +279,31 @@ unset, and the allowlist is what actually decides who can sign in.
    # Workspace hosted domain (e.g. "acme.com") so Google forces the
    # account chooser to that domain and the worker verifies the
    # `hd` claim on the returned id_token.
-   # For ad-hoc allowlisting, use ALLOWED_GOOGLE_EMAILS instead:
-   wrangler secret put ALLOWED_GOOGLE_EMAILS   # comma-separated emails (case-insensitive)
+   # For ad-hoc allowlisting, set ALLOWED_GOOGLE_EMAILS in wrangler.toml
+   # [vars] (comma-separated emails, case-insensitive) and deploy.
    ```
    A user passes when their `id_token.hd` matches `ALLOWED_GOOGLE_HD`
    **or** their email is in `ALLOWED_GOOGLE_EMAILS`. Both empty
    disables Google.
 
-#### 2c. Why some allowlist vars are secrets and some aren't
+#### 2c. Allowlists live in `[vars]`; only `ADMIN_EMAILS` is a secret
 
-`ALLOWED_GOOGLE_HD`, `ALLOWED_GOOGLE_EMAILS`, and `ALLOWED_GITHUB_ORG`
-are declared in `wrangler.toml [vars]` with empty defaults — they're
-not sensitive and committing them is harmless.
+All four sign-in allowlists — `ALLOWED_GOOGLE_HD`, `ALLOWED_GOOGLE_EMAILS`,
+`ALLOWED_GITHUB_ORG`, and `ALLOWED_GITHUB_USERS` — are declared in
+`wrangler.toml [vars]` with empty defaults. The first three aren't
+sensitive, so you can edit them in `wrangler.toml` directly.
+`ALLOWED_GITHUB_USERS` carries personal logins, so its committed default
+stays empty and the real value is injected at deploy from the gitignored
+`.prod.vars` by `scripts/deploy.mjs` — the same pattern as `PUBLIC_BASE_URL`,
+so nothing personal lands in git.
 
-`ALLOWED_GITHUB_USERS` and `ADMIN_EMAILS` are intentionally **not**
-declared in `[vars]`: doing so would block `wrangler secret put` for
-those names (Cloudflare error 10053: *binding name already in use*).
-Set them via `wrangler secret put` only.
+`ADMIN_EMAILS` is the one binding still set via `wrangler secret put`
+(admin identity, not an allowlist). Don't declare it in `[vars]`: an empty
+default would block the secret with Cloudflare error 10053 (*binding name
+already in use*). The same trap applies in reverse to `ALLOWED_GITHUB_USERS`
+now that it's a `[vars]` key — a worker still carrying an **old**
+`ALLOWED_GITHUB_USERS` secret must `wrangler secret delete` it before the
+first deploy that injects the var.
 
 ### 3. Deployment secrets
 
