@@ -45,13 +45,29 @@ export interface UpstreamConnection {
   enabled: boolean
 }
 
-function parseAuthConfig(json: string): UpstreamAuthConfig {
+export function parseAuthConfig(json: string): UpstreamAuthConfig {
   if (!json) return {}
   try {
     return JSON.parse(json) as UpstreamAuthConfig
   } catch {
     return {}
   }
+}
+
+/**
+ * Strip OAuth secrets from an auth_config before it leaves the worker for
+ * the admin SPA. The sealed/plaintext client secret and the DCR client_info
+ * (which can carry a `client_secret`) are server-only; the form re-enters a
+ * secret to change it and reads the `clientSecretConfigured` flag otherwise.
+ */
+function redactOAuthSecrets(cfg: UpstreamAuthConfig): UpstreamAuthConfig {
+  if (!cfg.oauth) return cfg
+  const { clientSecretCiphertext, clientSecret, client_secret, client_info, ...safe } = cfg.oauth
+  void clientSecretCiphertext
+  void clientSecret
+  void client_secret
+  void client_info
+  return { ...cfg, oauth: safe }
 }
 
 export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection {
@@ -702,6 +718,7 @@ export async function adminRowFor(
     : isSharedBearer
       ? sharedConfigured
       : true
+  const fullConfig = parseAuthConfig(row.auth_config)
   return {
     id: row.id,
     slug: row.slug,
@@ -709,13 +726,14 @@ export async function adminRowFor(
     transport: row.transport,
     url: row.url ?? '',
     authStrategy: row.auth_strategy,
-    authConfig: parseAuthConfig(row.auth_config),
+    authConfig: redactOAuthSecrets(fullConfig),
     enabled: row.enabled === 1,
     visibility,
     toolsCount,
     toolsCachedAt: cachedAt,
     currentUserConnected: connectedForCaller,
     sharedCredentialConfigured: sharedConfigured,
+    clientSecretConfigured: Boolean(fullConfig.oauth?.clientSecretCiphertext),
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }

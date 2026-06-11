@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { seal, open } from './aead'
+import { seal, open, sealedToString, sealedFromString } from './aead'
 
 // 32 random bytes, base64-encoded. Fixed value so the test is deterministic.
 const KEY = 'JxQK0aw3pPRtKwhsoa3J9wQVcYAvkjbqcCpPjC4Sh7M='
@@ -32,5 +32,14 @@ describe('aead', () => {
   it('rejects an unknown key_version on open', async () => {
     const sealed = await seal('x', KEY)
     await expect(open({ ...sealed, keyVersion: 7 }, KEY)).rejects.toThrow(/key_version/)
+  })
+
+  it('round-trips a sealed secret through the string envelope', async () => {
+    // Used for the static-OAuth client secret stored in the JSON auth_config
+    // column (a string, not a BLOB triple).
+    const sealed = await seal('s3cr3t-client-secret', KEY)
+    const encoded = sealedToString(sealed)
+    expect(typeof encoded).toBe('string')
+    expect(await open(sealedFromString(encoded), KEY)).toBe('s3cr3t-client-secret')
   })
 })

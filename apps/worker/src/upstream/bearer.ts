@@ -23,10 +23,12 @@ import { open as openSecret, type SealedSecret } from '../crypto/aead'
 import {
   getSharedCredential,
   getUserCredential,
+  parseAuthConfig,
   type UpstreamConnection,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
 import { UpstreamOAuthProvider } from './oauth-provider'
+import { refreshStatic, staticOAuth } from './oauth-static'
 
 // Refresh a user_oauth access token only when it's within this many
 // seconds of expiry. Going through the SDK's auth() on EVERY bearer
@@ -63,6 +65,11 @@ export async function resolveUserUpstreamBearer(
   }
   if (conn.authStrategy === 'user_oauth') {
     const provider = new UpstreamOAuthProvider(env, row, userId)
+    // Static (pre-registered, non-DCR) clients — e.g. Entra fronting Azure
+    // DevOps — drive their own refresh against the configured token endpoint
+    // instead of the SDK's auth() orchestrator.
+    const staticCfg = staticOAuth(parseAuthConfig(row.auth_config))
+    if (staticCfg) return refreshStatic(env, provider, staticCfg)
     try {
       // Fast path: a still-fresh access token is used as-is, WITHOUT
       // invoking auth() — so we don't refresh (and rotate the refresh

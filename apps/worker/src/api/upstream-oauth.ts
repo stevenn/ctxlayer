@@ -30,6 +30,7 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import {
   deleteUserCredential,
   getUpstreamById,
+  parseAuthConfig,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
 import {
@@ -38,6 +39,12 @@ import {
   readVerifierState,
   type OAuthReturnTarget
 } from '../upstream/oauth-provider'
+import {
+  buildAuthorizeRedirect,
+  exchangeCode,
+  refreshStatic,
+  staticOAuth
+} from '../upstream/oauth-static'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 
 // SPA paths we're allowed to bounce the user back to after the OAuth
@@ -113,47 +120,60 @@ async function runStart(
   selfHeal = true
 ) {
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, undefined, returnTo)
-  const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
-  if (result === 'AUTHORIZED') {
-    // Tokens on file and accepted by auth() (possibly just refreshed).
-    // Reconnect doubles as a force-refresh, so re-warm the catalogue — but
-    // SYNCHRONOUSLY, because a user_oauth token can satisfy auth() (even a
-    // fresh refresh) yet still be rejected by the upstream at the MCP layer
-    // with "session expired / re-authenticate" (Linear's -32002). auth()
-    // never sees that rejection, so the reconnect silently loops on the
-    // refresh path and never prompts a real login. If the probe shows the
-    // token is dead, wipe it and fall through to a full interactive
-    // authorization (once) — that's the only thing that re-establishes the
-    // upstream session.
-    const access = (await provider.tokens())?.access_token ?? null
-    const probe = await refreshCatalogueByUpstreamId(c.env, upstream.id, access)
-    if (probe.ok) {
-      console.log(
-        `[catalogue] ${probe.slug}: re-warmed ${probe.toolsCount} tools after AUTHORIZED reconnect`
-      )
-    } else if (selfHeal && isReauthSignal(probe.message)) {
-      console.warn(
-        `[oauth] ${upstream.slug}: token accepted by auth() but rejected at MCP layer (${probe.reason}); wiping creds + forcing interactive re-auth`
-      )
-      await deleteUserCredential(c.env, userId, upstream.id)
-      return runStart(c, upstream, userId, returnTo, false)
-    } else {
-      console.warn(
-        `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh failed (${probe.reason})${
-          probe.message ? `: ${probe.message}` : ''
-        }`
-      )
+
+  // Resolve a usable access token (`access`) via one of two paths, or 302 to
+  // the IdP when an interactive authorization is needed.
+  let access: string | null
+  const staticCfg = staticOAuth(parseAuthConfig(upstream.auth_config))
+  if (staticCfg) {
+    // Pre-registered (Entra) client — no SDK discovery/DCR. Try a refresh;
+    // if there's nothing usable, bounce to the authorize endpoint.
+    access = await refreshStatic(c.env, provider, staticCfg)
+    if (!access) {
+      return c.redirect(await buildAuthorizeRedirect(provider, staticCfg), 302)
     }
-    return c.redirect(
-      `${spaReturnUrl(c.env, returnTo)}?oauth_connected=${encodeURIComponent(upstream.slug)}`,
-      302
+  } else {
+    const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
+    if (result !== 'AUTHORIZED') {
+      if (!provider.capturedRedirect) {
+        // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
+        return c.json({ error: 'oauth_redirect_missing' }, 500)
+      }
+      return c.redirect(provider.capturedRedirect.toString(), 302)
+    }
+    access = (await provider.tokens())?.access_token ?? null
+  }
+
+  // Tokens on file and accepted (possibly just refreshed). Reconnect doubles
+  // as a force-refresh, so re-warm the catalogue — but SYNCHRONOUSLY, because
+  // a user_oauth token can be accepted here yet still be rejected by the
+  // upstream at the MCP layer with "session expired / re-authenticate"
+  // (Linear's -32002). That rejection is invisible to auth()/refresh, so the
+  // reconnect silently loops on the refresh path and never prompts a real
+  // login. If the probe shows the token is dead, wipe it and fall through to
+  // a full interactive authorization (once).
+  const probe = await refreshCatalogueByUpstreamId(c.env, upstream.id, access)
+  if (probe.ok) {
+    console.log(
+      `[catalogue] ${probe.slug}: re-warmed ${probe.toolsCount} tools after AUTHORIZED reconnect`
+    )
+  } else if (selfHeal && isReauthSignal(probe.message)) {
+    console.warn(
+      `[oauth] ${upstream.slug}: token accepted but rejected at MCP layer (${probe.reason}); wiping creds + forcing interactive re-auth`
+    )
+    await deleteUserCredential(c.env, userId, upstream.id)
+    return runStart(c, upstream, userId, returnTo, false)
+  } else {
+    console.warn(
+      `[catalogue] ${upstream.slug}: reconnect-AUTHORIZED refresh failed (${probe.reason})${
+        probe.message ? `: ${probe.message}` : ''
+      }`
     )
   }
-  if (!provider.capturedRedirect) {
-    // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
-    return c.json({ error: 'oauth_redirect_missing' }, 500)
-  }
-  return c.redirect(provider.capturedRedirect.toString(), 302)
+  return c.redirect(
+    `${spaReturnUrl(c.env, returnTo)}?oauth_connected=${encodeURIComponent(upstream.slug)}`,
+    302
+  )
 }
 
 export const upstreamOauthCallbackRoute = new Hono<{
@@ -197,13 +217,19 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   if (!upstream) return c.json({ error: 'not_found' }, 404)
 
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, state)
+  const staticCfg = staticOAuth(parseAuthConfig(upstream.auth_config))
   try {
-    const result = await mcpAuth(provider, {
-      serverUrl: upstream.url ?? '',
-      authorizationCode: code
-    })
-    if (result !== 'AUTHORIZED') {
-      return c.json({ error: 'oauth_exchange_did_not_authorize' }, 502)
+    if (staticCfg) {
+      // Pre-registered (Entra) client: plain auth-code exchange, no SDK.
+      await exchangeCode(c.env, provider, staticCfg, code)
+    } else {
+      const result = await mcpAuth(provider, {
+        serverUrl: upstream.url ?? '',
+        authorizationCode: code
+      })
+      if (result !== 'AUTHORIZED') {
+        return c.json({ error: 'oauth_exchange_did_not_authorize' }, 502)
+      }
     }
   } catch (err) {
     console.error(`oauth callback exchange failed for ${upstream.slug}:`, err)

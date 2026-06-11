@@ -46,6 +46,21 @@ export async function open(sealed: SealedSecret, encryptionKey: string): Promise
   return new TextDecoder().decode(plaintext)
 }
 
+/**
+ * Encode a sealed secret as a single self-describing string, for storage in
+ * a JSON/text column (not a BLOB triple). Used for the static-OAuth client
+ * secret inside `upstream_servers.auth_config`. The inverse is
+ * `sealedFromString`.
+ */
+export function sealedToString(s: SealedSecret): string {
+  return JSON.stringify({ v: s.keyVersion, iv: base64Encode(s.iv), ct: base64Encode(s.ciphertext) })
+}
+
+export function sealedFromString(raw: string): SealedSecret {
+  const o = JSON.parse(raw) as { v: number; iv: string; ct: string }
+  return { keyVersion: o.v, iv: base64Decode(o.iv), ciphertext: base64Decode(o.ct) }
+}
+
 async function getKey(encryptionKey: string, version: number): Promise<CryptoKey> {
   if (version !== 1) throw new Error(`unknown key_version: ${version}`)
   const cacheKey = `${version}:${encryptionKey}`
@@ -73,4 +88,10 @@ function base64Decode(b64: string): Uint8Array {
   const out = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
   return out
+}
+
+function base64Encode(bytes: Uint8Array): string {
+  let bin = ''
+  for (const b of bytes) bin += String.fromCharCode(b)
+  return btoa(bin)
 }

@@ -17,7 +17,8 @@ import {
   UpdateUpstreamRequest,
   isSameOrigin,
   type ToolAccessEntry,
-  type ToolAccessRule
+  type ToolAccessRule,
+  type UpstreamAuthConfig
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
@@ -30,6 +31,7 @@ import {
   getUpstreamById,
   listCachedTools,
   listUpstreams,
+  parseAuthConfig,
   patchUpstream,
   replaceVisibility,
   toUpstreamConnection,
@@ -38,7 +40,7 @@ import {
 import { refreshCatalogueByUpstreamId, refreshCatalogueForConnection } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
-import { seal } from '../crypto/aead'
+import { seal, sealedToString } from '../crypto/aead'
 import { audit } from '../audit/log'
 import { listSkillsForUpstream } from '../db/queries/skill-attachments'
 import { listDocsForUpstream } from '../db/queries/doc-attachments'
@@ -83,7 +85,7 @@ adminUpstreamsRoute.post('/', async (c) => {
       transport: input.transport,
       url: input.url,
       authStrategy: input.authStrategy,
-      authConfig: clampTimeouts(input.authConfig) ?? {},
+      authConfig: (await prepareOAuthSecret(clampTimeouts(input.authConfig), c.env, undefined)) ?? {},
       enabled: input.enabled ?? true
     })
     // For unauth (`none`) upstreams there's nothing to wait for —
@@ -130,7 +132,8 @@ adminUpstreamsRoute.post('/', async (c) => {
 
 adminUpstreamsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  const current = await getUpstreamById(c.env, id)
+  if (!current) return c.json({ error: 'not_found' }, 404)
   const parsed = UpdateUpstreamRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) {
     return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
@@ -140,7 +143,11 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
   }
   await patchUpstream(c.env, id, {
     ...parsed.data,
-    authConfig: clampTimeouts(parsed.data.authConfig)
+    authConfig: await prepareOAuthSecret(
+      clampTimeouts(parsed.data.authConfig),
+      c.env,
+      parseAuthConfig(current.auth_config)
+    )
   })
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -408,6 +415,31 @@ function clampTimeouts(
       listMs: clamp(cfg.timeouts.listMs)
     }
   }
+}
+
+/**
+ * Seal the write-only static-OAuth `clientSecret` from the admin form into
+ * `clientSecretCiphertext`, and strip the plaintext so it never reaches D1.
+ * On edit with no new secret, carry the existing sealed value forward —
+ * PATCH replaces the whole auth_config column and the read path redacts the
+ * ciphertext, so the form can't round-trip it. No-op when there's no oauth
+ * block (every non-`user_oauth` upstream, and DCR clients).
+ */
+async function prepareOAuthSecret(
+  cfg: UpdateUpstreamRequest['authConfig'],
+  env: Env,
+  current: UpstreamAuthConfig | undefined
+): Promise<UpdateUpstreamRequest['authConfig']> {
+  if (!cfg?.oauth) return cfg
+  const oauth = { ...cfg.oauth }
+  if (oauth.clientSecret) {
+    const sealed = await seal(oauth.clientSecret, env.ENCRYPTION_KEY)
+    oauth.clientSecretCiphertext = sealedToString(sealed)
+  } else if (current?.oauth?.clientSecretCiphertext) {
+    oauth.clientSecretCiphertext = current.oauth.clientSecretCiphertext
+  }
+  oauth.clientSecret = undefined // never persist plaintext (dropped by JSON.stringify)
+  return { ...cfg, oauth }
 }
 
 function isUniqueViolation(err: unknown): boolean {

@@ -33,6 +33,8 @@ export interface CatalogueRefreshErr {
   ok: false
   reason: 'not_found' | 'unsupported_transport' | 'no_credentials' | 'listTools_failed'
   message?: string
+  /** HTTP status when the failure came from an upstream POST (else absent). */
+  status?: number
 }
 
 export type CatalogueRefreshResult = CatalogueRefreshOk | CatalogueRefreshErr
@@ -67,12 +69,27 @@ export async function refreshCatalogueForConnection(
     const cachedAt = await replaceCachedTools(env, conn.id, tools)
     return { ok: true, slug: conn.slug, toolsCount: tools.length, cachedAt }
   } catch (err) {
+    // MCP transport errors (StreamableHTTPError / SseError) carry `code` = the
+    // upstream HTTP status. Surface it: a bare "Error POSTing to endpoint:" is
+    // unactionable, but "HTTP 401 …" vs "HTTP 404 …" tells auth-vs-URL apart at
+    // a glance (this is what made the ADO remote-MCP 401 legible). JSON-RPC
+    // errors carry a negative `code` (e.g. Linear's -32002) whose text is
+    // already in the message, so only an HTTP-range code gets the prefix.
+    const status = httpStatusOf(err)
+    const base = err instanceof Error ? err.message : String(err)
     return {
       ok: false,
       reason: 'listTools_failed',
-      message: err instanceof Error ? err.message : String(err)
+      status,
+      message: status ? `HTTP ${status}: ${base}` : base
     }
   } finally {
     await client.close()
   }
+}
+
+/** Pull the upstream HTTP status off a transport error, or undefined. */
+function httpStatusOf(err: unknown): number | undefined {
+  const code = (err as { code?: unknown } | null)?.code
+  return typeof code === 'number' && code >= 100 && code <= 599 ? code : undefined
 }
