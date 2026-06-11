@@ -1,9 +1,16 @@
 import { useEffect, useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack, TextInput } from '@mantine/core'
-import type { AuthStrategy, SupportedTransport } from '@ctxlayer/shared'
+import type { SupportedTransport } from '@ctxlayer/shared'
 import { adminCreateUpstream } from '../../../lib/api'
 import { useSlugSuggest } from '../../../lib/use-slug-suggest'
-import { AUTH_OPTIONS, TRANSPORT_OPTIONS, explain } from './helpers'
+import {
+  AUTH_OPTIONS,
+  OAUTH_STATIC,
+  TRANSPORT_OPTIONS,
+  explain,
+  persistedStrategy,
+  type FormAuthStrategy
+} from './helpers'
 import {
   EMPTY_OAUTH_FIELDS,
   OAuthClientFields,
@@ -24,7 +31,7 @@ export function CreateUpstreamModal({
   const slugField = useSlugSuggest('upstream', displayName)
   const [transport, setTransport] = useState<SupportedTransport>('streamable_http')
   const [url, setUrl] = useState('')
-  const [authStrategy, setAuthStrategy] = useState<AuthStrategy>('user_bearer')
+  const [authStrategy, setAuthStrategy] = useState<FormAuthStrategy>('user_bearer')
   const [oauthFields, setOauthFields] = useState<OAuthClientFieldValues>(EMPTY_OAUTH_FIELDS)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -46,13 +53,13 @@ export function CreateUpstreamModal({
     setBusy(true)
     setError(null)
     try {
-      const oauth = authStrategy === 'user_oauth' ? buildStaticOAuth(oauthFields) : undefined
+      const oauth = authStrategy === OAUTH_STATIC ? buildStaticOAuth(oauthFields) : undefined
       const created = await adminCreateUpstream({
         slug: slugField.slug.trim(),
         displayName: displayName.trim(),
         transport,
         url: url.trim(),
-        authStrategy,
+        authStrategy: persistedStrategy(authStrategy),
         authConfig: oauth ? { oauth } : undefined,
         enabled: true
       })
@@ -101,11 +108,11 @@ export function CreateUpstreamModal({
             disabled: !o.enabled
           }))}
           value={authStrategy}
-          onChange={(v) => v && setAuthStrategy(v as AuthStrategy)}
+          onChange={(v) => v && setAuthStrategy(v as FormAuthStrategy)}
           allowDeselect={false}
           description={AUTH_OPTIONS.find((o) => o.value === authStrategy)?.description}
         />
-        {authStrategy === 'user_oauth' && (
+        {authStrategy === OAUTH_STATIC && (
           <OAuthClientFields
             values={oauthFields}
             onChange={(patch) => setOauthFields((v) => ({ ...v, ...patch }))}

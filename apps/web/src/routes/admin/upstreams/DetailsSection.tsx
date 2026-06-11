@@ -1,12 +1,21 @@
 import { useEffect, useState } from 'react'
 import { Button, Group, NumberInput, Select, Stack, Switch, Text, TextInput } from '@mantine/core'
+import { isStaticOAuthConfig } from '@ctxlayer/shared'
 import type {
   AdminUpstreamRow,
   AuthStrategy,
   SupportedTransport,
   UpstreamAuthConfig
 } from '@ctxlayer/shared'
-import { AUTH_OPTIONS, Section, TRANSPORT_OPTIONS } from './helpers'
+import {
+  AUTH_OPTIONS,
+  OAUTH_STATIC,
+  Section,
+  TRANSPORT_OPTIONS,
+  formStrategy,
+  persistedStrategy,
+  type FormAuthStrategy
+} from './helpers'
 import {
   OAuthClientFields,
   buildStaticOAuth,
@@ -51,7 +60,9 @@ export function DetailsSection({
   const [displayName, setDisplayName] = useState(row.displayName)
   const [transport, setTransport] = useState<SupportedTransport>(row.transport)
   const [url, setUrl] = useState(row.url)
-  const [authStrategy, setAuthStrategy] = useState<AuthStrategy>(row.authStrategy)
+  const [authStrategy, setAuthStrategy] = useState<FormAuthStrategy>(
+    formStrategy(row.authStrategy, row.authConfig)
+  )
   const [enabled, setEnabled] = useState(row.enabled)
   // Static (pre-registered) OAuth client — for IdPs that don't support DCR
   // (e.g. Entra fronting Azure DevOps). The secret is write-only: the server
@@ -74,7 +85,7 @@ export function DetailsSection({
     setDisplayName(row.displayName)
     setTransport(row.transport)
     setUrl(row.url)
-    setAuthStrategy(row.authStrategy)
+    setAuthStrategy(formStrategy(row.authStrategy, row.authConfig))
     setEnabled(row.enabled)
     setOauthFields(oauthFieldsFromConfig(row.authConfig.oauth))
     const t = row.authConfig.timeouts
@@ -99,12 +110,16 @@ export function DetailsSection({
       timeouts: hasTimeout ? timeouts : undefined,
       maxResponseBytes: kbToBytes(maxRespKb)
     }
-    if (authStrategy === 'user_oauth') {
-      // Emit an oauth block only when a static field was supplied; otherwise
-      // leave it untouched (DCR path). The server preserves the sealed secret
-      // when `clientSecret` is absent.
+    if (authStrategy === OAUTH_STATIC) {
+      // Pre-registered client: emit the static block from the form. The server
+      // re-attaches the sealed secret when `clientSecret` is absent.
       const oauth = buildStaticOAuth(oauthFields)
       if (oauth) cfg.oauth = oauth
+    } else if (isStaticOAuthConfig(cfg)) {
+      // Switched away from pre-registered (e.g. to plain DCR): drop the static
+      // client so the wire no longer detects it as static. A static upstream
+      // carries no DCR `client_info`, so nothing worth keeping is lost.
+      cfg.oauth = undefined
     }
     return cfg
   }
@@ -143,11 +158,11 @@ export function DetailsSection({
             disabled: !o.enabled
           }))}
           value={authStrategy}
-          onChange={(v) => v && setAuthStrategy(v as AuthStrategy)}
+          onChange={(v) => v && setAuthStrategy(v as FormAuthStrategy)}
           allowDeselect={false}
           description={AUTH_OPTIONS.find((o) => o.value === authStrategy)?.description}
         />
-        {authStrategy === 'user_oauth' && (
+        {authStrategy === OAUTH_STATIC && (
           <OAuthClientFields
             values={oauthFields}
             onChange={(patch) => setOauthFields((v) => ({ ...v, ...patch }))}
@@ -219,7 +234,7 @@ export function DetailsSection({
                 displayName,
                 transport,
                 url,
-                authStrategy,
+                authStrategy: persistedStrategy(authStrategy),
                 enabled,
                 authConfig: buildAuthConfig()
               })

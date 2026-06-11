@@ -1,9 +1,11 @@
 import { Text } from '@mantine/core'
+import { isStaticOAuthConfig } from '@ctxlayer/shared'
 import type {
   AttachedDocRef,
   AttachedSkillRef,
   AuthStrategy,
   SupportedTransport,
+  UpstreamAuthConfig,
   UpstreamToolSummary
 } from '@ctxlayer/shared'
 import type { ApiError } from '../../../lib/api'
@@ -14,8 +16,34 @@ export const TRANSPORT_OPTIONS: { value: SupportedTransport; label: string }[] =
   { value: 'sse', label: 'SSE (legacy)' }
 ]
 
+/**
+ * A UI-only strategy. The persisted `auth_strategy` is still `user_oauth` for
+ * both DCR and pre-registered clients — the wire/worker tell them apart with
+ * `isStaticOAuthConfig` (no new enum value, no migration). The form splits them
+ * so a modern DCR setup doesn't render the static-client form it should leave
+ * blank, and a non-DCR setup gets a dedicated form of its own.
+ */
+export type FormAuthStrategy = AuthStrategy | 'user_oauth_static'
+
+export const OAUTH_STATIC: FormAuthStrategy = 'user_oauth_static'
+
+/** Collapse the synthetic option back to the persisted `user_oauth`. */
+export function persistedStrategy(s: FormAuthStrategy): AuthStrategy {
+  return s === 'user_oauth_static' ? 'user_oauth' : s
+}
+
+/** Pick the form option for an existing row (static iff it carries a client). */
+export function formStrategy(
+  authStrategy: AuthStrategy,
+  authConfig: UpstreamAuthConfig
+): FormAuthStrategy {
+  return authStrategy === 'user_oauth' && isStaticOAuthConfig(authConfig)
+    ? 'user_oauth_static'
+    : authStrategy
+}
+
 export const AUTH_OPTIONS: {
-  value: AuthStrategy
+  value: FormAuthStrategy
   label: string
   description: string
   enabled: boolean
@@ -40,9 +68,16 @@ export const AUTH_OPTIONS: {
   },
   {
     value: 'user_oauth',
-    label: 'User OAuth (PKCE)',
+    label: 'User OAuth — DCR (auto-register)',
     description:
-      'Each user authorises at the upstream; ctxlayer refreshes transparently. Auto-registers via DCR, or set a pre-registered client below for IdPs without DCR (e.g. Entra / Azure DevOps).',
+      'Each user authorises at the upstream; ctxlayer auto-registers via dynamic client registration (RFC 7591) and refreshes transparently. For modern MCP servers that support DCR.',
+    enabled: true
+  },
+  {
+    value: 'user_oauth_static',
+    label: 'User OAuth — pre-registered (non-DCR)',
+    description:
+      'For IdPs without DCR (e.g. Microsoft Entra fronting Azure DevOps): you register one app in the IdP and supply its client id/secret + endpoints. Each user still authorises individually.',
     enabled: true
   }
 ]
