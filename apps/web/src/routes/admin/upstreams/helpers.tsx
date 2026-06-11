@@ -77,7 +77,7 @@ export const AUTH_OPTIONS: {
     value: 'user_oauth_static',
     label: 'User OAuth — pre-registered (non-DCR)',
     description:
-      'For IdPs without DCR (e.g. Microsoft Entra fronting Azure DevOps): you register one app in the IdP and supply its client id/secret + endpoints. Each user still authorises individually.',
+      "For IdPs that don't support dynamic client registration: you register one app in the IdP and supply its client id/secret + endpoints. Each user still authorises individually.",
     enabled: true
   }
 ]

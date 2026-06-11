@@ -82,16 +82,22 @@ tokens; SPA tokens rotate and die fast):
 - Redirect URI: `<PUBLIC_BASE_URL>/api/upstreams/oauth/callback` (the single
   global ctxlayer callback).
 - Single-tenant is the cleanest consent story.
-- The two shapes want **different token audiences** — there's a preset for each
-  in ctxlayer admin (on a `user_oauth` upstream): **ADO remote MCP** vs **ADO
-  local server**. Both set the Entra authorize/token URLs; you replace
-  `{tenant}` and paste client id/secret. The scope differs (below).
+- The Entra authorize/token endpoints (replace `{tenant}` with your directory
+  ID) — used by both shapes:
+  - Authorize: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize`
+  - Token: `https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`
+- The two shapes differ **only in the token audience/scope** (below).
+
+In ctxlayer admin, create a `streamable_http` upstream, pick auth strategy
+**User OAuth — pre-registered (non-DCR)**, and fill the OAuth-client form with
+the app's client id + secret, the authorize/token URLs above, and the scopes for
+your shape. (The form is provider-agnostic — these ADO values are the recipe.)
 
 ### Shape A — remote server, **no bridge** ✅ verified 2026-06-10
 
 Point the upstream URL at `https://mcp.dev.azure.com/{org}` (no `/mcp` suffix —
 that 404s). ctxlayer proxies straight through; the per-user Entra bearer is the
-auth. Nothing to run. Use the **ADO remote MCP** preset.
+auth. Nothing to run.
 
 The remote MCP is its **own** RFC 9728 protected resource — Entra first-party
 app **`2a72489c-aab2-4b65-b93a-a91edccf33b8`** (resource `https://mcp.dev.azure.com`),
@@ -99,13 +105,27 @@ app **`2a72489c-aab2-4b65-b93a-a91edccf33b8`** (resource `https://mcp.dev.azure.
 
 - **Scope = the resource's own named scopes**, not the ADO-API `.default`. The
   gateway scope `https://mcp.dev.azure.com/Ado.Mcp.Tools` lets you list tools;
-  add `…/work.read`, `…/repos.read`, … (and `…/*.write` for mutations) for the
-  tool *calls*. The remote preset fills a read-only default + `offline_access`.
-  All scopes are user-consentable, so **named-scope dynamic consent** works with
-  no app-registration permission edits.
+  add the read/write families for the tool *calls*. All scopes are
+  user-consentable, so **named-scope dynamic consent** works with no
+  app-registration permission edits. A sensible read-only starting set (paste
+  into the **Scopes** box, one per line or space-separated):
+
+  ```
+  https://mcp.dev.azure.com/Ado.Mcp.Tools
+  https://mcp.dev.azure.com/work.read
+  https://mcp.dev.azure.com/wit.read
+  https://mcp.dev.azure.com/repos.read
+  https://mcp.dev.azure.com/wiki.read
+  https://mcp.dev.azure.com/pipelines.read
+  offline_access
+  ```
+
+  Add `…/work.write`, `…/repos.write`, etc. for mutating tools.
 - **Provision the resource's service principal once**, or `.default`/the portal
   "APIs my org uses" search can't see it and you get `AADSTS650057`:
-  `az ad sp create --id 2a72489c-aab2-4b65-b93a-a91edccf33b8`.
+  `az ad sp create --id 2a72489c-aab2-4b65-b93a-a91edccf33b8`. This just enrolls
+  Microsoft's first-party ADO-MCP app into your tenant — it grants nothing on its
+  own; per-user consent + the user's own ADO permissions still gate access.
 - Avoid `.default` here: it requires the resource pre-listed in the app's
   `requiredResourceAccess` (→ the 650057 loop). Named scopes sidestep that.
 
@@ -119,6 +139,14 @@ Run the GA local server (`@azure-devops/mcp`) behind a bridge, and point the
 upstream URL at the bridge. The local server's `envvar` auth mode reads a raw
 bearer from `ADO_MCP_AUTH_TOKEN` — and the Entra access token ctxlayer injects
 *is* a valid ADO bearer.
+
+Here the token must target the **classic Azure DevOps REST API**, not the remote
+MCP resource — so the upstream's **Scopes** are different from shape A:
+
+```
+499b84ac-1321-427f-aa17-267ca6975798/.default
+offline_access
+```
 
 The catch: **per-user identity needs a per-session subprocess.** `supergateway`
 fixes one process (one identity) at startup, so it can't do this. You need a
