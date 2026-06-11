@@ -12,7 +12,7 @@ import { Button, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
  * components and await the helpers.
  */
 
-type ConfirmOpts = {
+export type ConfirmOpts = {
   title: string
   message: ReactNode
   confirmLabel?: string
@@ -53,6 +53,42 @@ export function useDialogs(): Dialogs {
   const ctx = useContext(DialogCtx)
   if (!ctx) throw new Error('useDialogs must be used inside <DialogProvider>')
   return ctx
+}
+
+/**
+ * Confirm helper for destructive actions triggered *inside a Drawer*. A confirm
+ * Modal and a Mantine Drawer share the default z-index, and the drawer (its
+ * portal mounts later) paints over the modal. Rather than fight z-index, this
+ * slides the host drawer out of the way while the dialog is open and brings it
+ * back when the user cancels. Bind the host drawer's `opened` to `hidden`:
+ *
+ *   const { hidden, confirm } = useDrawerConfirm()
+ *   <Drawer opened={open && !hidden} ...>
+ *   ...onClick={async () => { if (await confirm(opts)) doIt() }}
+ *
+ * Pass `{ keepHiddenOnConfirm: true }` for an action that UNMOUNTS the drawer on
+ * success (e.g. delete) so it doesn't flash back in for a frame before closing.
+ */
+export function useDrawerConfirm() {
+  const { confirm: base } = useDialogs()
+  const [hidden, setHidden] = useState(false)
+  const confirm = useCallback(
+    async (opts: ConfirmOpts, o?: { keepHiddenOnConfirm?: boolean }): Promise<boolean> => {
+      setHidden(true)
+      const ok = await base(opts)
+      // Restore the drawer on cancel; also on confirm unless the caller is
+      // about to unmount it (delete), where a restore would flash.
+      if (!(ok && o?.keepHiddenOnConfirm)) setHidden(false)
+      return ok
+    },
+    [base]
+  )
+  // Force the host drawer back into view. Call this from a delete handler's
+  // error path: with `keepHiddenOnConfirm` the drawer stays hidden after the
+  // user confirms, so if the action then THROWS (and the drawer isn't
+  // unmounted) the error would otherwise be invisible behind a hidden drawer.
+  const reveal = useCallback(() => setHidden(false), [])
+  return { hidden, confirm, reveal }
 }
 
 export function DialogProvider({ children }: { children: ReactNode }) {
