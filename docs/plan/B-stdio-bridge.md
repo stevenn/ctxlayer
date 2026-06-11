@@ -81,21 +81,37 @@ tokens; SPA tokens rotate and die fast):
 
 - Redirect URI: `<PUBLIC_BASE_URL>/api/upstreams/oauth/callback` (the single
   global ctxlayer callback).
-- API permission: Azure DevOps (delegated) + admin consent. Single-tenant is
-  the cleanest consent story.
-- In ctxlayer admin, on a `user_oauth` upstream, hit the **Entra / ADO preset**
-  and fill `{tenant}` + client id/secret. Scope: the ADO resource `.default`
-  plus `offline_access`.
+- Single-tenant is the cleanest consent story.
+- The two shapes want **different token audiences** — there's a preset for each
+  in ctxlayer admin (on a `user_oauth` upstream): **ADO remote MCP** vs **ADO
+  local server**. Both set the Entra authorize/token URLs; you replace
+  `{tenant}` and paste client id/secret. The scope differs (below).
 
-### Shape A — remote server, **no bridge**
+### Shape A — remote server, **no bridge** ✅ verified 2026-06-10
 
-Point the upstream URL at `https://mcp.dev.azure.com/{org}`. ctxlayer proxies
-straight through; the Entra bearer is the auth. Nothing to run.
+Point the upstream URL at `https://mcp.dev.azure.com/{org}` (no `/mcp` suffix —
+that 404s). ctxlayer proxies straight through; the per-user Entra bearer is the
+auth. Nothing to run. Use the **ADO remote MCP** preset.
 
-> ⚠️ **Unverified.** Microsoft only "supports" VS Code / Visual Studio for the
-> remote server today, and it *may* reject a non-Microsoft client id even with a
-> valid token. Try this first — if tools list, you're done. If it rejects, fall
-> back to shape B (same auth).
+The remote MCP is its **own** RFC 9728 protected resource — Entra first-party
+app **`2a72489c-aab2-4b65-b93a-a91edccf33b8`** (resource `https://mcp.dev.azure.com`),
+*distinct* from the classic Azure DevOps REST API (`499b84ac-…`). So:
+
+- **Scope = the resource's own named scopes**, not the ADO-API `.default`. The
+  gateway scope `https://mcp.dev.azure.com/Ado.Mcp.Tools` lets you list tools;
+  add `…/work.read`, `…/repos.read`, … (and `…/*.write` for mutations) for the
+  tool *calls*. The remote preset fills a read-only default + `offline_access`.
+  All scopes are user-consentable, so **named-scope dynamic consent** works with
+  no app-registration permission edits.
+- **Provision the resource's service principal once**, or `.default`/the portal
+  "APIs my org uses" search can't see it and you get `AADSTS650057`:
+  `az ad sp create --id 2a72489c-aab2-4b65-b93a-a91edccf33b8`.
+- Avoid `.default` here: it requires the resource pre-listed in the app's
+  `requiredResourceAccess` (→ the 650057 loop). Named scopes sidestep that.
+
+> The old "Microsoft may reject a non-Microsoft client id" fear didn't hold — a
+> static Entra app connects and lists all tools. Shape B remains the fallback if
+> you need the GA local server's exact tool set or offline operation.
 
 ### Shape B — local server behind a **per-session** bridge
 
