@@ -4,7 +4,7 @@ import { Alert, Button, Drawer, Group, Modal, Stack, Text, TextInput, Title } fr
 import type { AdminRoleRow } from '@ctxlayer/shared'
 import { adminCreateRole, adminDeleteRole, adminPatchRole, fetchAdminRoles } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { useDialogs } from '../../lib/dialogs'
+import { useDrawerConfirm } from '../../lib/dialogs'
 
 /**
  * Admin · Roles — the cross-cutting org-role axis (engineering, qa,
@@ -211,7 +211,7 @@ function RoleDrawer({
   onChanged: () => void
   onDeleted: () => void
 }) {
-  const dialogs = useDialogs()
+  const { hidden, confirm, reveal } = useDrawerConfirm()
   const [slug, setSlug] = useState(role.slug)
   const [displayName, setDisplayName] = useState(role.displayName)
   const [description, setDescription] = useState(role.description ?? '')
@@ -225,6 +225,7 @@ function RoleDrawer({
       await fn()
     } catch (err) {
       setError(`${label} failed: ${explain(err)}`)
+      reveal() // a delete that hid the drawer then failed must show the error
     } finally {
       setBusy(false)
     }
@@ -246,12 +247,15 @@ function RoleDrawer({
 
   const onDelete = () =>
     withBusy(async () => {
-      const ok = await dialogs.confirm({
-        title: 'Delete role?',
-        message: `Delete role "${role.displayName}"? Members lose it, and any upstream/tool ACL that grants only this role stops matching anyone (safe deny direction).`,
-        confirmLabel: 'Delete',
-        danger: true
-      })
+      const ok = await confirm(
+        {
+          title: 'Delete role?',
+          message: `Delete role "${role.displayName}"? Members lose it, and any upstream/tool ACL that grants only this role stops matching anyone (safe deny direction).`,
+          confirmLabel: 'Delete',
+          danger: true
+        },
+        { keepHiddenOnConfirm: true }
+      )
       if (!ok) return
       await adminDeleteRole(role.id)
       onDeleted()
@@ -259,7 +263,7 @@ function RoleDrawer({
 
   return (
     <Drawer
-      opened
+      opened={!hidden}
       onClose={onClose}
       title={`Role · ${role.displayName}`}
       position="right"

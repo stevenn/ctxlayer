@@ -34,7 +34,7 @@ import {
   patchSkill
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { useDialogs } from '../../lib/dialogs'
+import { useDialogs, useDrawerConfirm, type ConfirmOpts } from '../../lib/dialogs'
 import { useSlugSuggest } from '../../lib/use-slug-suggest'
 
 type StatusFilter = 'all' | 'draft' | 'published' | 'archived'
@@ -357,7 +357,8 @@ function SkillDrawer({
   onChanged: () => void
   onOpenEditor: (id: string) => void
 }) {
-  const dialogs = useDialogs()
+  const { alert } = useDialogs()
+  const { hidden, confirm, reveal } = useDrawerConfirm()
   const [detail, setDetail] = useState<SkillDetail | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -421,7 +422,7 @@ function SkillDrawer({
   const setStatus = (next: 'draft' | 'published' | 'archived') =>
     withBusy(async () => {
       if (detail?.status === 'published' && next !== 'published') {
-        const ok = await dialogs.confirm({
+        const ok = await confirm({
           title: `Move out of published?`,
           message: `This skill is currently live. Setting it to "${next}" hides it from list_skills and the CLI export.`,
           confirmLabel: 'Yes, change status',
@@ -434,36 +435,35 @@ function SkillDrawer({
       onChanged()
     }, 'Status change')
 
-  const remove = () => {
-    // Close the drawer FIRST so the confirm dialog isn't visually
-    // stacked on top of the slide-out. The dialog then has the page's
-    // attention. If the operator cancels, the drawer stays closed —
-    // they can re-click the row to reopen. Trade-off accepted; the
-    // alternative (modal-over-drawer) was distracting.
-    onClose()
-    void dialogs
-      .confirm({
+  const remove = async () => {
+    // The confirm slides this drawer out of the way and back on cancel
+    // (useDrawerConfirm); keepHiddenOnConfirm holds it hidden through the
+    // delete so it doesn't flash back before unmounting.
+    const ok = await confirm(
+      {
         title: 'Delete skill?',
         message:
           'Soft-deletes the skill. Body + revisions remain in storage; admins can no longer find it via the SPA.',
         confirmLabel: 'Delete',
         danger: true
-      })
-      .then(async (ok) => {
-        if (!ok) return
-        try {
-          await deleteSkill(skillId)
-          onChanged()
-        } catch (err) {
-          await dialogs.alert({ title: 'Delete failed', message: explain(err) })
-        }
-      })
+      },
+      { keepHiddenOnConfirm: true }
+    )
+    if (!ok) return
+    try {
+      await deleteSkill(skillId)
+      onChanged()
+      onClose()
+    } catch (err) {
+      reveal() // delete failed — bring the drawer back so the error is visible
+      await alert({ title: 'Delete failed', message: explain(err) })
+    }
   }
 
   if (!detail && !error) {
     return (
       <Drawer
-        opened
+        opened={!hidden}
         onClose={onClose}
         title="Skill · loading…"
         position="right"
@@ -477,7 +477,7 @@ function SkillDrawer({
 
   return (
     <Drawer
-      opened
+      opened={!hidden}
       onClose={onClose}
       title={detail ? `Skill · ${detail.title}` : 'Skill'}
       position="right"
@@ -559,6 +559,7 @@ function SkillDrawer({
               <AttachManager
                 skillId={skillId}
                 attachments={detail.attachments}
+                confirm={confirm}
                 onChanged={async () => {
                   await load()
                   onChanged()
@@ -598,13 +599,16 @@ function SkillDrawer({
 function AttachManager({
   skillId,
   attachments,
-  onChanged
+  onChanged,
+  confirm
 }: {
   skillId: string
   attachments: SkillAttachmentRef[]
   onChanged: () => Promise<void>
+  // The parent SkillDrawer's hiding confirm — slides the drawer away while the
+  // detach dialog is up (a plain confirm here would be painted over by it).
+  confirm: (opts: ConfirmOpts) => Promise<boolean>
 }) {
-  const dialogs = useDialogs()
   const [upstreams, setUpstreams] = useState<UserUpstreamSummary[] | null>(null)
   const [selectedUpstreamId, setSelectedUpstreamId] = useState<string | null>(null)
   const [tools, setTools] = useState<{ value: string; label: string }[]>([])
@@ -676,7 +680,7 @@ function AttachManager({
   }
 
   async function remove(att: SkillAttachmentRef) {
-    const ok = await dialogs.confirm({
+    const ok = await confirm({
       title: 'Remove attachment?',
       message: `Detach this skill from ${att.upstreamSlug}${att.toolName ? `.${att.toolName}` : ''}?`,
       confirmLabel: 'Detach',
