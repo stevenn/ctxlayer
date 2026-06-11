@@ -22,7 +22,7 @@ import {
   putUserRoles
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { useDialogs } from '../../lib/dialogs'
+import { useDrawerConfirm } from '../../lib/dialogs'
 
 export function AdminUsers() {
   const [items, setItems] = useState<AdminUserRow[] | null>(null)
@@ -146,7 +146,7 @@ function UserDrawer({
   onClose: () => void
   onChanged: () => void
 }) {
-  const dialogs = useDialogs()
+  const { hidden, confirm } = useDrawerConfirm()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
@@ -221,7 +221,7 @@ function UserDrawer({
 
   const revokeCreds = () =>
     withBusy(async () => {
-      const ok = await dialogs.confirm({
+      const ok = await confirm({
         title: 'Revoke credentials?',
         message: `Revoke all upstream credentials for ${user.email}? They'll need to re-connect every upstream on /upstreams after this.`,
         confirmLabel: 'Revoke',
@@ -239,7 +239,7 @@ function UserDrawer({
 
   return (
     <Drawer
-      opened
+      opened={!hidden}
       onClose={onClose}
       title={`User · ${user.email}`}
       position="right"

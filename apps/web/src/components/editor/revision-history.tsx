@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Badge, Button, Drawer, Group, Loader, Stack, Text } from '@mantine/core'
 import type { DocContent } from '@ctxlayer/shared'
-import { useDialogs } from '../../lib/dialogs'
+import { useDialogs, useDrawerConfirm } from '../../lib/dialogs'
 import { explain } from '../../lib/explain'
 
 /**
@@ -56,7 +56,8 @@ export function RevisionHistory({
   restore,
   onRestored
 }: RevisionHistoryProps) {
-  const dialogs = useDialogs()
+  const { alert } = useDialogs()
+  const { hidden, confirm, reveal } = useDrawerConfirm()
   const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [restoringId, setRestoringId] = useState<string | null>(null)
 
@@ -85,14 +86,17 @@ export function RevisionHistory({
 
   const onRestoreClick = useCallback(
     async (rev: RevisionSummaryLike) => {
-      // Close the slideout first so the confirm dialog isn't layered behind
-      // the drawer overlay.
-      onClose()
-      const ok = await dialogs.confirm({
-        title: 'Restore this version?',
-        message: `Restore "${title}" to the version from ${formatTimestamp(rev.createdAt)}? This saves it as a new revision — the current version stays in the history.`,
-        confirmLabel: 'Restore'
-      })
+      // The confirm slides this drawer out of the way (useDrawerConfirm) and
+      // back on cancel; keepHiddenOnConfirm holds it hidden through the restore,
+      // which closes the drawer on success.
+      const ok = await confirm(
+        {
+          title: 'Restore this version?',
+          message: `Restore "${title}" to the version from ${formatTimestamp(rev.createdAt)}? This saves it as a new revision — the current version stays in the history.`,
+          confirmLabel: 'Restore'
+        },
+        { keepHiddenOnConfirm: true }
+      )
       if (!ok) return
       setRestoringId(rev.id)
       try {
@@ -102,18 +106,20 @@ export function RevisionHistory({
         // relying on a reload so a live collab session reflects it.
         const content = await fetchContent(rev.id)
         await onRestored(content)
+        onClose()
       } catch (err) {
-        await dialogs.alert({ title: 'Restore failed', message: explain(err) })
+        reveal() // restore failed — bring the drawer back so the error shows
+        await alert({ title: 'Restore failed', message: explain(err) })
       } finally {
         setRestoringId(null)
       }
     },
-    [dialogs, title, restore, fetchContent, onRestored, onClose]
+    [confirm, reveal, alert, title, restore, fetchContent, onRestored, onClose]
   )
 
   return (
     <Drawer
-      opened={opened}
+      opened={opened && !hidden}
       onClose={onClose}
       position="right"
       size="md"

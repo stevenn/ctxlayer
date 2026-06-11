@@ -35,7 +35,7 @@ import {
   searchUsers
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { useDialogs } from '../../lib/dialogs'
+import { useDrawerConfirm } from '../../lib/dialogs'
 
 export function AdminTeams() {
   const [teams, setTeams] = useState<AdminTeamRow[] | null>(null)
@@ -253,7 +253,7 @@ function TeamDrawer({
   onChanged: () => void
   onDeleted: () => void
 }) {
-  const dialogs = useDialogs()
+  const { hidden, confirm, reveal } = useDrawerConfirm()
   const [slug, setSlug] = useState(team.slug)
   const [displayName, setDisplayName] = useState(team.displayName)
   const [description, setDescription] = useState(team.description ?? '')
@@ -320,6 +320,7 @@ function TeamDrawer({
       await fn()
     } catch (err) {
       setError(`${label} failed: ${explain(err)}`)
+      reveal() // a delete that hid the drawer then failed must show the error
     } finally {
       setBusy(false)
     }
@@ -343,12 +344,15 @@ function TeamDrawer({
 
   const onDelete = () =>
     withBusy(async () => {
-      const ok = await dialogs.confirm({
-        title: 'Delete team?',
-        message: `Delete team "${team.displayName}"? Members and product links are removed.`,
-        confirmLabel: 'Delete',
-        danger: true
-      })
+      const ok = await confirm(
+        {
+          title: 'Delete team?',
+          message: `Delete team "${team.displayName}"? Members and product links are removed.`,
+          confirmLabel: 'Delete',
+          danger: true
+        },
+        { keepHiddenOnConfirm: true }
+      )
       if (!ok) return
       await adminDeleteTeam(team.id)
       onDeleted()
@@ -394,7 +398,7 @@ function TeamDrawer({
 
   return (
     <Drawer
-      opened
+      opened={!hidden}
       onClose={onClose}
       title={`Team · ${team.displayName}`}
       position="right"

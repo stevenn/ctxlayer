@@ -37,7 +37,7 @@ import {
   fetchTeams
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
-import { useDialogs } from '../../lib/dialogs'
+import { useDrawerConfirm } from '../../lib/dialogs'
 import { parseGitUrl, type ParsedGitUrl } from '../../lib/git-url'
 
 const STRATEGY_OPTIONS: { value: GitCredStrategy; label: string }[] = [
@@ -399,7 +399,7 @@ function GitSourceDrawer({
   onChanged: () => void
   onDeleted: () => void
 }) {
-  const dialogs = useDialogs()
+  const { hidden, confirm, reveal } = useDrawerConfirm()
   const [row, setRow] = useState<AdminGitSourceRow | null>(null)
   const [teams, setTeams] = useState<TeamRef[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
@@ -437,6 +437,7 @@ function GitSourceDrawer({
       await fn()
     } catch (err) {
       setError(`${label} failed: ${explain(err)}`)
+      reveal() // a delete that hid the drawer then failed must show the error
     } finally {
       setBusy(false)
     }
@@ -444,7 +445,7 @@ function GitSourceDrawer({
 
   if (!row) {
     return (
-      <Drawer opened onClose={onClose} title="Loading…" position="right" size="lg" padding="md">
+      <Drawer opened={!hidden} onClose={onClose} title="Loading…" position="right" size="lg" padding="md">
         {error ? <Alert color="red">{error}</Alert> : <Text c="dimmed">Loading…</Text>}
       </Drawer>
     )
@@ -452,7 +453,7 @@ function GitSourceDrawer({
 
   return (
     <Drawer
-      opened
+      opened={!hidden}
       onClose={onClose}
       title={`Git source · ${row.displayName}`}
       position="right"
@@ -490,12 +491,15 @@ function GitSourceDrawer({
           }
           onDelete={() =>
             withBusy(async () => {
-              const ok = await dialogs.confirm({
-                title: 'Delete git source?',
-                message: `Delete git source "${row.displayName}"? Synced docs stay as ordinary docs, but lose their git link.`,
-                confirmLabel: 'Delete',
-                danger: true
-              })
+              const ok = await confirm(
+                {
+                  title: 'Delete git source?',
+                  message: `Delete git source "${row.displayName}"? Synced docs stay as ordinary docs, but lose their git link.`,
+                  confirmLabel: 'Delete',
+                  danger: true
+                },
+                { keepHiddenOnConfirm: true }
+              )
               if (!ok) return
               await adminDeleteGitSource(sourceId)
               onDeleted()
@@ -515,7 +519,7 @@ function GitSourceDrawer({
           }
           onClearToken={() =>
             withBusy(async () => {
-              const ok = await dialogs.confirm({
+              const ok = await confirm({
                 title: 'Clear token?',
                 message: `Clear the read token for "${row.displayName}"?`,
                 confirmLabel: 'Clear',
