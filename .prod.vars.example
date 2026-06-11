@@ -15,3 +15,11 @@ PUBLIC_BASE_URL=https://your-worker.workers.dev
 # still work). Do NOT `wrangler secret put` this — that collides with the empty
 # [vars] default (Cloudflare error 10053).
 # ALLOWED_GITHUB_USERS=alice,bob
+
+# Admission policy (plan L). Optional; the wrangler.toml [vars] default is
+# "open_domain" (the allowlists above are the gate — current behaviour). Set to
+# "request" to open an admin-approval queue instead (Admin · Users › Pending):
+# members-only when an org/domain is configured, OPEN to anyone who can sign in
+# when not. "invite" = invite/join-code only. Invites + join codes admit under
+# any policy.
+# ACCESS_POLICY=request

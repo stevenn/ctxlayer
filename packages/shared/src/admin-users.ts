@@ -12,6 +12,7 @@
 import { z } from 'zod'
 import { Idp, Role } from './api-types'
 import { RoleRef, TeamMemberRole, TeamRef } from './org-ia'
+import { UserStatus } from './entitlement'
 
 // Team membership reference embedded in AdminUserRow.
 export const AdminUserTeam = TeamRef.extend({
@@ -26,6 +27,8 @@ export const AdminUserRow = z.object({
   avatarUrl: z.string().nullish(),
   role: Role,
   idp: Idp,
+  // Membership lifecycle. Backfilled `active` for every pre-0019 row.
+  status: UserStatus,
   createdAt: z.number().int(),
   lastSeenAt: z.number().int().nullable(),
   teams: z.array(AdminUserTeam),

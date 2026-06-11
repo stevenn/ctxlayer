@@ -12,8 +12,8 @@ import type { Env } from '../env'
 import { signSession, sessionSetCookie } from '../auth/session'
 import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
 import { completeMcpAuthorization } from './complete-mcp'
-import { upsertUser } from '../db/queries/users'
-import { AllowlistError, enforceGithubAllowlist } from '../util/allowlist'
+import { admitOrReject } from './admit'
+import type { AdmissionIdentity } from '../util/allowlist'
 import {
   appRedirect,
   callbackUrl,
@@ -40,6 +40,7 @@ githubIdpRoute.get('/start', async (c) => {
   const challenge = await pkceChallenge(verifier)
   const returnTo = c.req.query('return_to') ?? '/app/docs'
   const oauthRequestId = c.req.query('oauth_request_id') ?? undefined
+  const joinCode = c.req.query('join') ?? undefined
 
   const url = new URL(AUTHZ)
   url.searchParams.set('client_id', c.env.GITHUB_CLIENT_ID)
@@ -52,7 +53,7 @@ githubIdpRoute.get('/start', async (c) => {
   url.searchParams.set('allow_signup', 'false')
 
   const cookie = await serializeStateCookie(
-    { state, codeVerifier: verifier, returnTo, oauthRequestId },
+    { state, codeVerifier: verifier, returnTo, oauthRequestId, joinCode },
     c.env.SESSION_COOKIE_SECRET
   )
   return new Response(null, {
@@ -121,26 +122,29 @@ githubIdpRoute.get('/callback', async (c) => {
   const primary = emails.find((e) => e.primary && e.verified) ?? emails.find((e) => e.verified)
   if (!primary) return signInErrorRedirect(c.env, 'profile_fetch_failed')
 
-  // 3. Allowlist (org membership OR username).
-  try {
-    await enforceGithubAllowlist({
-      accessToken: token.access_token,
-      login: profile.login,
-      env: c.env
-    })
-  } catch (err) {
-    if (err instanceof AllowlistError) return signInErrorRedirect(c.env, err.reason)
-    throw err
-  }
-
-  // 4. Upsert.
-  const user = await upsertUser(c.env, {
+  // 3 + 4. Admission (allowlist / invite / join code / policy) + upsert.
+  // A reject / pending / suspended outcome short-circuits here with its own
+  // state-clearing redirect — no session, no MCP grant.
+  const identity: AdmissionIdentity = {
     idp: 'github',
-    idpSub: String(profile.id),
+    login: profile.login,
     email: primary.email,
-    name: profile.name ?? profile.login,
-    avatarUrl: profile.avatar_url
-  })
+    accessToken: token.access_token
+  }
+  const outcome = await admitOrReject(
+    c.env,
+    identity,
+    {
+      idp: 'github',
+      idpSub: String(profile.id),
+      email: primary.email,
+      name: profile.name ?? profile.login,
+      avatarUrl: profile.avatar_url
+    },
+    stateRow.joinCode
+  )
+  if ('response' in outcome) return outcome.response
+  const user = outcome.user
 
   // 5a. MCP OAuth path — complete the grant and redirect to the
   // MCP client's redirect_uri. No SPA cookie is set.

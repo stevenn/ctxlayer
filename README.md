@@ -218,7 +218,8 @@ ctxlayer ships **GitHub** and **Google** sign-in. Enabling an IdP is a
 two-sided contract: the OAuth app at the provider, and the matching
 client-id/secret + allowlist on the worker. **At least one IdP must be
 enabled** — the sign-in page hides any IdP whose `*_CLIENT_ID` secret is
-unset, and the allowlist is what actually decides who can sign in.
+unset, and the allowlist is what decides who can sign in under the default
+`open_domain` policy (§2d covers the `request`/`invite` alternatives).
 
 > **Plan the hostname first.** Every IdP callback URL bakes in
 > `PUBLIC_BASE_URL`. If you intend to use a custom domain (recommended
@@ -308,6 +309,33 @@ already in use*). The same trap applies in reverse to `ALLOWED_GITHUB_USERS`
 now that it's a `[vars]` key — a worker still carrying an **old**
 `ALLOWED_GITHUB_USERS` secret must `wrangler secret delete` it before the
 first deploy that injects the var.
+
+#### 2d. Admission policy & user lifecycle (`ACCESS_POLICY`)
+
+The allowlists above are only the **default** gate. `ACCESS_POLICY`
+(`wrangler.toml [vars]`, injectable from `.prod.vars`) picks how an
+authenticated-but-not-allowlisted identity is handled:
+
+| `ACCESS_POLICY` | Who gets in |
+| --- | --- |
+| `open_domain` *(default)* | The allowlists are the gate — a match admits as `active`, everyone else is rejected. Existing behaviour; nothing changes. |
+| `request` | Opens an admin-approval queue. **Members-only** when `ALLOWED_GITHUB_ORG` / `ALLOWED_GOOGLE_HD` is set (outsiders rejected); **open** (anyone who can sign in lands `pending`) when no org/domain boundary is configured. The user sees an "access pending approval" page; an admin approves them in **Admin · Users › Pending**. |
+| `invite` | Invite / join-code only; unknowns rejected. |
+
+Two admission mechanisms work under **any** policy and admit directly:
+
+- **Invites** (Admin · Invites) — pre-authorise emails (single or bulk paste);
+  a matching sign-in is admitted as `active`.
+- **Join codes** (Admin · Join codes) — a shared secret you distribute;
+  optionally domain-restricted, with expiry / max-uses. Redeem via the
+  `/sign-in` code field or a `/sign-in?join=CODE` deep link. Stored hashed;
+  shown in full once.
+
+Offboarding lives on **Admin · Users**: **suspend** (reversible lock-out — also
+revokes the user's live MCP/CLI tokens immediately) and **delete** (removes the
+identity, FK-cleans memberships/roles/credentials). A suspended or deleted user
+is cut on their next request — the session is re-checked against the DB every
+call. Design notes: [`docs/plan/L-entitlement.md`](docs/plan/L-entitlement.md).
 
 ### 3. Deployment secrets
 

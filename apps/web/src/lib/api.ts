@@ -28,6 +28,10 @@ import {
   SkillTags,
   AdminUpstreamRow,
   AdminUserRow,
+  Invite,
+  JoinCode,
+  CreateInvitesResponse,
+  CreateJoinCodeResponse,
   AdminUsageResponse,
   AuditLogResponse,
   OAuthClientsResponse,
@@ -75,6 +79,10 @@ import {
 import type {
   AdminUpstreamRow as AdminUpstreamRowT,
   AdminUserRow as AdminUserRowT,
+  Invite as InviteT,
+  JoinCode as JoinCodeT,
+  CreateInvitesResponse as CreateInvitesResponseT,
+  CreateJoinCodeResponse as CreateJoinCodeResponseT,
   AdminUsageResponse as AdminUsageResponseT,
   AttachDocRequest as AttachDocRequestT,
   AttachSkillRequest as AttachSkillRequestT,
@@ -889,6 +897,86 @@ export function adminRevokeUserCredentials(userId: string): Promise<{ removed: n
     (b) => RevokeCredsResult.parse(b),
     { method: 'DELETE' }
   )
+}
+
+// ----- user lifecycle (plan L) --------------------------------------------
+
+const DeleteUserResult = z.object({ reassignedSkills: z.number() })
+const SuspendResult = z.object({ revokedGrants: z.number() })
+
+export function adminSuspendUser(userId: string): Promise<{ revokedGrants: number }> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/suspend`, (b) => SuspendResult.parse(b), {
+    method: 'POST'
+  })
+}
+
+// Reactivate doubles as "approve" for a pending user (both → active).
+export function adminReactivateUser(userId: string): Promise<void> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/reactivate`, () => undefined, {
+    method: 'POST'
+  })
+}
+
+export function adminRejectUser(userId: string): Promise<void> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}/reject`, () => undefined, {
+    method: 'POST'
+  })
+}
+
+export function adminDeleteUser(userId: string): Promise<{ reassignedSkills: number }> {
+  return request(`/api/admin/users/${encodeURIComponent(userId)}`, (b) => DeleteUserResult.parse(b), {
+    method: 'DELETE'
+  })
+}
+
+// ----- invites ------------------------------------------------------------
+
+const InviteList = z.array(Invite)
+
+export function fetchInvites(signal?: AbortSignal): Promise<InviteT[]> {
+  return request('/api/admin/invites', (b) => InviteList.parse(b), { signal })
+}
+
+export function adminCreateInvites(emails: string): Promise<CreateInvitesResponseT> {
+  return request('/api/admin/invites', (b) => CreateInvitesResponse.parse(b), {
+    method: 'POST',
+    body: JSON.stringify({ emails })
+  })
+}
+
+export function adminDeleteInvite(id: string): Promise<void> {
+  return request(`/api/admin/invites/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'DELETE'
+  })
+}
+
+// ----- join codes ---------------------------------------------------------
+
+const JoinCodeList = z.array(JoinCode)
+
+export function fetchJoinCodes(signal?: AbortSignal): Promise<JoinCodeT[]> {
+  return request('/api/admin/join-codes', (b) => JoinCodeList.parse(b), { signal })
+}
+
+export interface CreateJoinCodeInput {
+  label?: string
+  domainRestrict?: string | null
+  onRedeem: 'active' | 'pending'
+  maxUses?: number | null
+  expiresInDays?: number | null
+}
+
+export function adminCreateJoinCode(input: CreateJoinCodeInput): Promise<CreateJoinCodeResponseT> {
+  return request('/api/admin/join-codes', (b) => CreateJoinCodeResponse.parse(b), {
+    method: 'POST',
+    body: JSON.stringify(input)
+  })
+}
+
+export function adminRevokeJoinCode(id: string): Promise<void> {
+  return request(`/api/admin/join-codes/${encodeURIComponent(id)}`, () => undefined, {
+    method: 'DELETE'
+  })
 }
 
 // ----- upstreams (user-facing) --------------------------------------------

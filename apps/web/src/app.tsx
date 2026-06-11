@@ -10,6 +10,8 @@ import {
   AdminUpstreams,
   AdminGitSources,
   AdminUsers,
+  AdminInvites,
+  AdminJoinCodes,
   AdminTeams,
   AdminRoles,
   AdminProducts,
@@ -43,6 +45,8 @@ export function appRoutes() {
         <Route path="admin/upstreams" element={<AdminUpstreams />} />
         <Route path="admin/git-sources" element={<AdminGitSources />} />
         <Route path="admin/users" element={<AdminUsers />} />
+        <Route path="admin/invites" element={<AdminInvites />} />
+        <Route path="admin/join-codes" element={<AdminJoinCodes />} />
         <Route path="admin/teams" element={<AdminTeams />} />
         <Route path="admin/roles" element={<AdminRoles />} />
         <Route path="admin/products" element={<AdminProducts />} />
