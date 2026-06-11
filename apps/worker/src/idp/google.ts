@@ -14,8 +14,8 @@ import type { Env } from '../env'
 import { signSession, sessionSetCookie } from '../auth/session'
 import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
 import { completeMcpAuthorization } from './complete-mcp'
-import { upsertUser } from '../db/queries/users'
-import { AllowlistError, enforceGoogleAllowlist } from '../util/allowlist'
+import { admitOrReject } from './admit'
+import type { AdmissionIdentity } from '../util/allowlist'
 import { b64urlDecode } from '../auth/session'
 import {
   appRedirect,
@@ -45,6 +45,7 @@ googleIdpRoute.get('/start', async (c) => {
   // If present, the callback will complete an MCP OAuth grant instead
   // of setting a SPA session cookie. See oauth/authorize-page.ts.
   const oauthRequestId = c.req.query('oauth_request_id') ?? undefined
+  const joinCode = c.req.query('join') ?? undefined
 
   const url = new URL(AUTHZ)
   url.searchParams.set('client_id', c.env.GOOGLE_CLIENT_ID)
@@ -59,7 +60,7 @@ googleIdpRoute.get('/start', async (c) => {
   if (c.env.ALLOWED_GOOGLE_HD) url.searchParams.set('hd', c.env.ALLOWED_GOOGLE_HD)
 
   const cookie = await serializeStateCookie(
-    { state, codeVerifier: verifier, returnTo, oauthRequestId },
+    { state, codeVerifier: verifier, returnTo, oauthRequestId, joinCode },
     c.env.SESSION_COOKIE_SECRET
   )
   return new Response(null, {
@@ -111,22 +112,28 @@ googleIdpRoute.get('/callback', async (c) => {
   }
   if (!claims.sub || !claims.email) return signInErrorRedirect(c.env, 'profile_fetch_failed')
 
-  // 3. Allowlist.
-  try {
-    enforceGoogleAllowlist({ hd: claims.hd, email: claims.email }, c.env)
-  } catch (err) {
-    if (err instanceof AllowlistError) return signInErrorRedirect(c.env, err.reason)
-    throw err
-  }
-
-  // 4. Upsert.
-  const user = await upsertUser(c.env, {
+  // 3 + 4. Admission (allowlist / invite / join code / policy) + upsert.
+  // A reject / pending / suspended outcome short-circuits here with its own
+  // state-clearing redirect — no session, no MCP grant.
+  const identity: AdmissionIdentity = {
     idp: 'google',
-    idpSub: claims.sub,
     email: claims.email,
-    name: claims.name ?? null,
-    avatarUrl: claims.picture ?? null
-  })
+    hd: claims.hd
+  }
+  const outcome = await admitOrReject(
+    c.env,
+    identity,
+    {
+      idp: 'google',
+      idpSub: claims.sub,
+      email: claims.email,
+      name: claims.name ?? null,
+      avatarUrl: claims.picture ?? null
+    },
+    stateRow.joinCode
+  )
+  if ('response' in outcome) return outcome.response
+  const user = outcome.user
 
   // 5a. MCP OAuth path — complete the grant and redirect to the
   // MCP client's redirect_uri. No SPA cookie is set.

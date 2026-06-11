@@ -6,17 +6,22 @@ import {
   Drawer,
   Group,
   MultiSelect,
+  SegmentedControl,
   Stack,
   Switch,
   Text,
   TextInput,
   Title
 } from '@mantine/core'
-import type { AdminUserRow, AdminUserTeam, Role, RoleRef } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
 import {
   type ApiError,
+  adminDeleteUser,
   adminPatchUserRole,
+  adminReactivateUser,
+  adminRejectUser,
   adminRevokeUserCredentials,
+  adminSuspendUser,
   fetchAdminUsers,
   fetchRoles,
   putUserRoles
@@ -24,11 +29,14 @@ import {
 import { explain as explainBase } from '../../lib/explain'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
+type StatusFilter = 'all' | UserStatus
+
 export function AdminUsers() {
   const [items, setItems] = useState<AdminUserRow[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
 
   const reload = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -45,23 +53,37 @@ export function AdminUsers() {
     return () => ctrl.abort()
   }, [reload])
 
+  const counts = useMemo(() => {
+    const c = { all: items?.length ?? 0, active: 0, pending: 0, suspended: 0 }
+    for (const u of items ?? []) c[u.status]++
+    return c
+  }, [items])
+
   const filtered = useMemo(() => {
     if (!items) return null
     const q = query.trim().toLowerCase()
-    if (!q) return items
-    return items.filter(
-      (u) => u.email.toLowerCase().includes(q) || (u.name ?? '').toLowerCase().includes(q)
-    )
-  }, [items, query])
+    return items.filter((u) => {
+      if (statusFilter !== 'all' && u.status !== statusFilter) return false
+      if (!q) return true
+      return u.email.toLowerCase().includes(q) || (u.name ?? '').toLowerCase().includes(q)
+    })
+  }, [items, query, statusFilter])
 
   const editing = items?.find((u) => u.id === editingId) ?? null
 
   return (
     <>
       <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
-          Admin · Users
-        </Title>
+        <Group gap="sm" align="center">
+          <Title order={2} fz={20} fw={600}>
+            Admin · Users
+          </Title>
+          {counts.pending > 0 && (
+            <Badge color="yellow" variant="filled" radius="sm">
+              {counts.pending} pending
+            </Badge>
+          )}
+        </Group>
         <TextInput
           size="xs"
           placeholder="Filter by email or name…"
@@ -70,6 +92,19 @@ export function AdminUsers() {
           w={260}
         />
       </Group>
+
+      <SegmentedControl
+        size="xs"
+        mb="md"
+        value={statusFilter}
+        onChange={(v) => setStatusFilter(v as StatusFilter)}
+        data={[
+          { value: 'all', label: `All (${counts.all})` },
+          { value: 'active', label: `Active (${counts.active})` },
+          { value: 'pending', label: `Pending (${counts.pending})` },
+          { value: 'suspended', label: `Suspended (${counts.suspended})` }
+        ]}
+      />
 
       {error && (
         <Alert color="red" variant="light" radius="sm" mb="md">
@@ -83,7 +118,7 @@ export function AdminUsers() {
       )}
 
       {filtered && filtered.length === 0 && items && items.length > 0 && (
-        <Text c="dimmed">No users match "{query}".</Text>
+        <Text c="dimmed">No users match the current filter.</Text>
       )}
 
       {filtered && filtered.length > 0 && (
@@ -94,8 +129,8 @@ export function AdminUsers() {
               <th>Name</th>
               <th>IdP</th>
               <th>Role</th>
+              <th>Status</th>
               <th>Teams</th>
-              <th>Roles</th>
               <th>Creds</th>
               <th>Last seen</th>
             </tr>
@@ -114,11 +149,11 @@ export function AdminUsers() {
                     {u.role}
                   </Badge>
                 </td>
-                <td className="text-muted">
-                  {u.teams.length === 0 ? '—' : u.teams.map((t) => t.slug).join(', ')}
+                <td>
+                  <StatusBadge status={u.status} />
                 </td>
                 <td className="text-muted">
-                  {u.roles.length === 0 ? '—' : u.roles.map((r) => r.displayName).join(', ')}
+                  {u.teams.length === 0 ? '—' : u.teams.map((t) => t.slug).join(', ')}
                 </td>
                 <td className="text-muted">{u.credentialCount}</td>
                 <td className="text-muted">{relativeTime(u.lastSeenAt)}</td>
@@ -129,9 +164,31 @@ export function AdminUsers() {
       )}
 
       {editing && (
-        <UserDrawer user={editing} onClose={() => setEditingId(null)} onChanged={() => reload()} />
+        <UserDrawer
+          user={editing}
+          onClose={() => setEditingId(null)}
+          onChanged={() => reload()}
+          onRemoved={() => {
+            setEditingId(null)
+            reload()
+          }}
+        />
       )}
     </>
+  )
+}
+
+const STATUS_COLOR: Record<UserStatus, string> = {
+  active: 'green',
+  pending: 'yellow',
+  suspended: 'red'
+}
+
+function StatusBadge({ status }: { status: UserStatus }) {
+  return (
+    <Badge color={STATUS_COLOR[status]} variant={status === 'active' ? 'light' : 'filled'}>
+      {status}
+    </Badge>
   )
 }
 
@@ -140,11 +197,13 @@ export function AdminUsers() {
 function UserDrawer({
   user,
   onClose,
-  onChanged
+  onChanged,
+  onRemoved
 }: {
   user: AdminUserRow
   onClose: () => void
   onChanged: () => void
+  onRemoved: () => void
 }) {
   const { hidden, confirm } = useDrawerConfirm()
   const [busy, setBusy] = useState(false)
@@ -237,6 +296,57 @@ function UserDrawer({
       onChanged()
     }, 'Revoke credentials')
 
+  // ----- lifecycle -----
+  const reactivate = (label: string) =>
+    withBusy(async () => {
+      await adminReactivateUser(user.id)
+      onChanged()
+    }, label)
+
+  const suspend = () =>
+    withBusy(async () => {
+      const ok = await confirm({
+        title: 'Suspend user?',
+        message: `Suspend ${user.email}? They're signed out immediately and any live MCP/agent tokens are revoked — they can't sign in or use the MCP server until reactivated (which requires reconnecting their MCP client). Reversible; audit history is kept.`,
+        confirmLabel: 'Suspend',
+        danger: true
+      })
+      if (!ok) return
+      const { revokedGrants } = await adminSuspendUser(user.id)
+      setInfo(
+        revokedGrants > 0
+          ? `Suspended. Revoked ${revokedGrants} active token${revokedGrants === 1 ? '' : 's'} — their MCP/agent sessions are cut.`
+          : 'Suspended. No active MCP tokens to revoke.'
+      )
+      onChanged()
+    }, 'Suspend')
+
+  const reject = () =>
+    withBusy(async () => {
+      const ok = await confirm({
+        title: 'Reject request?',
+        message: `Reject ${user.email}'s pending access request? Their record is removed. They can request again later.`,
+        confirmLabel: 'Reject',
+        danger: true
+      })
+      if (!ok) return
+      await adminRejectUser(user.id)
+      onRemoved()
+    }, 'Reject')
+
+  const remove = () =>
+    withBusy(async () => {
+      const ok = await confirm({
+        title: 'Delete user?',
+        message: `Permanently delete ${user.email}? Removes team/role memberships and stored credentials, de-attributes authored docs, and reassigns any skills they own to you. If they're still on the IdP allowlist they'll re-appear on next sign-in.`,
+        confirmLabel: 'Delete',
+        danger: true
+      })
+      if (!ok) return
+      await adminDeleteUser(user.id)
+      onRemoved()
+    }, 'Delete')
+
   return (
     <Drawer
       opened={!hidden}
@@ -283,6 +393,47 @@ function UserDrawer({
             onChange={(e) => toggleRole(e.currentTarget.checked)}
             disabled={busy}
           />
+        </Section>
+
+        <Section title="Lifecycle">
+          <Stack gap={8}>
+            <Group gap="xs" align="center">
+              <Text fz="xs" c="dimmed">
+                Status
+              </Text>
+              <StatusBadge status={user.status} />
+            </Group>
+            {user.status === 'pending' ? (
+              <>
+                <Text fz="xs" c="dimmed">
+                  Awaiting approval. Approving grants access; rejecting removes the request.
+                </Text>
+                <Group justify="flex-end" gap="xs">
+                  <Button size="xs" variant="default" color="red" onClick={reject} disabled={busy}>
+                    Reject
+                  </Button>
+                  <Button size="xs" onClick={() => reactivate('Approve')} disabled={busy}>
+                    Approve
+                  </Button>
+                </Group>
+              </>
+            ) : (
+              <Group justify="flex-end" gap="xs">
+                {user.status === 'suspended' ? (
+                  <Button size="xs" onClick={() => reactivate('Reactivate')} disabled={busy}>
+                    Reactivate
+                  </Button>
+                ) : (
+                  <Button size="xs" variant="default" color="orange" onClick={suspend} disabled={busy}>
+                    Suspend
+                  </Button>
+                )}
+                <Button size="xs" variant="default" color="red" onClick={remove} disabled={busy}>
+                  Delete…
+                </Button>
+              </Group>
+            )}
+          </Stack>
         </Section>
 
         <Section title="Team membership">

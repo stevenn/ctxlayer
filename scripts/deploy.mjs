@@ -48,6 +48,11 @@ const publicBaseUrl = process.env.PUBLIC_BASE_URL || fileVars.PUBLIC_BASE_URL
 // registry), and a global value here would clobber it (e.g. wrongly enable a
 // Google-only tenant's GitHub). Absent → the committed "" default stands.
 const githubUsers = process.env.ALLOWED_GITHUB_USERS ?? fileVars.ALLOWED_GITHUB_USERS
+// Admission policy for the BASE deploy (open_domain | request | invite). Like
+// the allowlist above, injected from `.prod.vars`/env so the committed
+// wrangler.toml default ("open_domain") stays generic. Tenant (`--config`)
+// deploys carry their own [vars] value and are excluded below.
+const accessPolicy = process.env.ACCESS_POLICY ?? fileVars.ACCESS_POLICY
 
 if (!publicBaseUrl || /YOUR-WORKER|example\.workers\.dev/.test(publicBaseUrl)) {
   console.error(
@@ -71,6 +76,7 @@ const vars = [
 ]
 // Base deploy only — see githubUsers above. Tenant configs carry their own.
 if (!configPath && githubUsers) vars.push(['ALLOWED_GITHUB_USERS', githubUsers])
+if (!configPath && accessPolicy) vars.push(['ACCESS_POLICY', accessPolicy])
 const varArgs = vars.flatMap(([k, v]) => ['--var', `${k}:${v}`])
 const configArgs = configPath ? ['-c', configPath] : []
 const wranglerArgs = preview

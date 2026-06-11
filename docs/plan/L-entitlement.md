@@ -1,10 +1,15 @@
 # L — Tenant entitlement & admission
 
-> **Status: PROPOSAL, not implemented.** A plan to replace "email-domain
-> provenance admits you" with a ctxlayer-owned membership model. Decoupled
-> from — and shippable before — the centralized `auth.ctxlayer.net` broker
-> (see [K-multitenancy.md](K-multitenancy.md)). Reference, not a roadmap;
-> trust the code once this lands.
+> **Status: IMPLEMENTED.** All three phases shipped — `status` lifecycle
+> (active/pending/suspended) + suspend/reactivate/delete, invites, hashed join
+> codes, and the `ACCESS_POLICY` admission resolver. Replaces "email-domain
+> provenance admits you" with a ctxlayer-owned membership model. Decoupled from
+> — and shipped before — the centralized `auth.ctxlayer.net` broker (see
+> [K-multitenancy.md](K-multitenancy.md)). This doc is reference for the
+> *intent*; trust the code (`auth/admission.ts`, `db/migrations/0019`, the
+> Admin · Users/Invites/Join-codes pages) for the exact behaviour — a couple of
+> details landed differently than sketched below (notably `request` opens to
+> anyone when no org/domain boundary is set; see §6).
 
 ## 1. Principle
 
@@ -159,8 +164,11 @@ New env (typed in `apps/worker/src/env.ts`, never `process.env`):
 
 - `open_domain` — **current behaviour**: env allowlist (incl. whole-domain
   `ALLOWED_GOOGLE_HD`) admits as `active`. Existing deploys unchanged.
-- `request` — domain is a pre-filter only; domain-matching unknowns land
-  `pending`; everyone else rejected. Invites/codes still admit directly.
+- `request` — opens an admin-approval queue (Users › Pending). If an org/domain
+  boundary is configured (`ALLOWED_GITHUB_ORG` / `ALLOWED_GOOGLE_HD`) it's
+  members-only: domain-matching unknowns land `pending`, outsiders rejected.
+  With **no** boundary configured it's an OPEN queue: anyone who can sign in
+  via the IdP lands `pending`. Invites/codes still admit directly.
 - `invite` — must be invited or redeem a code; unknowns rejected outright.
   Domain (if set) is a pre-filter on code redemption.
 

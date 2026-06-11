@@ -12,6 +12,10 @@ export interface Env {
   ALLOWED_GITHUB_ORG: string
   ALLOWED_GITHUB_USERS: string
   ADMIN_EMAILS: string
+  // Admission policy (plan L). 'open_domain' (default / unset) = legacy
+  // env-allowlist behaviour; 'request' = domain match lands pending;
+  // 'invite' = invite/join-code only. Parsed via parseAccessPolicy().
+  ACCESS_POLICY?: string
   // Build provenance, injected by the `deploy` script via `--var`.
   // Empty in local dev / a bare `wrangler deploy`.
   GIT_SHA: string

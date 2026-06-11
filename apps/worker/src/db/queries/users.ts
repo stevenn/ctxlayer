@@ -4,7 +4,7 @@
  */
 
 import type { Env } from '../../env'
-import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
 import { audit } from '../../audit/log'
 
 export interface UserRow {
@@ -15,6 +15,7 @@ export interface UserRow {
   idp: string
   idp_sub: string
   role: Role
+  status: UserStatus
   created_at: number
   last_seen_at: number | null
 }
@@ -30,23 +31,36 @@ export interface UpsertUserInput {
 /**
  * Upsert by (idp, idp_sub). Returns the resulting row. Also promotes the
  * user to admin if their email appears in ADMIN_EMAILS (idempotent).
+ *
+ * `admitStatus` is the lifecycle status to write for a BRAND-NEW user (the
+ * admission decision — see auth/admission.ts). For an EXISTING user the
+ * stored status is authoritative and is left untouched: sign-in never
+ * un-suspends or re-pends a known user — only an admin flips status. The
+ * caller re-reads the returned `row.status` to decide whether to issue a
+ * session (active), show the pending page (pending), or reject (suspended).
  */
-export async function upsertUser(env: Env, input: UpsertUserInput): Promise<UserRow> {
+export async function upsertUser(
+  env: Env,
+  input: UpsertUserInput,
+  admitStatus: UserStatus = 'active'
+): Promise<UserRow> {
   const adminSet = parseAdminEmails(env.ADMIN_EMAILS)
   const promoteToAdmin = adminSet.has(input.email.toLowerCase())
   const now = Math.floor(Date.now() / 1000)
 
-  // Try insert first; on conflict update mutable fields.
+  // Try insert first; on conflict update mutable fields. `status` is set
+  // only on INSERT — deliberately absent from the UPDATE SET clause so a
+  // re-sign-in can't override an admin's suspend/approve decision.
   const id = newUlid()
   await env.DB.prepare(
-    `INSERT INTO users (id, email, name, avatar_url, idp, idp_sub, role, created_at, last_seen_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?8)
+    `INSERT INTO users (id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
      ON CONFLICT(idp, idp_sub) DO UPDATE SET
        email = excluded.email,
        name = excluded.name,
        avatar_url = excluded.avatar_url,
        last_seen_at = excluded.last_seen_at,
-       role = CASE WHEN ?9 = 1 THEN 'admin' ELSE users.role END`
+       role = CASE WHEN ?10 = 1 THEN 'admin' ELSE users.role END`
   )
     .bind(
       id,
@@ -56,13 +70,14 @@ export async function upsertUser(env: Env, input: UpsertUserInput): Promise<User
       input.idp,
       input.idpSub,
       promoteToAdmin ? 'admin' : 'user',
+      admitStatus,
       now,
       promoteToAdmin ? 1 : 0
     )
     .run()
 
   const row = await env.DB.prepare(
-    `SELECT id, email, name, avatar_url, idp, idp_sub, role, created_at, last_seen_at
+    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at
      FROM users WHERE idp = ?1 AND idp_sub = ?2`
   )
     .bind(input.idp, input.idpSub)
@@ -87,7 +102,7 @@ export async function upsertUser(env: Env, input: UpsertUserInput): Promise<User
 
 export async function findById(env: Env, id: string): Promise<UserRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, email, name, avatar_url, idp, idp_sub, role, created_at, last_seen_at
+    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at
      FROM users WHERE id = ?1`
   )
     .bind(id)
@@ -130,7 +145,7 @@ export async function listUserRefs(
 export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
   const [usersRes, teamsRes, rolesRes, credsRes] = await Promise.all([
     env.DB.prepare(
-      `SELECT id, email, name, avatar_url, idp, role, created_at, last_seen_at
+      `SELECT id, email, name, avatar_url, idp, role, status, created_at, last_seen_at
        FROM users ORDER BY LOWER(email)`
     ).all<{
       id: string
@@ -139,6 +154,7 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
       avatar_url: string | null
       idp: string
       role: Role
+      status: UserStatus
       created_at: number
       last_seen_at: number | null
     }>(),
@@ -207,6 +223,7 @@ export async function listAdminUserRows(env: Env): Promise<AdminUserRow[]> {
     avatarUrl: u.avatar_url,
     role: u.role,
     idp: u.idp,
+    status: u.status,
     createdAt: u.created_at,
     lastSeenAt: u.last_seen_at,
     teams: teamsByUser.get(u.id) ?? [],
@@ -235,15 +252,70 @@ export async function revokeAllUserCredentials(env: Env, userId: string): Promis
 }
 
 /**
- * Count current admins. Used to gate self-demotion: the last admin
- * can't downgrade themselves or the org loses access to the admin
- * surface entirely.
+ * Count admins who can actually still sign in (role='admin' AND
+ * status='active'), optionally excluding one user id. Used by the
+ * demote / suspend / delete guards: a suspended co-admin is not a
+ * safety net, so "is there another *active* admin besides this target?"
+ * is the right question.
  */
-export async function countAdmins(env: Env): Promise<number> {
-  const row = await env.DB.prepare(`SELECT COUNT(*) AS n FROM users WHERE role = 'admin'`).first<{
-    n: number
-  }>()
+export async function countActiveAdmins(env: Env, exceptId?: string): Promise<number> {
+  const row = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM users
+     WHERE role = 'admin' AND status = 'active' AND id != ?1`
+  )
+    .bind(exceptId ?? '')
+    .first<{ n: number }>()
   return row?.n ?? 0
+}
+
+/** Set a user's lifecycle status (admin-driven: approve / suspend / reactivate). */
+export async function setUserStatus(env: Env, userId: string, status: UserStatus): Promise<void> {
+  await env.DB.prepare(`UPDATE users SET status = ?1 WHERE id = ?2`).bind(status, userId).run()
+}
+
+/**
+ * Hard-delete a user identity. The mirror row is removed; the IdP identity
+ * is untouched. ON DELETE CASCADE clears team memberships, org-role grants,
+ * tool-ACL grants, and stored credentials. The remaining references are
+ * authored content:
+ *   - nullable authorship (documents/doc_revisions/doc_editors/skill_*
+ *     /doc_attachments) is de-attributed to NULL — the content survives;
+ *   - `skills.created_by` is NOT NULL, so authored skills are reassigned to
+ *     the acting admin (`actorId`) to keep the curated set alive + owned.
+ * Audit rows survive (audit_log has no FK), so the history is intact.
+ *
+ * NOTE: re-provisioning. If the deleted identity is still on the env IdP
+ * allowlist (or the tenant runs `open_domain`), the next sign-in re-creates
+ * a fresh `active` row. To make a deletion stick, also remove them from the
+ * allowlist or move the tenant onto `invite`/`request`. Returns the count of
+ * skills reassigned so the caller can audit + surface it.
+ */
+export async function deleteUser(
+  env: Env,
+  userId: string,
+  actorId: string
+): Promise<{ reassignedSkills: number }> {
+  const skillCount = await env.DB.prepare(
+    `SELECT COUNT(*) AS n FROM skills WHERE created_by = ?1`
+  )
+    .bind(userId)
+    .first<{ n: number }>()
+
+  // Atomic: clear/reassign every NO-ACTION reference, then delete (which
+  // fires the CASCADE/SET NULL children). Order matters — the user row is
+  // deleted last, after nothing NOT-NULL references it.
+  const stmt = (sql: string) => env.DB.prepare(sql).bind(userId)
+  await env.DB.batch([
+    stmt(`UPDATE documents       SET created_by = NULL WHERE created_by = ?1`),
+    stmt(`UPDATE doc_revisions   SET author_id  = NULL WHERE author_id  = ?1`),
+    stmt(`UPDATE doc_editors     SET granted_by = NULL WHERE granted_by = ?1`),
+    stmt(`UPDATE skill_revisions SET author_id  = NULL WHERE author_id  = ?1`),
+    stmt(`UPDATE skill_attachments SET created_by = NULL WHERE created_by = ?1`),
+    stmt(`UPDATE doc_attachments SET created_by = NULL WHERE created_by = ?1`),
+    env.DB.prepare(`UPDATE skills SET created_by = ?1 WHERE created_by = ?2`).bind(actorId, userId),
+    stmt(`DELETE FROM users WHERE id = ?1`)
+  ])
+  return { reassignedSkills: skillCount?.n ?? 0 }
 }
 
 // ----- helpers ------------------------------------------------------------

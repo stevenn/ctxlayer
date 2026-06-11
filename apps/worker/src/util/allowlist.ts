@@ -1,22 +1,24 @@
+/**
+ * Env-allowlist primitives consumed by the admission resolver
+ * (auth/admission.ts). Two distinct notions (plan L §5/§6):
+ *
+ *   - EXPLICIT per-user allowlist (`ALLOWED_GITHUB_USERS` /
+ *     `ALLOWED_GOOGLE_EMAILS`) — a break-glass / solo-operator grant that
+ *     always admits as `active`, under any ACCESS_POLICY.
+ *   - DOMAIN/ORG pre-filter (`ALLOWED_GITHUB_ORG` / `ALLOWED_GOOGLE_HD`) —
+ *     "is a member of the org/domain". Under `open_domain` it admits; under
+ *     `request` it lands pending; under `invite` it's not sufficient alone.
+ *
+ * These functions answer the two questions separately so the resolver can
+ * layer policy on top. The GitHub org check is the only one that hits the
+ * network, so it's a separate async call the resolver makes lazily.
+ */
+
 import type { Env } from '../env'
-import type { ErrorReason } from '../idp/common'
 
-export class AllowlistError extends Error {
-  constructor(public reason: ErrorReason) {
-    super(reason)
-  }
-}
-
-interface GoogleProfile {
-  hd?: string
-  email: string
-}
-
-interface GithubAllowlistArgs {
-  accessToken: string
-  login: string
-  env: Env
-}
+export type AdmissionIdentity =
+  | { idp: 'github'; login: string; email: string; accessToken: string }
+  | { idp: 'google'; email: string; hd?: string }
 
 function parseList(raw: string | undefined): Set<string> {
   if (!raw) return new Set()
@@ -28,60 +30,50 @@ function parseList(raw: string | undefined): Set<string> {
   )
 }
 
-/**
- * Google passes the allowlist when EITHER:
- *   - id_token.hd matches ALLOWED_GOOGLE_HD (Workspace domain check), OR
- *   - email is in ALLOWED_GOOGLE_EMAILS (per-user override).
- * Both empty disables Google entirely.
- */
-export function enforceGoogleAllowlist(profile: GoogleProfile, env: Env): void {
-  const emailSet = parseList(env.ALLOWED_GOOGLE_EMAILS)
-  const hasEmailAllowlist = emailSet.size > 0
-  const hasHdAllowlist = !!env.ALLOWED_GOOGLE_HD
+/** True when the identity is on the explicit per-user allowlist (break-glass). */
+export function isExplicitlyAllowlisted(id: AdmissionIdentity, env: Env): boolean {
+  if (id.idp === 'github') return parseList(env.ALLOWED_GITHUB_USERS).has(id.login.toLowerCase())
+  return parseList(env.ALLOWED_GOOGLE_EMAILS).has(id.email.toLowerCase())
+}
 
-  if (!hasEmailAllowlist && !hasHdAllowlist) {
-    throw new AllowlistError('google_disabled')
+/** True when the IdP has ANY allowlist configured (explicit OR domain). */
+export function idpAllowlistConfigured(idp: 'github' | 'google', env: Env): boolean {
+  if (idp === 'github') {
+    return parseList(env.ALLOWED_GITHUB_USERS).size > 0 || !!env.ALLOWED_GITHUB_ORG
   }
-  if (hasEmailAllowlist && emailSet.has(profile.email.toLowerCase())) return
-  if (hasHdAllowlist && profile.hd === env.ALLOWED_GOOGLE_HD) return
-  throw new AllowlistError('wrong_domain')
+  return parseList(env.ALLOWED_GOOGLE_EMAILS).size > 0 || !!env.ALLOWED_GOOGLE_HD
 }
 
 /**
- * GitHub passes the allowlist when EITHER:
- *   - the user is a member of ALLOWED_GITHUB_ORG, OR
- *   - the user's login is in ALLOWED_GITHUB_USERS.
- * Both empty disables GitHub. ALLOWED_GITHUB_USERS is the cheap path
- * (no API call) — checked first.
+ * True when a DOMAIN/ORG pre-filter is configured for this IdP
+ * (`ALLOWED_GITHUB_ORG` / `ALLOWED_GOOGLE_HD`) — i.e. there's a membership
+ * boundary to gate on. Distinct from the explicit per-user lists. Used by the
+ * `request` policy to decide between a members-only queue (boundary set) and
+ * an open queue (no boundary → anyone who can sign in lands pending).
  */
-export async function enforceGithubAllowlist({
-  accessToken,
-  login,
-  env
-}: GithubAllowlistArgs): Promise<void> {
-  const userSet = parseList(env.ALLOWED_GITHUB_USERS)
-  const hasUserAllowlist = userSet.size > 0
-  const hasOrgAllowlist = !!env.ALLOWED_GITHUB_ORG
+export function domainPrefilterConfigured(idp: 'github' | 'google', env: Env): boolean {
+  return idp === 'github' ? !!env.ALLOWED_GITHUB_ORG : !!env.ALLOWED_GOOGLE_HD
+}
 
-  if (!hasUserAllowlist && !hasOrgAllowlist) {
-    throw new AllowlistError('github_disabled')
+/**
+ * The domain/org membership pre-filter. For Google this is a synchronous
+ * `hd` claim check; for GitHub it requires the org-membership API call, so
+ * the whole helper is async. Returns false (not throw) on any miss — the
+ * resolver maps a miss to the right policy outcome.
+ */
+export async function passesDomainPrefilter(id: AdmissionIdentity, env: Env): Promise<boolean> {
+  if (id.idp === 'google') {
+    return !!env.ALLOWED_GOOGLE_HD && id.hd === env.ALLOWED_GOOGLE_HD
   }
-
-  if (hasUserAllowlist && userSet.has(login.toLowerCase())) return
-
-  if (hasOrgAllowlist) {
-    const res = await fetch('https://api.github.com/user/orgs', {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: 'application/vnd.github+json',
-        'User-Agent': 'ctxlayer'
-      }
-    })
-    if (res.ok) {
-      const orgs = (await res.json()) as Array<{ login: string }>
-      if (orgs.some((o) => o.login === env.ALLOWED_GITHUB_ORG)) return
+  if (!env.ALLOWED_GITHUB_ORG) return false
+  const res = await fetch('https://api.github.com/user/orgs', {
+    headers: {
+      Authorization: `Bearer ${id.accessToken}`,
+      Accept: 'application/vnd.github+json',
+      'User-Agent': 'ctxlayer'
     }
-  }
-
-  throw new AllowlistError('not_in_org')
+  })
+  if (!res.ok) return false
+  const orgs = (await res.json()) as Array<{ login: string }>
+  return orgs.some((o) => o.login === env.ALLOWED_GITHUB_ORG)
 }

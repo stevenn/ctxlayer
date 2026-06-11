@@ -188,6 +188,22 @@ ALLOWED_GITHUB_ORG = ""              # e.g. "acme-inc" (org slug)
 # scripts/deploy.mjs from a gitignored `.prod.vars` (so logins aren't
 # committed), and `.dev.vars` supplies it for local dev.
 ALLOWED_GITHUB_USERS = ""            # e.g. "octocat,hubot" (comma-sep GitHub logins)
+# Admission policy (plan L). How an authenticated-but-not-explicitly-allowlisted
+# identity is treated:
+#   open_domain (default) — the allowlists above ARE the gate; a match admits
+#                           as `active`, everyone else is rejected. Legacy
+#                           behaviour; leave this unless you want a signup queue.
+#   request               — opens an admin-approval queue (Admin · Users ›
+#                           Pending). Members-only when ALLOWED_GITHUB_ORG /
+#                           ALLOWED_GOOGLE_HD is set (outsiders rejected);
+#                           OPEN (anyone who can sign in lands pending) when no
+#                           org/domain boundary is configured.
+#   invite                — invite/join-code only; unknowns rejected.
+# Invites + join codes (Admin · Invites / Join codes) admit directly under ANY
+# policy. Like ALLOWED_GITHUB_USERS, the real value can be injected at deploy
+# from `.prod.vars` by scripts/deploy.mjs, so this committed default stays
+# generic.
+ACCESS_POLICY = "open_domain"        # open_domain | request | invite
 # ADMIN_EMAILS is the one binding still set via `wrangler secret put` (admin
 # identity, not an allowlist); in local dev `.dev.vars` supplies it. Declaring
 # an empty default here would block the secret with code 10053 ("binding name

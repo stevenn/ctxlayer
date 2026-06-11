@@ -22,6 +22,10 @@ export interface StatePayload {
   // instead of setting a SPA session cookie. The id maps to a KV entry
   // produced by `oauth/authorize-page.ts:handleAuthorize`.
   oauthRequestId?: string
+  // A join code entered on /sign-in (or via ?join=), carried through the
+  // redirect dance so admission can redeem it at the callback. Reaches the
+  // IdP NEVER — only ctxlayer's own /start and the signed state cookie.
+  joinCode?: string
 }
 
 export function randomToken(byteLength = 32): string {
@@ -46,6 +50,7 @@ export async function serializeStateCookie(
     codeVerifier: string
     returnTo: string
     oauthRequestId?: string
+    joinCode?: string
   },
   secret: string,
   now: number = Math.floor(Date.now() / 1000)
@@ -100,6 +105,14 @@ export type ErrorReason =
   | 'token_exchange_failed'
   | 'profile_fetch_failed'
   | 'idp_error'
+  // Admission outcomes (plan L). `pending_approval` is a state, not an
+  // error — the sign-in page renders it as a friendly waiting message.
+  | 'pending_approval'
+  | 'invite_required'
+  | 'invalid_join_code'
+  | 'code_expired'
+  | 'access_denied'
+  | 'suspended'
 
 export function signInErrorRedirect(env: Env, reason: ErrorReason): Response {
   const url = new URL('/sign-in', env.PUBLIC_BASE_URL)

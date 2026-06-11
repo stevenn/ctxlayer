@@ -24,6 +24,11 @@ GITHUB_CLIENT_SECRET=
 # ALLOWED_GITHUB_ORG=
 # ALLOWED_GITHUB_USERS=
 
+# Admission policy (plan L): open_domain (default — allowlist is the gate) |
+# request (admin-approval queue, Admin · Users › Pending) | invite (invite /
+# join-code only). Override here to exercise the request/invite flows locally.
+# ACCESS_POLICY=request
+
 # Comma-separated emails auto-promoted to admin on first sign-in. Set this to
 # your own email so the admin pages are reachable in local dev.
 ADMIN_EMAILS=

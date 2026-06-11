@@ -7,6 +7,7 @@
  * and the OAuth provider, which are the supported, discoverable contracts.
  */
 import { z } from 'zod'
+import { AccessPolicy } from './entitlement'
 
 // Known roles; we keep the enum closed because role drives admin gating.
 // Adding a role is a deliberate schema migration.
@@ -63,6 +64,10 @@ export type VersionResponse = z.infer<typeof VersionResponse>
 // `/api/config` — public, drives SPA sign-in UI.
 export const ConfigResponse = z.object({
   idps: z.array(KnownIdp),
-  publicBaseUrl: z.string()
+  publicBaseUrl: z.string(),
+  // Admission policy. The sign-in page shows a join-code input when this
+  // is `invite`. `.catch` keeps an older SPA bundle working if the field
+  // is ever absent.
+  accessPolicy: AccessPolicy.catch('open_domain')
 })
 export type ConfigResponse = z.infer<typeof ConfigResponse>

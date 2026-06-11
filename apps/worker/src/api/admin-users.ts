@@ -13,19 +13,23 @@
  * audit viewer (later M5 phase) reads them.
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import { SetUserRolesRequest, UpdateUserRoleRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
-  countAdmins,
+  countActiveAdmins,
+  deleteUser,
   findById,
   listAdminUserRows,
   revokeAllUserCredentials,
-  updateUserRole
+  setUserStatus,
+  updateUserRole,
+  type UserRow
 } from '../db/queries/users'
 import { setUserRoles } from '../db/queries/roles'
+import { revokeAllUserGrants } from '../oauth/revoke-grants'
 import { audit } from '../audit/log'
 
 export const adminUsersRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -52,12 +56,12 @@ adminUsersRoute.patch('/:id', requireCsrf, async (c) => {
     return new Response(null, { status: 204 })
   }
 
-  // Guard: refuse to demote the last admin. Without this any single-
-  // admin org could click itself out of admin access and never come
-  // back without a database edit.
+  // Guard: refuse to demote the last *active* admin. Without this any
+  // single-admin org could click itself out of admin access and never
+  // come back without a database edit. A suspended co-admin is not a
+  // safety net, so we count active admins other than the target.
   if (target.role === 'admin' && nextRole !== 'admin') {
-    const admins = await countAdmins(c.env)
-    if (admins <= 1) {
+    if ((await countActiveAdmins(c.env, target.id)) < 1) {
       return c.json(
         {
           error: 'last_admin',
@@ -120,6 +124,111 @@ adminUsersRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   })
   return c.json({ removed })
 })
+
+// ----- lifecycle (plan L) -------------------------------------------------
+
+// Suspend an active user: immediate lock-out (the per-request status
+// re-check in auth/middleware enforces it). Reversible. Refuses to suspend
+// yourself or the last active admin.
+adminUsersRoute.post('/:id/suspend', requireCsrf, async (c) => {
+  const actor = c.get('user')
+  const target = await findById(c.env, c.req.param('id'))
+  if (!target) return c.json({ error: 'not_found' }, 404)
+  const guard = await guardRemovesAdminAccess(c, target, actor.userId, 'suspend')
+  if (guard) return guard
+  if (target.status !== 'suspended') await setUserStatus(c.env, target.id, 'suspended')
+  // Instant MCP/CLI cutoff: kill every bearer/refresh token the user holds.
+  const { revoked } = await revokeAllUserGrants(c.env, target.id)
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'user.suspend',
+    target: target.id,
+    meta: { from: target.status, targetEmail: target.email, revokedGrants: revoked }
+  })
+  return c.json({ revokedGrants: revoked })
+})
+
+// Reactivate (un-suspend) OR approve a pending user — both transition to
+// `active`. Safe to re-enable, so no last-admin guard. Audited distinctly so
+// the log shows "approve" for a pending→active vs "reactivate" otherwise.
+adminUsersRoute.post('/:id/reactivate', requireCsrf, async (c) => {
+  const actor = c.get('user')
+  const target = await findById(c.env, c.req.param('id'))
+  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (target.status !== 'active') await setUserStatus(c.env, target.id, 'active')
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: target.status === 'pending' ? 'user.approve' : 'user.reactivate',
+    target: target.id,
+    meta: { from: target.status, targetEmail: target.email }
+  })
+  return new Response(null, { status: 204 })
+})
+
+// Reject a pending user: removes the never-admitted row. Only valid while
+// the user is `pending` (no authored content / memberships to clean up).
+adminUsersRoute.post('/:id/reject', requireCsrf, async (c) => {
+  const actor = c.get('user')
+  const target = await findById(c.env, c.req.param('id'))
+  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (target.status !== 'pending') {
+    return c.json({ error: 'not_pending', hint: 'Only a pending user can be rejected.' }, 400)
+  }
+  await deleteUser(c.env, target.id, actor.userId)
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'user.reject',
+    target: target.id,
+    meta: { targetEmail: target.email }
+  })
+  return new Response(null, { status: 204 })
+})
+
+// Hard delete: removes the identity mirror, FK-cleans memberships/roles/
+// credentials, de-attributes authored content, reassigns owned skills to the
+// acting admin. Refuses self + last active admin. NOTE: if the identity is
+// still on the env allowlist (or open_domain), they re-provision on next
+// sign-in — see deleteUser.
+adminUsersRoute.delete('/:id', requireCsrf, async (c) => {
+  const actor = c.get('user')
+  const target = await findById(c.env, c.req.param('id'))
+  if (!target) return c.json({ error: 'not_found' }, 404)
+  const guard = await guardRemovesAdminAccess(c, target, actor.userId, 'delete')
+  if (guard) return guard
+  // Revoke MCP/CLI tokens first (KV, keyed by user id) so access dies even if
+  // a later step hiccups, then remove the D1 identity + its FK children.
+  const { revoked } = await revokeAllUserGrants(c.env, target.id)
+  const { reassignedSkills } = await deleteUser(c.env, target.id, actor.userId)
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'user.delete',
+    target: target.id,
+    meta: { targetEmail: target.email, idp: target.idp, reassignedSkills, revokedGrants: revoked }
+  })
+  return c.json({ reassignedSkills, revokedGrants: revoked })
+})
+
+/**
+ * Block a deactivation/delete that would lock the org out: never act on
+ * yourself, and never remove the last *active* admin.
+ */
+async function guardRemovesAdminAccess(
+  c: Context<{ Bindings: Env; Variables: AuthedVariables }>,
+  target: UserRow,
+  actorId: string,
+  verb: 'suspend' | 'delete'
+): Promise<Response | null> {
+  if (target.id === actorId) {
+    return c.json({ error: `cannot_${verb}_self`, hint: `You can't ${verb} your own account.` }, 400)
+  }
+  if (target.role === 'admin' && (await countActiveAdmins(c.env, target.id)) < 1) {
+    return c.json(
+      { error: 'last_admin', hint: 'Promote another active admin first.' },
+      400
+    )
+  }
+  return null
+}
 
 function isForeignKeyViolation(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err)

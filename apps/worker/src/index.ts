@@ -23,6 +23,8 @@ import { adminUpstreamsRoute } from './api/admin-upstreams'
 import { adminGitSourcesRoute } from './api/admin-git-sources'
 import { adminDocsRoute } from './api/admin-docs'
 import { adminUsersRoute } from './api/admin-users'
+import { adminInvitesRoute } from './api/admin-invites'
+import { adminJoinCodesRoute } from './api/admin-join-codes'
 import { adminUsageRoute } from './api/admin-usage'
 import { skillsRoute } from './api/skills'
 import { skillAttachmentsRoute } from './api/skill-attachments'
@@ -93,6 +95,8 @@ app.route('/api/admin/upstreams', adminUpstreamsRoute)
 app.route('/api/admin/git-sources', adminGitSourcesRoute)
 app.route('/api/admin/docs', adminDocsRoute)
 app.route('/api/admin/users', adminUsersRoute)
+app.route('/api/admin/invites', adminInvitesRoute)
+app.route('/api/admin/join-codes', adminJoinCodesRoute)
 app.route('/api/admin/audit', adminAuditRoute)
 app.route('/api/admin/oauth-clients', adminOAuthClientsRoute)
 app.route('/api/admin/usage', adminUsageRoute)

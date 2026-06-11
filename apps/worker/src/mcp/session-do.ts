@@ -16,6 +16,7 @@ import { McpAgent } from 'agents/mcp'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Env, McpProps } from '../env'
+import { findById } from '../db/queries/users'
 import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
@@ -79,6 +80,21 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
   async init(): Promise<void> {
     const userId = this.props?.userId
+
+    // Lifecycle gate (plan L). A suspended or hard-deleted account gets an
+    // empty MCP surface on its next connect, even if its OAuth token is still
+    // technically valid. This blocks NEW sessions; an already-open session is
+    // cut when the admin revokes the user's credentials/grant.
+    if (userId) {
+      const account = await findById(this.env, userId)
+      if (!account || account.status !== 'active') {
+        this.server = new McpServer(
+          { name: 'ctxlayer', version: '0.1.0' },
+          { instructions: 'Your ctxlayer access is not active. Contact your workspace admin.' }
+        )
+        return
+      }
+    }
 
     // Usage outbox lives in this DO's own SQLite (see usage/outbox.ts).
     // Tool calls stage rows here synchronously; `flushUsageOutbox`
