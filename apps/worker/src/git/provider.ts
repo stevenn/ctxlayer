@@ -11,6 +11,8 @@
 
 import type { GitProvider, GitPrState } from '@ctxlayer/shared'
 import { GitHubProvider } from './github'
+import { GitLabProvider } from './gitlab'
+import { AzureDevOpsProvider } from './azure'
 
 export interface GitTreeEntry {
   /** Repo-relative path, e.g. 'docs/setup.md'. */
@@ -71,16 +73,17 @@ export interface GitRepoConfig {
 }
 
 /**
- * Build the provider client for a source. v1 ships GitHub end-to-end;
- * GitLab / Azure throw until their modules land (same interface).
+ * Build the provider client for a source. All three providers ship end-to-end
+ * over the same interface; each is raw-fetch REST (no clone).
  */
 export function createGitProvider(config: GitRepoConfig, token: string): GitProviderClient {
   switch (config.provider) {
     case 'github':
       return new GitHubProvider(config, token)
     case 'gitlab':
+      return new GitLabProvider(config, token)
     case 'azure':
-      throw new Error(`git_provider_not_implemented:${config.provider}`)
+      return new AzureDevOpsProvider(config, token)
     default:
       throw new Error(`git_provider_unknown:${String(config.provider)}`)
   }
