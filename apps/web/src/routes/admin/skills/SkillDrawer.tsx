@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Alert, Button, Drawer, Group, Stack, Text, TextInput, Textarea } from '@mantine/core'
 import type { SkillDetail } from '@ctxlayer/shared'
+import { KV, Section } from '../../../components/admin-bits'
 import { deleteSkill, fetchSkill, patchSkill } from '../../../lib/api'
+import { useBusyAction } from '../../../lib/use-busy'
 import { useDialogs, useDrawerConfirm } from '../../../lib/dialogs'
 import { explain } from './helpers'
 import { AttachManager } from './AttachManager'
@@ -21,7 +23,6 @@ export function SkillDrawer({
   const { alert } = useDialogs()
   const { hidden, confirm, reveal } = useDrawerConfirm()
   const [detail, setDetail] = useState<SkillDetail | null>(null)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [draftTitle, setDraftTitle] = useState('')
@@ -50,18 +51,11 @@ export function SkillDrawer({
     return () => ctrl.abort()
   }, [load])
 
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    setInfo(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    setError,
+    onStart: () => setInfo(null)
+  })
 
   const saveMetadata = () =>
     withBusy(async () => {
@@ -252,38 +246,5 @@ export function SkillDrawer({
         )}
       </Stack>
     </Drawer>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <Group gap="xs" wrap="nowrap" align="baseline">
-      <Text fz="xs" c="dimmed" w={80}>
-        {k}
-      </Text>
-      <Text fz="sm" style={{ minWidth: 0 }}>
-        {v}
-      </Text>
-    </Group>
   )
 }

@@ -1,4 +1,3 @@
-import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
   Alert,
@@ -12,6 +11,7 @@ import {
   Title
 } from '@mantine/core'
 import { fetchConfig } from '../lib/api'
+import { useLoad } from '../lib/use-load'
 
 /**
  * "Connect your AI tool" page. Pulls the live `publicBaseUrl` from
@@ -25,23 +25,19 @@ import { fetchConfig } from '../lib/api'
  * hand out static credentials.
  */
 export function McpSetup() {
-  const [baseUrl, setBaseUrl] = useState<string | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    fetchConfig(ctrl.signal).then(
-      (cfg) => {
-        if (!ctrl.signal.aborted) setBaseUrl(cfg.publicBaseUrl.replace(/\/$/, ''))
-      },
-      (err) => {
-        if (ctrl.signal.aborted) return
-        setError('Could not load deployment config.')
-        console.error(err)
+  const { data: baseUrl, error } = useLoad(
+    async (signal) => {
+      try {
+        const cfg = await fetchConfig(signal)
+        return cfg.publicBaseUrl.replace(/\/$/, '')
+      } catch (err) {
+        if (!signal?.aborted) console.error(err)
+        throw err
       }
-    )
-    return () => ctrl.abort()
-  }, [])
+    },
+    [],
+    { explain: () => 'Could not load deployment config.' }
+  )
 
   if (error) {
     return (
@@ -172,6 +168,8 @@ export function McpSetup() {
 
 // ----- bits --------------------------------------------------------------
 
+// Deliberately NOT the shared admin-bits Section: this page uses a larger
+// titled prose section (Title + body), not the uppercase micro-label.
 function Section({
   title,
   body,

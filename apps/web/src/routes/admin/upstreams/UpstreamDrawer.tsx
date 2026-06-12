@@ -15,6 +15,7 @@ import {
   fetchTeams,
   putUpstreamCredentials
 } from '../../../lib/api'
+import { useBusyAction } from '../../../lib/use-busy'
 import { useDrawerConfirm } from '../../../lib/dialogs'
 import { explain } from './helpers'
 import { ConnectionSection } from './ConnectionSection'
@@ -40,7 +41,12 @@ export function UpstreamDrawer({
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [roles, setRoles] = useState<RoleRef[] | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    setError,
+    // a delete that hid the drawer then failed must show the error
+    onError: reveal
+  })
 
   const reload = useCallback(
     async (signal?: AbortSignal) => {
@@ -71,22 +77,16 @@ export function UpstreamDrawer({
     return () => ctrl.abort()
   }, [reload])
 
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-      reveal() // a delete that hid the drawer then failed must show the error
-    } finally {
-      setBusy(false)
-    }
-  }
-
   if (!row) {
     return (
-      <Drawer opened={!hidden} onClose={onClose} title="Loading…" position="right" size="lg" padding="md">
+      <Drawer
+        opened={!hidden}
+        onClose={onClose}
+        title="Loading…"
+        position="right"
+        size="lg"
+        padding="md"
+      >
         {error ? <Alert color="red">{error}</Alert> : <Text c="dimmed">Loading…</Text>}
       </Drawer>
     )

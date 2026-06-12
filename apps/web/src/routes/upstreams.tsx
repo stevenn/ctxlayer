@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -23,6 +23,8 @@ import {
   putUpstreamCredentials
 } from '../lib/api'
 import { explain as explainBase } from '../lib/explain'
+import { useLoad } from '../lib/use-load'
+import { useOAuthFlashBanner } from '../lib/use-oauth-banner'
 import { useDialogs } from '../lib/dialogs'
 
 type ToolsState =
@@ -31,51 +33,10 @@ type ToolsState =
   | { kind: 'ready'; tools: UpstreamToolSummary[] }
 
 export function Upstreams() {
-  const [items, setItems] = useState<UserUpstreamSummary[] | null>(null)
+  // One error channel shared by the list load and the per-card actions.
   const [error, setError] = useState<string | null>(null)
-  const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(
-    null
-  )
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchUpstreams(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
-
-  // OAuth callback flashes `?oauth_connected=<slug>` or
-  // `?oauth_error=<code>&desc=<...>` on the redirect URL — surface
-  // them and clean the URL so a reload doesn't re-show the banner.
-  useMemo(() => {
-    const params = new URLSearchParams(window.location.search)
-    const connected = params.get('oauth_connected')
-    const errCode = params.get('oauth_error')
-    if (connected) {
-      setOauthBanner({ kind: 'ok', message: `Connected ${connected}.` })
-    } else if (errCode) {
-      const desc = params.get('desc') ?? ''
-      setOauthBanner({
-        kind: 'err',
-        message: `OAuth failed: ${errCode}${desc ? ` — ${desc}` : ''}`
-      })
-    }
-    if (connected || errCode) {
-      params.delete('oauth_connected')
-      params.delete('oauth_error')
-      params.delete('desc')
-      const qs = params.toString()
-      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
-    }
-  }, [])
+  const { data: items, reload } = useLoad(fetchUpstreams, [], { explain, onError: setError })
+  const { banner: oauthBanner, clear: clearOauthBanner } = useOAuthFlashBanner()
 
   return (
     <Stack gap="md">
@@ -96,7 +57,7 @@ export function Upstreams() {
           variant="light"
           radius="sm"
           withCloseButton
-          onClose={() => setOauthBanner(null)}
+          onClose={clearOauthBanner}
         >
           {oauthBanner.message}
         </Alert>

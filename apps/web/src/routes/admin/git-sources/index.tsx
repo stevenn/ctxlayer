@@ -1,38 +1,18 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
-import type { AdminGitSourceRow, ProductRef } from '@ctxlayer/shared'
+import type { AdminGitSourceRow } from '@ctxlayer/shared'
 import { fetchAdminGitSources, fetchProducts } from '../../../lib/api'
+import { useLoad } from '../../../lib/use-load'
 import { explain, repoLabel } from './helpers'
 import { CreateGitSourceModal } from './CreateGitSourceModal'
 import { GitSourceDrawer } from './GitSourceDrawer'
 
 export function AdminGitSources() {
-  const [items, setItems] = useState<AdminGitSourceRow[] | null>(null)
-  const [products, setProducts] = useState<ProductRef[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: items, error, reload } = useLoad(fetchAdminGitSources, [], { explain })
+  // Product names are cosmetic in the list — load failures are swallowed.
+  const { data: products } = useLoad(fetchProducts, [], { onError: () => {} })
   const [createOpen, setCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchAdminGitSources(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    fetchProducts(ctrl.signal).then(
-      (p) => !ctrl.signal.aborted && setProducts(p),
-      () => {
-        /* product names are cosmetic in the list */
-      }
-    )
-    return () => ctrl.abort()
-  }, [reload])
 
   const productName = (id: string | null) =>
     id ? (products?.find((p) => p.id === id)?.displayName ?? id) : '—'

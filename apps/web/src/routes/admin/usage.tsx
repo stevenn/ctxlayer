@@ -4,7 +4,14 @@ import { USAGE_RANGE_LABEL, type AdminUsageResponse, type UsageRange } from '@ct
 import { fetchAdminUsage, searchUsers } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { DailyBars, chartDaysForRange } from '../../components/usage/charts'
-import { Panel, Stat, ToolTable, UpstreamTable, viewerOffsetSec, viewerTzLabel } from '../usage'
+import {
+  Panel,
+  SummaryRow,
+  sumDailyTotals,
+  viewerOffsetSec,
+  viewerTzLabel
+} from '../../components/usage/summary'
+import { ToolTable, UpstreamTable } from '../../components/usage/tables'
 
 /**
  * Admin org-wide usage dashboard. Hits `/api/admin/usage` which is
@@ -190,30 +197,13 @@ function AdminUsageBody({
   filterUserEmail: string
   filterUpstreamId: string
 }) {
-  const totals = data.dailyTotals.reduce(
-    (acc, d) => ({
-      calls: acc.calls + d.calls,
-      reqTokens: acc.reqTokens + d.reqTokens,
-      respTokens: acc.respTokens + d.respTokens,
-      errors: acc.errors + d.errors
-    }),
-    { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
-  )
+  const totals = sumDailyTotals(data.dailyTotals)
   const offsetSec = viewerOffsetSec()
   const chartDays = chartDaysForRange(range, data.dailyTotals, offsetSec)
 
   return (
     <Stack gap="xl">
-      <Group gap="xl" wrap="wrap">
-        <Stat label="Calls" value={totals.calls.toLocaleString()} />
-        <Stat label="Request tokens" value={totals.reqTokens.toLocaleString()} />
-        <Stat label="Response tokens" value={totals.respTokens.toLocaleString()} />
-        <Stat
-          label="Errors"
-          value={totals.errors.toLocaleString()}
-          accent={totals.errors > 0 ? 'red' : undefined}
-        />
-      </Group>
+      <SummaryRow totals={totals} />
 
       {(filterUserEmail || filterUpstreamId) && (
         <Text fz="xs" c="dimmed">

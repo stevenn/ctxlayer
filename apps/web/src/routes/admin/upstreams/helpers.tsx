@@ -1,4 +1,3 @@
-import { Text } from '@mantine/core'
 import { isStaticOAuthConfig } from '@ctxlayer/shared'
 import type {
   AttachedDocRef,
@@ -10,6 +9,10 @@ import type {
 } from '@ctxlayer/shared'
 import type { ApiError } from '../../../lib/api'
 import { explain as explainBase } from '../../../lib/explain'
+
+// Canonical admin micro-components live in components/admin-bits; re-exported
+// here so the sibling section files keep their local import path.
+export { Section, SubSection } from '../../../components/admin-bits'
 
 export const TRANSPORT_OPTIONS: { value: SupportedTransport; label: string }[] = [
   { value: 'streamable_http', label: 'Streamable HTTP (current MCP spec)' },
@@ -115,35 +118,4 @@ function bodyMessage(err: ApiError): string | null {
   if (typeof body.message === 'string' && body.message) return body.message
   if (typeof body.error === 'string' && body.error) return body.error
   return null
-}
-
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-export function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Text fz="xs" fw={500} mb={4}>
-        {title}
-      </Text>
-      {children}
-    </div>
-  )
 }

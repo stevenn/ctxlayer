@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Select, Text, TextInput, Title } from '@mantine/core'
-import type { SkillSummary } from '@ctxlayer/shared'
 import { fetchSkills } from '../../../lib/api'
+import { relativeTime } from '../../../lib/time'
+import { useLoad } from '../../../lib/use-load'
 import { explain } from './helpers'
 import { CreateSkillModal } from './CreateSkillModal'
 import { SkillDrawer } from './SkillDrawer'
@@ -10,34 +11,21 @@ import { SkillDrawer } from './SkillDrawer'
 type StatusFilter = 'all' | 'draft' | 'published' | 'archived'
 
 export function AdminSkills() {
-  const [items, setItems] = useState<SkillSummary[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [creating, setCreating] = useState(false)
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const [query, setQuery] = useState('')
   const nav = useNavigate()
 
-  const reload = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const list = await fetchSkills(
-          { status: statusFilter === 'all' ? undefined : statusFilter },
-          signal
-        )
-        if (!signal?.aborted) setItems(list)
-      } catch (err) {
-        if (!signal?.aborted) setError(explain(err))
-      }
-    },
-    [statusFilter]
+  const {
+    data: items,
+    error,
+    reload
+  } = useLoad(
+    (signal) => fetchSkills({ status: statusFilter === 'all' ? undefined : statusFilter }, signal),
+    [statusFilter],
+    { explain }
   )
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   const filtered = useMemo(() => {
     if (!items) return null
@@ -180,15 +168,4 @@ function StatusBadge({ status }: { status: 'draft' | 'published' | 'archived' })
       {status}
     </Badge>
   )
-}
-
-function relativeTime(ts: number | null): string {
-  if (!ts) return '—'
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }

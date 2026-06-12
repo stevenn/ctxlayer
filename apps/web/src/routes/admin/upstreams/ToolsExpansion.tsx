@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Group, Stack, Text, Tooltip } from '@mantine/core'
 import { mangleToolName } from '@ctxlayer/shared'
+import { relativeTime } from '../../../lib/time'
 import type { ToolsState } from './helpers'
 import { UpstreamSkillAttachModal } from './AttachModal'
 
@@ -151,7 +152,7 @@ export function ToolsExpansion({
                         position="top-start"
                       >
                         <Text fz={10} c="yellow" style={{ cursor: 'help' }}>
-                          ⚠ schema changed {relativeTime(t.lastSchemaChangeAt)}
+                          ⚠ schema changed {relativeTime(t.lastSchemaChangeAt, '')}
                         </Text>
                       </Tooltip>
                     ) : null}
@@ -186,15 +187,4 @@ export function ToolsExpansion({
       )}
     </>
   )
-}
-
-function relativeTime(ts: number | null | undefined): string {
-  if (!ts) return ''
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }

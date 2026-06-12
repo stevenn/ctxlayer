@@ -14,8 +14,10 @@ import {
   Tooltip
 } from '@mantine/core'
 import type { OAuthClientRow, OAuthClientUserRef } from '@ctxlayer/shared'
+import { KV as KVBase, Section } from '../../components/admin-bits'
 import { fetchAdminOAuthClients, pruneAdminOAuthClients } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { absDateTime, relativeTime } from '../../lib/time'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -477,37 +479,9 @@ function RedirectCell({ uris }: { uris: string[] }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <Group gap="xs" wrap="nowrap" align="baseline" mb={4}>
-      <Text fz="xs" c="dimmed" w={110}>
-        {k}
-      </Text>
-      <Text fz="sm" style={{ minWidth: 0 }}>
-        {v}
-      </Text>
-    </Group>
-  )
+// Wider label column + per-row spacing than the shared default.
+function KV(props: { k: string; v: React.ReactNode }) {
+  return <KVBase {...props} w={110} mb={4} />
 }
 
 function listOrDash(items: string[] | null): React.ReactNode {
@@ -533,20 +507,6 @@ function truncateMiddle(s: string, max: number): string {
   if (s.length <= max) return s
   const keep = Math.floor((max - 1) / 2)
   return s.slice(0, keep) + '…' + s.slice(-keep)
-}
-
-function absDateTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
-}
-
-function relativeTime(ts: number): string {
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

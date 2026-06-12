@@ -34,29 +34,16 @@ import {
   removeTeamMember,
   searchUsers
 } from '../../lib/api'
+import { Section } from '../../components/admin-bits'
 import { explain as explainBase } from '../../lib/explain'
+import { useBusyAction } from '../../lib/use-busy'
+import { useLoad } from '../../lib/use-load'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
 export function AdminTeams() {
-  const [teams, setTeams] = useState<AdminTeamRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: teams, error, reload } = useLoad(fetchAdminTeams, [], { explain })
   const [createOpen, setCreateOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<AdminTeamRow | null>(null)
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const t = await fetchAdminTeams(signal)
-      if (!signal?.aborted) setTeams(t)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   return (
     <>
@@ -262,7 +249,6 @@ function TeamDrawer({
   const [members, setMembers] = useState<TeamMemberRow[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [allTeamProducts, setAllTeamProducts] = useState<TeamProductsAssignment[] | null>(null)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Member-search state
@@ -313,18 +299,12 @@ function TeamDrawer({
     }
   }, [query])
 
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-      reveal() // a delete that hid the drawer then failed must show the error
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    setError,
+    // a delete that hid the drawer then failed must show the error
+    onError: reveal
+  })
 
   const savePatch = () =>
     withBusy(async () => {
@@ -540,26 +520,6 @@ function TeamDrawer({
         </Section>
       </Stack>
     </Drawer>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
   )
 }
 

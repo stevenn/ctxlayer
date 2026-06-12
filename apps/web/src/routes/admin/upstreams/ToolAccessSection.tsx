@@ -1,12 +1,32 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Alert, Badge, Button, Checkbox, Group, Radio, SimpleGrid, Stack, Text } from '@mantine/core'
+import { useMemo, useState } from 'react'
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  Group,
+  Radio,
+  SimpleGrid,
+  Stack,
+  Text
+} from '@mantine/core'
 import type { ProductRef, RoleRef, TeamRef, ToolAccessRule } from '@ctxlayer/shared'
-import { fetchAdminUpstreamTools, fetchUpstreamToolAccess, putUpstreamToolAccess } from '../../../lib/api'
+import {
+  fetchAdminUpstreamTools,
+  fetchUpstreamToolAccess,
+  putUpstreamToolAccess
+} from '../../../lib/api'
+import { toggleId } from '../../../lib/set-utils'
+import { useLoad } from '../../../lib/use-load'
 import { explain } from './helpers'
 import { Section, SubSection } from './helpers'
 import { ExpandChevron } from './ExpandChevron'
 
-type NameMaps = { roles: Map<string, string>; teams: Map<string, string>; products: Map<string, string> }
+type NameMaps = {
+  roles: Map<string, string>
+  teams: Map<string, string>
+  products: Map<string, string>
+}
 
 interface Loaded {
   toolNames: string[]
@@ -32,38 +52,29 @@ export function ToolAccessSection({
   products: ProductRef[] | null
   roles: RoleRef[] | null
 }) {
-  const [data, setData] = useState<Loaded | null>(null)
-  const [error, setError] = useState<string | null>(null)
-
-  const load = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const [toolsRes, accessRes] = await Promise.all([
-          fetchAdminUpstreamTools(upstreamId, signal),
-          fetchUpstreamToolAccess(upstreamId, signal)
-        ])
-        if (signal?.aborted) return
-        const toolNames = toolsRes.tools.map((t) => t.toolName)
-        const live = new Set(toolNames)
-        const rulesByTool = new Map<string, ToolAccessRule[]>()
-        const orphans: { toolName: string; rules: ToolAccessRule[] }[] = []
-        for (const e of accessRes.entries) {
-          rulesByTool.set(e.toolName, e.rules)
-          if (!live.has(e.toolName)) orphans.push({ toolName: e.toolName, rules: e.rules })
-        }
-        setData({ toolNames, rulesByTool, orphans })
-      } catch (err) {
-        if (!signal?.aborted) setError(explain(err))
+  const {
+    data,
+    error,
+    reload: load
+  } = useLoad<Loaded>(
+    async (signal) => {
+      const [toolsRes, accessRes] = await Promise.all([
+        fetchAdminUpstreamTools(upstreamId, signal),
+        fetchUpstreamToolAccess(upstreamId, signal)
+      ])
+      const toolNames = toolsRes.tools.map((t) => t.toolName)
+      const live = new Set(toolNames)
+      const rulesByTool = new Map<string, ToolAccessRule[]>()
+      const orphans: { toolName: string; rules: ToolAccessRule[] }[] = []
+      for (const e of accessRes.entries) {
+        rulesByTool.set(e.toolName, e.rules)
+        if (!live.has(e.toolName)) orphans.push({ toolName: e.toolName, rules: e.rules })
       }
+      return { toolNames, rulesByTool, orphans }
     },
-    [upstreamId]
+    [upstreamId],
+    { explain }
   )
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    load(ctrl.signal)
-    return () => ctrl.abort()
-  }, [load])
 
   const maps = useMemo<NameMaps>(
     () => ({
@@ -174,12 +185,18 @@ function ToolAccessRow({
   const [error, setError] = useState<string | null>(null)
 
   const locked = rules.length > 0
-  const summary = locked ? rules.map((r) => principalLabel(r, maps)).join(', ') : 'Open (inherits upstream)'
+  const summary = locked
+    ? rules.map((r) => principalLabel(r, maps)).join(', ')
+    : 'Open (inherits upstream)'
 
   // A "restrict" with no principals selected can't be expressed (empty
   // rules == open), so block that save and tell the admin.
   const restrictEmpty =
-    mode === 'restrict' && !everyone && roleIds.size === 0 && teamIds.size === 0 && productIds.size === 0
+    mode === 'restrict' &&
+    !everyone &&
+    roleIds.size === 0 &&
+    teamIds.size === 0 &&
+    productIds.size === 0
 
   const save = async () => {
     setBusy(true)
@@ -192,7 +209,10 @@ function ToolAccessRow({
               ...(everyone ? [{ principalKind: 'everyone' as const, principalId: null }] : []),
               ...[...roleIds].map((id) => ({ principalKind: 'role' as const, principalId: id })),
               ...[...teamIds].map((id) => ({ principalKind: 'team' as const, principalId: id })),
-              ...[...productIds].map((id) => ({ principalKind: 'product' as const, principalId: id }))
+              ...[...productIds].map((id) => ({
+                principalKind: 'product' as const,
+                principalId: id
+              }))
             ]
       await putUpstreamToolAccess(upstreamId, toolName, next)
       setOpen(false)
@@ -349,11 +369,4 @@ function idSet(rules: ToolAccessRule[], kind: 'role' | 'team' | 'product'): Set<
   const s = new Set<string>()
   for (const r of rules) if (r.principalKind === kind && r.principalId) s.add(r.principalId)
   return s
-}
-
-function toggleId(current: Set<string>, id: string, on: boolean): Set<string> {
-  const next = new Set(current)
-  if (on) next.add(id)
-  else next.delete(id)
-  return next
 }

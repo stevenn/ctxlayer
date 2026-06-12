@@ -1,12 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, Group, Select, Stack, Text } from '@mantine/core'
-import type { SkillAttachmentRef, UserUpstreamSummary } from '@ctxlayer/shared'
-import {
-  attachSkill,
-  detachSkill,
-  fetchAdminUpstreamTools,
-  fetchUpstreams
-} from '../../../lib/api'
+import type { SkillAttachmentRef } from '@ctxlayer/shared'
+import { attachSkill, detachSkill, fetchAdminUpstreamTools, fetchUpstreams } from '../../../lib/api'
+import { useLoad } from '../../../lib/use-load'
 import type { ConfirmOpts } from '../../../lib/dialogs'
 import { explain } from './helpers'
 
@@ -23,46 +19,33 @@ export function AttachManager({
   // detach dialog is up (a plain confirm here would be painted over by it).
   confirm: (opts: ConfirmOpts) => Promise<boolean>
 }) {
-  const [upstreams, setUpstreams] = useState<UserUpstreamSummary[] | null>(null)
   const [selectedUpstreamId, setSelectedUpstreamId] = useState<string | null>(null)
-  const [tools, setTools] = useState<{ value: string; label: string }[]>([])
   const [selectedTool, setSelectedTool] = useState<string>('') // '' = whole upstream
   const [busy, setBusy] = useState(false)
+  // One error channel shared by the loads and the attach/detach actions.
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    fetchUpstreams()
-      .then((rows) => {
-        if (!cancelled) setUpstreams(rows)
-      })
-      .catch((err) => !cancelled && setError(explain(err)))
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data: upstreams } = useLoad((signal) => fetchUpstreams(signal), [], {
+    explain,
+    onError: setError
+  })
 
-  useEffect(() => {
-    if (!selectedUpstreamId) {
-      setTools([])
-      setSelectedTool('')
-      return
-    }
-    let cancelled = false
-    fetchAdminUpstreamTools(selectedUpstreamId)
-      .then((res) => {
-        if (cancelled) return
-        setTools([
-          { value: '', label: '— whole upstream —' },
-          ...res.tools.map((t) => ({ value: t.toolName, label: t.toolName }))
-        ])
+  const { data: tools } = useLoad(
+    async (signal) => {
+      if (!selectedUpstreamId) {
         setSelectedTool('')
-      })
-      .catch((err) => !cancelled && setError(explain(err)))
-    return () => {
-      cancelled = true
-    }
-  }, [selectedUpstreamId])
+        return []
+      }
+      const res = await fetchAdminUpstreamTools(selectedUpstreamId, signal)
+      if (!signal?.aborted) setSelectedTool('')
+      return [
+        { value: '', label: '— whole upstream —' },
+        ...res.tools.map((t) => ({ value: t.toolName, label: t.toolName }))
+      ]
+    },
+    [selectedUpstreamId],
+    { explain, onError: setError }
+  )
 
   const upstreamOptions = useMemo(
     () =>
@@ -183,7 +166,7 @@ export function AttachManager({
           size="xs"
           label="Tool"
           placeholder="(whole upstream)"
-          data={tools}
+          data={tools ?? []}
           value={selectedTool}
           onChange={(v) => setSelectedTool(v ?? '')}
           disabled={!selectedUpstreamId}

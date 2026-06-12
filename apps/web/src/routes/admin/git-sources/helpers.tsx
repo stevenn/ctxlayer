@@ -1,6 +1,9 @@
-import { Stack, Text } from '@mantine/core'
 import type { AdminGitSourceRow, GitCredStrategy, GitSyncInterval } from '@ctxlayer/shared'
 import { explain as explainBase } from '../../../lib/explain'
+
+// Canonical admin micro-components live in components/admin-bits; re-exported
+// here so the sibling section files keep their local import path.
+export { Section } from '../../../components/admin-bits'
 
 export const STRATEGY_OPTIONS: { value: GitCredStrategy; label: string }[] = [
   { value: 'shared_bearer', label: 'Shared org token (PAT)' },
@@ -18,37 +21,6 @@ export const INTERVAL_OPTIONS: { value: GitSyncInterval; label: string }[] = [
 
 export function repoLabel(g: AdminGitSourceRow): string {
   return g.owner ? `${g.owner}/${g.repo}` : g.repo
-}
-
-export function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-export function SubSection({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <Text fz="xs" fw={500} mb={4}>
-        {title}
-      </Text>
-      <Stack gap={4}>{children}</Stack>
-    </div>
-  )
 }
 
 export function explain(err: unknown): string {

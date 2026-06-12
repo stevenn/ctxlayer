@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Button, Group, Modal, Stack, Text } from '@mantine/core'
-import type { DocAttachmentRef, UserUpstreamSummary } from '@ctxlayer/shared'
+import type { DocAttachmentRef } from '@ctxlayer/shared'
 import {
   attachDoc,
   detachDoc,
@@ -8,6 +8,7 @@ import {
   fetchUpstreams,
   fetchUserUpstreamTools
 } from '../../lib/api'
+import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 import { explain } from './helpers'
 
@@ -18,22 +19,14 @@ import { explain } from './helpers'
  */
 export function DocAttachmentsRail({ docId, canManage }: { docId: string; canManage: boolean }) {
   const dialogs = useDialogs()
-  const [items, setItems] = useState<DocAttachmentRef[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const {
+    data: items,
+    error,
+    reload
+  } = useLoad(() => fetchDocAttachments(docId), [docId], {
+    explain
+  })
   const [attachOpen, setAttachOpen] = useState(false)
-
-  const reload = useCallback(async () => {
-    try {
-      const rows = await fetchDocAttachments(docId)
-      setItems(rows)
-    } catch (err) {
-      setError(explain(err))
-    }
-  }, [docId])
-
-  useEffect(() => {
-    void reload()
-  }, [reload])
 
   async function onDetach(a: DocAttachmentRef) {
     const ok = await dialogs.confirm({
@@ -148,44 +141,33 @@ function DocAttachToUpstreamModal({
   onClose: () => void
   onAttached: () => void
 }) {
-  const [upstreams, setUpstreams] = useState<UserUpstreamSummary[] | null>(null)
   const [selectedUpstreamId, setSelectedUpstreamId] = useState<string | null>(null)
-  const [tools, setTools] = useState<{ value: string; label: string }[]>([])
   const [selectedTool, setSelectedTool] = useState<string>('')
   const [busy, setBusy] = useState(false)
+  // One error channel shared by the loads and the attach action.
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    fetchUpstreams()
-      .then((rows) => !cancelled && setUpstreams(rows))
-      .catch((err) => !cancelled && setError(explain(err)))
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data: upstreams } = useLoad((signal) => fetchUpstreams(signal), [], {
+    explain,
+    onError: setError
+  })
 
-  useEffect(() => {
-    if (!selectedUpstreamId) {
-      setTools([])
-      setSelectedTool('')
-      return
-    }
-    let cancelled = false
-    fetchUserUpstreamTools(selectedUpstreamId)
-      .then((resp) => {
-        if (cancelled) return
-        setTools([
-          { value: '', label: '— whole upstream —' },
-          ...resp.tools.map((t) => ({ value: t.toolName, label: t.toolName }))
-        ])
+  const { data: tools } = useLoad(
+    async (signal) => {
+      if (!selectedUpstreamId) {
         setSelectedTool('')
-      })
-      .catch((err) => !cancelled && setError(explain(err)))
-    return () => {
-      cancelled = true
-    }
-  }, [selectedUpstreamId])
+        return []
+      }
+      const resp = await fetchUserUpstreamTools(selectedUpstreamId, signal)
+      if (!signal?.aborted) setSelectedTool('')
+      return [
+        { value: '', label: '— whole upstream —' },
+        ...resp.tools.map((t) => ({ value: t.toolName, label: t.toolName }))
+      ]
+    },
+    [selectedUpstreamId],
+    { explain, onError: setError }
+  )
 
   async function submit() {
     if (!selectedUpstreamId) return
@@ -237,7 +219,7 @@ function DocAttachToUpstreamModal({
           disabled={!selectedUpstreamId || busy}
           style={{ padding: 6 }}
         >
-          {tools.map((o) => (
+          {(tools ?? []).map((o) => (
             <option key={o.value} value={o.value}>
               {o.label}
             </option>

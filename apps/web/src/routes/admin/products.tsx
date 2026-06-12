@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core'
 import { type ProductRef, suggestSlug } from '@ctxlayer/shared'
 import {
@@ -8,28 +8,13 @@ import {
   fetchProducts
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
 export function AdminProducts() {
-  const [products, setProducts] = useState<ProductRef[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: products, error, reload } = useLoad(fetchProducts, [], { explain })
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<ProductRef | null>(null)
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const p = await fetchProducts(signal)
-      if (!signal?.aborted) setProducts(p)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   return (
     <>
