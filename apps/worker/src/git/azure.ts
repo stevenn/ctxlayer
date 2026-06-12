@@ -23,7 +23,7 @@ import type {
   NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
-} from './provider'
+} from './provider-types'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { azureBase } from './url'
 import { MD_RE, asObj, enc, normalizePrefix, underPrefix } from './provider-util'

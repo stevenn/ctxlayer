@@ -61,12 +61,6 @@ export const UPSTREAM_MAX_RESPONSE_BYTES = 256 * 1024
 const CLIENT_NAME = 'ctxlayer'
 const CLIENT_VERSION = '0.1.0'
 
-// `UpstreamCatalogueTool` / `UpstreamCallResult` / `UpstreamClient` now
-// live in `upstream-client.ts` (the transport-agnostic surface).
-// Re-export the result/catalogue types here so existing importers of
-// http-client keep working.
-export type { UpstreamCatalogueTool, UpstreamCallResult } from './upstream-client'
-
 export class UpstreamHttpClient implements UpstreamClient {
   private client: Client | null = null
   private connecting: Promise<Client> | null = null

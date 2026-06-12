@@ -31,7 +31,8 @@ import {
   upsertGitUserCredential,
   type GitSourceRow
 } from '../db/queries/git-sources'
-import { createGitProvider, type GitRepoConfig } from '../git/provider'
+import { createGitProvider } from '../git/provider'
+import type { GitRepoConfig } from '../git/provider-types'
 import { resolveGitReadToken } from '../git/credentials'
 import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
 import { gitStaticOAuth } from '../git/git-oauth'

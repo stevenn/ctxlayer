@@ -27,7 +27,8 @@ import {
 import { createDoc, softDeleteDoc } from '../db/queries/docs'
 import { setDocProductTag } from '../db/queries/doc-tags'
 import { writeSourceMarkdown } from '../storage/docs-r2'
-import { createGitProvider, type GitRepoConfig } from './provider'
+import { createGitProvider } from './provider'
+import type { GitRepoConfig } from './provider-types'
 import { resolveGitReadToken } from './credentials'
 
 export interface RunGitSyncOpts {

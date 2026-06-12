@@ -42,7 +42,8 @@ import {
   indexToolAccess,
   listToolAccessForUpstreams
 } from '../db/queries/tool-access'
-import { createUpstreamClient, type UpstreamClient } from '../upstream/upstream-client'
+import { createUpstreamClient } from '../upstream/create-client'
+import { isDialableTransport, type UpstreamClient } from '../upstream/upstream-client'
 import {
   isToolAllowed,
   requiresFromRules,
@@ -213,7 +214,7 @@ export class UpstreamProxyRegistry {
     const acl = indexToolAccess(aclRows)
     const out: McpRestrictedTool[] = []
     for (const row of rows) {
-      if (row.transport !== 'streamable_http' && row.transport !== 'sse') continue
+      if (!isDialableTransport(row.transport)) continue
       const tools = await listCachedTools(env, row.id)
       for (const t of tools) {
         const rules = acl.get(accessKey(row.id, t.tool_name))
@@ -236,7 +237,7 @@ export class UpstreamProxyRegistry {
     if (rows.length === 0) return []
     const out: ListUpstreamsEntry[] = []
     for (const row of rows) {
-      if (row.transport !== 'streamable_http' && row.transport !== 'sse') continue
+      if (!isDialableTransport(row.transport)) continue
       const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
       const cred = requiresCred
         ? await getUserCredentialStatus(env, userId, row.id)

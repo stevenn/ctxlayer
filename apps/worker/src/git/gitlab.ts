@@ -18,7 +18,7 @@ import type {
   NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
-} from './provider'
+} from './provider-types'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { gitlabApiBase, gitlabWebBase } from './url'
 import { MD_RE, asObj, enc, encPath, fromBase64, normalizePrefix, underPrefix } from './provider-util'

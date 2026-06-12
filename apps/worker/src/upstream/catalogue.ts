@@ -20,7 +20,7 @@ import {
   toUpstreamConnection,
   type UpstreamConnection
 } from '../db/queries/upstreams'
-import { createUpstreamClient } from './upstream-client'
+import { createUpstreamClient } from './create-client'
 
 export interface CatalogueRefreshOk {
   ok: true
@@ -85,6 +85,43 @@ export async function refreshCatalogueForConnection(
     }
   } finally {
     await client.close()
+  }
+}
+
+/**
+ * `waitUntil`-friendly wrapper: refresh the catalogue and log the
+ * outcome instead of returning it. For background warms (e.g. right
+ * after an admin creates an unauthenticated upstream) where nobody is
+ * waiting on the result — failures must be visible in logs but never
+ * bubble. `okContext` / `failLabel` keep each call site's log lines
+ * distinguishable.
+ */
+export async function warmCatalogueAndLog(
+  env: Env,
+  args: {
+    upstreamId: string
+    slug: string
+    bearerToken: string | null
+    /** Tail of the success line, e.g. 'on create (auth=none)'. */
+    okContext: string
+    /** Subject of the failure lines, e.g. 'post-create refresh'. */
+    failLabel: string
+  }
+): Promise<void> {
+  try {
+    const r = await refreshCatalogueByUpstreamId(env, args.upstreamId, args.bearerToken)
+    if (r.ok) {
+      console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools ${args.okContext}`)
+    } else {
+      console.warn(
+        `[catalogue] ${args.slug}: ${args.failLabel} failed (${r.reason})${
+          r.message ? `: ${r.message}` : ''
+        }`
+      )
+    }
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[catalogue] ${args.slug}: ${args.failLabel} threw: ${msg}`)
   }
 }
 

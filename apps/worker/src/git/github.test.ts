@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GitHubProvider } from './github'
-import type { GitRepoConfig } from './provider'
+import type { GitRepoConfig } from './provider-types'
 
 const config: GitRepoConfig = {
   provider: 'github',

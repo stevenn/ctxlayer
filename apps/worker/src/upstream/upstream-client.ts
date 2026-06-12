@@ -1,15 +1,16 @@
 /**
  * Generic, pluggable upstream-client abstraction. Each transport family is
- * one implementation behind this interface; `createUpstreamClient` is the
- * single dispatch point, so a future transport slots in here without
- * re-plumbing the proxy/dispatch layer in `mcp/tools-proxy.ts`.
+ * one implementation behind this interface; `createUpstreamClient` (in
+ * `create-client.ts`) is the single dispatch point, so a future transport
+ * slots in without re-plumbing the proxy/dispatch layer in
+ * `mcp/tools-proxy.ts`.
  *
- * The catalogue/result shapes live here (canonical home) and are re-exported
- * from `http-client.ts` for existing importers.
+ * This module is the canonical home for the catalogue/result shapes and
+ * the dialable-transport predicate. It imports nothing from the rest of
+ * the worker — implementations depend on it, never the other way around.
  */
 
-import type { UpstreamConnection } from '../db/queries/upstreams'
-import { UpstreamHttpClient } from './http-client'
+import type { SupportedTransport } from '@ctxlayer/shared'
 
 export interface UpstreamCatalogueTool {
   toolName: string
@@ -30,13 +31,13 @@ export interface UpstreamClient {
 }
 
 /**
- * Build the right UpstreamClient for a connection. Today every supported
- * transport (`streamable_http`, `sse`) is dialed over HTTP via
- * `UpstreamHttpClient`; additional transports plug in here.
+ * The transports the worker can actually dial over HTTP. Any other
+ * transport value (a legacy or forged DB row) must never surface as a
+ * dialable connection. Single source of truth — SQL IN lists and
+ * row-filtering checks are both built from this tuple.
  */
-export function createUpstreamClient(
-  conn: UpstreamConnection,
-  bearer: string | null
-): UpstreamClient {
-  return new UpstreamHttpClient(conn, bearer)
+export const DIALABLE_TRANSPORTS = ['streamable_http', 'sse'] as const
+
+export function isDialableTransport(t: string): t is SupportedTransport {
+  return (DIALABLE_TRANSPORTS as readonly string[]).includes(t)
 }

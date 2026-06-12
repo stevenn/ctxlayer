@@ -29,7 +29,8 @@ import {
   type GitSourceRow
 } from '../db/queries/git-sources'
 import { readSourceMarkdown, writeSourceMarkdown } from '../storage/docs-r2'
-import { createGitProvider, type GitProviderClient, type GitRepoConfig } from './provider'
+import { createGitProvider } from './provider'
+import type { GitProviderClient, GitRepoConfig } from './provider-types'
 import { resolveGitWriteToken } from './credentials'
 import { normalizeMarkdown } from './markdown-normalize'
 

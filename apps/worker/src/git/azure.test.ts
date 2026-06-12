@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { AzureDevOpsProvider } from './azure'
-import type { GitRepoConfig } from './provider'
+import type { GitRepoConfig } from './provider-types'
 
 // ADO carries org/project/repo in the path.
 const config: GitRepoConfig = {

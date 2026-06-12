@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GitLabProvider } from './gitlab'
-import type { GitRepoConfig } from './provider'
+import type { GitRepoConfig } from './provider-types'
 
 // GitLab identifies the project by `repo` (path or numeric id), URL-encoded.
 const config: GitRepoConfig = {
