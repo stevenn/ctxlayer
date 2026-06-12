@@ -50,6 +50,35 @@ export async function listDocsForUpstream(
   return res.results ?? []
 }
 
+/**
+ * Batch variant of `listDocsForUpstream`: one `IN (...)` query for many
+ * upstreams, grouped by upstream_id. Within each upstream the rows keep
+ * the single-id query's (tool_name, title) order.
+ */
+export async function listDocsForUpstreams(
+  env: Env,
+  upstreamIds: string[]
+): Promise<Map<string, DocForUpstreamRow[]>> {
+  const out = new Map<string, DocForUpstreamRow[]>()
+  if (upstreamIds.length === 0) return out
+  const placeholders = upstreamIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT da.upstream_id, da.doc_id, d.slug, d.title, da.tool_name
+     FROM doc_attachments da
+     JOIN documents d ON d.id = da.doc_id
+     WHERE da.upstream_id IN (${placeholders}) AND d.deleted_at IS NULL
+     ORDER BY da.tool_name, d.title`
+  )
+    .bind(...upstreamIds)
+    .all<DocForUpstreamRow & { upstream_id: string }>()
+  for (const row of res.results ?? []) {
+    const arr = out.get(row.upstream_id)
+    if (arr) arr.push(row)
+    else out.set(row.upstream_id, [row])
+  }
+  return out
+}
+
 export interface AttachDocInput {
   docId: string
   upstreamId: string

@@ -346,6 +346,52 @@ export async function countToolsForUpstream(env: Env, upstreamId: string): Promi
 }
 
 /**
+ * Batch variant of `listCachedTools`: one `IN (...)` query for many
+ * upstreams, grouped by upstream_id with the same per-upstream tool_name
+ * order. Upstreams with an empty cache simply have no map entry.
+ */
+export async function listCachedToolsForUpstreams(
+  env: Env,
+  upstreamIds: string[]
+): Promise<Map<string, UpstreamToolRow[]>> {
+  const out = new Map<string, UpstreamToolRow[]>()
+  if (upstreamIds.length === 0) return out
+  const placeholders = upstreamIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT upstream_id, tool_name, description, input_schema, cached_at,
+            input_schema_hash, last_schema_change_at, last_diff_summary
+     FROM upstream_tools WHERE upstream_id IN (${placeholders})
+     ORDER BY upstream_id, tool_name`
+  )
+    .bind(...upstreamIds)
+    .all<UpstreamToolRow>()
+  for (const row of res.results ?? []) {
+    const arr = out.get(row.upstream_id)
+    if (arr) arr.push(row)
+    else out.set(row.upstream_id, [row])
+  }
+  return out
+}
+
+/** Batch variant of `countToolsForUpstream`: one GROUP BY query. */
+export async function countToolsForUpstreams(
+  env: Env,
+  upstreamIds: string[]
+): Promise<Map<string, number>> {
+  const out = new Map<string, number>()
+  if (upstreamIds.length === 0) return out
+  const placeholders = upstreamIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT upstream_id, COUNT(*) AS n FROM upstream_tools
+     WHERE upstream_id IN (${placeholders}) GROUP BY upstream_id`
+  )
+    .bind(...upstreamIds)
+    .all<{ upstream_id: string; n: number }>()
+  for (const row of res.results ?? []) out.set(row.upstream_id, row.n)
+  return out
+}
+
+/**
  * Replace the entire tool cache for an upstream — the authoritative
  * `tools/list` is what just came back. M8: also computes
  * input_schema_hash per tool and bumps last_schema_change_at when the
@@ -582,6 +628,21 @@ async function hasSharedCredential(env: Env, upstreamId: string): Promise<boolea
   return row !== null
 }
 
+/** Batch variant of `hasSharedCredential`: which of these upstreams have one. */
+async function sharedCredentialUpstreamIds(
+  env: Env,
+  upstreamIds: string[]
+): Promise<Set<string>> {
+  if (upstreamIds.length === 0) return new Set()
+  const placeholders = upstreamIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT upstream_id FROM upstream_shared_credentials WHERE upstream_id IN (${placeholders})`
+  )
+    .bind(...upstreamIds)
+    .all<{ upstream_id: string }>()
+  return new Set((res.results ?? []).map((r) => r.upstream_id))
+}
+
 export interface UpsertSharedCredentialInput {
   kind: 'bearer'
   ciphertext: Uint8Array
@@ -682,6 +743,32 @@ export async function acquireRefreshLease(
     .bind(userId, upstreamId, now + ttlSeconds, now)
     .run()
   return (res.meta?.changes ?? 0) > 0
+}
+
+/**
+ * Batch variant of `getUserCredentialStatus`: presence + re-auth health
+ * for many upstreams in one read. Upstreams without a credential row are
+ * absent from the map — callers default to `{ present: false,
+ * needsReauth: false }`.
+ */
+export async function getUserCredentialStatuses(
+  env: Env,
+  userId: string,
+  upstreamIds: string[]
+): Promise<Map<string, { present: boolean; needsReauth: boolean }>> {
+  const out = new Map<string, { present: boolean; needsReauth: boolean }>()
+  if (upstreamIds.length === 0) return out
+  const placeholders = upstreamIds.map((_, i) => `?${i + 2}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT upstream_id, reauth_required_at FROM user_credentials
+     WHERE user_id = ?1 AND upstream_id IN (${placeholders})`
+  )
+    .bind(userId, ...upstreamIds)
+    .all<{ upstream_id: string; reauth_required_at: number | null }>()
+  for (const row of res.results ?? []) {
+    out.set(row.upstream_id, { present: true, needsReauth: row.reauth_required_at != null })
+  }
+  return out
 }
 
 /** Presence + re-auth health of a (user, upstream) credential, in one read. */
@@ -827,21 +914,23 @@ export async function listUserUpstreamSummaries(
 ): Promise<UserUpstreamSummary[]> {
   const rows = await listUpstreamsVisibleToUser(env, userId)
   if (rows.length === 0) return []
-  const credIds = await listUserCredentialedUpstreamIds(env, userId)
-  const sharedFlags = await Promise.all(
-    rows.map((r) =>
-      r.auth_strategy === 'shared_bearer' ? hasSharedCredential(env, r.id) : Promise.resolve(false)
+  const sharedIds = rows.filter((r) => r.auth_strategy === 'shared_bearer').map((r) => r.id)
+  const [credIds, sharedSet, counts] = await Promise.all([
+    listUserCredentialedUpstreamIds(env, userId),
+    sharedCredentialUpstreamIds(env, sharedIds),
+    countToolsForUpstreams(
+      env,
+      rows.map((r) => r.id)
     )
-  )
-  const counts = await Promise.all(rows.map((r) => countToolsForUpstream(env, r.id)))
-  return rows.map((r, i) => {
+  ])
+  return rows.map((r) => {
     const requiresCredentials =
       r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth'
     const isShared = r.auth_strategy === 'shared_bearer'
     const connected = requiresCredentials
       ? credIds.has(r.id)
       : isShared
-        ? (sharedFlags[i] ?? false)
+        ? sharedSet.has(r.id)
         : true
     return {
       id: r.id,
@@ -851,7 +940,7 @@ export async function listUserUpstreamSummaries(
       authStrategy: r.auth_strategy,
       requiresCredentials,
       connected,
-      toolsCount: counts[i] ?? 0
+      toolsCount: counts.get(r.id) ?? 0
     }
   })
 }

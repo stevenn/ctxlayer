@@ -22,10 +22,10 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env } from '../env'
 import {
-  countToolsForUpstream,
-  getToolsCachedAt,
-  getUserCredentialStatus,
+  countToolsForUpstreams,
+  getUserCredentialStatuses,
   listCachedTools,
+  listCachedToolsForUpstreams,
   listUpstreamsVisibleToUser,
   replaceCachedTools,
   toUpstreamConnection,
@@ -33,8 +33,8 @@ import {
   type UpstreamServerRow,
   type UpstreamToolRow
 } from '../db/queries/upstreams'
-import { listSkillsForUpstream, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
-import { listDocsForUpstream, type DocForUpstreamRow } from '../db/queries/doc-attachments'
+import { listSkillsForUpstreams, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
+import { listDocsForUpstreams, type DocForUpstreamRow } from '../db/queries/doc-attachments'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { listUserRoleIds } from '../db/queries/roles'
 import {
@@ -49,6 +49,7 @@ import {
   requiresFromRules,
   type McpRestrictedTool,
   type McpUpstreamEntry,
+  type SupportedTransport,
   type UserPrincipals
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
@@ -65,6 +66,19 @@ const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
 // The `list_upstreams` entry shape is the shared MCP output contract; the
 // builder below is typed against it so it can't drift from the schema.
 export type ListUpstreamsEntry = McpUpstreamEntry
+
+/**
+ * The visible-upstream rows + their skill/doc attachments for one user,
+ * fetched in 3 round trips total (one list + two `IN (...)` batches).
+ * Loaded once per session init and shared between `upstreamGuidance`
+ * (server instructions) and `init` (tool registration) so neither
+ * re-runs the visibility query or the per-upstream attachment reads.
+ */
+export interface UpstreamUserContext {
+  rows: UpstreamServerRow[]
+  skillsByUpstream: Map<string, SkillForUpstreamRow[]>
+  docsByUpstream: Map<string, DocForUpstreamRow[]>
+}
 
 export class UpstreamProxyRegistry {
   /** upstream_id → live MCP Client */
@@ -90,51 +104,73 @@ export class UpstreamProxyRegistry {
   ) {}
 
   /**
+   * The visible upstreams + their attachments for one user, in 3 D1
+   * round trips. `McpSessionDO.init()` loads this once and feeds it to
+   * both `upstreamGuidance` and `init`.
+   */
+  static async loadUserContext(env: Env, userId: string): Promise<UpstreamUserContext> {
+    const rows = await listUpstreamsVisibleToUser(env, userId)
+    const ids = rows.map((r) => r.id)
+    const [skillsByUpstream, docsByUpstream] = await Promise.all([
+      listSkillsForUpstreams(env, ids),
+      listDocsForUpstreams(env, ids)
+    ])
+    return { rows, skillsByUpstream, docsByUpstream }
+  }
+
+  /**
    * Hydrate the registry and register one MCP tool per cached upstream
    * tool. Safe to call before any built-in tools are registered — the
    * SDK accumulates handlers across calls and the eventual `tools/list`
-   * returns the union.
+   * returns the union. Accepts the prefetched per-user context from
+   * `loadUserContext` (session init shares it with `upstreamGuidance`);
+   * loads it itself when not supplied.
    */
-  async init(server: McpServer): Promise<void> {
-    const rows = await listUpstreamsVisibleToUser(this.env, this.userId)
+  async init(server: McpServer, ctx?: UpstreamUserContext): Promise<void> {
+    const { rows, skillsByUpstream, docsByUpstream } =
+      ctx ?? (await UpstreamProxyRegistry.loadUserContext(this.env, this.userId))
     if (rows.length === 0) return
-    // Resolve the caller's principals + the per-tool ACL for every
-    // visible upstream once, up front. A tool with no ACL rows inherits
-    // the upstream's visibility; a locked tool the caller doesn't match
-    // is HIDDEN here (never registered, so the agent never sees it). The
-    // allowed-key set also backstops the call handler.
-    const [principals, aclRows] = await Promise.all([
+    // Resolve the caller's principals + the per-tool ACL + the cached
+    // catalogues for every visible upstream once, up front. A tool with
+    // no ACL rows inherits the upstream's visibility; a locked tool the
+    // caller doesn't match is HIDDEN here (never registered, so the agent
+    // never sees it). The allowed-key set also backstops the call handler.
+    const [principals, aclRows, cachedByUpstream] = await Promise.all([
       resolveUserPrincipals(this.env, this.userId),
       listToolAccessForUpstreams(
+        this.env,
+        rows.map((r) => r.id)
+      ),
+      listCachedToolsForUpstreams(
         this.env,
         rows.map((r) => r.id)
       )
     ])
     const acl = indexToolAccess(aclRows)
-    for (const row of rows) {
-      const conn = safeConnection(row)
-      if (!conn) continue
-      const bearer = await this.resolveBearer(row, conn)
-      if (conn.authStrategy !== 'none' && bearer === null) continue
-
-      const client = this.makeClient(conn, bearer)
-      const tools = await this.ensureCatalogue(conn, client)
-      if (tools.length === 0) {
-        // Empty even after refresh — log and skip; user sees built-ins only.
-        console.warn(`upstream ${conn.slug} returned no tools after refresh`)
-        await client.close()
-        continue
-      }
+    // Per-upstream prep (bearer resolution, client dial, catalogue
+    // refresh) runs concurrently; a throw degrades only that upstream.
+    // Registration happens sequentially afterwards, in `rows` order, so
+    // the tool ordering visible in `tools/list` stays deterministic.
+    const prepped = await Promise.all(
+      rows.map((row) =>
+        this.prepareUpstream(row, cachedByUpstream.get(row.id) ?? []).catch((err) => {
+          const msg = err instanceof Error ? err.message : String(err)
+          console.error(`[upstream-proxy] ${row.slug}: init failed: ${msg}`)
+          return null
+        })
+      )
+    )
+    for (const prep of prepped) {
+      if (!prep) continue
+      const { conn, client, tools } = prep
       this.clients.set(conn.id, client)
-      // Per-tool attachment pointers (tool_name != ''). Fetched once per
-      // upstream, then sliced per tool — whole-upstream attachments
-      // (tool_name = '') are skipped here; they surface in the server
-      // `instructions` via `upstreamGuidance` instead.
-      const [attSkills, attDocs] = await Promise.all([
-        listSkillsForUpstream(this.env, conn.id),
-        listDocsForUpstream(this.env, conn.id)
-      ])
-      const pointers = perToolPointers(attSkills, attDocs)
+      // Per-tool attachment pointers (tool_name != ''), sliced per tool —
+      // whole-upstream attachments (tool_name = '') are skipped here; they
+      // surface in the server `instructions` via `upstreamGuidance` instead.
+      const pointers = perToolPointers(
+        skillsByUpstream.get(conn.id) ?? [],
+        docsByUpstream.get(conn.id) ?? []
+      )
       for (const t of tools) {
         const key = accessKey(conn.id, t.tool_name)
         if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
@@ -151,15 +187,13 @@ export class UpstreamProxyRegistry {
    * playbook before its first call. Returns '' when nothing is attached.
    * The slugs are org-curated (kebab-case, first-party) — unlike upstream
    * tool descriptions they are not untrusted input, so no sanitisation.
+   * Pure formatting over the prefetched `loadUserContext` data.
    */
-  static async upstreamGuidance(env: Env, userId: string): Promise<string> {
-    const rows = await listUpstreamsVisibleToUser(env, userId)
+  static upstreamGuidance(ctx: UpstreamUserContext): string {
     const lines: string[] = []
-    for (const row of rows) {
-      const [skills, docs] = await Promise.all([
-        listSkillsForUpstream(env, row.id),
-        listDocsForUpstream(env, row.id)
-      ])
+    for (const row of ctx.rows) {
+      const skills = ctx.skillsByUpstream.get(row.id) ?? []
+      const docs = ctx.docsByUpstream.get(row.id) ?? []
       const refs = [
         ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\` (get_skill)`),
         ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\` (get_doc)`)
@@ -185,37 +219,36 @@ export class UpstreamProxyRegistry {
   }
 
   /**
-   * Slug-only view of the caller's reachable upstreams. Powers the
-   * `list_my_context.accessibleUpstreams` built-in result.
-   */
-  static async accessibleSlugs(env: Env, userId: string): Promise<string[]> {
-    const rows = await listUpstreamsVisibleToUser(env, userId)
-    return rows.map((r) => r.slug)
-  }
-
-  /**
    * Tools hidden from the caller by per-tool ACL, with what would unlock
    * each. Powers `list_my_context.restrictedTools` — the discoverability
    * signal that lets the agent say "that tool needs role X" instead of
    * hitting a blank "tool not found". Scoped to upstreams the caller can
    * already SEE (we never reveal a tool on an upstream they can't see).
    * Reads the cached catalogue (no refresh) — best-effort advisory.
+   * Takes the caller's visible rows + principals from the caller (the
+   * `list_my_context` handler already holds both), and only reads the
+   * catalogues of upstreams that actually carry ACL rows — often zero.
    */
-  static async restrictedToolsForUser(env: Env, userId: string): Promise<McpRestrictedTool[]> {
-    const rows = await listUpstreamsVisibleToUser(env, userId)
-    if (rows.length === 0) return []
-    const [principals, aclRows] = await Promise.all([
-      resolveUserPrincipals(env, userId),
-      listToolAccessForUpstreams(
-        env,
-        rows.map((r) => r.id)
-      )
-    ])
+  static async restrictedToolsFor(
+    env: Env,
+    rows: UpstreamServerRow[],
+    principals: UserPrincipals
+  ): Promise<McpRestrictedTool[]> {
+    const dialable = rows.filter((r) => isDialableTransport(r.transport))
+    if (dialable.length === 0) return []
+    const aclRows = await listToolAccessForUpstreams(
+      env,
+      dialable.map((r) => r.id)
+    )
+    if (aclRows.length === 0) return []
     const acl = indexToolAccess(aclRows)
+    // Only upstreams with ACL rows can produce restricted tools; skip the
+    // catalogue read for the (common) unrestricted rest.
+    const aclUpstreamIds = new Set(aclRows.map((r) => r.upstream_id))
+    const toolsByUpstream = await listCachedToolsForUpstreams(env, [...aclUpstreamIds])
     const out: McpRestrictedTool[] = []
-    for (const row of rows) {
-      if (!isDialableTransport(row.transport)) continue
-      const tools = await listCachedTools(env, row.id)
+    for (const row of dialable) {
+      const tools = toolsByUpstream.get(row.id) ?? []
       for (const t of tools) {
         const rules = acl.get(accessKey(row.id, t.tool_name))
         if (!rules || rules.length === 0) continue // open / inherit
@@ -233,41 +266,46 @@ export class UpstreamProxyRegistry {
    * false` so agents know the deep-link to /upstreams.
    */
   static async listUpstreamsForUser(env: Env, userId: string): Promise<ListUpstreamsEntry[]> {
-    const rows = await listUpstreamsVisibleToUser(env, userId)
+    const rows = (await listUpstreamsVisibleToUser(env, userId)).filter(
+      (r): r is UpstreamServerRow & { transport: SupportedTransport } =>
+        isDialableTransport(r.transport)
+    )
     if (rows.length === 0) return []
-    const out: ListUpstreamsEntry[] = []
-    for (const row of rows) {
-      if (!isDialableTransport(row.transport)) continue
+    const ids = rows.map((r) => r.id)
+    const credIds = rows
+      .filter((r) => r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth')
+      .map((r) => r.id)
+    const [credStatuses, toolCounts, skillsByUpstream, docsByUpstream] = await Promise.all([
+      getUserCredentialStatuses(env, userId, credIds),
+      countToolsForUpstreams(env, ids),
+      listSkillsForUpstreams(env, ids),
+      listDocsForUpstreams(env, ids)
+    ])
+    return rows.map((row) => {
       const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
       const cred = requiresCred
-        ? await getUserCredentialStatus(env, userId, row.id)
+        ? (credStatuses.get(row.id) ?? { present: false, needsReauth: false })
         : { present: true, needsReauth: false }
-      const toolsCount = await countToolsForUpstream(env, row.id)
       // Whole-upstream attachments only (tool_name = ''); per-tool
       // attachments surface via /api/upstreams/:id/tools.
-      const [skillAtt, docAtt] = await Promise.all([
-        listSkillsForUpstream(env, row.id),
-        listDocsForUpstream(env, row.id)
-      ])
-      const attached_skills = skillAtt
+      const attached_skills = (skillsByUpstream.get(row.id) ?? [])
         .filter((s) => s.tool_name === '')
         .map((s) => ({ slug: s.slug, title: s.title }))
-      const attached_docs = docAtt
+      const attached_docs = (docsByUpstream.get(row.id) ?? [])
         .filter((d) => d.tool_name === '')
         .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
-      out.push({
+      return {
         slug: row.slug,
         displayName: row.display_name,
         transport: row.transport,
         connected: cred.present,
         ...(cred.needsReauth ? { needsReauth: true } : {}),
-        toolsCount,
+        toolsCount: toolCounts.get(row.id) ?? 0,
         requiresAuth: row.auth_strategy,
         attached_skills,
         attached_docs
-      })
-    }
-    return out
+      }
+    })
   }
 
   // ----- internals ------------------------------------------------------
@@ -276,13 +314,42 @@ export class UpstreamProxyRegistry {
     return resolveUserUpstreamBearer(this.env, row, conn, this.userId)
   }
 
+  /**
+   * Resolve credentials, dial the upstream, and ensure its catalogue is
+   * fresh. Returns null to skip the upstream (bad row, missing creds,
+   * empty catalogue); throws propagate to the per-upstream catch in
+   * `init` so one upstream's failure degrades only that upstream.
+   */
+  private async prepareUpstream(
+    row: UpstreamServerRow,
+    cached: UpstreamToolRow[]
+  ): Promise<{ conn: UpstreamConnection; client: UpstreamClient; tools: UpstreamToolRow[] } | null> {
+    const conn = safeConnection(row)
+    if (!conn) return null
+    const bearer = await this.resolveBearer(row, conn)
+    if (conn.authStrategy !== 'none' && bearer === null) return null
+
+    const client = this.makeClient(conn, bearer)
+    const tools = await this.ensureCatalogue(conn, client, cached)
+    if (tools.length === 0) {
+      // Empty even after refresh — log and skip; user sees built-ins only.
+      console.warn(`upstream ${conn.slug} returned no tools after refresh`)
+      await client.close()
+      return null
+    }
+    return { conn, client, tools }
+  }
+
   private async ensureCatalogue(
     conn: UpstreamConnection,
-    client: UpstreamClient
+    client: UpstreamClient,
+    cached: UpstreamToolRow[]
   ): Promise<UpstreamToolRow[]> {
-    const cachedAt = await getToolsCachedAt(this.env, conn.id)
+    // Staleness is derived from the prefetched rows (cached_at rides on
+    // every row), so the fresh path costs no extra round trip.
+    const cachedAt = cached.length === 0 ? null : Math.max(...cached.map((t) => t.cached_at))
     const stale = cachedAt === null || Date.now() / 1000 - cachedAt > CATALOGUE_TTL_SECONDS
-    if (!stale) return listCachedTools(this.env, conn.id)
+    if (!stale) return cached
     try {
       // Reuse the persistent client this registry already opened — avoids
       // a second handshake just to fetch the catalogue.
@@ -449,8 +516,9 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
 /**
  * The caller's group memberships (teams, products, roles), resolved in
  * one pass for the per-tool ACL. Products are transitive via teams
- * (resolveUserScope); roles are direct. Shared by `init()` (registration
- * filter) and `restrictedToolsForUser()` (advisory) so both evaluate the
+ * (resolveUserScope); roles are direct. `init()` uses this; the
+ * `list_my_context` handler builds the same shape from data it already
+ * fetched and feeds it to `restrictedToolsFor()` so both evaluate the
  * exact same principal set.
  */
 async function resolveUserPrincipals(env: Env, userId: string): Promise<UserPrincipals> {

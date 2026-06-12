@@ -28,7 +28,9 @@ import {
   SEARCH_K_DEFAULT,
   SEARCH_K_MAX
 } from '../rag/search'
-import { UpstreamProxyRegistry } from './tools-proxy'
+import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
+import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
+import { listUserRoleIds } from '../db/queries/roles'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
@@ -114,9 +116,15 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // answers `initialize`, which happens after `init()` returns — and
     // the `McpAgent` constructor never touches `this.server`, so the
     // eagerly-built instance is safe to replace here.
+    // The visible-upstreams rows + attachments are loaded ONCE here and
+    // shared with the proxy registry's `init()` below, so a connect costs
+    // one visibility query + two attachment batches instead of re-running
+    // them per consumer (and per upstream).
+    let upstreamCtx: UpstreamUserContext | null = null
     if (userId) {
       try {
-        const guidance = await UpstreamProxyRegistry.upstreamGuidance(this.env, userId)
+        upstreamCtx = await UpstreamProxyRegistry.loadUserContext(this.env, userId)
+        const guidance = UpstreamProxyRegistry.upstreamGuidance(upstreamCtx)
         if (guidance) {
           this.server = new McpServer(
             { name: 'ctxlayer', version: '0.1.0' },
@@ -188,11 +196,20 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         rec('list_my_context', undefined, async () => {
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
-          const [scope, accessibleUpstreams, restrictedTools] = await Promise.all([
+          // Scope, roles, and the visible-upstream rows are fetched once
+          // and feed BOTH the context body and the restricted-tools
+          // advisory (which used to re-run all three internally).
+          const [scope, roleIds, rows] = await Promise.all([
             resolveUserScope(this.env, userId),
-            UpstreamProxyRegistry.accessibleSlugs(this.env, userId),
-            UpstreamProxyRegistry.restrictedToolsForUser(this.env, userId)
+            listUserRoleIds(this.env, userId),
+            listUpstreamsVisibleToUser(this.env, userId)
           ])
+          const accessibleUpstreams = rows.map((r) => r.slug)
+          const restrictedTools = await UpstreamProxyRegistry.restrictedToolsFor(this.env, rows, {
+            teams: new Set(scope.teams),
+            products: new Set(scope.products),
+            roles: new Set(roleIds)
+          })
           // Typed against the shared MCP contract so the serialised shape
           // can't drift from `McpMyContext`.
           const body: McpMyContext = {
@@ -335,7 +352,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           (args) => this.stageUsage(args),
           this.getSessionId()
         )
-        await this.upstreamProxy.init(this.server)
+        await this.upstreamProxy.init(this.server, upstreamCtx ?? undefined)
       } catch (err) {
         console.error('upstream proxy init failed:', err)
         this.upstreamProxy = null
