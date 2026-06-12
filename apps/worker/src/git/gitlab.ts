@@ -19,7 +19,8 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
-import { assertSafeFetchUrl, gitlabApiBase, gitlabWebBase } from './url'
+import { assertSafeFetchUrl } from '../util/safe-fetch'
+import { gitlabApiBase, gitlabWebBase } from './url'
 import { MD_RE, asObj, enc, encPath, fromBase64, normalizePrefix, underPrefix } from './provider-util'
 
 const TREE_PER_PAGE = 100

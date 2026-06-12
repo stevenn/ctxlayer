@@ -24,7 +24,8 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
-import { assertSafeFetchUrl, azureBase } from './url'
+import { assertSafeFetchUrl } from '../util/safe-fetch'
+import { azureBase } from './url'
 import { MD_RE, asObj, enc, encPath, normalizePrefix, underPrefix } from './provider-util'
 
 const API_VERSION = '7.1'

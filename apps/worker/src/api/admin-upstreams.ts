@@ -78,6 +78,12 @@ adminUpstreamsRoute.post('/', async (c) => {
   if (isSameOrigin(input.url, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
+  if (oauthEndpointSelfLoop(input.authConfig, c.env)) {
+    return c.json(
+      { error: 'self_loop', message: 'OAuth endpoints must not point at this ctxlayer instance' },
+      400
+    )
+  }
   try {
     const row = await createUpstream(c.env, {
       slug: input.slug,
@@ -140,6 +146,12 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
   }
   if (parsed.data.url && isSameOrigin(parsed.data.url, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
+  if (oauthEndpointSelfLoop(parsed.data.authConfig, c.env)) {
+    return c.json(
+      { error: 'self_loop', message: 'OAuth endpoints must not point at this ctxlayer instance' },
+      400
+    )
   }
   await patchUpstream(c.env, id, {
     ...parsed.data,
@@ -440,6 +452,23 @@ async function prepareOAuthSecret(
   }
   oauth.clientSecret = undefined // never persist plaintext (dropped by JSON.stringify)
   return { ...cfg, oauth }
+}
+
+/**
+ * Self-loop guard for admin-supplied static-OAuth endpoints — same rule as
+ * the upstream URL itself (and as `admin-git-sources.ts` applies to its
+ * `tokenUrl`): the worker must never POST the authorization code + sealed
+ * client secret back into its own origin.
+ */
+function oauthEndpointSelfLoop(
+  cfg: UpdateUpstreamRequest['authConfig'],
+  env: Env
+): boolean {
+  const oauth = cfg?.oauth
+  if (!oauth) return false
+  return [oauth.authorizeUrl, oauth.tokenUrl].some(
+    (u) => typeof u === 'string' && isSameOrigin(u, env.PUBLIC_BASE_URL)
+  )
 }
 
 function isUniqueViolation(err: unknown): boolean {

@@ -18,6 +18,7 @@ import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { open as openSecret, sealedFromString } from '../crypto/aead'
+import { assertSafeFetchUrl } from '../util/safe-fetch'
 
 export type StaticOAuth = NonNullable<UpstreamAuthConfig['oauth']>
 
@@ -151,7 +152,11 @@ async function postToken(
 ): Promise<TokenResponse> {
   const secret = await openClientSecret(env, oauth)
   if (secret) body.set('client_secret', secret)
-  const res = await fetch(requireField(oauth.tokenUrl, 'tokenUrl'), {
+  const tokenUrl = requireField(oauth.tokenUrl, 'tokenUrl')
+  // Dial-site re-check: the code + client_secret + refresh token travel in
+  // this POST — never let them go out over cleartext http.
+  assertSafeFetchUrl(tokenUrl, 'oauth-static')
+  const res = await fetch(tokenUrl, {
     method: 'POST',
     headers: {
       'content-type': 'application/x-www-form-urlencoded',
