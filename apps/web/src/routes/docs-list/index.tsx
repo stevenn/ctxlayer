@@ -161,10 +161,15 @@ export function DocsList() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md" gap="md" wrap="nowrap">
-        <Title order={2} fz={20} fw={600} style={{ whiteSpace: 'nowrap' }}>
-          Docs library
-        </Title>
+      <Group justify="space-between" align="flex-start" mb="md" gap="md" wrap="nowrap">
+        <div>
+          <Title order={2} fz={20} fw={600} style={{ whiteSpace: 'nowrap' }}>
+            Context Library
+          </Title>
+          <Text c="dimmed" fz="sm">
+            A collection of documentation and skills — locally managed or pulled from git sources.
+          </Text>
+        </div>
         <Group gap="xs">
           {isAdmin && (
             <Tooltip label="Rebuild the search index for every doc" withArrow>

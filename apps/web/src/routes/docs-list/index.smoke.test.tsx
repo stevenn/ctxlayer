@@ -69,7 +69,7 @@ describe('DocsList (render smoke)', () => {
 
   it('mounts and renders the library heading after the docs fetch resolves', async () => {
     renderScreen()
-    expect(await screen.findByText('Docs library')).toBeInTheDocument()
+    expect(await screen.findByText('Context Library')).toBeInTheDocument()
     // The mocked doc lands in the table once fetchDocs resolves.
     expect(await screen.findByText('Onboarding guide')).toBeInTheDocument()
   })
