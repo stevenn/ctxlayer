@@ -20,11 +20,19 @@ import type { Env as WorkerEnv } from '../../src/env'
  *
  * Each case is also checked against `app.routes` so a typo'd path (which
  * router-wide `.use('*')` middleware would still 401/403, silently passing
- * assertions 1–3 for a phantom route) fails loudly.
+ * assertions 1–3 for a phantom route) fails loudly. That is the *forward*
+ * direction (every CASE is a real route).
+ *
+ * The *reverse* direction — every real mutating route is a CASE — is the
+ * "is every mounted mutation route probed" test at the bottom. Without it
+ * the table can silently drift: a newly-added unguarded POST/PUT/PATCH/
+ * DELETE route would simply never be probed and CI would stay green. That
+ * test enumerates `app.routes` and fails if any concrete mutation route is
+ * neither in CASES nor in UNGATED_ALLOWLIST.
  *
  * Known exclusion: POST /api/auth/signout carries requireCsrf but no
  * requireUser (signing out doesn't need a live session), so the 401
- * assertion can't apply; it's left out rather than special-cased.
+ * assertion can't apply; it's in UNGATED_ALLOWLIST rather than CASES.
  */
 
 const SESSION_SECRET = 'csrf-gates-integration-secret'
@@ -106,6 +114,8 @@ const CASES: GateCase[] = [
   { method: 'PUT', path: '/api/docs/d1/lock' },
   { method: 'PUT', path: '/api/docs/d1/tags' },
   { method: 'POST', path: '/api/docs/d1/editors' },
+  { method: 'DELETE', path: '/api/docs/d1/editors/everyone' },
+  { method: 'DELETE', path: '/api/docs/d1/editors/user/u1' },
   { method: 'POST', path: '/api/docs/d1/git/pull-request' },
   { method: 'POST', path: '/api/docs/d1/git/review-url' },
   { method: 'PUT', path: '/api/git-sources/g1/credentials' },
@@ -114,14 +124,31 @@ const CASES: GateCase[] = [
   { method: 'DELETE', path: '/api/upstreams/up1/credentials' },
   { method: 'POST', path: '/api/search' },
   { method: 'PATCH', path: '/api/folders' },
+  { method: 'DELETE', path: '/api/folders/f1' },
   { method: 'POST', path: '/api/skills' },
   { method: 'PATCH', path: '/api/skills/s1' },
   { method: 'DELETE', path: '/api/skills/s1' },
+  { method: 'POST', path: '/api/skills/s1/restore' },
   { method: 'PUT', path: '/api/skills/s1/content' },
   { method: 'POST', path: '/api/skill-attachments' },
   { method: 'DELETE', path: '/api/skill-attachments' },
   { method: 'POST', path: '/api/doc-attachments' },
   { method: 'DELETE', path: '/api/doc-attachments' }
+]
+
+const MUTATION_METHODS: Method[] = ['POST', 'PUT', 'PATCH', 'DELETE']
+
+// Mutating routes that intentionally do NOT carry the requireUser +
+// requireCsrf pair the three gate assertions check, so they can't live in
+// CASES. Every entry MUST stay justified — this is the escape hatch the
+// reverse-coverage test consults, not a place to silence inconvenient
+// failures. Paths are the literal Hono patterns from `app.routes`.
+const UNGATED_ALLOWLIST: { method: Method; path: string; why: string }[] = [
+  {
+    method: 'POST',
+    path: '/api/auth/signout',
+    why: 'requireCsrf but no requireUser — signing out needs no live session, so the 401 assertion cannot apply'
+  }
 ]
 
 // Admin routers gate on requireAdmin BEFORE requireCsrf, so the
@@ -200,5 +227,26 @@ describe('mutation-surface auth + CSRF gates', () => {
     })
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ error: 'bad_origin' })
+  })
+
+  // Reverse coverage: every concrete mutation route mounted on the real
+  // app must be probed by CASES (or explicitly allowlisted). The forward
+  // `is a real route` check only catches typos in the table; this catches
+  // omissions from it — a new unguarded mutation route can no longer slip
+  // in un-probed with CI still green.
+  it('every mounted mutation route is covered by CASES or the allowlist', () => {
+    const uncovered = new Set<string>()
+    for (const r of app.routes) {
+      if (!MUTATION_METHODS.includes(r.method as Method)) continue // skips ALL (middleware) + GET/HEAD
+      if (r.path.endsWith('*')) continue // router-wide `.use('*')` mounts
+      const method = r.method as Method
+      const inCases = CASES.some((c) => c.method === method && patternMatches(r.path, c.path))
+      const allowed = UNGATED_ALLOWLIST.some((a) => a.method === method && a.path === r.path)
+      if (!inCases && !allowed) uncovered.add(`${method} ${r.path}`)
+    }
+    expect(
+      [...uncovered],
+      `mounted mutation routes not probed by CASES — add a CASE, or an UNGATED_ALLOWLIST entry with justification:\n  ${[...uncovered].join('\n  ')}`
+    ).toEqual([])
   })
 })
