@@ -18,16 +18,20 @@
  */
 
 import { auth as mcpAuth } from '@modelcontextprotocol/sdk/client/auth.js'
+import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { Env } from '../env'
+import { audit } from '../audit/log'
 import { open as openSecret, type SealedSecret } from '../crypto/aead'
 import {
   getSharedCredential,
   getUserCredential,
+  markReauthRequired,
   parseAuthConfig,
   type UpstreamConnection,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
 import { UpstreamOAuthProvider } from './oauth-provider'
+import { singleFlightRefresh } from './oauth-refresh'
 import { refreshStatic, staticOAuth } from './oauth-static'
 
 // Refresh a user_oauth access token only when it's within this many
@@ -69,34 +73,34 @@ export async function resolveUserUpstreamBearer(
     // DevOps — drive their own refresh against the configured token endpoint
     // instead of the SDK's auth() orchestrator.
     const staticCfg = staticOAuth(parseAuthConfig(row.auth_config))
-    if (staticCfg) return refreshStatic(env, provider, staticCfg)
-    try {
-      // Fast path: a still-fresh access token is used as-is, WITHOUT
-      // invoking auth() — so we don't refresh (and rotate the refresh
-      // token) on every session init. Only when the token is near expiry
-      // (or its expiry is unknown) do we go through auth() to refresh.
-      const existing = await provider.tokens()
-      if (
-        existing?.access_token &&
-        existing.expires_in !== undefined &&
-        existing.expires_in > OAUTH_REFRESH_BUFFER_S
-      ) {
-        return existing.access_token
+
+    // Fast path: a still-fresh access token is used as-is — no lease, no
+    // refresh, no rotation (see OAUTH_REFRESH_BUFFER_S). Only when it's near
+    // expiry do we refresh, and that refresh is single-flighted below so two
+    // concurrent sessions/devices can't both spend a rotating refresh_token.
+    const existing = await provider.tokens()
+    if (isFreshAccessToken(existing)) return existing?.access_token ?? null
+
+    const token = await singleFlightRefresh(env, userId, row.id, {
+      refresh: () =>
+        staticCfg ? refreshStatic(env, provider, staticCfg) : refreshViaSdk(provider, conn),
+      readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
+      isFresh: async () => isFreshAccessToken(await provider.tokens())
+    })
+    // Had a stored credential but couldn't produce a usable token → the
+    // refresh is dead. Flag for re-auth so list_upstreams tells the agent to
+    // reconnect, and audit the clear→set transition (once) for the operator.
+    if (token === null && (existing?.access_token || existing?.refresh_token)) {
+      if (await markReauthRequired(env, userId, row.id)) {
+        await audit(env, {
+          actorId: userId,
+          action: 'upstream.reauth_required',
+          target: row.id,
+          meta: { slug: conn.slug }
+        })
       }
-      const result = await mcpAuth(provider, { serverUrl: conn.url })
-      if (result === 'AUTHORIZED') {
-        return (await provider.tokens())?.access_token ?? null
-      }
-      const redirect = provider.capturedRedirect?.toString() ?? '<none>'
-      console.warn(
-        `[oauth] ${conn.slug}: refresh failed, SDK wants new authz flow (redirect=${redirect})`
-      )
-      return null
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
-      return null
     }
+    return token
   }
   // user_bearer
   const cred = await getUserCredential(env, userId, conn.id)
@@ -111,6 +115,38 @@ export async function resolveUserUpstreamBearer(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[bearer] ${conn.slug}: decrypt failed: ${msg}`)
+    return null
+  }
+}
+
+/** A stored access token that is present and not within the refresh buffer. */
+function isFreshAccessToken(t: OAuthTokens | undefined): boolean {
+  return !!t?.access_token && t.expires_in !== undefined && t.expires_in > OAUTH_REFRESH_BUFFER_S
+}
+
+/**
+ * DCR refresh via the MCP SDK's auth() orchestrator. auth() always runs a
+ * refresh when a refresh_token is present, so the caller invokes this only
+ * after the fast path has determined the access token is near expiry. A
+ * non-AUTHORIZED outcome means the SDK wants a fresh interactive authz flow;
+ * we surface null so the caller skips the upstream (the user reconnects from
+ * /upstreams).
+ */
+async function refreshViaSdk(
+  provider: UpstreamOAuthProvider,
+  conn: UpstreamConnection
+): Promise<string | null> {
+  try {
+    const result = await mcpAuth(provider, { serverUrl: conn.url })
+    if (result === 'AUTHORIZED') return (await provider.tokens())?.access_token ?? null
+    const redirect = provider.capturedRedirect?.toString() ?? '<none>'
+    console.warn(
+      `[oauth] ${conn.slug}: refresh failed, SDK wants new authz flow (redirect=${redirect})`
+    )
+    return null
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
+    console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
     return null
   }
 }

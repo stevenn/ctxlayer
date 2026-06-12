@@ -655,6 +655,84 @@ export async function upsertUserCredential(
     .run()
 }
 
+/**
+ * Single-flight guard for user_oauth token refresh. Atomically claims a short
+ * lease on the (user, upstream) credential row via a conditional UPDATE — D1
+ * serializes writes, so exactly one concurrent caller wins. Returns true if
+ * THIS call won the lease (and must perform the refresh); false if another
+ * caller already holds it (and should wait for the rotated token rather than
+ * spending the refresh_token a second time, which would trip the provider's
+ * refresh-token-reuse revocation). The lease is an absolute unix-seconds
+ * deadline, so a crashed holder auto-releases after `ttlSeconds`. A row must
+ * already exist (an OAuth upstream always has stored tokens by refresh time);
+ * with no row the UPDATE matches nothing and this returns false.
+ */
+export async function acquireRefreshLease(
+  env: Env,
+  userId: string,
+  upstreamId: string,
+  ttlSeconds: number
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000)
+  const res = await env.DB.prepare(
+    `UPDATE user_credentials SET refresh_lock_until = ?3
+       WHERE user_id = ?1 AND upstream_id = ?2
+         AND (refresh_lock_until IS NULL OR refresh_lock_until < ?4)`
+  )
+    .bind(userId, upstreamId, now + ttlSeconds, now)
+    .run()
+  return (res.meta?.changes ?? 0) > 0
+}
+
+/** Presence + re-auth health of a (user, upstream) credential, in one read. */
+export async function getUserCredentialStatus(
+  env: Env,
+  userId: string,
+  upstreamId: string
+): Promise<{ present: boolean; needsReauth: boolean }> {
+  const row = await env.DB.prepare(
+    `SELECT reauth_required_at FROM user_credentials WHERE user_id = ?1 AND upstream_id = ?2`
+  )
+    .bind(userId, upstreamId)
+    .first<{ reauth_required_at: number | null }>()
+  return { present: row !== null, needsReauth: row?.reauth_required_at != null }
+}
+
+/**
+ * Flag a credential as needing interactive re-auth after a definitive refresh
+ * failure. Conditional so it only fires on the clear→set transition — returns
+ * true when this call newly set the flag (so the caller audits once, not every
+ * failing session).
+ */
+export async function markReauthRequired(
+  env: Env,
+  userId: string,
+  upstreamId: string
+): Promise<boolean> {
+  const now = Math.floor(Date.now() / 1000)
+  const res = await env.DB.prepare(
+    `UPDATE user_credentials SET reauth_required_at = ?3
+       WHERE user_id = ?1 AND upstream_id = ?2 AND reauth_required_at IS NULL`
+  )
+    .bind(userId, upstreamId, now)
+    .run()
+  return (res.meta?.changes ?? 0) > 0
+}
+
+/** Clear the re-auth flag after a successful token save (refresh or reconnect). */
+export async function clearReauthRequired(
+  env: Env,
+  userId: string,
+  upstreamId: string
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE user_credentials SET reauth_required_at = NULL
+       WHERE user_id = ?1 AND upstream_id = ?2 AND reauth_required_at IS NOT NULL`
+  )
+    .bind(userId, upstreamId)
+    .run()
+}
+
 export async function deleteUserCredential(
   env: Env,
   userId: string,

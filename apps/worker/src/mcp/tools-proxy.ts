@@ -24,7 +24,7 @@ import type { Env } from '../env'
 import {
   countToolsForUpstream,
   getToolsCachedAt,
-  getUserCredential,
+  getUserCredentialStatus,
   listCachedTools,
   listUpstreamsVisibleToUser,
   replaceCachedTools,
@@ -238,7 +238,9 @@ export class UpstreamProxyRegistry {
     for (const row of rows) {
       if (row.transport !== 'streamable_http' && row.transport !== 'sse') continue
       const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
-      const connected = requiresCred ? !!(await getUserCredential(env, userId, row.id)) : true
+      const cred = requiresCred
+        ? await getUserCredentialStatus(env, userId, row.id)
+        : { present: true, needsReauth: false }
       const toolsCount = await countToolsForUpstream(env, row.id)
       // Whole-upstream attachments only (tool_name = ''); per-tool
       // attachments surface via /api/upstreams/:id/tools.
@@ -256,7 +258,8 @@ export class UpstreamProxyRegistry {
         slug: row.slug,
         displayName: row.display_name,
         transport: row.transport,
-        connected,
+        connected: cred.present,
+        ...(cred.needsReauth ? { needsReauth: true } : {}),
         toolsCount,
         requiresAuth: row.auth_strategy,
         attached_skills,
