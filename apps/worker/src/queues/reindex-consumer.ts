@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import type { Env } from '../env'
-import { getDocById, updateChunkCount } from '../db/queries/docs'
+import { getDocReindexState, setDocIndexedState } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readRevision, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
@@ -36,7 +36,11 @@ const ReindexMessage = z.object({
   // 'git' ⇒ the doc's canonical body is raw markdown in R2
   // (docs/{docId}/source.md), chunked directly. Absent ⇒ ordinary doc
   // whose body is the BlockNote revision rendered to markdown.
-  source: z.literal('git').optional()
+  source: z.literal('git').optional(),
+  // Bypass the unchanged-content skip. Set by the admin "reindex all"
+  // action, whose whole point is rebuilding vectors for content whose
+  // hash hasn't moved (e.g. after a chunking/embedding change).
+  force: z.boolean().optional()
 })
 
 /**
@@ -56,8 +60,24 @@ export async function reindexConsumer(
   env: Env,
   _ctx: ExecutionContext
 ): Promise<void> {
-  for (const msg of batch.messages) {
-    const parsed = ReindexMessage.safeParse(msg.body)
+  // Dedupe by docId within the batch, keeping the LAST message per doc:
+  // every run reads the doc's CURRENT body + tags anyway, so a superseded
+  // duplicate would redo identical work. Superseded messages are acked
+  // outright; their `force` flag (if any) is folded into the survivor so
+  // a forced rebuild can't be lost to dedupe.
+  const parsedBatch = batch.messages.map((msg) => ({
+    msg,
+    parsed: ReindexMessage.safeParse(msg.body)
+  }))
+  const lastMsgForDoc = new Map<string, Message>()
+  const forcedDocs = new Set<string>()
+  for (const { msg, parsed } of parsedBatch) {
+    if (!parsed.success) continue
+    lastMsgForDoc.set(parsed.data.docId, msg)
+    if (parsed.data.force) forcedDocs.add(parsed.data.docId)
+  }
+
+  for (const { msg, parsed } of parsedBatch) {
     if (!parsed.success) {
       console.error('reindex-consumer: malformed message; dropping', {
         id: msg.id,
@@ -66,8 +86,13 @@ export async function reindexConsumer(
       msg.ack()
       continue
     }
+    if (lastMsgForDoc.get(parsed.data.docId) !== msg) {
+      // Superseded by a later message for the same doc in this batch.
+      msg.ack()
+      continue
+    }
     try {
-      await handle(env, parsed.data)
+      await handle(env, { ...parsed.data, force: forcedDocs.has(parsed.data.docId) })
       msg.ack()
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -140,10 +165,10 @@ export async function reindexConsumer(
 
 async function handle(
   env: Env,
-  msg: { docId: string; revisionId: string; source?: 'git' }
+  msg: { docId: string; revisionId: string; source?: 'git'; force?: boolean }
 ): Promise<void> {
   const { docId, revisionId } = msg
-  const doc = await getDocById(env, docId)
+  const doc = await getDocReindexState(env, docId)
   if (!doc) {
     console.log('reindex-consumer: doc gone; skipping', { docId, revisionId })
     return
@@ -189,6 +214,16 @@ async function handle(
     return
   }
 
+  // Tags are read BEFORE the skip check because they shape the chunk
+  // metadata (scope filter) — a tag-only change must reindex even when
+  // the body is byte-identical, so they're part of the content hash.
+  const tags = await listTagsForDoc(env, docId)
+  const contentHash = await indexContentHash(doc.title, markdown, tags)
+  if (!msg.force && doc.last_indexed_hash === contentHash) {
+    console.log('reindex-consumer: content unchanged; skipping', { docId, revisionId })
+    return
+  }
+
   const chunks = chunkMarkdown(markdown, { title: doc.title })
   // Embed the doc title + section breadcrumb ALONG WITH each chunk's
   // body, so the doc/section identity is part of every vector. A query
@@ -197,13 +232,10 @@ async function handle(
   // semantically. The stored snippet (metadata.text) stays the raw body,
   // so result snippets read naturally — only the embedding input carries
   // the header.
-  const [{ vectors }, tags] = await Promise.all([
-    embed(
-      env,
-      chunks.map((c) => embedInput(doc.title, c))
-    ),
-    listTagsForDoc(env, docId)
-  ])
+  const { vectors } = await embed(
+    env,
+    chunks.map((c) => embedInput(doc.title, c))
+  )
   // Topic tags aren't part of the search filter today; we pass only
   // team + product onto chunk metadata. Topics live in `doc_tags`
   // for the editor + (future) drill-down browse, not the scope
@@ -217,9 +249,32 @@ async function handle(
     tags: { teams: tags.teams, products: tags.products },
     previousChunkCount: doc.chunk_count
   })
-  // Cache the count for the next reindex so orphan cleanup knows
-  // the previous high-water mark.
-  await updateChunkCount(env, docId, chunks.length)
+  // Cache the count (orphan-cleanup high-water mark) + the hash that
+  // produced it. Reached only when the upsert succeeded — in dev the
+  // soft-skipped Vectorize binding throws before this line, so no hash
+  // is recorded for an index that never received vectors.
+  await setDocIndexedState(env, docId, chunks.length, contentHash)
+}
+
+/**
+ * Hash of everything that shapes a doc's Vectorize chunks: title
+ * (embedded into every chunk + stored in metadata), the markdown body,
+ * and the team/product tags (scope-filter metadata). Tag arrays are
+ * sorted so ordering noise doesn't defeat the skip.
+ */
+async function indexContentHash(
+  title: string,
+  markdown: string,
+  tags: { teams: string[]; products: string[] }
+): Promise<string> {
+  const payload = JSON.stringify({
+    title,
+    markdown,
+    teams: [...tags.teams].sort(),
+    products: [...tags.products].sort()
+  })
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(payload))
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 /**

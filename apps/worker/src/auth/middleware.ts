@@ -1,7 +1,7 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import type { Env } from '../env'
 import { readSessionCookie, sessionClearCookie, verifySession } from './session'
-import { findById } from '../db/queries/users'
+import { findById, type UserRow } from '../db/queries/users'
 import type { Role } from '@ctxlayer/shared'
 
 export interface SessionUser {
@@ -9,7 +9,9 @@ export interface SessionUser {
   role: Role
 }
 
-export type AuthedVariables = { user: SessionUser }
+// `userRow` is the full DB row the per-request lifecycle re-check already
+// fetched — exposed so handlers that need it (/api/me) don't re-query.
+export type AuthedVariables = { user: SessionUser; userRow: UserRow }
 
 type Ctx = Context<{ Bindings: Env; Variables: AuthedVariables }>
 
@@ -26,7 +28,7 @@ type Ctx = Context<{ Bindings: Env; Variables: AuthedVariables }>
  */
 async function resolveActiveUser(
   c: Ctx
-): Promise<{ user: SessionUser } | { error: Response }> {
+): Promise<{ user: SessionUser; row: UserRow } | { error: Response }> {
   const cookie = readSessionCookie(c.req.raw)
   const payload = await verifySession(cookie, c.env.SESSION_COOKIE_SECRET)
   if (!payload) return { error: c.json({ error: 'not_signed_in' }, 401) }
@@ -37,7 +39,7 @@ async function resolveActiveUser(
     res.headers.append('Set-Cookie', sessionClearCookie())
     return { error: res }
   }
-  return { user: { userId: row.id, role: row.role } }
+  return { user: { userId: row.id, role: row.role }, row }
 }
 
 /**
@@ -56,6 +58,7 @@ export const requireUser: MiddlewareHandler<{
   const resolved = await resolveActiveUser(c)
   if ('error' in resolved) return resolved.error
   c.set('user', resolved.user)
+  c.set('userRow', resolved.row)
   await next()
 }
 
@@ -68,5 +71,6 @@ export const requireAdmin: MiddlewareHandler<{
   if ('error' in resolved) return resolved.error
   if (resolved.user.role !== 'admin') return c.json({ error: 'forbidden' }, 403)
   c.set('user', resolved.user)
+  c.set('userRow', resolved.row)
   await next()
 }

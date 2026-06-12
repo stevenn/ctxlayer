@@ -431,21 +431,6 @@ export interface GitDocOrigin {
   git_sync_state: GitSyncState | null
 }
 
-export async function getGitDocByPath(
-  env: Env,
-  gitSourceId: string,
-  path: string
-): Promise<GitDocOrigin | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, git_source_id, git_path, git_blob_sha, git_commit_sha, git_synced_at, git_sync_state
-     FROM documents
-     WHERE git_source_id = ?1 AND git_path = ?2 AND deleted_at IS NULL`
-  )
-    .bind(gitSourceId, path)
-    .first<GitDocOrigin>()
-  return row ?? null
-}
-
 export async function getDocGitOrigin(env: Env, docId: string): Promise<GitDocOrigin | null> {
   const row = await env.DB.prepare(
     `SELECT id, git_source_id, git_path, git_blob_sha, git_commit_sha, git_synced_at, git_sync_state
@@ -456,28 +441,26 @@ export async function getDocGitOrigin(env: Env, docId: string): Promise<GitDocOr
   return row ?? null
 }
 
-export async function listGitDocPaths(
-  env: Env,
-  gitSourceId: string
-): Promise<
-  Array<{
-    id: string
-    git_path: string
-    git_commit_sha: string | null
-    git_sync_state: GitSyncState | null
-  }>
-> {
+export interface GitDocPathRow {
+  id: string
+  git_path: string
+  git_blob_sha: string | null
+  git_commit_sha: string | null
+  git_sync_state: GitSyncState | null
+}
+
+/**
+ * Every non-deleted doc mirrored from a source, with the fields the sync
+ * loop needs to decide skip / conflict / update per tree entry — so a
+ * sync run does ONE read here instead of a per-path lookup per file.
+ */
+export async function listGitDocPaths(env: Env, gitSourceId: string): Promise<GitDocPathRow[]> {
   const res = await env.DB.prepare(
-    `SELECT id, git_path, git_commit_sha, git_sync_state FROM documents
+    `SELECT id, git_path, git_blob_sha, git_commit_sha, git_sync_state FROM documents
      WHERE git_source_id = ?1 AND deleted_at IS NULL`
   )
     .bind(gitSourceId)
-    .all<{
-      id: string
-      git_path: string
-      git_commit_sha: string | null
-      git_sync_state: GitSyncState | null
-    }>()
+    .all<GitDocPathRow>()
   return res.results ?? []
 }
 

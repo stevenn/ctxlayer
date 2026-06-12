@@ -13,7 +13,7 @@ import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Env } from '../env'
 import { getSkillBySlug, listPublishedSkills } from '../db/queries/skills'
-import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
+import { listAttachmentsForSkills } from '../db/queries/skill-attachments'
 import { type McpSkillSummary, McpListSkillsResult } from '@ctxlayer/shared'
 import { readSnapshot } from '../storage/skills-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
@@ -38,22 +38,23 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
     () =>
       rec('list_skills', undefined, async () => {
         const rows = await listPublishedSkills(env)
-        // Typed against the shared MCP contract (`McpSkillSummary`).
-        const summaries: McpSkillSummary[] = await Promise.all(
-          rows.map(async (row) => {
-            const attachments = await listAttachmentsForSkill(env, row.id)
-            return {
-              slug: row.slug,
-              name: row.slug,
-              title: row.title,
-              description: row.description,
-              attached_to: attachments.map((a) => ({
-                upstream_slug: a.upstream_slug,
-                tool_name: a.tool_name || null
-              }))
-            }
-          })
+        // One IN-query for every skill's attachments instead of one
+        // round trip per skill.
+        const attachmentsBySkill = await listAttachmentsForSkills(
+          env,
+          rows.map((r) => r.id)
         )
+        // Typed against the shared MCP contract (`McpSkillSummary`).
+        const summaries: McpSkillSummary[] = rows.map((row) => ({
+          slug: row.slug,
+          name: row.slug,
+          title: row.title,
+          description: row.description,
+          attached_to: (attachmentsBySkill.get(row.id) ?? []).map((a) => ({
+            upstream_slug: a.upstream_slug,
+            tool_name: a.tool_name || null
+          }))
+        }))
         return {
           content: [{ type: 'text', text: JSON.stringify(summaries, null, 2) }],
           structuredContent: { skills: summaries }

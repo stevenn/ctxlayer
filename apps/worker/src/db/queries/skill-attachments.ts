@@ -70,6 +70,69 @@ export async function listSkillsForUpstream(
   return res.results ?? []
 }
 
+/**
+ * Batch variant of `listAttachmentsForSkill`: one `IN (...)` query for
+ * many skills, grouped by skill_id. Within each skill the rows keep the
+ * same (upstream slug, tool_name) order as the single-id query. Powers
+ * the MCP `list_skills` surface without an N+1.
+ */
+export async function listAttachmentsForSkills(
+  env: Env,
+  skillIds: string[]
+): Promise<Map<string, SkillAttachmentRow[]>> {
+  const out = new Map<string, SkillAttachmentRow[]>()
+  if (skillIds.length === 0) return out
+  const placeholders = skillIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT sa.skill_id, sa.upstream_id, sa.tool_name,
+            u.slug AS upstream_slug
+     FROM skill_attachments sa
+     JOIN upstream_servers u ON u.id = sa.upstream_id
+     WHERE sa.skill_id IN (${placeholders})
+     ORDER BY u.slug, sa.tool_name`
+  )
+    .bind(...skillIds)
+    .all<SkillAttachmentRow>()
+  for (const row of res.results ?? []) {
+    const arr = out.get(row.skill_id)
+    if (arr) arr.push(row)
+    else out.set(row.skill_id, [row])
+  }
+  return out
+}
+
+/**
+ * Batch variant of `listSkillsForUpstream` (published-only — MCP surfaces
+ * never see drafts): one `IN (...)` query for many upstreams, grouped by
+ * upstream_id. Within each upstream the rows keep the single-id query's
+ * (tool_name, title) order.
+ */
+export async function listSkillsForUpstreams(
+  env: Env,
+  upstreamIds: string[]
+): Promise<Map<string, SkillForUpstreamRow[]>> {
+  const out = new Map<string, SkillForUpstreamRow[]>()
+  if (upstreamIds.length === 0) return out
+  const placeholders = upstreamIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT sa.upstream_id, sa.skill_id, s.slug, s.title, sa.tool_name, s.status
+     FROM skill_attachments sa
+     JOIN skills s ON s.id = sa.skill_id
+     WHERE sa.upstream_id IN (${placeholders})
+       AND s.deleted_at IS NULL
+       AND s.status = 'published'
+     ORDER BY sa.tool_name, s.title`
+  )
+    .bind(...upstreamIds)
+    .all<SkillForUpstreamRow & { upstream_id: string }>()
+  for (const row of res.results ?? []) {
+    const arr = out.get(row.upstream_id)
+    if (arr) arr.push(row)
+    else out.set(row.upstream_id, [row])
+  }
+  return out
+}
+
 export interface AttachSkillInput {
   skillId: string
   upstreamId: string

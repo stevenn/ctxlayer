@@ -16,7 +16,6 @@ import type { Env } from '../env'
 import type { GitSyncInterval, GitSyncResult } from '@ctxlayer/shared'
 import { slugifyHeading } from '@ctxlayer/shared'
 import {
-  getGitDocByPath,
   getGitSourceById,
   listGitDocPaths,
   markDocGitOrigin,
@@ -85,11 +84,15 @@ export async function runGitSync(
     const headSha = await provider.resolveRef(source.branch)
     const entries = await provider.listMarkdownTree(source.branch, source.path_prefix)
     const existing = await listGitDocPaths(env, sourceId)
+    // One read up front instead of a per-path lookup per tree entry —
+    // a no-op sync over a large repo used to cost one D1 round trip
+    // per markdown file.
+    const docByPath = new Map(existing.map((e) => [e.git_path, e]))
     const seen = new Set<string>()
 
     for (const entry of entries) {
       seen.add(entry.path)
-      const doc = await getGitDocByPath(env, sourceId, entry.path)
+      const doc = docByPath.get(entry.path) ?? null
 
       if (doc && doc.git_blob_sha === entry.blobSha) {
         counts.skipped++
