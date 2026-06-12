@@ -16,12 +16,14 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { seal } from '../crypto/aead'
 import {
-  deleteUserCredential,
   getUpstreamById,
   listUpstreamsVisibleToUser,
-  listUserUpstreamSummaries,
-  upsertUserCredential
+  listUserUpstreamSummaries
 } from '../db/queries/upstreams'
+import {
+  deleteUserCredential,
+  upsertUserCredential
+} from '../db/queries/upstream-credentials'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 import { buildUpstreamToolsPayload } from './upstreams-attachments'
 import { notFound, parseJsonBody } from './respond'

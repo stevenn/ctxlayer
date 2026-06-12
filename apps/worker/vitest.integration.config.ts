@@ -26,7 +26,13 @@ export default defineWorkersConfig(async () => {
           isolatedStorage: true,
           miniflare: {
             compatibilityDate: '2024-12-30',
-            compatibilityFlags: ['nodejs_compat'],
+            // global_fetch_strictly_public matches wrangler.toml (it gates
+            // RFC-1918 fetches in prod). It's also load-bearing here:
+            // without it @cloudflare/workers-oauth-provider console.warn()s
+            // at module scope, which the patched test console turns into
+            // I/O that workerd forbids in global scope — killing any test
+            // file that imports the composed app (csrf-gates.test.ts).
+            compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
             d1Databases: ['DB'],
             bindings: {
               TEST_MIGRATIONS: migrations

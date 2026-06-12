@@ -12,7 +12,7 @@
  */
 
 import type { Env } from '../env'
-import { listCachedTools } from '../db/queries/upstreams'
+import { listCachedTools } from '../db/queries/upstream-tools'
 import { listSkillsForUpstream, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import { listDocsForUpstream, type DocForUpstreamRow } from '../db/queries/doc-attachments'
 

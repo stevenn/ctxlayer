@@ -22,17 +22,19 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env } from '../env'
 import {
-  countToolsForUpstreams,
-  getUserCredentialStatuses,
-  listCachedTools,
-  listCachedToolsForUpstreams,
   listUpstreamsVisibleToUser,
-  replaceCachedTools,
   toUpstreamConnection,
   type UpstreamConnection,
-  type UpstreamServerRow,
-  type UpstreamToolRow
+  type UpstreamServerRow
 } from '../db/queries/upstreams'
+import {
+  countToolsForUpstreams,
+  listCachedTools,
+  listCachedToolsForUpstreams,
+  replaceCachedTools,
+  type UpstreamToolRow
+} from '../db/queries/upstream-tools'
+import { getUserCredentialStatuses } from '../db/queries/upstream-credentials'
 import { listSkillsForUpstreams, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import { listDocsForUpstreams, type DocForUpstreamRow } from '../db/queries/doc-attachments'
 import { resolveUserScope } from '../db/queries/doc-tags'

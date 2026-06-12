@@ -6,7 +6,7 @@ import {
   clearReauthRequired,
   getUserCredentialStatus,
   markReauthRequired
-} from '../../src/db/queries/upstreams'
+} from '../../src/db/queries/upstream-credentials'
 
 /**
  * The refresh lease is the single-flight guard that stops two concurrent

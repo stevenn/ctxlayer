@@ -40,13 +40,12 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { Env } from '../env'
 import { openStoredTokens, prepareStoredTokens } from './oauth-tokens'
+import { patchUpstream, type UpstreamServerRow } from '../db/queries/upstreams'
 import {
   clearReauthRequired,
   getUserCredential,
-  patchUpstream,
-  upsertUserCredential,
-  type UpstreamServerRow
-} from '../db/queries/upstreams'
+  upsertUserCredential
+} from '../db/queries/upstream-credentials'
 import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 
 const VERIFIER_TTL_SECONDS = 600

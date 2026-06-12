@@ -25,9 +25,20 @@ import type {
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
-import { oauthProviderOptions } from '../oauth/provider-config'
 import { buildUserGrantIndex } from '../oauth/client-grants'
 import { pruneOrphanOAuthClients } from '../oauth/prune-clients'
+
+/**
+ * Handler-time import of the provider options: `provider-config.ts`
+ * reaches mcp/session-do → the agents SDK → `cloudflare:email`, which
+ * the vitest workerd runtime can't load at module scope — and the
+ * composed app (src/app.ts) must stay importable by the integration
+ * suite. Same lazy-import pattern as schema-diff in upstream-tools.ts.
+ */
+async function providerOptions() {
+  const { oauthProviderOptions } = await import('../oauth/provider-config')
+  return oauthProviderOptions()
+}
 
 export const adminOAuthClientsRoute = new Hono<{
   Bindings: Env
@@ -43,7 +54,7 @@ adminOAuthClientsRoute.get('/', async (c) => {
   if (!Number.isFinite(limit) || limit < 1) limit = 100
   if (limit > 500) limit = 500
 
-  const helpers = getOAuthApi<Env>(oauthProviderOptions(), c.env)
+  const helpers = getOAuthApi<Env>(await providerOptions(), c.env)
   // Kick off both reads in parallel — clients page + user-grant index.
   // The user-grant fan-out is bounded by the number of ctxlayer users
   // (<100 in the design target) so the parallel KV reads are cheap.
@@ -85,7 +96,7 @@ adminOAuthClientsRoute.get('/', async (c) => {
  * nothing and reports `skippedIncompleteIndex` (the SPA surfaces it).
  */
 adminOAuthClientsRoute.post('/prune', requireCsrf, async (c) => {
-  const helpers = getOAuthApi<Env>(oauthProviderOptions(), c.env)
+  const helpers = getOAuthApi<Env>(await providerOptions(), c.env)
   const result = await pruneOrphanOAuthClients(c.env, helpers, {
     olderThanDays: 1
   })

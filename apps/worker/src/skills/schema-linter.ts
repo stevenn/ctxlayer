@@ -18,7 +18,7 @@
 import type { Env } from '../env'
 import { collapseSlugPrefix } from '@ctxlayer/shared'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
-import { listCachedTools } from '../db/queries/upstreams'
+import { listCachedTools } from '../db/queries/upstream-tools'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 
 export interface LintFinding {

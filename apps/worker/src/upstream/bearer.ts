@@ -23,13 +23,15 @@ import type { Env } from '../env'
 import { audit } from '../audit/log'
 import { open as openSecret, type SealedSecret } from '../crypto/aead'
 import {
-  getSharedCredential,
-  getUserCredential,
-  markReauthRequired,
   parseAuthConfig,
   type UpstreamConnection,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
+import {
+  getSharedCredential,
+  getUserCredential,
+  markReauthRequired
+} from '../db/queries/upstream-credentials'
 import { UpstreamOAuthProvider } from './oauth-provider'
 import { singleFlightRefresh } from './oauth-refresh'
 import { refreshStatic, staticOAuth } from './oauth-static'

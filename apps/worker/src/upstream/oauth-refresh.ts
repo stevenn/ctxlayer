@@ -15,7 +15,7 @@
  */
 
 import type { Env } from '../env'
-import { acquireRefreshLease } from '../db/queries/upstreams'
+import { acquireRefreshLease } from '../db/queries/upstream-credentials'
 
 // The lease auto-expires this many seconds after it's claimed, so a crashed
 // or slow holder never deadlocks the credential. Sized for a token-endpoint

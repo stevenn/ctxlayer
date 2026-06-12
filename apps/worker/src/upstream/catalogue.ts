@@ -16,10 +16,10 @@
 import type { Env } from '../env'
 import {
   getUpstreamById,
-  replaceCachedTools,
   toUpstreamConnection,
   type UpstreamConnection
 } from '../db/queries/upstreams'
+import { replaceCachedTools } from '../db/queries/upstream-tools'
 import { createUpstreamClient } from './create-client'
 
 export interface CatalogueRefreshOk {
