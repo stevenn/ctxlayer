@@ -82,7 +82,8 @@ ctxlayer/
   apps/
     worker/
       src/
-        index.ts                # Hono app, mounts OAuthProvider + routes
+        index.ts                # OAuthProvider + HSTS/queue/scheduled wrapper
+        app.ts                  # Hono app, mounts all routes
         env.ts                  # Env binding types
         api/{auth,me,config,docs,doc-tags,doc-sharing,teams,users,
              admin-teams,admin-products,health,version,...}.ts
@@ -246,7 +247,7 @@ resilience (long calls + oversized responses) in [docs/plan/I-upstream-resilienc
 - HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly via `apps/worker/src/upstream/http-client.ts`; bearer/OAuth creds decrypted just-in-time; per-call timeout is 150s base inactivity / 300s hard ceiling, per-upstream overridable via `authConfig.timeouts`, plus a 256 KB default response-size cap overridable via `authConfig.maxResponseBytes`.
 - `user_oauth` outbound: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider`. DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + context → `OAUTH_KV`, sealed token bundle → `user_credentials` (kind=`oauth`). Routes at `apps/worker/src/api/upstream-oauth.ts`.
 - Catalogue cache in `upstream_tools`; populates via post-OAuth `ctx.waitUntil` + session-init `ensureCatalogue` for stale rows (24h TTL). Admin "Refresh now" available for `none`-strategy upstreams.
-- D1 BLOB normalization at the trust boundary in `db/queries/upstreams.getUserCredential` — D1 returns BLOBs in a shape SubtleCrypto rejects; we coerce to `Uint8Array` before handing to `aead.open`.
+- D1 BLOB normalization at the trust boundary in `db/queries/upstream-credentials.getUserCredential` — D1 returns BLOBs in a shape SubtleCrypto rejects; we coerce to `Uint8Array` before handing to `aead.open`.
 - Stdio upstreams via bring-your-own-bridge — front the stdio MCP server with your own stdio↔HTTP bridge and register its HTTPS URL as a `streamable_http` upstream. ctxlayer runs no sandbox lifecycle. See [docs/plan/B-stdio-bridge.md](plan/B-stdio-bridge.md).
 
 ## Collaborative editor
