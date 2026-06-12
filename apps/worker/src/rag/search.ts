@@ -37,7 +37,7 @@ import {
   type QueryUnderstanding
 } from './query-understanding'
 import { resolveUserScope } from '../db/queries/doc-tags'
-import { getDocById, gitDocIdsAmong } from '../db/queries/docs'
+import { gitDocIdsAmong, listDocRefs } from '../db/queries/docs'
 import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
 
@@ -202,6 +202,12 @@ export async function retrieveCandidates(
   const limit = opts.limit ?? RERANK_CANDIDATES
   const topK = Math.min(limit, VECTORIZE_TOPK_MAX)
 
+  // Lexical recall depends on neither the query embedding nor the dense
+  // results — kick it off now so it runs concurrently with the dense
+  // stage. It never rejects (errors degrade to [] internally), so the
+  // floating promise on the early-return paths below is harmless.
+  const lexPromise = lexicalMatches(env, opts.lexicalQuery, topK)
+
   // Workers AI + Vectorize don't run under a plain `wrangler dev` (they
   // throw "needs to be run remotely"); locally there are no vectors anyway,
   // so degrade to empty results instead of a 500. Real errors propagate.
@@ -220,7 +226,7 @@ export async function retrieveCandidates(
     throw err
   }
 
-  const lexResults = await lexicalMatches(env, opts.lexicalQuery, topK)
+  const lexResults = await lexPromise
 
   // Union dense + lexical by chunk id, keeping the best score per modality.
   const map = new Map<string, MergedCandidate>()
@@ -391,11 +397,14 @@ async function groupByDoc(env: Env, hits: SearchHit[]): Promise<SearchDocGroup[]
   }
 
   const ids = [...byDoc.keys()]
-  const rows = await Promise.all(ids.map((id) => getDocById(env, id)))
+  // One IN-query for the slug+title link fields — not the 5-join
+  // getDocById row per result doc.
+  const refs = await listDocRefs(env, ids)
+  const refById = new Map(refs.map((r) => [r.id, r]))
 
   const groups: SearchDocGroup[] = []
-  ids.forEach((id, i) => {
-    const row = rows[i]
+  ids.forEach((id) => {
+    const row = refById.get(id)
     if (!row) return
     const sections = (byDoc.get(id) ?? [])
       .sort((a, b) => rank(b) - rank(a))

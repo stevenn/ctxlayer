@@ -126,14 +126,68 @@ export async function getDocByIdOrSlug(
 }
 
 /**
- * Set the cached chunk_count after a successful reindex. Called by the
- * queue consumer so the next reindex knows how many chunks the
- * previous revision produced, which drives orphan cleanup in Vectorize.
+ * The slim per-doc state the reindex consumer needs: title (embedded in
+ * every chunk), the previous chunk_count (Vectorize orphan cleanup), and
+ * the last successfully-indexed content hash (skip-unchanged check).
+ * Deliberately NOT the 5-join `getDocById` — the consumer reads this on
+ * every queue message.
  */
-export async function updateChunkCount(env: Env, docId: string, count: number): Promise<void> {
-  await env.DB.prepare(`UPDATE documents SET chunk_count = ?1 WHERE id = ?2`)
-    .bind(count, docId)
+export interface DocReindexState {
+  id: string
+  title: string
+  chunk_count: number
+  last_indexed_hash: string | null
+}
+
+export async function getDocReindexState(env: Env, docId: string): Promise<DocReindexState | null> {
+  const row = await env.DB.prepare(
+    `SELECT id, title, chunk_count, last_indexed_hash
+     FROM documents WHERE id = ?1 AND deleted_at IS NULL`
+  )
+    .bind(docId)
+    .first<DocReindexState>()
+  return row ?? null
+}
+
+/**
+ * Record the outcome of a successful reindex: the cached chunk_count
+ * (so the next reindex knows the previous high-water mark for orphan
+ * cleanup in Vectorize) and the content hash that produced it (so an
+ * unchanged doc can skip the pipeline entirely). Called by the queue
+ * consumer only after the Vectorize upsert succeeded.
+ */
+export async function setDocIndexedState(
+  env: Env,
+  docId: string,
+  count: number,
+  contentHash: string
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE documents SET chunk_count = ?1, last_indexed_hash = ?2 WHERE id = ?3`
+  )
+    .bind(count, contentHash, docId)
     .run()
+}
+
+/**
+ * Slug + title for a set of doc ids in one round trip. Backs the search
+ * result grouper, which only needs the link fields — not the 5-join
+ * `getDocById` row. Deleted docs are filtered out so search results
+ * never link to a 404.
+ */
+export async function listDocRefs(
+  env: Env,
+  docIds: string[]
+): Promise<Array<{ id: string; slug: string; title: string }>> {
+  if (docIds.length === 0) return []
+  const placeholders = docIds.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT id, slug, title FROM documents
+     WHERE id IN (${placeholders}) AND deleted_at IS NULL`
+  )
+    .bind(...docIds)
+    .all<{ id: string; slug: string; title: string }>()
+  return res.results ?? []
 }
 
 /**
