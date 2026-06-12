@@ -31,6 +31,22 @@ import {
 import { setUserRoles } from '../db/queries/roles'
 import { revokeAllUserGrants } from '../oauth/revoke-grants'
 import { audit } from '../audit/log'
+import { notify } from '../ops/alert'
+
+/**
+ * Grant revocation is best-effort (KV); when it reports incomplete the
+ * lockout still holds via the per-request status re-check, but the operator
+ * should know an already-open MCP session may have survived. Alert + the
+ * `complete:false` in the response/audit row make the partial failure
+ * visible instead of silently claiming success.
+ */
+async function notifyIncompleteRevocation(env: Env, verb: string, targetId: string) {
+  await notify(env, {
+    level: 'warn',
+    event: 'admin.grant_revocation_incomplete',
+    detail: `user.${verb} ${targetId}: some MCP/CLI grants may survive — retry the ${verb}`
+  })
+}
 
 export const adminUsersRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUsersRoute.use('*', requireAdmin)
@@ -138,14 +154,15 @@ adminUsersRoute.post('/:id/suspend', requireCsrf, async (c) => {
   if (guard) return guard
   if (target.status !== 'suspended') await setUserStatus(c.env, target.id, 'suspended')
   // Instant MCP/CLI cutoff: kill every bearer/refresh token the user holds.
-  const { revoked } = await revokeAllUserGrants(c.env, target.id)
+  const { revoked, complete } = await revokeAllUserGrants(c.env, target.id)
+  if (!complete) await notifyIncompleteRevocation(c.env, 'suspend', target.id)
   await audit(c.env, {
     actorId: actor.userId,
     action: 'user.suspend',
     target: target.id,
-    meta: { from: target.status, targetEmail: target.email, revokedGrants: revoked }
+    meta: { from: target.status, targetEmail: target.email, revokedGrants: revoked, complete }
   })
-  return c.json({ revokedGrants: revoked })
+  return c.json({ revokedGrants: revoked, complete })
 })
 
 // Reactivate (un-suspend) OR approve a pending user — both transition to
@@ -197,15 +214,22 @@ adminUsersRoute.delete('/:id', requireCsrf, async (c) => {
   if (guard) return guard
   // Revoke MCP/CLI tokens first (KV, keyed by user id) so access dies even if
   // a later step hiccups, then remove the D1 identity + its FK children.
-  const { revoked } = await revokeAllUserGrants(c.env, target.id)
+  const { revoked, complete } = await revokeAllUserGrants(c.env, target.id)
+  if (!complete) await notifyIncompleteRevocation(c.env, 'delete', target.id)
   const { reassignedSkills } = await deleteUser(c.env, target.id, actor.userId)
   await audit(c.env, {
     actorId: actor.userId,
     action: 'user.delete',
     target: target.id,
-    meta: { targetEmail: target.email, idp: target.idp, reassignedSkills, revokedGrants: revoked }
+    meta: {
+      targetEmail: target.email,
+      idp: target.idp,
+      reassignedSkills,
+      revokedGrants: revoked,
+      complete
+    }
   })
-  return c.json({ reassignedSkills, revokedGrants: revoked })
+  return c.json({ reassignedSkills, revokedGrants: revoked, complete })
 })
 
 /**
