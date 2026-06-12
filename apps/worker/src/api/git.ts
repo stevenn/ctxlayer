@@ -34,6 +34,7 @@ import {
 import { createGitProvider, type GitRepoConfig } from '../git/provider'
 import { resolveGitReadToken } from '../git/credentials'
 import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
+import { gitStaticOAuth } from '../git/git-oauth'
 import { seal } from '../crypto/aead'
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
@@ -104,6 +105,7 @@ gitDocsRoute.get('/:id/git', async (c) => {
     syncState,
     syncedAt: origin.git_synced_at,
     canWrite,
+    oauthConfigured: gitStaticOAuth(source) !== null,
     pr
   }
   return c.json(body)

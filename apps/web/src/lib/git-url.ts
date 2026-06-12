@@ -83,7 +83,10 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
     const dashIdx = segs.indexOf('-')
     const projectSegs = (dashIdx >= 0 ? segs.slice(0, dashIdx) : segs).map(stripDotGit)
     if (projectSegs.length < 1) return null
-    const repo = projectSegs[projectSegs.length - 1]!
+    // GitLab identifies a project by its FULL namespace path — that's what the
+    // provider URL-encodes into /projects/<path>. Store the full path in
+    // `repo` (the last segment alone would hit the wrong project).
+    const fullPath = projectSegs.join('/')
     let branch: string | null = null
     let pathPrefix = ''
     if (dashIdx >= 0 && segs[dashIdx + 1] === 'tree') {
@@ -94,11 +97,11 @@ export function parseGitUrl(input: string): ParsedGitUrl | null {
       provider,
       baseUrl,
       owner: '',
-      project: projectSegs.join('/'),
-      repo,
+      project: '',
+      repo: fullPath,
       branch,
       pathPrefix,
-      slugSuggestion: suggestSlug('gitSource', repo)
+      slugSuggestion: suggestSlug('gitSource', projectSegs[projectSegs.length - 1]!)
     }
   }
 

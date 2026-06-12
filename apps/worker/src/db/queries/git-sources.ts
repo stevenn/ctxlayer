@@ -13,6 +13,7 @@
 import type { Env } from '../../env'
 import type {
   AdminGitSourceRow,
+  GitOAuthPublic,
   GitCredStrategy,
   GitProvider,
   GitSyncInterval,
@@ -44,6 +45,9 @@ export interface GitSourceRow {
   last_synced_at: number | null
   last_sync_status: GitSyncStatus | null
   last_sync_error: string | null
+  // JSON blob holding the static-OAuth client config (see 0022). NULL ⇒
+  // PAT-only. Shape mirrors upstream_servers.auth_config: { oauth: {...} }.
+  auth_config: string | null
   created_by: string | null
   created_at: number
   updated_at: number
@@ -51,7 +55,7 @@ export interface GitSourceRow {
 
 const SELECT_GIT_SOURCE = `SELECT id, slug, display_name, provider, base_url, owner, project,
   repo, branch, path_prefix, read_strategy, write_strategy, folder_root, sync_interval, product_id,
-  enabled, last_synced_at, last_sync_status, last_sync_error, created_by, created_at, updated_at
+  enabled, last_synced_at, last_sync_status, last_sync_error, auth_config, created_by, created_at, updated_at
   FROM git_sources`
 
 export async function listGitSources(env: Env): Promise<GitSourceRow[]> {
@@ -76,6 +80,18 @@ export async function getGitSourceBySlug(env: Env, slug: string): Promise<GitSou
     .bind(slug)
     .first<GitSourceRow>()
   return row ?? null
+}
+
+/** Set (or clear, with null) the static-OAuth client config JSON on a source. */
+export async function setGitSourceAuthConfig(
+  env: Env,
+  id: string,
+  json: string | null
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(`UPDATE git_sources SET auth_config = ?2, updated_at = ?3 WHERE id = ?1`)
+    .bind(id, json, now)
+    .run()
 }
 
 export interface CreateGitSourceInput {
@@ -641,9 +657,36 @@ export async function gitAdminRowFor(
     lastSyncError: row.last_sync_error,
     docCount,
     sharedCredentialConfigured: sharedConfigured,
+    oauth: oauthPublic(row.auth_config),
+    clientSecretConfigured: oauthSecretIsSet(row.auth_config),
     currentUserConnected: userConnected,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  }
+}
+
+/** Non-secret view of the static-OAuth config (clientId + URLs + scopes), or null. */
+function oauthPublic(authConfig: string | null): GitOAuthPublic | null {
+  const o = parseOauthBlock(authConfig)
+  const clientId = typeof o?.clientId === 'string' ? o.clientId : ''
+  const authorizeUrl = typeof o?.authorizeUrl === 'string' ? o.authorizeUrl : ''
+  const tokenUrl = typeof o?.tokenUrl === 'string' ? o.tokenUrl : ''
+  if (!clientId || !authorizeUrl || !tokenUrl) return null
+  const scopes =
+    o && Array.isArray(o.scopes) ? o.scopes.filter((s): s is string => typeof s === 'string') : []
+  return { clientId, authorizeUrl, tokenUrl, scopes }
+}
+
+function oauthSecretIsSet(authConfig: string | null): boolean {
+  return Boolean(parseOauthBlock(authConfig)?.clientSecretCiphertext)
+}
+
+function parseOauthBlock(authConfig: string | null): Record<string, unknown> | undefined {
+  if (!authConfig) return undefined
+  try {
+    return (JSON.parse(authConfig) as { oauth?: Record<string, unknown> }).oauth
+  } catch {
+    return undefined
   }
 }
 

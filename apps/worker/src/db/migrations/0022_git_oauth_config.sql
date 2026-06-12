@@ -1,0 +1,17 @@
+-- 0022_git_oauth_config.sql
+--
+-- Static (pre-registered) OAuth client config for a git source, so users can
+-- connect via OAuth instead of pasting a PAT. Mirrors
+-- upstream_servers.auth_config: a JSON blob holding
+--   { oauth: { clientId, authorizeUrl, tokenUrl, scopes, clientSecretCiphertext } }
+-- NULL ⇒ no OAuth configured (paste-a-PAT only). The client secret is sealed
+-- (AES-GCM, stored as a self-describing string) and never persisted plaintext;
+-- the admin read path redacts the ciphertext.
+--
+-- DCR is intentionally NOT used: GitHub and Entra (Azure DevOps) don't support
+-- it, and GitLab's is version-gated, so one pre-registered-app flow covers all
+-- three providers. (GitLab DCR is a possible future enhancement — see J-git.md.)
+--
+-- Child-table ADD COLUMN — safe per G1 (only referenced parents can't be
+-- rebuilt). Nullable, no default → existing sources are PAT-only.
+ALTER TABLE git_sources ADD COLUMN auth_config TEXT;

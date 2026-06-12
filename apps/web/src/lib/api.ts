@@ -62,6 +62,7 @@ import {
   CreateGitSourceRequest,
   UpdateGitSourceRequest,
   GitSetCredentialRequest,
+  GitOAuthConfigRequest,
   GitDocStatus,
   CreatePullRequestRequest,
   CreatePullRequestResult,
@@ -140,6 +141,7 @@ import type {
   AdminGitSourceRow as AdminGitSourceRowT,
   CreateGitSourceRequest as CreateGitSourceRequestT,
   UpdateGitSourceRequest as UpdateGitSourceRequestT,
+  GitOAuthConfigRequest as GitOAuthConfigRequestT,
   GitDocStatus as GitDocStatusT,
   CreatePullRequestResult as CreatePullRequestResultT,
   GitReviewUrlResult as GitReviewUrlResultT,
@@ -324,6 +326,17 @@ export function adminPutGitSharedCredential(id: string, body: { token: string })
 
 export function adminDeleteGitSharedCredential(id: string): Promise<void> {
   return request(`${gitSourcePath(id)}/shared-credentials`, () => undefined, { method: 'DELETE' })
+}
+
+export function adminPutGitSourceOAuth(id: string, body: GitOAuthConfigRequestT): Promise<void> {
+  return request(`${gitSourcePath(id)}/oauth`, () => undefined, {
+    method: 'PUT',
+    body: JSON.stringify(GitOAuthConfigRequest.parse(body))
+  })
+}
+
+export function adminDeleteGitSourceOAuth(id: string): Promise<void> {
+  return request(`${gitSourcePath(id)}/oauth`, () => undefined, { method: 'DELETE' })
 }
 
 export function adminSyncGitSource(id: string): Promise<void> {

@@ -46,6 +46,15 @@ export const GitBaseUrl = z
 
 // ----- admin row + requests ----------------------------------------------
 
+// Non-secret view of a source's static-OAuth client config (for form prefill).
+export const GitOAuthPublic = z.object({
+  clientId: z.string(),
+  authorizeUrl: z.string(),
+  tokenUrl: z.string(),
+  scopes: z.array(z.string())
+})
+export type GitOAuthPublic = z.infer<typeof GitOAuthPublic>
+
 export const AdminGitSourceRow = z.object({
   id: z.string(),
   slug: GitSourceSlug,
@@ -70,6 +79,12 @@ export const AdminGitSourceRow = z.object({
   lastSyncError: z.string().nullable(),
   docCount: z.number().int().min(0),
   sharedCredentialConfigured: z.boolean(),
+  // The source's static-OAuth client config (NON-secret fields only) for the
+  // admin form to prefill, or null when OAuth isn't configured.
+  oauth: GitOAuthPublic.nullable().default(null),
+  // True iff an OAuth client secret is sealed on this source. The secret
+  // itself is never returned; this drives the "secret set" placeholder.
+  clientSecretConfigured: z.boolean().default(false),
   currentUserConnected: z.boolean(),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
@@ -120,6 +135,24 @@ export const GitSetCredentialRequest = z.object({
 })
 export type GitSetCredentialRequest = z.infer<typeof GitSetCredentialRequest>
 
+// Admin: configure a source's static (pre-registered) OAuth client. DCR is not
+// used (see J-git.md), so the operator supplies the app's endpoints + id, and
+// optionally the secret (sealed server-side; never round-tripped on read).
+const HttpsUrl = z
+  .string()
+  .url()
+  .refine((v) => v.startsWith('https://'), { message: 'must be https' })
+
+export const GitOAuthConfigRequest = z.object({
+  clientId: z.string().min(1).max(512),
+  authorizeUrl: HttpsUrl,
+  tokenUrl: HttpsUrl,
+  scopes: z.array(z.string().max(200)).max(50).default([]),
+  // Write-only. Omit on edit to keep the existing sealed secret.
+  clientSecret: z.string().min(1).max(4096).optional()
+})
+export type GitOAuthConfigRequest = z.infer<typeof GitOAuthConfigRequest>
+
 // POST /api/admin/git-sources/:id/sync result.
 export const GitSyncResult = z.object({
   status: GitSyncStatus,
@@ -151,6 +184,9 @@ export const GitDocStatus = z.object({
   syncState: GitSyncState.nullable(),
   syncedAt: z.number().int().nullable(),
   canWrite: z.boolean(),
+  // True iff the source has static-OAuth configured — drives the GitPanel
+  // "Connect via OAuth" button vs the paste-a-PAT field.
+  oauthConfigured: z.boolean().default(false),
   pr: GitPrRef.nullable()
 })
 export type GitDocStatus = z.infer<typeof GitDocStatus>
