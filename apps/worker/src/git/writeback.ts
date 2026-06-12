@@ -64,7 +64,11 @@ export async function openWriteBackPr(
   if (!write) return { ok: false, status: 400, error: 'no_write_token' }
 
   const provider = createGitProvider(repoConfig(source), write.token)
-  const branchName = openPr?.branch_name ?? `ctxlayer/doc-${doc.slug}-${shortId()}`
+  // Deterministic per doc: if a prior attempt opened the remote PR but
+  // crashed before insertGitPr recorded it, the retry regenerates the SAME
+  // branch — openOrUpdatePullRequest then finds the existing open PR and
+  // updates it instead of opening a DUPLICATE on a fresh random branch.
+  const branchName = openPr?.branch_name ?? stableBranchName(doc.slug, docId)
   const base = env.PUBLIC_BASE_URL.replace(/\/+$/, '')
 
   let opened: Awaited<ReturnType<typeof provider.openOrUpdatePullRequest>>
@@ -126,7 +130,12 @@ function repoConfig(s: GitSourceRow): GitRepoConfig {
   }
 }
 
-function shortId(): string {
-  const b = crypto.getRandomValues(new Uint8Array(4))
-  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+/**
+ * Stable head-branch name for a doc's write-back PR. slug for reviewer
+ * readability, an 8-char docId suffix for collision-freedom + stability
+ * across slug renames. Deterministic so a crash-retry can't spawn a second
+ * branch/PR (see call site).
+ */
+function stableBranchName(slug: string, docId: string): string {
+  return `ctxlayer/doc-${slug}-${docId.slice(0, 8)}`
 }

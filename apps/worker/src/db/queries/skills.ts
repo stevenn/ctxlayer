@@ -269,12 +269,14 @@ export async function recordSkillRevision(
   input: RecordSkillRevisionInput
 ): Promise<SkillRevisionRow> {
   const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(
-    `INSERT INTO skill_revisions
-       (id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-  )
-    .bind(
+  // Atomic: the revision INSERT and the head/snapshot UPDATE land together as
+  // one D1 transaction (same rationale as recordRevision in docs.ts).
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO skill_revisions
+         (id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    ).bind(
       input.revisionId,
       input.skillId,
       input.authorId,
@@ -283,13 +285,11 @@ export async function recordSkillRevision(
       input.contentHash,
       now,
       input.kind ?? 'explicit'
-    )
-    .run()
-  await env.DB.prepare(
-    `UPDATE skills SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
-  )
-    .bind(input.revisionId, input.r2Key, now, input.skillId)
-    .run()
+    ),
+    env.DB.prepare(
+      `UPDATE skills SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
+    ).bind(input.revisionId, input.r2Key, now, input.skillId)
+  ])
   const row = await env.DB.prepare(
     `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM skill_revisions WHERE id = ?1`

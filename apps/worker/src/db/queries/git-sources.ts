@@ -509,6 +509,22 @@ export async function setDocGitSyncState(
     .run()
 }
 
+/**
+ * Flag a git-sourced doc as locally edited after an editor save, so inbound
+ * cron sync won't clobber the edit (the guard in git/sync.ts only protects
+ * `local_edits` / `pr_open`). Conditional: only a CLEAN git doc flips — a
+ * non-git doc (`git_source_id` NULL) or one already in local_edits / pr_open /
+ * conflict is left untouched. A cheap no-op for the common non-git save.
+ */
+export async function markGitDocLocallyEdited(env: Env, docId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE documents SET git_sync_state = 'local_edits'
+       WHERE id = ?1 AND git_source_id IS NOT NULL AND git_sync_state = 'clean'`
+  )
+    .bind(docId)
+    .run()
+}
+
 // ----- git_pull_requests -------------------------------------------------
 
 export interface GitPrRow {
