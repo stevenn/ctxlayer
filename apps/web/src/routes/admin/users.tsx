@@ -312,11 +312,13 @@ function UserDrawer({
         danger: true
       })
       if (!ok) return
-      const { revokedGrants } = await adminSuspendUser(user.id)
+      const { revokedGrants, complete } = await adminSuspendUser(user.id)
       setInfo(
-        revokedGrants > 0
-          ? `Suspended. Revoked ${revokedGrants} active token${revokedGrants === 1 ? '' : 's'} — their MCP/agent sessions are cut.`
-          : 'Suspended. No active MCP tokens to revoke.'
+        complete === false
+          ? `Suspended, but token revocation was incomplete (revoked ${revokedGrants}) — an open MCP session may survive. Retry the suspend to finish.`
+          : revokedGrants > 0
+            ? `Suspended. Revoked ${revokedGrants} active token${revokedGrants === 1 ? '' : 's'} — their MCP/agent sessions are cut.`
+            : 'Suspended. No active MCP tokens to revoke.'
       )
       onChanged()
     }, 'Suspend')

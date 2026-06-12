@@ -932,10 +932,17 @@ export function adminRevokeUserCredentials(userId: string): Promise<{ removed: n
 
 // ----- user lifecycle (plan L) --------------------------------------------
 
-const DeleteUserResult = z.object({ reassignedSkills: z.number() })
-const SuspendResult = z.object({ revokedGrants: z.number() })
+// `complete:false` = grant revocation was partial (KV hiccup) — the lockout
+// still holds via the per-request status re-check, but warn the admin.
+const DeleteUserResult = z.object({
+  reassignedSkills: z.number(),
+  complete: z.boolean().optional()
+})
+const SuspendResult = z.object({ revokedGrants: z.number(), complete: z.boolean().optional() })
 
-export function adminSuspendUser(userId: string): Promise<{ revokedGrants: number }> {
+export function adminSuspendUser(
+  userId: string
+): Promise<{ revokedGrants: number; complete?: boolean }> {
   return request(`/api/admin/users/${encodeURIComponent(userId)}/suspend`, (b) => SuspendResult.parse(b), {
     method: 'POST'
   })
@@ -954,7 +961,9 @@ export function adminRejectUser(userId: string): Promise<void> {
   })
 }
 
-export function adminDeleteUser(userId: string): Promise<{ reassignedSkills: number }> {
+export function adminDeleteUser(
+  userId: string
+): Promise<{ reassignedSkills: number; complete?: boolean }> {
   return request(`/api/admin/users/${encodeURIComponent(userId)}`, (b) => DeleteUserResult.parse(b), {
     method: 'DELETE'
   })

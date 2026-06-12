@@ -1,20 +1,9 @@
 /**
- * Base-URL resolution + runtime trust-boundary check for git providers.
- *
- * The admin REST handler validates the configured base URL with the
- * `GitBaseUrl` Zod refine (https-only, not a workers host). This module
- * re-asserts https at the dial site (defense in depth — the runtime's
- * `global_fetch_strictly_public` flag already blocks RFC1918 egress) and
- * derives the API + web hosts per provider.
+ * Base-URL resolution for git providers. The admin REST handler validates
+ * the configured base URL with the `GitBaseUrl` Zod refine (https-only, not
+ * a workers host); providers re-assert https at the dial site via
+ * `util/safe-fetch.ts`. This module derives the API + web hosts per provider.
  */
-
-const HTTP_LOOPBACK_RE = /^http:\/\/(localhost|127\.0\.0\.1|\[::1\])(:\d+)?(\/|$)/i
-
-/** Throw unless the URL is https (or a dev loopback http URL). */
-export function assertSafeFetchUrl(url: string): void {
-  const ok = url.toLowerCase().startsWith('https://') || HTTP_LOOPBACK_RE.test(url)
-  if (!ok) throw new Error('git: refusing to fetch a non-https url')
-}
 
 function stripTrailingSlash(s: string): string {
   return s.replace(/\/+$/, '')

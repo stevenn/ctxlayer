@@ -53,19 +53,49 @@ export async function resolveAdmission(args: {
   const invite = await findUnredeemedInvite(env, identity.email)
   if (invite) return { kind: 'admit', status: 'active', redeemInviteId: invite.id }
 
-  // c. Join code carried through the IdP dance. Bump the use atomically so a
-  //    racing redemption can't blow past max_uses.
+  // c. Join code carried through the IdP dance — evaluated AGAINST the
+  //    codeless outcome first, so a use is only consumed when the code
+  //    actually improves admission. Otherwise anyone who learns a code can
+  //    exhaust its max_uses by appending ?join= to ordinary sign-ins of
+  //    members who'd be admitted anyway.
   if (joinCode && joinCode.trim()) {
+    const without = await policyAdmission(identity, env, policy)
+    if (without.kind === 'admit' && without.status === 'active') return without
+
     const r = await findRedeemableJoinCode(env, joinCode, identity.email)
-    if (!r.ok) return { kind: 'reject', reason: r.reason }
+    if (!r.ok) {
+      // Invalid/expired code: fall back to whatever the policy grants on its
+      // own; reject with the code-specific reason only when the code was
+      // their sole way in.
+      return without.kind === 'admit' ? without : { kind: 'reject', reason: r.reason }
+    }
+    if (without.kind === 'admit' && r.onRedeem === 'pending') {
+      // They'd land pending either way — don't burn a use for nothing.
+      return without
+    }
+    // Bump the use atomically so a racing redemption can't blow past
+    // max_uses; the loser of the race falls back to the codeless outcome.
     const won = await bumpJoinCodeUses(env, r.id)
-    if (!won) return { kind: 'reject', reason: 'invalid_join_code' }
+    if (!won) {
+      return without.kind === 'admit' ? without : { kind: 'reject', reason: 'invalid_join_code' }
+    }
     return { kind: 'admit', status: r.onRedeem }
   }
 
-  // d. Policy-specific admission for an authenticated-but-not-explicitly-
-  //    granted identity. The domain/org pre-filter is only evaluated (and only
-  //    hits the network for GitHub) when a boundary is actually configured.
+  return policyAdmission(identity, env, policy)
+}
+
+/**
+ * d/e. Policy-specific admission for an authenticated-but-not-explicitly-
+ * granted identity (no allowlist hit, no invite, no join code applied). The
+ * domain/org pre-filter is only evaluated (and only hits the network for
+ * GitHub) when a boundary is actually configured.
+ */
+async function policyAdmission(
+  identity: AdmissionIdentity,
+  env: Env,
+  policy: AccessPolicy
+): Promise<AdmissionResult> {
   const domainConfigured = domainPrefilterConfigured(identity.idp, env)
   const domainOk = domainConfigured ? await passesDomainPrefilter(identity, env) : false
 
@@ -78,8 +108,8 @@ export async function resolveAdmission(args: {
   }
 
   if (policy === 'invite') {
-    // explicit allowlist / invite / join code were all handled above; domain
-    // membership alone never admits under invite.
+    // explicit allowlist / invite / join code are handled by the caller;
+    // domain membership alone never admits under invite.
     return { kind: 'reject', reason: 'invite_required' }
   }
 

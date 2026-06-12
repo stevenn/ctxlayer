@@ -16,7 +16,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { getGitSourceById } from '../db/queries/git-sources'
+import { getGitSourceById, isGitSourceVisibleToUser } from '../db/queries/git-sources'
 import {
   GitOAuthFlowProvider,
   deleteGitVerifierState,
@@ -40,9 +40,15 @@ export const gitOauthStartRoute = new Hono<{ Bindings: Env; Variables: AuthedVar
 gitOauthStartRoute.use('*', requireUser)
 
 gitOauthStartRoute.get('/:id/oauth/start', async (c) => {
-  const userId = c.get('user').userId
+  const actor = c.get('user')
+  const userId = actor.userId
   const source = await getGitSourceById(c.env, c.req.param('id'))
   if (!source) return c.json({ error: 'not_found' }, 404)
+  // Same gate as the PAT path (PUT /:id/credentials): sources are
+  // invisible-until-granted, so connecting needs a visibility grant too.
+  const allowed =
+    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, source.id, userId))
+  if (!allowed) return c.json({ error: 'forbidden' }, 403)
   const oauth = gitStaticOAuth(source)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)
 
@@ -68,7 +74,8 @@ export const gitOauthCallbackRoute = new Hono<{ Bindings: Env; Variables: Authed
 gitOauthCallbackRoute.use('*', requireUser)
 
 gitOauthCallbackRoute.get('/callback', async (c) => {
-  const userId = c.get('user').userId
+  const actor = c.get('user')
+  const userId = actor.userId
   const code = c.req.query('code')
   const state = c.req.query('state')
   const errParam = c.req.query('error')
@@ -85,6 +92,14 @@ gitOauthCallbackRoute.get('/callback', async (c) => {
 
   const source = await getGitSourceById(c.env, stored.gitSourceId)
   if (!source) return c.json({ error: 'not_found' }, 404)
+  // Re-check visibility at token time — a grant revoked mid-dance must not
+  // still land a credential.
+  const allowed =
+    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, source.id, userId))
+  if (!allowed) {
+    await deleteGitVerifierState(c.env, state)
+    return c.json({ error: 'forbidden' }, 403)
+  }
   const oauth = gitStaticOAuth(source)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)
 

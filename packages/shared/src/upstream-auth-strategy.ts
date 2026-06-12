@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { isHttpsOrLoopback } from './url-trust'
 
 export const AuthStrategy = z.enum(['none', 'shared_bearer', 'user_bearer', 'user_oauth'])
 export type AuthStrategy = z.infer<typeof AuthStrategy>
@@ -18,10 +19,18 @@ const HttpAuthConfig = z.object({
 //
 // `client_info` mirrors the SDK's `OAuthClientInformationFull` shape. Held
 // here as a loose record so we don't pull SDK types into the shared package.
+// Same trust boundary as the git static-OAuth config: the user's
+// authorization code, refresh token, and the sealed client secret travel
+// to these endpoints — https only (loopback http allowed for local dev).
+const OAuthEndpointUrl = z
+  .string()
+  .url()
+  .refine(isHttpsOrLoopback, { message: 'must be https' })
+
 const OauthAuthConfig = z
   .object({
-    authorizeUrl: z.string().url().optional(),
-    tokenUrl: z.string().url().optional(),
+    authorizeUrl: OAuthEndpointUrl.optional(),
+    tokenUrl: OAuthEndpointUrl.optional(),
     scopes: z.array(z.string()).optional(),
     clientId: z.string().optional(),
     clientSecretCiphertext: z.string().optional(),

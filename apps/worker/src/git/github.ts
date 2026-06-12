@@ -20,7 +20,8 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
-import { assertSafeFetchUrl, githubApiBase, githubWebBase } from './url'
+import { assertSafeFetchUrl } from '../util/safe-fetch'
+import { githubApiBase, githubWebBase } from './url'
 import {
   MD_RE,
   asObj,
