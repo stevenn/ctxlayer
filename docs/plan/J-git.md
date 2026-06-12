@@ -97,9 +97,15 @@ PR #4 ("git multi-provider + friendly auth") is delivered as slices:
 - **4b — Azure DevOps provider** ✅ `azure.ts`. Branch-create ref + `pushes`
   (parent `oldObjectId` + `changeType`), version descriptors, PR open. Auth
   auto-detects Entra JWT (`Bearer`) vs classic PAT (`Basic`).
+- **4d — Browser-redirect open-PR** ✅ `commitChange` (commit without opening a
+  PR) + `newPrWebUrl` (per-provider New-PR deep-link) on the interface;
+  `prepareWriteBackRedirect` + `POST /:id/git/review-url` push the branch and
+  return the link; GitPanel "Review & create" button. GitHub/GitLab prefill
+  title+body, ADO prefills branches only. No PR tracking (the user opens it in
+  the provider UI), no local-state mutation.
 - **4c — Friendly `user_oauth` git auth** — GitLab PKCE + ADO Entra, reusing
-  the static-OAuth flow; replaces paste-PAT. *(next)*
-- **4d — Browser-redirect open-PR** — GitHub/GitLab deep-link, ADO via REST.
+  the static-OAuth flow; replaces paste-PAT. *(deferred — the one slice that
+  can't be verified without live provider app creds; its own PR.)*
 
 All three providers are **unit-tested but write-back is not yet exercised
 against a live GitLab/ADO repo** end-to-end (needs a repo + token) — same

@@ -20,6 +20,7 @@ import type {
   GitProviderClient,
   GitRepoConfig,
   GitTreeEntry,
+  NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
@@ -95,7 +96,7 @@ export class AzureDevOpsProvider implements GitProviderClient {
     return `${this.web}?path=${enc(`/${path}`)}&version=GB${enc(ref)}`
   }
 
-  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+  async commitChange(input: OpenOrUpdatePrInput): Promise<void> {
     const headBranch = input.existingBranch ?? input.headBranch
 
     // Ensure the head branch exists, branched from baseRef (idempotent on the
@@ -140,7 +141,17 @@ export class AzureDevOpsProvider implements GitProviderClient {
         ]
       }
     })
+  }
 
+  newPrWebUrl(input: NewPrUrlInput): string {
+    // ADO's create page prefills the branches only (no title/body params).
+    const q = new URLSearchParams({ sourceRef: input.headBranch, targetRef: input.baseRef })
+    return `${this.web}/pullrequestcreate?${q.toString()}`
+  }
+
+  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+    await this.commitChange(input)
+    const headBranch = input.existingBranch ?? input.headBranch
     let pr = await this.findActivePr(headBranch, input.baseRef)
     if (!pr) {
       const opened = await this.call('POST', `/pullrequests`, {

@@ -49,6 +49,14 @@ export interface OpenOrUpdatePrInput {
   prBody: string
 }
 
+/** Inputs for the "open this PR in the browser" deep-link (no API PR open). */
+export interface NewPrUrlInput {
+  headBranch: string
+  baseRef: string
+  title: string
+  body: string
+}
+
 export interface GitProviderClient {
   /** Resolve a ref (branch name) to the commit sha it points at. */
   resolveRef(ref: string): Promise<string>
@@ -58,8 +66,16 @@ export interface GitProviderClient {
   readFile(path: string, ref: string): Promise<GitFileContent>
   /** Web deep-link to the file on the host. */
   blobWebUrl(path: string, ref: string): string
+  /** Create-or-update a head branch and commit the file — WITHOUT opening a PR. */
+  commitChange(input: OpenOrUpdatePrInput): Promise<void>
   /** Create-or-update a head branch, commit the file, open/refresh a PR. */
   openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr>
+  /**
+   * Web deep-link to the provider's "New PR/MR" page for an already-pushed
+   * head branch, prefilled where the provider supports it. Lets the user
+   * review the diff and click the final button in the provider's own UI.
+   */
+  newPrWebUrl(input: NewPrUrlInput): string
   /** Poll PR/MR state for the SPA status badge. */
   getPullRequestState(providerPrId: string): Promise<GitPrState>
 }

@@ -69,6 +69,20 @@ describe('GitHubProvider read path', () => {
     )
   })
 
+  it('builds a prefilled compare/new-PR deep link', () => {
+    const gh = new GitHubProvider(config, 't')
+    const url = gh.newPrWebUrl({
+      headBranch: 'ctxlayer/doc-x-abcd1234',
+      baseRef: 'main',
+      title: 'Update docs/guide.md',
+      body: 'hello'
+    })
+    expect(url).toContain('/acme/docs/compare/main...ctxlayer%2Fdoc-x-abcd1234?')
+    expect(url).toContain('quick_pull=1')
+    expect(url).toContain('title=Update+docs%2Fguide.md')
+    expect(url).toContain('body=hello')
+  })
+
   it('resolves a ref to a commit sha', async () => {
     vi.stubGlobal(
       'fetch',

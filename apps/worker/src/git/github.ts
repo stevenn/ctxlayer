@@ -16,6 +16,7 @@ import type {
   GitProviderClient,
   GitRepoConfig,
   GitTreeEntry,
+  NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
@@ -102,7 +103,7 @@ export class GitHubProvider implements GitProviderClient {
     return `${this.web}/${enc(this.owner)}/${enc(this.repo)}/blob/${enc(ref)}/${encPath(path)}`
   }
 
-  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+  async commitChange(input: OpenOrUpdatePrInput): Promise<void> {
     const headBranch = input.existingBranch ?? input.headBranch
 
     if (!input.existingBranch) {
@@ -132,7 +133,19 @@ export class GitHubProvider implements GitProviderClient {
         ...(typeof fileSha === 'string' ? { sha: fileSha } : {})
       }
     })
+  }
 
+  newPrWebUrl(input: NewPrUrlInput): string {
+    const q = new URLSearchParams({ quick_pull: '1', title: input.title, body: input.body })
+    return (
+      `${this.web}/${enc(this.owner)}/${enc(this.repo)}/compare/` +
+      `${enc(input.baseRef)}...${enc(input.headBranch)}?${q.toString()}`
+    )
+  }
+
+  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+    await this.commitChange(input)
+    const headBranch = input.existingBranch ?? input.headBranch
     let pr = await this.findOpenPr(headBranch, input.baseRef)
     if (!pr) {
       const opened = await this.call('POST', `${this.repoPath}/pulls`, {

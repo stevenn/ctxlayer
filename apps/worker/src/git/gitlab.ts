@@ -15,6 +15,7 @@ import type {
   GitProviderClient,
   GitRepoConfig,
   GitTreeEntry,
+  NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider'
@@ -97,7 +98,7 @@ export class GitLabProvider implements GitProviderClient {
     return `${this.web}/${this.projectRef}/-/blob/${enc(ref)}/${encPath(path)}`
   }
 
-  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+  async commitChange(input: OpenOrUpdatePrInput): Promise<void> {
     const headBranch = input.existingBranch ?? input.headBranch
     // Idempotent branch handling: the head branch may already exist from a
     // prior (possibly crashed) attempt on the deterministic name. If so we
@@ -130,10 +131,24 @@ export class GitLabProvider implements GitProviderClient {
         actions: [{ action, file_path: input.path, content: input.content }]
       },
       // Tolerate 400 on retry (e.g. re-committing identical content to a branch
-      // a prior attempt already pushed). MR resolution below is the real check.
+      // a prior attempt already pushed). MR/caller resolution is the real check.
       allow: [400]
     })
+  }
 
+  newPrWebUrl(input: NewPrUrlInput): string {
+    const q = new URLSearchParams({
+      'merge_request[source_branch]': input.headBranch,
+      'merge_request[target_branch]': input.baseRef,
+      'merge_request[title]': input.title,
+      'merge_request[description]': input.body
+    })
+    return `${this.web}/${this.projectRef}/-/merge_requests/new?${q.toString()}`
+  }
+
+  async openOrUpdatePullRequest(input: OpenOrUpdatePrInput): Promise<OpenedPr> {
+    await this.commitChange(input)
+    const headBranch = input.existingBranch ?? input.headBranch
     let mr = await this.findOpenMr(headBranch, input.baseRef)
     if (!mr) {
       const opened = await this.call('POST', `${this.projectPath}/merge_requests`, {
