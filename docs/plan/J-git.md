@@ -19,10 +19,11 @@ files; writes create a head branch, commit one file, and open a PR/MR.
 
 ## Architecture
 
-- **Provider abstraction** — `git/provider.ts` defines `GitProviderClient`
+- **Provider abstraction** — `git/provider-types.ts` defines `GitProviderClient`
   (6 methods: `resolveRef`, `listMarkdownTree`, `readFile`, `blobWebUrl`,
-  `openOrUpdatePullRequest`, `getPullRequestState`) and `createGitProvider`
-  dispatches on `git_sources.provider`. One impl per provider, all raw-fetch.
+  `openOrUpdatePullRequest`, `getPullRequestState`); the `createGitProvider`
+  factory in `git/provider.ts` dispatches on `git_sources.provider`. One impl
+  per provider, all raw-fetch, sharing `providerCall` in `git/provider-util.ts`.
 - **Inbound sync** — `git/sync.ts` (cron via `git-sync-consumer.ts`): walk the
   tree, import changed `*.md` as `documents` (body stored as R2
   `docs/{id}/source.md`), auto-tag with the source's product, enqueue reindex.
@@ -40,9 +41,10 @@ files; writes create a head branch, commit one file, and open a PR/MR.
   user's token (correct authorship) per `write_strategy`, falling back to the
   shared token (bot author). All sealed with AES-GCM; provider response bodies
   are **never** logged.
-- **URL trust** — `git/url.ts`: https-only at the dial site (defense-in-depth
-  over the runtime's `global_fetch_strictly_public`); per-provider API + web
-  base resolution.
+- **URL trust** — https-only asserted at the dial site via
+  `util/safe-fetch.ts` (defense-in-depth over the runtime's
+  `global_fetch_strictly_public`); per-provider API + web base resolution in
+  `git/url.ts`.
 
 ## Provider REST mapping
 
@@ -103,9 +105,11 @@ PR #4 ("git multi-provider + friendly auth") is delivered as slices:
   return the link; GitPanel "Review & create" button. GitHub/GitLab prefill
   title+body, ADO prefills branches only. No PR tracking (the user opens it in
   the provider UI), no local-state mutation.
-- **4c — Friendly `user_oauth` git auth** — GitLab PKCE + ADO Entra, reusing
-  the static-OAuth flow; replaces paste-PAT. *(deferred — the one slice that
-  can't be verified without live provider app creds; its own PR.)*
+- **4c — Friendly `user_oauth` git auth** ✅ `git/git-oauth.ts` +
+  `api/git-oauth.ts` (migration 0022): static / pre-registered clients only
+  (no DCR), GitLab PKCE + ADO Entra. Connect requires a visibility grant on
+  the git source (re-checked at token time). *(Not yet verified against live
+  provider app creds.)*
 
 All three providers are **unit-tested but write-back is not yet exercised
 against a live GitLab/ADO repo** end-to-end (needs a repo + token) — same

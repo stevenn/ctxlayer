@@ -10,10 +10,10 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "lint": "echo 'lint TBD'",
+    "lint": "echo 'covered by root biome lint'",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "echo 'playwright TBD'"
+    "test:e2e": "echo 'no e2e suite; component smoke tests live in src/**/*.smoke.test.tsx (bun run test)'"
   },
   "dependencies": {
     "@blocknote/core": "^0.51.2",

@@ -47,7 +47,8 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
    - `/migrate` — apply pending D1 migrations.
    - `/seed` — load fixture upstreams + docs into local D1.
    - `/deploy:preview` — deploy a versioned preview and print the URL.
-3. Before pushing: `bun run verify` (typecheck + tests + smoke).
+3. Before pushing: `bun run verify` (typecheck + lint + unit + integration
+   tests, fully offline; `bun run verify:full` adds smoke).
 
 ## Conventions
 
@@ -149,7 +150,7 @@ Full rationale in `docs/plan/G-conventions.md`.
   `scheduled` get the right `ctx` / controller types. Queue dispatcher
   retries on unknown queue names instead of silently dropping.
 - **SPA auth flow**: distinguish `ApiError(401)` from `ApiSchemaError`
-  in `apps/web/src/lib/api.ts`. Treating schema failures as auth
+  in `apps/web/src/lib/api/core.ts`. Treating schema failures as auth
   failures causes redirect loops.
 - **Bun lockfile**: `bun install --frozen-lockfile` silently installs
   without a lockfile. SessionStart hook tests for `bun.lock` first.

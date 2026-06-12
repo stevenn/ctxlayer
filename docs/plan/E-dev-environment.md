@@ -68,7 +68,7 @@ Optimisations specifically for typing into Claude on a phone:
   2. Hits a hard-coded set of endpoints (`/api/health`, `/api/me` with a baked-in test token, `/mcp` `initialize` + `tools/list`).
   3. Returns a compact text status table — no screenshots required.
 - **Verbose-by-default scripts**: every `bun run` script prints what it's about to do and a single-line summary on completion. No spinners (mobile transcripts hate them).
-- **`bun run verify`** — composite command: typecheck + unit + integration + smoke. Returns a final pass/fail table. Designed to fit on one phone screen.
+- **`bun run verify`** — composite command: typecheck + lint + unit + integration (fully offline; `bun run verify:full` adds smoke). Returns a final pass/fail table. Designed to fit on one phone screen.
 - **`wrangler tail` aliases** — `bun run logs` (errors only), `bun run logs:all`, `bun run logs:mcp` (filtered to /mcp routes). All print as plain text.
 - **Curl-bot test tokens** — a long-lived non-prod OAuth client whose secret is in CI secret env vars, used by smoke scripts. Scoped to a "test" user that doesn't appear in real usage rollups.
 - **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the strict module-size cap (~200 lines), the test-first cadence. Reduces token cost of every future session.
@@ -79,7 +79,7 @@ Optimisations specifically for typing into Claude on a phone:
 To keep AI agents (and humans) productive at scale:
 - Hard cap modules at ~200 LoC. Split when it grows.
 - One folder = one concern. No circular imports across `apps/worker/src/*` directories.
-- Every Hono route handler lives in `api/*` with a one-line export; route-mounting happens centrally in `index.ts`.
+- Every Hono route handler lives in `api/*` with a one-line export; route-mounting happens centrally in `app.ts` (`index.ts` only wraps the composed app in the OAuthProvider + queue/scheduled handlers).
 - Every DO class has the file pattern `*-do.ts` and the only export is the class.
 - D1 queries live in `db/queries/*.ts` and never leak SQL into route files; queries return typed objects matching `packages/shared`.
 - All env access goes through `env.ts` typed bindings — `process.env` is forbidden.

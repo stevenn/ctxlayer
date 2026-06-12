@@ -182,7 +182,7 @@ other upstream hang for 150s on a stall.
   `listTools` and fall back to the module constants. Keep the constants as the
   documented defaults.
 - **Admin UI.** Optional advanced field in the upstream drawer
-  (`apps/web/src/routes/admin/upstreams.tsx`) — "Long-call timeout (s)" with a
+  (`apps/web/src/routes/admin/upstreams/DetailsSection.tsx`) — "Long-call timeout (s)" with a
   helper noting the serial-DO blast radius. Fine to ship config-only first and
   add UI later.
 - **Why per-upstream, not global:** [I5.1](#i5-constraints-that-shape-the-fix)
