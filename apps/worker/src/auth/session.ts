@@ -11,7 +11,7 @@
 
 import type { Role } from '@ctxlayer/shared'
 
-export const COOKIE_NAME = '__Host-ctx_session'
+const COOKIE_NAME = '__Host-ctx_session'
 const MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
 export interface SessionPayload {

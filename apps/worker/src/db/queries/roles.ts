@@ -153,45 +153,6 @@ export async function setUserRoles(env: Env, userId: string, roleIds: string[]):
   await env.DB.batch(stmts)
 }
 
-/**
- * Bulk: roles per user id, for the admin users table (avoids N+1). Mirrors
- * how teams are hydrated there.
- */
-export async function rolesByUserIds(
-  env: Env,
-  userIds: string[]
-): Promise<Map<string, RoleRef[]>> {
-  const map = new Map<string, RoleRef[]>()
-  if (userIds.length === 0) return map
-  const placeholders = userIds.map((_, i) => `?${i + 1}`).join(', ')
-  const res = await env.DB.prepare(
-    `SELECT ur.user_id, r.id, r.slug, r.display_name, r.description
-     FROM user_roles ur
-     JOIN roles r ON r.id = ur.role_id
-     WHERE ur.user_id IN (${placeholders})
-     ORDER BY r.display_name`
-  )
-    .bind(...userIds)
-    .all<{
-      user_id: string
-      id: string
-      slug: string
-      display_name: string
-      description: string | null
-    }>()
-  for (const row of res.results ?? []) {
-    const arr = map.get(row.user_id) ?? []
-    arr.push({
-      id: row.id,
-      slug: row.slug,
-      displayName: row.display_name,
-      description: row.description
-    })
-    map.set(row.user_id, arr)
-  }
-  return map
-}
-
 function newId(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }

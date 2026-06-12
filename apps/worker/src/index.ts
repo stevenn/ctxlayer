@@ -29,7 +29,6 @@ import { adminJoinCodesRoute } from './api/admin-join-codes'
 import { adminUsageRoute } from './api/admin-usage'
 import { skillsRoute } from './api/skills'
 import { skillAttachmentsRoute } from './api/skill-attachments'
-import { skillsExportRoute } from './api/skills-export'
 import { skillsDraftContextRoute } from './api/skills-draft-context'
 import { docAttachmentsRoute } from './api/doc-attachments'
 import { usageRoute } from './api/usage'
@@ -83,9 +82,8 @@ app.route('/api/folders', foldersRoute)
 app.route('/api/search', searchRoute)
 // Skills + attachments (M7a). Reads are open to any signed-in user;
 // writes are admin-only (per-route requireAdmin inside the routers).
-// Mount /export FIRST so it doesn't get captured by /:id matching in
-// skillsRoute.
-app.route('/api/skills/export', skillsExportRoute)
+// Mount /draft-context FIRST so it doesn't get captured by /:id
+// matching in skillsRoute.
 app.route('/api/skills/draft-context', skillsDraftContextRoute)
 app.route('/api/skills', skillsRoute)
 app.route('/api/skill-attachments', skillAttachmentsRoute)

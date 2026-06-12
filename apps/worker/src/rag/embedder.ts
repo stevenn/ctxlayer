@@ -24,7 +24,7 @@ export interface EmbedResult {
 // this instruction, the passages are not. Passages were indexed without it,
 // so adding it query-side is the trained-correct setup AND needs no
 // reindex. See https://huggingface.co/BAAI/bge-base-en-v1.5.
-export const QUERY_INSTRUCTION = 'Represent this sentence for searching relevant passages:'
+const QUERY_INSTRUCTION = 'Represent this sentence for searching relevant passages:'
 
 /**
  * Embed search QUERIES (not passages): prepends the bge query instruction
@@ -84,4 +84,3 @@ async function runBatch(env: Env, batch: string[]): Promise<number[][]> {
   return res.data
 }
 
-export { VECTOR_DIM, MODEL }

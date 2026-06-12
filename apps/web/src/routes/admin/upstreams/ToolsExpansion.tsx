@@ -44,48 +44,46 @@ export function ToolsExpansion({
   return (
     <>
       {/* Whole-upstream attachments (tool_name='') */}
-      {(state.attachedSkills.length > 0 || state.attachedDocs.length > 0 || true) && (
-        <Group justify="space-between" align="flex-start" mb="xs">
-          <div style={{ minWidth: 0 }}>
-            <Text fz="xs" fw={600} c="dimmed" mb={4}>
-              Attached to this upstream (whole upstream)
+      <Group justify="space-between" align="flex-start" mb="xs">
+        <div style={{ minWidth: 0 }}>
+          <Text fz="xs" fw={600} c="dimmed" mb={4}>
+            Attached to this upstream (whole upstream)
+          </Text>
+          {state.attachedSkills.length === 0 && state.attachedDocs.length === 0 ? (
+            <Text fz="xs" c="dimmed">
+              No skills or docs attached to the upstream root.
             </Text>
-            {state.attachedSkills.length === 0 && state.attachedDocs.length === 0 ? (
-              <Text fz="xs" c="dimmed">
-                No skills or docs attached to the upstream root.
-              </Text>
-            ) : (
-              <Group gap={6}>
-                {state.attachedSkills.map((s) => (
-                  <Badge
-                    key={`s-${s.slug}`}
-                    color="violet"
-                    variant="light"
-                    size="sm"
-                    title={`Skill: ${s.title}`}
-                  >
-                    🧠 {s.title}
-                  </Badge>
-                ))}
-                {state.attachedDocs.map((d) => (
-                  <Badge
-                    key={`d-${d.slug}`}
-                    color="blue"
-                    variant="light"
-                    size="sm"
-                    title={`Doc: ${d.title}`}
-                  >
-                    📄 {d.title}
-                  </Badge>
-                ))}
-              </Group>
-            )}
-          </div>
-          <Button size="xs" variant="default" onClick={() => setAttachOpen({ toolName: '' })}>
-            Attach skill
-          </Button>
-        </Group>
-      )}
+          ) : (
+            <Group gap={6}>
+              {state.attachedSkills.map((s) => (
+                <Badge
+                  key={`s-${s.slug}`}
+                  color="violet"
+                  variant="light"
+                  size="sm"
+                  title={`Skill: ${s.title}`}
+                >
+                  🧠 {s.title}
+                </Badge>
+              ))}
+              {state.attachedDocs.map((d) => (
+                <Badge
+                  key={`d-${d.slug}`}
+                  color="blue"
+                  variant="light"
+                  size="sm"
+                  title={`Doc: ${d.title}`}
+                >
+                  📄 {d.title}
+                </Badge>
+              ))}
+            </Group>
+          )}
+        </div>
+        <Button size="xs" variant="default" onClick={() => setAttachOpen({ toolName: '' })}>
+          Attach skill
+        </Button>
+      </Group>
 
       {state.tools.length === 0 ? (
         <Text c="dimmed" fz="xs">

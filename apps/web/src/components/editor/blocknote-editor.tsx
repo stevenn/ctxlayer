@@ -23,7 +23,7 @@ import type * as Y from 'yjs'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
 
-export interface CollaborationConfig {
+interface CollaborationConfig {
   /** Yjs provider exposing `.awareness` (for y-prosemirror cursor plugin). */
   provider: {
     awareness: unknown

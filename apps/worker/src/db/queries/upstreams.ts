@@ -210,7 +210,7 @@ interface VisibilityRow {
   scope_id: string
 }
 
-export async function listVisibilityForUpstream(
+async function listVisibilityForUpstream(
   env: Env,
   upstreamId: string
 ): Promise<VisibilityRulePayload[]> {
@@ -573,7 +573,7 @@ export async function getSharedCredential(
   return row
 }
 
-export async function hasSharedCredential(env: Env, upstreamId: string): Promise<boolean> {
+async function hasSharedCredential(env: Env, upstreamId: string): Promise<boolean> {
   const row = await env.DB.prepare(
     `SELECT 1 AS one FROM upstream_shared_credentials WHERE upstream_id = ?1`
   )
@@ -748,7 +748,7 @@ export async function deleteUserCredential(
  * stored credentials for? Powers the SPA upstreams page (one round-trip)
  * and the MCP tool-proxy registry init.
  */
-export async function listUserCredentialedUpstreamIds(
+async function listUserCredentialedUpstreamIds(
   env: Env,
   userId: string
 ): Promise<Set<string>> {

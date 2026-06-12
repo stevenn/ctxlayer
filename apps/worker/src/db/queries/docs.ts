@@ -102,7 +102,7 @@ export async function getDocById(env: Env, id: string): Promise<DocumentWithUser
   return row ?? null
 }
 
-export async function getDocBySlug(env: Env, slug: string): Promise<DocumentWithUsersRow | null> {
+async function getDocBySlug(env: Env, slug: string): Promise<DocumentWithUsersRow | null> {
   const row = await env.DB.prepare(
     `${SELECT_DOC_WITH_USERS}
      WHERE d.slug = ?1 AND d.deleted_at IS NULL`
@@ -254,47 +254,6 @@ export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Prom
 }
 
 // ----- folder tree + rename ----------------------------------------------
-
-/**
- * Aggregate every populated folder path with two counts:
- *   - docCount: docs at exactly this path
- *   - descendantDocCount: docs at this path OR under any sub-path
- *
- * The SPA builds the tree client-side from this flat list.
- *
- * `descendantDocCount` is computed via a self-join: a row contributes
- * to its own count + every prefix that's also a folder. Cheap because
- * SQLite handles the small result set well; if doc count ever gets
- * into the thousands a CTE with recursive splitting would be the next
- * step.
- */
-export interface FolderAggregateRow {
-  path: string
-  doc_count: number
-  descendant_doc_count: number
-}
-
-export async function listFolderAggregates(env: Env): Promise<FolderAggregateRow[]> {
-  // First: every distinct folder path + the count of docs directly in
-  // it (not descendants). Second: for each path, count docs whose
-  // folder = path OR LIKE path||'/%'.
-  const res = await env.DB.prepare(
-    `WITH paths AS (
-       SELECT DISTINCT folder AS path
-       FROM documents
-       WHERE folder IS NOT NULL AND deleted_at IS NULL
-     )
-     SELECT p.path,
-            (SELECT COUNT(*) FROM documents d
-              WHERE d.folder = p.path AND d.deleted_at IS NULL) AS doc_count,
-            (SELECT COUNT(*) FROM documents d
-              WHERE (d.folder = p.path OR d.folder LIKE p.path || '/%')
-                AND d.deleted_at IS NULL) AS descendant_doc_count
-     FROM paths p
-     ORDER BY p.path`
-  ).all<FolderAggregateRow>()
-  return res.results ?? []
-}
 
 /**
  * Rename a folder (and every nested folder). Returns the list of doc

@@ -32,7 +32,7 @@ export type SaveState =
   | { kind: 'saved' }
   | { kind: 'error'; message: string }
 
-export function SaveBadge({ state }: { state: SaveState }) {
+function SaveBadge({ state }: { state: SaveState }) {
   if (state.kind === 'idle') return null
   if (state.kind === 'dirty')
     return (

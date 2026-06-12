@@ -3,8 +3,6 @@
  * separate folders table; "create" happens implicitly when a doc lands
  * in a new path (handled by POST/PATCH /api/docs).
  *
- * - `GET    /api/folders` — flat list of every populated path with
- *   doc counts. SPA builds the tree client-side.
  * - `PATCH  /api/folders` — rename/move a folder (and everything
  *   nested). Only succeeds if the caller can edit *every* affected
  *   doc; otherwise 403 with the blocking ids surfaced.
@@ -19,39 +17,15 @@
  */
 
 import { Hono } from 'hono'
-import {
-  FolderPath,
-  FolderRenameRequest,
-  type FolderTreeResponse,
-  type FolderTreeNode
-} from '@ctxlayer/shared'
+import { FolderPath, FolderRenameRequest } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
-import {
-  canEditDoc,
-  listDocIdsInFolder,
-  listFolderAggregates,
-  renameFolderPrefix
-} from '../db/queries/docs'
+import { canEditDoc, listDocIdsInFolder, renameFolderPrefix } from '../db/queries/docs'
 import { audit } from '../audit/log'
 
 export const foldersRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 foldersRoute.use('*', requireUser)
-
-foldersRoute.get('/', async (c) => {
-  const rows = await listFolderAggregates(c.env)
-  const body: FolderTreeResponse = {
-    folders: rows.map(
-      (r): FolderTreeNode => ({
-        path: r.path,
-        docCount: r.doc_count,
-        descendantDocCount: r.descendant_doc_count
-      })
-    )
-  }
-  return c.json(body)
-})
 
 foldersRoute.patch('/', requireCsrf, async (c) => {
   const parsed = FolderRenameRequest.safeParse(await c.req.json().catch(() => null))

@@ -177,9 +177,6 @@ export const RevisionSummary = z.object({
 })
 export type RevisionSummary = z.infer<typeof RevisionSummary>
 
-export const DocEditorScope = z.enum(['user', 'everyone'])
-export type DocEditorScope = z.infer<typeof DocEditorScope>
-
 export const DocEditorUser = z.object({
   userId: z.string(),
   email: z.string(),

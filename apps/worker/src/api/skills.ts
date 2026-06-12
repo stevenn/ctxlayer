@@ -12,7 +12,6 @@ import {
   CreateSkillRequest,
   DocContent,
   RestoreRequest,
-  SkillTags,
   UpdateSkillRequest,
   type SkillAttachmentRef,
   type SkillDetail,
@@ -41,7 +40,7 @@ import {
 } from '../db/queries/skills'
 import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
-import { listTagsForSkill, replaceTagsForSkill } from '../db/queries/skill-tags'
+import { listTagsForSkill } from '../db/queries/skill-tags'
 import {
   contentDigest,
   deleteRevisionObjects,
@@ -274,26 +273,6 @@ skillsRoute.post('/:id/restore', requireAdmin, async (c) => {
   })
   await audit(c.env, { actorId: userId, action: 'skill.restore', target: id })
   return c.json({ revisionId: newRevId })
-})
-
-// Inline /:id/tags endpoints; tags model is small enough not to
-// warrant a separate router file.
-skillsRoute.get('/:id/tags', async (c) => {
-  const id = c.req.param('id')
-  const row = await getSkillById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
-  const tags = await listTagsForSkill(c.env, id)
-  return c.json(tags)
-})
-
-skillsRoute.put('/:id/tags', requireAdmin, async (c) => {
-  const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = SkillTags.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  await replaceTagsForSkill(c.env, id, parsed.data)
-  return new Response(null, { status: 204 })
 })
 
 // ----- helpers ------------------------------------------------------------

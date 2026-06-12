@@ -1,11 +1,6 @@
 import { z } from 'zod'
 import { AuthStrategy } from './upstream-auth-strategy'
-
-// Both transports are remote HTTP. A stdio MCP server is supported by running
-// an operator-managed stdio<->HTTP bridge and registering it as a
-// `streamable_http` upstream pointing at that bridge.
-export const UpstreamTransport = z.enum(['streamable_http', 'sse'])
-export type UpstreamTransport = z.infer<typeof UpstreamTransport>
+import { SupportedTransport } from './upstream-api'
 
 // ---- MCP built-in tool output contracts ----------------------------------
 // These are the exact shapes the MCP server serialises from
@@ -28,7 +23,7 @@ export type McpAttachedDocRef = z.infer<typeof McpAttachedDocRef>
 export const McpUpstreamEntry = z.object({
   slug: z.string(),
   displayName: z.string(),
-  transport: UpstreamTransport,
+  transport: SupportedTransport,
   connected: z.boolean(),
   // Set when a stored user_oauth credential exists but its automatic refresh
   // failed — the upstream is connected-on-paper but its tools won't load until

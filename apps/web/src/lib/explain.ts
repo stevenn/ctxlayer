@@ -1,18 +1,5 @@
 import { ApiError, ApiSchemaError } from './api'
 
-/**
- * Pull a human-readable message out of an ApiError JSON body, if the server
- * included one (`message`, `hint`, or `error`, in that order of preference).
- */
-export function apiErrorBodyMessage(err: ApiError): string | null {
-  const body = err.body as { message?: unknown; hint?: unknown; error?: unknown } | null
-  if (!body) return null
-  for (const v of [body.message, body.hint, body.error]) {
-    if (typeof v === 'string' && v) return v
-  }
-  return null
-}
-
 type StatusOverride = string | ((err: ApiError) => string | null | undefined)
 
 /**

@@ -15,6 +15,3 @@ export const AttachDocRequest = z.object({
   toolName: z.string().optional()
 })
 export type AttachDocRequest = z.infer<typeof AttachDocRequest>
-
-export const DetachDocRequest = AttachDocRequest
-export type DetachDocRequest = z.infer<typeof DetachDocRequest>

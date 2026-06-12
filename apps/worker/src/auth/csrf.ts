@@ -18,7 +18,7 @@ import type { Env } from '../env'
 import { b64urlEncode, readCookie } from './session'
 import { isAllowedOrigin } from '../util/origin'
 
-export const CSRF_COOKIE_NAME = '__Host-ctx_csrf'
+const CSRF_COOKIE_NAME = '__Host-ctx_csrf'
 const CSRF_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
 export function newCsrfToken(): string {
@@ -38,7 +38,7 @@ export function csrfClearCookie(): string {
   return `${CSRF_COOKIE_NAME}=; Secure; SameSite=Lax; Path=/; Max-Age=0`
 }
 
-export function readCsrfCookie(req: Request): string | undefined {
+function readCsrfCookie(req: Request): string | undefined {
   return readCookie(req, CSRF_COOKIE_NAME)
 }
 

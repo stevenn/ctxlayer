@@ -17,8 +17,6 @@ import {
  * X-tick density adapts to the selected period (every day for
  * 7-day view, ~every 5 days for 30, ~every 15 for 90, ~every 30
  * for 180+).
- *
- * `Sparkline` is a fixed-width compact embed — no axes needed.
  */
 
 const SECONDS_PER_DAY = 86400
@@ -215,41 +213,6 @@ function Bars({
           </g>
         )
       })}
-    </svg>
-  )
-}
-
-export function Sparkline({
-  rows,
-  daysBack,
-  width = 140,
-  height = 28
-}: {
-  rows: UsageDailyTotal[]
-  daysBack: number
-  width?: number
-  height?: number
-}) {
-  const days = fillDays(rows, daysBack, 0)
-  const max = Math.max(1, ...days.map((d) => d.calls))
-  if (days.length < 2) return <span style={{ fontSize: 11, opacity: 0.5 }}>—</span>
-  const stepX = width / (days.length - 1)
-  const path = days
-    .map((d, i) => {
-      const x = i * stepX
-      const y = height - (d.calls / max) * (height - 2) - 1
-      return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
-    })
-    .join(' ')
-  return (
-    <svg
-      viewBox={`0 0 ${width} ${height}`}
-      width={width}
-      height={height}
-      role="img"
-      aria-label="Daily call count"
-    >
-      <path d={path} fill="none" stroke="var(--mantine-color-blue-6)" strokeWidth={1.4} />
     </svg>
   )
 }
