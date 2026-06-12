@@ -25,7 +25,7 @@ const PRIMARY_NAV: NavSpec[] = [
     label: 'Search',
     matches: (p) => p === '/app' || p.startsWith('/app/search')
   },
-  { to: '/app/docs', label: 'Docs', matches: (p) => p.startsWith('/app/docs') },
+  { to: '/app/docs', label: 'Context', matches: (p) => p.startsWith('/app/docs') },
   { to: '/app/upstreams', label: 'Upstreams' },
   { to: '/app/mcp-setup', label: 'MCP setup' },
   { to: '/app/usage', label: 'Usage' }
@@ -48,7 +48,7 @@ const ADMIN_NAV: NavSpec[] = [
 
 const TITLES: Record<string, string> = {
   '/app/search': 'Search',
-  '/app/docs': 'Docs library',
+  '/app/docs': 'Context Library',
   '/app/upstreams': 'Upstreams',
   '/app/mcp-setup': 'MCP setup',
   '/app/usage': 'Usage',
@@ -219,7 +219,7 @@ function NavItem({ item, pathname }: { item: NavSpec; pathname: string }) {
 
 function matchTitle(pathname: string): string {
   // Direct match first, then prefix match for nested routes like
-  // /app/docs/:id which should still show "Docs library".
+  // /app/docs/:id which should still show "Context Library".
   if (TITLES[pathname]) return TITLES[pathname]
   for (const [prefix, label] of Object.entries(TITLES)) {
     if (pathname.startsWith(prefix + '/')) return label

@@ -3,11 +3,10 @@ import { Link } from 'react-router-dom'
 import {
   Alert,
   Anchor,
-  Badge,
   Button,
   Code,
   CopyButton,
-  Group,
+  List,
   Stack,
   Text,
   Title
@@ -65,59 +64,76 @@ export function McpSetup() {
         </Title>
         <Text c="dimmed" fz="sm">
           ctxlayer is a remote MCP server. Most modern clients can connect over streamable HTTP and
-          authenticate via OAuth 2.1 (Dynamic Client Registration + PKCE) — no copy-paste of
-          long-lived secrets.
+          authenticate via OAuth 2.1 (Dynamic Client Registration + PKCE).
         </Text>
       </div>
 
       <Section
         title="MCP endpoint"
-        badge="auto-detect"
         body="If your client supports OAuth-protected remote MCP servers, this is the only URL it needs."
       >
         <Snippet value={mcpUrl} />
       </Section>
 
       <Section
-        title="Claude (web app)"
+        title="Claude Desktop and Web app"
         body={
           <>
-            In <strong>Settings → Connectors → Add custom connector</strong>, paste the URL above.
-            Claude walks you through GitHub / Google sign-in on first use and remembers the
-            connection.
+            In <strong>Settings → Connectors → Customize → Add custom connector</strong>, paste the MCP endpoint
+            above. Claude connects to the remote server directly and walks you through GitHub /
+            Google sign-in.
           </>
         }
       />
 
       <Section
-        title="Claude Desktop / Claude Code"
-        badge="mcp-remote shim"
+        title="Claude Code"
         body={
           <>
-            Claude Desktop and Claude Code speak <em>local stdio</em> MCP only, so we tunnel through{' '}
-            <Anchor href="https://github.com/geelen/mcp-remote" target="_blank">
-              mcp-remote
-            </Anchor>
-            . Drop this into <code>~/.claude.json</code> (Code) or the Desktop config file (Settings
-            → Developer → Edit config):
+            Claude Code speaks remote MCP over streamable HTTP directly. Add ctxlayer with:
           </>
         }
       >
+        <Snippet lang="bash" value={`claude mcp add --transport http ctxlayer ${mcpUrl}`} />
+        <Text c="dimmed" fz="sm" mt="xs">
+          Then run <code>/mcp</code> in a session and pick <strong>ctxlayer → Authenticate</strong>{' '}
+          to complete GitHub / Google sign-in in your browser.
+        </Text>
+      </Section>
+
+      <Section
+        title="Deploy org-wide (managed MCP)"
+        body={
+          <>
+            To push ctxlayer to every Claude Code user without each one running{' '}
+            <code>claude mcp add</code>, drop a <code>managed-mcp.json</code> at the system path for
+            their OS (via MDM / Group Policy / your fleet tooling):
+          </>
+        }
+      >
+        <List size="sm" spacing={2} mb="xs">
+          <List.Item>
+            macOS — <Code>/Library/Application Support/ClaudeCode/managed-mcp.json</Code>
+          </List.Item>
+          <List.Item>
+            Linux / WSL — <Code>/etc/claude-code/managed-mcp.json</Code>
+          </List.Item>
+          <List.Item>
+            Windows — <Code>{'C:\\Program Files\\ClaudeCode\\managed-mcp.json'}</Code>
+          </List.Item>
+        </List>
         <Snippet
           lang="json"
           value={JSON.stringify(
-            {
-              mcpServers: {
-                ctxlayer: {
-                  command: 'npx',
-                  args: ['-y', 'mcp-remote', mcpUrl]
-                }
-              }
-            },
+            { mcpServers: { ctxlayer: { type: 'http', url: mcpUrl } } },
             null,
             2
           )}
         />
+        <Text c="dimmed" fz="xs" mt="xs">
+          A <code>managed-mcp.json</code> takes exclusive control — Claude Code loads only the servers
+          it lists, and users can't add or remove servers while it's present.
+        </Text>
       </Section>
 
       <Section
@@ -137,13 +153,13 @@ export function McpSetup() {
       </Section>
 
       <Section
-        title="Upstream credentials"
+        title="What about upstream MCP credentials?"
         body={
           <>
             ctxlayer proxies third-party MCP upstreams (Notion, Linear, etc.) using{' '}
-            <em>per-user</em> credentials. After connecting, head to{' '}
-            <Anchor component={Link} to="/upstreams">
-              /upstreams
+            <em>per-user</em> (OAuth or personal access token) or <em>shared</em> credentials. After connecting, head to{' '}
+            <Anchor component={Link} to="/app/upstreams">
+              Upstreams
             </Anchor>{' '}
             to authorise each upstream — OAuth where the upstream supports it, or a paste-in bearer
             token as a fallback.
@@ -159,26 +175,17 @@ export function McpSetup() {
 function Section({
   title,
   body,
-  badge,
   children
 }: {
   title: string
   body: React.ReactNode
-  badge?: string
   children?: React.ReactNode
 }) {
   return (
     <div>
-      <Group gap="xs" align="center" mb={4}>
-        <Title order={3} fz={15} fw={600}>
-          {title}
-        </Title>
-        {badge && (
-          <Badge size="xs" variant="light" color="gray">
-            {badge}
-          </Badge>
-        )}
-      </Group>
+      <Title order={3} fz={15} fw={600} mb={4}>
+        {title}
+      </Title>
       <Text c="dimmed" fz="sm" mb={children ? 'xs' : 0}>
         {body}
       </Text>
