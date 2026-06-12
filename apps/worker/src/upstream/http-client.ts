@@ -11,10 +11,7 @@
  * its internal `AbortController`. See the constants below.
  */
 
-import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
-import { CfWorkerJsonSchemaValidator } from '@modelcontextprotocol/sdk/validation/cfworker-provider.js'
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
 import type { UpstreamCallResult, UpstreamCatalogueTool, UpstreamClient } from './upstream-client'
 
@@ -85,6 +82,24 @@ export class UpstreamHttpClient implements UpstreamClient {
     if (this.client) return this.client
     if (this.connecting) return this.connecting
     this.connecting = (async () => {
+      // Lazy SDK imports (same pattern as schema-diff in upstream-tools.ts):
+      // `client/index.js` drags in ajv, whose CJS JSON requires the vitest
+      // workerd module loader can't resolve — a module-scope import here
+      // would make the whole composed app unloadable in the integration
+      // suite. Deferring to first connect also keeps cold-start lean; the
+      // cost is paid once per (session, upstream), right before a network
+      // dial that dwarfs it.
+      const [
+        { Client },
+        { StreamableHTTPClientTransport },
+        { SSEClientTransport },
+        { CfWorkerJsonSchemaValidator }
+      ] = await Promise.all([
+        import('@modelcontextprotocol/sdk/client/index.js'),
+        import('@modelcontextprotocol/sdk/client/streamableHttp.js'),
+        import('@modelcontextprotocol/sdk/client/sse.js'),
+        import('@modelcontextprotocol/sdk/validation/cfworker-provider.js')
+      ])
       const url = new URL(this.upstream.url)
       const requestInit: RequestInit = { headers: this.headers() }
       const transport =

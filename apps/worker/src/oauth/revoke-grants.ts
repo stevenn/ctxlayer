@@ -18,12 +18,16 @@
 
 import { getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { Env } from '../env'
-import { oauthProviderOptions } from './provider-config'
 
 export async function revokeAllUserGrants(
   env: Env,
   userId: string
 ): Promise<{ revoked: number; complete: boolean }> {
+  // Handler-time import: provider-config reaches mcp/session-do → agents
+  // SDK → `cloudflare:email`, which the vitest workerd runtime can't load
+  // at module scope; the composed app (src/app.ts) imports this module via
+  // admin-users.ts and must stay importable by the integration suite.
+  const { oauthProviderOptions } = await import('./provider-config')
   const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
   let revoked = 0
   let complete = true
