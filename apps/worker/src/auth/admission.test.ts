@@ -93,6 +93,65 @@ describe('resolveAdmission — join code', () => {
     expect(r).toEqual({ kind: 'reject', reason: 'code_expired' })
     expect(mockedBump).not.toHaveBeenCalled()
   })
+
+  // A code use must only be consumed when the code actually improves the
+  // outcome — otherwise anyone who learns a code can exhaust max_uses by
+  // appending ?join= to ordinary sign-ins of already-admissible members.
+  it('does NOT burn a use for a domain member admitted active anyway (open_domain)', async () => {
+    const r = await resolveAdmission({
+      identity: googleId,
+      joinCode: 'abcd-efgh',
+      env: env({ ALLOWED_GOOGLE_HD: 'visma.com' })
+    })
+    expect(r).toEqual({ kind: 'admit', status: 'active' })
+    expect(mockedFindCode).not.toHaveBeenCalled()
+    expect(mockedBump).not.toHaveBeenCalled()
+  })
+
+  it('does NOT burn a use when the code yields pending and policy already grants pending', async () => {
+    mockedFindCode.mockResolvedValue({ ok: true, id: 'jc1', onRedeem: 'pending' })
+    const r = await resolveAdmission({
+      identity: googleId,
+      joinCode: 'abcd-efgh',
+      env: env({ ALLOWED_GOOGLE_HD: 'visma.com', ACCESS_POLICY: 'request' })
+    })
+    expect(r).toEqual({ kind: 'admit', status: 'pending' })
+    expect(mockedBump).not.toHaveBeenCalled()
+  })
+
+  it('burns a use when the code upgrades a pending admission to active', async () => {
+    mockedFindCode.mockResolvedValue({ ok: true, id: 'jc1', onRedeem: 'active' })
+    mockedBump.mockResolvedValue(true)
+    const r = await resolveAdmission({
+      identity: googleId,
+      joinCode: 'abcd-efgh',
+      env: env({ ALLOWED_GOOGLE_HD: 'visma.com', ACCESS_POLICY: 'request' })
+    })
+    expect(r).toEqual({ kind: 'admit', status: 'active' })
+    expect(mockedBump).toHaveBeenCalledWith(expect.anything(), 'jc1')
+  })
+
+  it('falls back to the codeless outcome when the code is invalid but policy admits', async () => {
+    mockedFindCode.mockResolvedValue({ ok: false, reason: 'code_expired' })
+    const r = await resolveAdmission({
+      identity: googleId,
+      joinCode: 'stale',
+      env: env({ ACCESS_POLICY: 'request' })
+    })
+    expect(r).toEqual({ kind: 'admit', status: 'pending' })
+    expect(mockedBump).not.toHaveBeenCalled()
+  })
+
+  it('falls back to the codeless outcome when the bump loses the race but policy admits', async () => {
+    mockedFindCode.mockResolvedValue({ ok: true, id: 'jc1', onRedeem: 'active' })
+    mockedBump.mockResolvedValue(false)
+    const r = await resolveAdmission({
+      identity: googleId,
+      joinCode: 'x',
+      env: env({ ACCESS_POLICY: 'request' })
+    })
+    expect(r).toEqual({ kind: 'admit', status: 'pending' })
+  })
 })
 
 describe('resolveAdmission — domain pre-filter by policy', () => {
