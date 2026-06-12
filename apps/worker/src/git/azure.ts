@@ -26,7 +26,7 @@ import type {
 } from './provider'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { azureBase } from './url'
-import { MD_RE, asObj, enc, encPath, normalizePrefix, underPrefix } from './provider-util'
+import { MD_RE, asObj, enc, normalizePrefix, underPrefix } from './provider-util'
 
 const API_VERSION = '7.1'
 const ZERO_SHA = '0'.repeat(40)

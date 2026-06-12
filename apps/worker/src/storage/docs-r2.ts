@@ -18,11 +18,11 @@
 import type { Env } from '../env'
 import type { DocContent } from '@ctxlayer/shared'
 
-export const CONTENT_TYPE = 'application/json; charset=utf-8'
-export const YJS_CONTENT_TYPE = 'application/octet-stream'
-export const MARKDOWN_CONTENT_TYPE = 'text/markdown; charset=utf-8'
+const CONTENT_TYPE = 'application/json; charset=utf-8'
+const YJS_CONTENT_TYPE = 'application/octet-stream'
+const MARKDOWN_CONTENT_TYPE = 'text/markdown; charset=utf-8'
 
-export function snapshotKey(docId: string): string {
+function snapshotKey(docId: string): string {
   return `docs/${docId}/snapshot.json`
 }
 
@@ -32,7 +32,7 @@ export function snapshotKey(docId: string): string {
  * the browser on first open). The reindex consumer chunks this directly
  * for RAG, skipping the lossy blocks→markdown render.
  */
-export function sourceMarkdownKey(docId: string): string {
+function sourceMarkdownKey(docId: string): string {
   return `docs/${docId}/source.md`
 }
 
@@ -56,11 +56,11 @@ export async function readSourceMarkdown(env: Env, docId: string): Promise<strin
   return obj.text()
 }
 
-export function revisionKey(docId: string, revisionId: string): string {
+function revisionKey(docId: string, revisionId: string): string {
   return `docs/${docId}/revisions/${revisionId}.json`
 }
 
-export function yjsSnapshotKey(docId: string): string {
+function yjsSnapshotKey(docId: string): string {
   return `docs/${docId}/yjs/snapshot.bin`
 }
 

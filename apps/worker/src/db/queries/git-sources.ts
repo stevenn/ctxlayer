@@ -75,13 +75,6 @@ export async function getGitSourceById(env: Env, id: string): Promise<GitSourceR
   return row ?? null
 }
 
-export async function getGitSourceBySlug(env: Env, slug: string): Promise<GitSourceRow | null> {
-  const row = await env.DB.prepare(`${SELECT_GIT_SOURCE} WHERE slug = ?1`)
-    .bind(slug)
-    .first<GitSourceRow>()
-  return row ?? null
-}
-
 /** Set (or clear, with null) the static-OAuth client config JSON on a source. */
 export async function setGitSourceAuthConfig(
   env: Env,
@@ -230,7 +223,7 @@ interface VisibilityRow {
   scope_id: string
 }
 
-export async function listVisibilityForGitSource(
+async function listVisibilityForGitSource(
   env: Env,
   gitSourceId: string
 ): Promise<VisibilityRulePayload[]> {
@@ -318,7 +311,7 @@ export async function getGitSharedCredential(
   return row
 }
 
-export async function hasGitSharedCredential(env: Env, gitSourceId: string): Promise<boolean> {
+async function hasGitSharedCredential(env: Env, gitSourceId: string): Promise<boolean> {
   const row = await env.DB.prepare(
     `SELECT 1 AS one FROM git_shared_credentials WHERE git_source_id = ?1`
   )
@@ -386,7 +379,7 @@ export async function getGitUserCredential(
   return row
 }
 
-export async function hasGitUserCredential(
+async function hasGitUserCredential(
   env: Env,
   userId: string,
   gitSourceId: string
@@ -490,7 +483,7 @@ export async function listGitDocPaths(
   return res.results ?? []
 }
 
-export async function countGitDocsForSource(env: Env, gitSourceId: string): Promise<number> {
+async function countGitDocsForSource(env: Env, gitSourceId: string): Promise<number> {
   const row = await env.DB.prepare(
     `SELECT COUNT(*) AS n FROM documents WHERE git_source_id = ?1 AND deleted_at IS NULL`
   )

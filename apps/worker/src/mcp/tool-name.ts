@@ -4,9 +4,4 @@
  * without duplicating the logic. This file is a thin re-export kept for
  * import-path stability.
  */
-export {
-  collapseSlugPrefix,
-  mangleToolName,
-  unmangleToolName,
-  type UnmangledTool
-} from '@ctxlayer/shared'
+export { collapseSlugPrefix, mangleToolName, unmangleToolName } from '@ctxlayer/shared'

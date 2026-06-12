@@ -22,7 +22,7 @@ import type { UpstreamCallResult, UpstreamCatalogueTool, UpstreamClient } from '
  * tools/list is metadata — keep it on a tight fail-fast cap so a hung
  * upstream can't stall session bootstrap or Refresh-tools.
  */
-export const UPSTREAM_LIST_TIMEOUT_MS = 60_000
+const UPSTREAM_LIST_TIMEOUT_MS = 60_000
 
 /**
  * Base per-call inactivity window. Raised from the original flat 60s:
@@ -30,14 +30,14 @@ export const UPSTREAM_LIST_TIMEOUT_MS = 60_000
  * 1-3 min runtimes, and a 60s cap timed every one of them out. This is
  * the ceiling for an upstream that goes *silent* (emits no progress).
  */
-export const UPSTREAM_CALL_TIMEOUT_MS = 150_000
+const UPSTREAM_CALL_TIMEOUT_MS = 150_000
 
 /**
  * Absolute ceiling regardless of progress. When an upstream DOES stream
  * progress notifications, `resetTimeoutOnProgress` keeps the inactivity
  * window alive on each ping — but a call can never exceed this hard cap.
  */
-export const UPSTREAM_MAX_CALL_TIMEOUT_MS = 300_000
+const UPSTREAM_MAX_CALL_TIMEOUT_MS = 300_000
 
 /**
  * Hard upper bound on any per-upstream timeout override (see

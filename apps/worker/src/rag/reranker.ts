@@ -116,4 +116,3 @@ export async function rerankCandidates(
   }
 }
 
-export { RERANK_MODEL }

@@ -21,7 +21,7 @@ interface TeamRow {
 const SELECT_TEAM = `SELECT id, slug, display_name, description, idp_group,
   managed_by_idp, created_at, updated_at FROM teams`
 
-export function toTeamRef(row: TeamRow): TeamRef {
+function toTeamRef(row: TeamRow): TeamRef {
   return {
     id: row.id,
     slug: row.slug,

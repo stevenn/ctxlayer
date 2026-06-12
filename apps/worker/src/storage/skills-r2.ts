@@ -13,11 +13,11 @@ import type { DocContent } from '@ctxlayer/shared'
 
 const CONTENT_TYPE = 'application/json; charset=utf-8'
 
-export function snapshotKey(skillId: string): string {
+function snapshotKey(skillId: string): string {
   return `skills/${skillId}/snapshot.json`
 }
 
-export function revisionKey(skillId: string, revisionId: string): string {
+function revisionKey(skillId: string, revisionId: string): string {
   return `skills/${skillId}/revisions/${revisionId}.json`
 }
 
