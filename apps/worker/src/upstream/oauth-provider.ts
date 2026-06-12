@@ -41,6 +41,7 @@ import type {
 import type { Env } from '../env'
 import { open as openSecret, seal as sealSecret } from '../crypto/aead'
 import {
+  clearReauthRequired,
   getUserCredential,
   patchUpstream,
   upsertUserCredential,
@@ -246,6 +247,9 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
       iv: sealed.iv,
       keyVersion: sealed.keyVersion
     })
+    // A fresh token landed — clear any pending re-auth flag (covers refresh
+    // success, static refresh, the initial code exchange, and reconnect).
+    await clearReauthRequired(this.env, this.userId, this.upstream.id)
   }
 
   // ----- redirect ------------------------------------------------------

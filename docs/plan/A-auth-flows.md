@@ -151,13 +151,33 @@ User in SPA              ctxlayer                          Upstream
    |                         | AES-GCM seal, upsert user_credentials kind='oauth'
    |<-- 302 return_to -------|
 
-(later, on refresh)
-UpstreamClient.ensureFreshToken():
-  if now + 60s > expires_at:
-    POST upstream/token grant_type=refresh_token refresh_token=...
-    AES-GCM seal new pair, UPDATE user_credentials
-    (with a per-user mutex via DO single-threaded execution to avoid double-refresh)
+(later, on refresh — bearer.ts resolveUserUpstreamBearer)
+  fast path: a stored access_token > 5min from expiry is used as-is
+             (no refresh, no rotation — OAUTH_REFRESH_BUFFER_S)
+  else single-flight the refresh per (user, upstream):
+    acquireRefreshLease()  -- conditional UPDATE on user_credentials.refresh_lock_until
+      winner: POST grant_type=refresh_token; AES-GCM seal the new pair;
+              upsert user_credentials (refresh_token carried forward if the
+              response omits it — mergeRefreshableTokens)
+      losers: wait briefly for the rotated token instead of POSTing again
 ```
+
+**Why the lease, not "the DO is single-threaded":** the DO is NOT a per-user
+mutex. The agents SDK mints a fresh session id (hence a distinct
+`McpSessionDO`) per `initialize`, so one user with multiple devices/sessions
+runs multiple DOs that read the same `user_credentials` row concurrently.
+Without the lease, two near-expiry refreshes would both spend the same
+rotating refresh_token, and providers that detect reuse (Entra, GitLab, …)
+revoke the whole token family — silently logging the user out. The 5-min
+buffer narrows the contention window; the D1 lease
+(`upstream/oauth-refresh.ts` + migration `0020`) closes it.
+
+**When a refresh definitively fails** (revoked / expired refresh token), the
+proxy used to silently skip the upstream. It now stamps
+`user_credentials.reauth_required_at` (migration `0021`), audits the
+clear→set transition (`upstream.reauth_required`), and surfaces `needsReauth`
+on `list_upstreams` so the agent can deep-link the user to /upstreams. The
+flag is cleared on the next successful `saveTokens` (refresh or reconnect).
 
 ### A7. Outbound — `shared_bearer`
 

@@ -1,0 +1,16 @@
+-- 0021_credential_reauth_flag.sql
+--
+-- Durable "this credential needs interactive re-auth" marker.
+--
+-- When an automatic user_oauth refresh fails (revoked / expired refresh
+-- token), the proxy previously just skipped the upstream at session init —
+-- its tools silently vanished from tools/list with no signal to the agent or
+-- operator. `reauth_required_at` (absolute unix seconds, NULL = healthy) is
+-- set on a definitive refresh failure and cleared on the next successful
+-- token save (refresh or interactive reconnect). `list_upstreams` surfaces it
+-- as `needsReauth` so the agent can deep-link the user to /upstreams, and the
+-- transition is audited (`upstream.reauth_required`) for operator visibility.
+--
+-- Child-table ADD COLUMN — safe per G1 (only referenced PARENTS can't be
+-- rebuilt). Nullable, no default → existing rows are "healthy".
+ALTER TABLE user_credentials ADD COLUMN reauth_required_at INTEGER;

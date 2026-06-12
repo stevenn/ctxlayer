@@ -1,0 +1,20 @@
+-- 0020_oauth_refresh_lease.sql
+--
+-- Single-flight guard for user_oauth token refresh.
+--
+-- user_oauth access tokens are refreshed lazily at session init (bearer
+-- resolution). A user with multiple concurrent MCP sessions/devices runs one
+-- Durable Object per session, all reading the SAME user_credentials row with
+-- no coordination — so two near-expiry inits could both POST
+-- grant_type=refresh_token with the same rotating refresh_token. Providers
+-- that rotate AND detect reuse (Microsoft Entra, GitLab, Auth0, Okta) then
+-- revoke the whole token family, silently logging the user out of that
+-- upstream until they manually reconnect.
+--
+-- `refresh_lock_until` (absolute unix seconds) is a short, self-expiring
+-- lease: a conditional UPDATE (acquireRefreshLease) lets exactly one caller
+-- claim it; the rest wait for the rotated token instead of spending the
+-- refresh_token a second time. Nullable + no default — existing rows are
+-- simply "unlocked". user_credentials is a child table, so a plain
+-- ADD COLUMN is safe (G1 only forbids rebuilding a referenced parent).
+ALTER TABLE user_credentials ADD COLUMN refresh_lock_until INTEGER;

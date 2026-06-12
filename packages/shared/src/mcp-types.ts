@@ -30,6 +30,10 @@ export const McpUpstreamEntry = z.object({
   displayName: z.string(),
   transport: UpstreamTransport,
   connected: z.boolean(),
+  // Set when a stored user_oauth credential exists but its automatic refresh
+  // failed — the upstream is connected-on-paper but its tools won't load until
+  // the user reconnects at /upstreams. Absent/false means healthy.
+  needsReauth: z.boolean().optional(),
   toolsCount: z.number(),
   requiresAuth: AuthStrategy.optional(),
   // Whole-upstream attachments (curated playbooks / reference docs). Always
