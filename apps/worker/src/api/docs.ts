@@ -1,20 +1,13 @@
 /**
  * Docs REST surface. Reads are open to every signed-in user; writes go
- * through the per-doc ACL predicate in `db/queries/docs.ts`.
- *
- * Save flow (PUT /content):
- *   1. canEdit check
- *   2. write revision + snapshot to R2 (revision first, so a partial
- *      failure preserves the old snapshot)
- *   3. INSERT doc_revisions + UPDATE documents.current_rev_id
- *   4. waitUntil-enqueue {docId, revisionId} to DOC_REINDEX_QUEUE
- *      (consumer is ack-only in M2a, real reindex lands in M2b)
+ * through the per-doc ACL predicate in `db/queries/docs.ts`. The save
+ * flow behind PUT /:id/content (revision coalescing + git divergence
+ * flagging) lives in `docs-save-content.ts`.
  */
 
 import { Hono } from 'hono'
 import {
   CreateDocRequest,
-  DocContent,
   type DocDetail,
   type DocSummary,
   type RevisionSummary,
@@ -26,7 +19,6 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
-  amendRevision,
   canEditDoc,
   canLockDoc,
   canShareDoc,
@@ -34,33 +26,24 @@ import {
   createDoc,
   editGateReason,
   getDocById,
-  getHeadRevision,
   getRevision,
   listDocs,
   listRevisions,
   patchDoc,
-  pruneAutosaveRevisions,
   recordRevision,
-  sealRevision,
   setDocLock,
   softDeleteDoc,
   type DocumentWithUsersRow,
   type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
-import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
-import { markGitDocLocallyEdited } from '../db/queries/git-sources'
 import { audit } from '../audit/log'
+import { saveDocContent } from './docs-save-content'
 import {
-  contentDigest,
-  deleteRevisionObjects,
   readRevision,
   readSnapshot,
-  restoreFromRevision,
-  writeRevisionAndSnapshot
+  restoreFromRevision
 } from '../storage/docs-r2'
-
-const CONTENT_MAX_BYTES = 2 * 1024 * 1024
 
 export const docsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 
@@ -134,74 +117,16 @@ docsRoute.put('/:id/content', async (c) => {
   const { userId } = c.get('user')
   const blocked = await gateEdit(c.env, userId, id)
   if (blocked) return blocked
-  const raw = await c.req.arrayBuffer()
-  if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
-  const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-
-  // Coalescing policy: a background autosave folds into the rolling
-  // autosave head; only `?mode=explicit` (absent → explicit, the safe
-  // default for older clients) cuts a distinct checkpoint. Identical
-  // content is a no-op. See db/revision-policy.ts.
-  const explicit = c.req.query('mode') !== 'autosave'
-  const { contentHash, byteSize } = await contentDigest(parsed.data)
-  const head = await getHeadRevision(c.env, id)
-  const decision = decideRevision(head, {
-    contentHash,
+  // `?mode=explicit` (absent → explicit, the safe default for older
+  // clients) cuts a distinct checkpoint; autosaves coalesce. The full
+  // save flow lives in docs-save-content.ts.
+  const result = await saveDocContent(c.env, c.executionCtx, {
+    docId: id,
     userId,
-    explicit,
-    now: Math.floor(Date.now() / 1000)
+    raw: await c.req.arrayBuffer(),
+    explicit: c.req.query('mode') !== 'autosave'
   })
-
-  if (decision.action === 'noop') {
-    return c.json({ revisionId: decision.revisionId, byteSize, contentHash })
-  }
-  if (decision.action === 'seal') {
-    await sealRevision(c.env, id, decision.revisionId)
-    return c.json({ revisionId: decision.revisionId, byteSize, contentHash })
-  }
-
-  const revisionId = decision.action === 'amend' ? decision.revisionId : newRevisionId()
-  const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
-  if (decision.action === 'amend') {
-    await amendRevision(c.env, {
-      docId: id,
-      revisionId,
-      byteSize: put.byteSize,
-      contentHash: put.contentHash
-    })
-  } else {
-    await recordRevision(c.env, {
-      docId: id,
-      revisionId,
-      authorId: userId,
-      r2Key: put.key,
-      byteSize: put.byteSize,
-      contentHash: put.contentHash,
-      kind: decision.kind
-    })
-    // Retention: a new row may push the autosave count over the cap.
-    // Prune the oldest autosaves (D1) now; drop their R2 bodies after the
-    // response (best-effort — orphaned objects are harmless).
-    const prunedKeys = await pruneAutosaveRevisions(c.env, id, MAX_RETAINED_AUTOSAVES)
-    if (prunedKeys.length > 0) {
-      c.executionCtx.waitUntil(
-        deleteRevisionObjects(c.env, prunedKeys).catch((err) =>
-          console.error('autosave prune R2 cleanup failed', err)
-        )
-      )
-    }
-  }
-  // A local edit diverges a git-sourced doc from its synced baseline. Flag it
-  // (clean → local_edits) so inbound cron sync won't clobber the edit before
-  // it's proposed as a PR. No-op for ordinary (non-git) docs.
-  await markGitDocLocallyEdited(c.env, id)
-  c.executionCtx.waitUntil(
-    c.env.DOC_REINDEX_QUEUE.send({ docId: id, revisionId }).catch((err) =>
-      console.error('reindex enqueue failed', err)
-    )
-  )
-  return c.json({ revisionId, byteSize: put.byteSize, contentHash: put.contentHash })
+  return c.json(result.body, result.status)
 })
 
 docsRoute.get('/:id/revisions', async (c) => {

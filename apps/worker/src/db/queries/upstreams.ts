@@ -18,6 +18,7 @@ import type {
   VisibilityRulePayload
 } from '@ctxlayer/shared'
 import type { AuthStrategy, UpstreamAuthConfig } from '@ctxlayer/shared'
+import { DIALABLE_TRANSPORTS, isDialableTransport } from '../../upstream/upstream-client'
 
 // ----- upstream_servers --------------------------------------------------
 
@@ -71,7 +72,7 @@ function redactOAuthSecrets(cfg: UpstreamAuthConfig): UpstreamAuthConfig {
 }
 
 export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection {
-  if (row.transport !== 'streamable_http' && row.transport !== 'sse') {
+  if (!isDialableTransport(row.transport)) {
     // Only http/sse transports are supported. Any other transport value
     // (a legacy or forged DB row) must not surface to the proxy as a
     // dialable connection. Throwing keeps it out of the M4 callers.
@@ -81,7 +82,7 @@ export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection
     id: row.id,
     slug: row.slug,
     displayName: row.display_name,
-    transport: row.transport as SupportedTransport,
+    transport: row.transport,
     url: row.url ?? '',
     authStrategy: row.auth_strategy,
     authConfig: parseAuthConfig(row.auth_config),
@@ -262,6 +263,9 @@ export async function listUpstreamsVisibleToUser(
   env: Env,
   userId: string
 ): Promise<UpstreamServerRow[]> {
+  // Dialable-transport filter built from the shared const: ?1 is the
+  // user id, so the IN-list placeholders start at ?2.
+  const transportIn = DIALABLE_TRANSPORTS.map((_, i) => `?${i + 2}`).join(',')
   const res = await env.DB.prepare(
     `WITH user_teams AS (
        SELECT team_id FROM team_members WHERE user_id = ?1
@@ -280,7 +284,7 @@ export async function listUpstreamsVisibleToUser(
      FROM upstream_servers u
      JOIN upstream_visibility v ON v.upstream_id = u.id
      WHERE u.enabled = 1
-       AND u.transport IN ('streamable_http','sse')
+       AND u.transport IN (${transportIn})
        AND (
          v.scope_kind = 'everyone'
          OR (v.scope_kind = 'team'    AND v.scope_id IN (SELECT team_id FROM user_teams))
@@ -289,7 +293,7 @@ export async function listUpstreamsVisibleToUser(
        )
      ORDER BY u.display_name`
   )
-    .bind(userId)
+    .bind(userId, ...DIALABLE_TRANSPORTS)
     .all<UpstreamServerRow>()
   return res.results ?? []
 }
@@ -778,7 +782,7 @@ export async function adminRowFor(
 ): Promise<AdminUpstreamRow | null> {
   const row = await getUpstreamById(env, upstreamId)
   if (!row) return null
-  if (row.transport !== 'streamable_http' && row.transport !== 'sse') return null
+  if (!isDialableTransport(row.transport)) return null
   const requiresUserCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
   const isSharedBearer = row.auth_strategy === 'shared_bearer'
   const [visibility, toolsCount, cachedAt, cred, sharedConfigured] = await Promise.all([

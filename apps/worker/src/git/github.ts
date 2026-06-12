@@ -19,7 +19,7 @@ import type {
   NewPrUrlInput,
   OpenedPr,
   OpenOrUpdatePrInput
-} from './provider'
+} from './provider-types'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { githubApiBase, githubWebBase } from './url'
 import {

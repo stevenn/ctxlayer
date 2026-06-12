@@ -37,7 +37,11 @@ import {
   toUpstreamConnection,
   upsertSharedCredential
 } from '../db/queries/upstreams'
-import { refreshCatalogueByUpstreamId, refreshCatalogueForConnection } from '../upstream/catalogue'
+import {
+  refreshCatalogueByUpstreamId,
+  refreshCatalogueForConnection,
+  warmCatalogueAndLog
+} from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
 import { seal, sealedToString } from '../crypto/aead'
@@ -101,25 +105,13 @@ adminUpstreamsRoute.post('/', async (c) => {
     // those are warmed on connect (PUT credentials / OAuth callback).
     if (input.authStrategy === 'none') {
       c.executionCtx.waitUntil(
-        refreshCatalogueByUpstreamId(c.env, row.id, null).then(
-          (r) => {
-            if (r.ok) {
-              console.log(
-                `[catalogue] ${r.slug}: warmed ${r.toolsCount} tools on create (auth=none)`
-              )
-            } else {
-              console.warn(
-                `[catalogue] ${row.slug}: post-create refresh failed (${r.reason})${
-                  r.message ? `: ${r.message}` : ''
-                }`
-              )
-            }
-          },
-          (err) => {
-            const msg = err instanceof Error ? err.message : String(err)
-            console.error(`[catalogue] ${row.slug}: post-create refresh threw: ${msg}`)
-          }
-        )
+        warmCatalogueAndLog(c.env, {
+          upstreamId: row.id,
+          slug: row.slug,
+          bearerToken: null,
+          okContext: 'on create (auth=none)',
+          failLabel: 'post-create refresh'
+        })
       )
     }
     const hydrated = await adminRowFor(c.env, row.id, c.get('user').userId)

@@ -18,6 +18,7 @@
  */
 
 import type { Env } from '../env'
+import { insertAuditRow } from '../db/queries/audit'
 
 export interface AuditEntry {
   actorId: string
@@ -28,21 +29,14 @@ export interface AuditEntry {
 
 export async function audit(env: Env, entry: AuditEntry): Promise<void> {
   try {
-    const id = crypto.randomUUID().replace(/-/g, '')
-    const ts = Math.floor(Date.now() / 1000)
-    await env.DB.prepare(
-      `INSERT INTO audit_log (id, ts, actor_id, action, target, meta)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
-    )
-      .bind(
-        id,
-        ts,
-        entry.actorId,
-        entry.action,
-        entry.target ?? null,
-        entry.meta ? JSON.stringify(entry.meta) : null
-      )
-      .run()
+    await insertAuditRow(env, {
+      id: crypto.randomUUID().replace(/-/g, ''),
+      ts: Math.floor(Date.now() / 1000),
+      actorId: entry.actorId,
+      action: entry.action,
+      target: entry.target ?? null,
+      meta: entry.meta ? JSON.stringify(entry.meta) : null
+    })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error(`[audit] write failed for ${entry.action}: ${msg}`)
