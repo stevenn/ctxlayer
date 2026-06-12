@@ -11,16 +11,12 @@
 
 import { Hono } from 'hono'
 import type { Env } from '../env'
-import { signSession, sessionSetCookie } from '../auth/session'
-import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
-import { completeMcpAuthorization } from './complete-mcp'
 import { admitOrReject } from './admit'
 import type { AdmissionIdentity } from '../util/allowlist'
 import { b64urlDecode } from '../auth/session'
+import { exchangeCodeForToken, finishSignIn } from './flow'
 import {
-  appRedirect,
   callbackUrl,
-  clearStateCookie,
   pkceChallenge,
   pkceVerifier,
   randomToken,
@@ -80,10 +76,11 @@ googleIdpRoute.get('/callback', async (c) => {
   if (!stateRow) return signInErrorRedirect(c.env, 'state_mismatch')
 
   // 1. Exchange code for tokens.
-  const tokenRes = await fetch(TOKEN, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
+  const exchanged = await exchangeCodeForToken(
+    c.env,
+    'google',
+    TOKEN,
+    new URLSearchParams({
       grant_type: 'authorization_code',
       code,
       client_id: c.env.GOOGLE_CLIENT_ID,
@@ -91,14 +88,9 @@ googleIdpRoute.get('/callback', async (c) => {
       redirect_uri: callbackUrl(c.env, 'google'),
       code_verifier: stateRow.codeVerifier
     })
-  })
-  if (!tokenRes.ok) {
-    // Never log the body — it can carry access_token / id_token / refresh_token
-    // on partial-success shapes, plus full IdP error metadata.
-    console.error('google token exchange failed', tokenRes.status)
-    return signInErrorRedirect(c.env, 'token_exchange_failed')
-  }
-  const token = (await tokenRes.json()) as { id_token?: string; access_token?: string }
+  )
+  if (!exchanged.ok) return exchanged.res
+  const token = exchanged.json as { id_token?: string; access_token?: string }
   if (!token.id_token) return signInErrorRedirect(c.env, 'token_exchange_failed')
 
   // 2. Decode id_token payload (sig skipped — see file header).
@@ -133,24 +125,7 @@ googleIdpRoute.get('/callback', async (c) => {
     stateRow.joinCode
   )
   if ('response' in outcome) return outcome.response
-  const user = outcome.user
 
-  // 5a. MCP OAuth path — complete the grant and redirect to the
-  // MCP client's redirect_uri. No SPA cookie is set.
-  if (stateRow.oauthRequestId) {
-    return completeMcpAuthorization(c.env, stateRow.oauthRequestId, user)
-  }
-
-  // 5b. SPA path — issue session + CSRF cookies and redirect back to
-  // the app.
-  const session = await signSession(
-    { userId: user.id, role: user.role },
-    c.env.SESSION_COOKIE_SECRET
-  )
-  const res = appRedirect(c.env, stateRow.returnTo)
-  const headers = new Headers(res.headers)
-  headers.append('Set-Cookie', sessionSetCookie(session))
-  headers.append('Set-Cookie', csrfSetCookie(newCsrfToken()))
-  headers.append('Set-Cookie', clearStateCookie())
-  return new Response(null, { status: res.status, headers })
+  // 5. Complete: MCP OAuth grant or SPA session + CSRF cookies.
+  return finishSignIn(c.env, stateRow, outcome.user)
 })
