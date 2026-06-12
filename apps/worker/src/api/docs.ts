@@ -44,6 +44,7 @@ import {
   readSnapshot,
   restoreFromRevision
 } from '../storage/docs-r2'
+import { notFound, parseJsonBody } from './respond'
 
 export const docsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 
@@ -57,8 +58,8 @@ docsRoute.get('/', async (c) => {
 })
 
 docsRoute.post('/', async (c) => {
-  const parsed = CreateDocRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateDocRequest)
+  if (!parsed.ok) return parsed.res
   const { userId } = c.get('user')
   const row = await createDoc(c.env, { ...parsed.data, createdBy: userId })
   return c.json({ id: row.id, slug: row.slug }, 201)
@@ -67,7 +68,7 @@ docsRoute.post('/', async (c) => {
 docsRoute.get('/:id', async (c) => {
   const id = c.req.param('id')
   const row = await getDocById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   const { userId } = c.get('user')
   const [canEdit, canShare, canLock] = await Promise.all([
     canEditDoc(c.env, userId, id),
@@ -89,8 +90,8 @@ docsRoute.patch('/:id', async (c) => {
   const { userId } = c.get('user')
   const blocked = await gateEdit(c.env, userId, id)
   if (blocked) return blocked
-  const parsed = UpdateDocRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, UpdateDocRequest)
+  if (!parsed.ok) return parsed.res
   await patchDoc(c.env, id, parsed.data)
   return new Response(null, { status: 204 })
 })
@@ -107,7 +108,7 @@ docsRoute.delete('/:id', async (c) => {
 docsRoute.get('/:id/content', async (c) => {
   const id = c.req.param('id')
   const row = await getDocById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   const content = (await readSnapshot(c.env, id)) ?? { blocks: [] }
   return c.json(content)
 })
@@ -131,7 +132,7 @@ docsRoute.put('/:id/content', async (c) => {
 
 docsRoute.get('/:id/revisions', async (c) => {
   const id = c.req.param('id')
-  if (!(await getDocById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getDocById(c.env, id))) return notFound(c)
   const rows = await listRevisions(c.env, id)
   const body: RevisionSummary[] = rows.map(toRevisionSummary)
   return c.json(body)
@@ -140,9 +141,9 @@ docsRoute.get('/:id/revisions', async (c) => {
 docsRoute.get('/:id/revisions/:rev/content', async (c) => {
   const id = c.req.param('id')
   const rev = c.req.param('rev')
-  if (!(await getRevision(c.env, id, rev))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getRevision(c.env, id, rev))) return notFound(c)
   const content = await readRevision(c.env, id, rev)
-  if (!content) return c.json({ error: 'not_found' }, 404)
+  if (!content) return notFound(c)
   return c.json(content)
 })
 
@@ -151,8 +152,8 @@ docsRoute.post('/:id/restore', async (c) => {
   const { userId } = c.get('user')
   const blocked = await gateEdit(c.env, userId, id)
   if (blocked) return blocked
-  const parsed = RestoreRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, RestoreRequest)
+  if (!parsed.ok) return parsed.res
   const sourceRev = await getRevision(c.env, id, parsed.data.revisionId)
   if (!sourceRev) return c.json({ error: 'revision_not_found' }, 404)
   const newRevId = newRevisionId()
@@ -190,10 +191,8 @@ docsRoute.put('/:id/lock', async (c) => {
   if (!(await canLockDoc(c.env, userId, id))) {
     return c.json({ error: 'forbidden' }, 403)
   }
-  const parsed = SetLockedRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, SetLockedRequest)
+  if (!parsed.ok) return parsed.res
   if (parsed.data.locked) {
     await setDocLock(c.env, id, userId)
     await audit(c.env, { actorId: userId, action: 'doc.lock', target: id })

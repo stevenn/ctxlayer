@@ -20,6 +20,8 @@ import {
   replaceTeamProducts,
   toProductRef
 } from '../db/queries/products'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 export const adminProductsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminProductsRoute.use('*', requireAdmin)
@@ -28,8 +30,8 @@ adminProductsRoute.use('*', requireCsrf)
 adminProductsRoute.get('/', async (c) => c.json(await listProducts(c.env)))
 
 adminProductsRoute.post('/', async (c) => {
-  const parsed = CreateProductRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateProductRequest)
+  if (!parsed.ok) return parsed.res
   try {
     const row = await createProduct(c.env, parsed.data)
     await audit(c.env, {
@@ -47,9 +49,9 @@ adminProductsRoute.post('/', async (c) => {
 
 adminProductsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getProductById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateProductRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getProductById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateProductRequest)
+  if (!parsed.ok) return parsed.res
   try {
     await patchProduct(c.env, id, parsed.data)
     await audit(c.env, {
@@ -92,8 +94,8 @@ adminTeamProductsRoute.use('*', requireCsrf)
 adminTeamProductsRoute.get('/', async (c) => c.json(await listTeamProducts(c.env)))
 
 adminTeamProductsRoute.put('/', async (c) => {
-  const parsed = TeamProductsPayload.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, TeamProductsPayload)
+  if (!parsed.ok) return parsed.res
   await replaceTeamProducts(c.env, parsed.data.rules)
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -103,8 +105,3 @@ adminTeamProductsRoute.put('/', async (c) => {
   })
   return new Response(null, { status: 204 })
 })
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
-}

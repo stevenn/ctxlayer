@@ -15,6 +15,7 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { runSearch } from '../rag/search'
+import { parseJsonBody } from './respond'
 
 export const searchRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 
@@ -22,8 +23,8 @@ searchRoute.use('*', requireUser)
 searchRoute.use('*', requireCsrf)
 
 searchRoute.post('/', async (c) => {
-  const parsed = SearchRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, SearchRequest)
+  if (!parsed.ok) return parsed.res
   const { userId } = c.get('user')
   const body = await runSearch(c.env, userId, parsed.data)
   return c.json(body)

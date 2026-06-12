@@ -37,6 +37,7 @@ import { resolveGitReadToken } from '../git/credentials'
 import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
 import { gitStaticOAuth } from '../git/git-oauth'
 import { seal } from '../crypto/aead'
+import { notFound, parseJsonBody } from './respond'
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
   return {
@@ -117,7 +118,7 @@ gitDocsRoute.get('/:id/git', async (c) => {
 // Open-read like all docs.
 gitDocsRoute.get('/:id/git/source', async (c) => {
   const id = c.req.param('id')
-  if (!(await getDocById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getDocById(c.env, id))) return notFound(c)
   const origin = await getDocGitOrigin(c.env, id)
   if (!origin) return c.json({ error: 'not_a_git_doc' }, 404)
   const markdown = (await readSourceMarkdown(c.env, id)) ?? ''
@@ -128,8 +129,8 @@ gitDocsRoute.post('/:id/git/pull-request', async (c) => {
   const id = c.req.param('id')
   const userId = c.get('user').userId
   if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
-  const parsed = CreatePullRequestRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreatePullRequestRequest)
+  if (!parsed.ok) return parsed.res
   const outcome = await openWriteBackPr(c.env, id, {
     actorId: userId,
     markdown: parsed.data.markdown
@@ -144,8 +145,8 @@ gitDocsRoute.post('/:id/git/review-url', async (c) => {
   const id = c.req.param('id')
   const userId = c.get('user').userId
   if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
-  const parsed = CreatePullRequestRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreatePullRequestRequest)
+  if (!parsed.ok) return parsed.res
   const outcome = await prepareWriteBackRedirect(c.env, id, {
     actorId: userId,
     markdown: parsed.data.markdown
@@ -164,12 +165,12 @@ gitSourcesUserRoute.put('/:id/credentials', async (c) => {
   const id = c.req.param('id')
   const actor = c.get('user')
   const source = await getGitSourceById(c.env, id)
-  if (!source) return c.json({ error: 'not_found' }, 404)
+  if (!source) return notFound(c)
   const allowed =
     actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, id, actor.userId))
   if (!allowed) return c.json({ error: 'forbidden' }, 403)
-  const parsed = GitSetCredentialRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, GitSetCredentialRequest)
+  if (!parsed.ok) return parsed.res
   const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)
   await upsertGitUserCredential(c.env, actor.userId, id, {
     kind: 'bearer',

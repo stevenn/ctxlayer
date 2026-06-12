@@ -32,6 +32,7 @@ import { setUserRoles } from '../db/queries/roles'
 import { revokeAllUserGrants } from '../oauth/revoke-grants'
 import { audit } from '../audit/log'
 import { notify } from '../ops/alert'
+import { notFound, parseJsonBody } from './respond'
 
 /**
  * Grant revocation is best-effort (KV); when it reports incomplete the
@@ -59,14 +60,12 @@ adminUsersRoute.patch('/:id', requireCsrf, async (c) => {
   const targetId = c.req.param('id')
   const actor = c.get('user')
 
-  const parsed = UpdateUserRoleRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, UpdateUserRoleRequest)
+  if (!parsed.ok) return parsed.res
   const nextRole = parsed.data.role
 
   const target = await findById(c.env, targetId)
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
   if (target.role === nextRole) {
     // No-op; treat as success so the SPA can be idempotent.
     return new Response(null, { status: 204 })
@@ -105,11 +104,9 @@ adminUsersRoute.put('/:id/roles', requireCsrf, async (c) => {
   const targetId = c.req.param('id')
   const actor = c.get('user')
   const target = await findById(c.env, targetId)
-  if (!target) return c.json({ error: 'not_found' }, 404)
-  const parsed = SetUserRolesRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  if (!target) return notFound(c)
+  const parsed = await parseJsonBody(c, SetUserRolesRequest)
+  if (!parsed.ok) return parsed.res
   try {
     await setUserRoles(c.env, targetId, parsed.data.roleIds)
   } catch (err) {
@@ -129,7 +126,7 @@ adminUsersRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   const targetId = c.req.param('id')
   const actor = c.get('user')
   const target = await findById(c.env, targetId)
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
 
   const removed = await revokeAllUserCredentials(c.env, targetId)
   await audit(c.env, {
@@ -149,7 +146,7 @@ adminUsersRoute.delete('/:id/credentials', requireCsrf, async (c) => {
 adminUsersRoute.post('/:id/suspend', requireCsrf, async (c) => {
   const actor = c.get('user')
   const target = await findById(c.env, c.req.param('id'))
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
   const guard = await guardRemovesAdminAccess(c, target, actor.userId, 'suspend')
   if (guard) return guard
   if (target.status !== 'suspended') await setUserStatus(c.env, target.id, 'suspended')
@@ -171,7 +168,7 @@ adminUsersRoute.post('/:id/suspend', requireCsrf, async (c) => {
 adminUsersRoute.post('/:id/reactivate', requireCsrf, async (c) => {
   const actor = c.get('user')
   const target = await findById(c.env, c.req.param('id'))
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
   if (target.status !== 'active') await setUserStatus(c.env, target.id, 'active')
   await audit(c.env, {
     actorId: actor.userId,
@@ -187,7 +184,7 @@ adminUsersRoute.post('/:id/reactivate', requireCsrf, async (c) => {
 adminUsersRoute.post('/:id/reject', requireCsrf, async (c) => {
   const actor = c.get('user')
   const target = await findById(c.env, c.req.param('id'))
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
   if (target.status !== 'pending') {
     return c.json({ error: 'not_pending', hint: 'Only a pending user can be rejected.' }, 400)
   }
@@ -209,7 +206,7 @@ adminUsersRoute.post('/:id/reject', requireCsrf, async (c) => {
 adminUsersRoute.delete('/:id', requireCsrf, async (c) => {
   const actor = c.get('user')
   const target = await findById(c.env, c.req.param('id'))
-  if (!target) return c.json({ error: 'not_found' }, 404)
+  if (!target) return notFound(c)
   const guard = await guardRemovesAdminAccess(c, target, actor.userId, 'delete')
   if (guard) return guard
   // Revoke MCP/CLI tokens first (KV, keyed by user id) so access dies even if

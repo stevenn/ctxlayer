@@ -7,6 +7,7 @@
 
 import type { Env } from '../../env'
 import type { AdminRoleRow, RoleRef } from '@ctxlayer/shared'
+import { buildPatchUpdate } from './util'
 
 interface RoleRow {
   id: string
@@ -98,23 +99,20 @@ export interface PatchRoleInput {
 }
 
 export async function patchRole(env: Env, id: string, patch: PatchRoleInput): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  const push = (col: string, val: unknown) => {
-    fields.push(`${col} = ?${fields.length + 1}`)
-    binds.push(val)
-  }
-  if (patch.slug !== undefined) push('slug', patch.slug)
-  if (patch.displayName !== undefined) push('display_name', patch.displayName)
-  if (patch.description !== undefined) push('description', patch.description)
-  if (patch.idpGroup !== undefined) push('idp_group', patch.idpGroup)
-  if (patch.managedByIdp !== undefined) push('managed_by_idp', patch.managedByIdp ? 1 : 0)
-  if (fields.length === 0) return
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(`UPDATE roles SET ${fields.join(', ')} WHERE id = ?${binds.length}`)
-    .bind(...binds)
+  const update = buildPatchUpdate(
+    'roles',
+    {
+      slug: patch.slug,
+      display_name: patch.displayName,
+      description: patch.description,
+      idp_group: patch.idpGroup,
+      managed_by_idp: patch.managedByIdp === undefined ? undefined : patch.managedByIdp ? 1 : 0
+    },
+    id
+  )
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 

@@ -22,6 +22,7 @@ import type {
   GitPrState,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
+import { buildPatchUpdate } from './util'
 
 // ----- git_sources -------------------------------------------------------
 
@@ -166,31 +167,28 @@ export async function patchGitSource(
   id: string,
   patch: PatchGitSourceInput
 ): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  const push = (col: string, val: unknown) => {
-    fields.push(`${col} = ?${fields.length + 1}`)
-    binds.push(val)
-  }
-  if (patch.displayName !== undefined) push('display_name', patch.displayName)
-  if (patch.baseUrl !== undefined) push('base_url', patch.baseUrl)
-  if (patch.owner !== undefined) push('owner', patch.owner)
-  if (patch.project !== undefined) push('project', patch.project)
-  if (patch.repo !== undefined) push('repo', patch.repo)
-  if (patch.branch !== undefined) push('branch', patch.branch)
-  if (patch.pathPrefix !== undefined) push('path_prefix', patch.pathPrefix)
-  if (patch.productId !== undefined) push('product_id', patch.productId)
-  if (patch.readStrategy !== undefined) push('read_strategy', patch.readStrategy)
-  if (patch.writeStrategy !== undefined) push('write_strategy', patch.writeStrategy)
-  if (patch.folderRoot !== undefined) push('folder_root', patch.folderRoot)
-  if (patch.syncInterval !== undefined) push('sync_interval', patch.syncInterval)
-  if (patch.enabled !== undefined) push('enabled', patch.enabled ? 1 : 0)
-  if (fields.length === 0) return
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(`UPDATE git_sources SET ${fields.join(', ')} WHERE id = ?${binds.length}`)
-    .bind(...binds)
+  const update = buildPatchUpdate(
+    'git_sources',
+    {
+      display_name: patch.displayName,
+      base_url: patch.baseUrl,
+      owner: patch.owner,
+      project: patch.project,
+      repo: patch.repo,
+      branch: patch.branch,
+      path_prefix: patch.pathPrefix,
+      product_id: patch.productId,
+      read_strategy: patch.readStrategy,
+      write_strategy: patch.writeStrategy,
+      folder_root: patch.folderRoot,
+      sync_interval: patch.syncInterval,
+      enabled: patch.enabled === undefined ? undefined : patch.enabled ? 1 : 0
+    },
+    id
+  )
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 

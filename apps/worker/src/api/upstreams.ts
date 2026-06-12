@@ -18,15 +18,13 @@ import { seal } from '../crypto/aead'
 import {
   deleteUserCredential,
   getUpstreamById,
-  listCachedTools,
   listUpstreamsVisibleToUser,
   listUserUpstreamSummaries,
   upsertUserCredential
 } from '../db/queries/upstreams'
-import { listSkillsForUpstream } from '../db/queries/skill-attachments'
-import { listDocsForUpstream } from '../db/queries/doc-attachments'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
-import { groupAttachmentsForTools, type AttachmentBundle } from './upstreams-attachments'
+import { buildUpstreamToolsPayload } from './upstreams-attachments'
+import { notFound, parseJsonBody } from './respond'
 
 export const upstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 upstreamsRoute.use('*', requireUser)
@@ -47,46 +45,23 @@ upstreamsRoute.get('/:id/tools', async (c) => {
   const id = c.req.param('id')
   const visible = await listUpstreamsVisibleToUser(c.env, userId)
   const row = visible.find((r) => r.id === id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  const [tools, skillAtt, docAtt] = await Promise.all([
-    listCachedTools(c.env, id),
-    listSkillsForUpstream(c.env, id),
-    listDocsForUpstream(c.env, id)
-  ])
-  const bundle: AttachmentBundle = groupAttachmentsForTools(skillAtt, docAtt)
-  return c.json({
-    upstreamId: id,
-    slug: row.slug,
-    attachedSkills: bundle.whole.skills,
-    attachedDocs: bundle.whole.docs,
-    tools: tools.map((t) => ({
-      toolName: t.tool_name,
-      description: t.description,
-      inputSchema: safeParse(t.input_schema),
-      cachedAt: t.cached_at,
-      lastSchemaChangeAt: t.last_schema_change_at,
-      lastDiffSummary: t.last_diff_summary,
-      attachedSkills: bundle.byTool.get(t.tool_name)?.skills ?? [],
-      attachedDocs: bundle.byTool.get(t.tool_name)?.docs ?? []
-    }))
-  })
+  if (!row) return notFound(c)
+  return c.json(await buildUpstreamToolsPayload(c.env, { id, slug: row.slug }))
 })
 
 upstreamsRoute.put('/:id/credentials', requireCsrf, async (c) => {
   const userId = c.get('user').userId
   const id = c.req.param('id')
   const upstream = await getUpstreamById(c.env, id)
-  if (!upstream) return c.json({ error: 'not_found' }, 404)
+  if (!upstream) return notFound(c)
   if (upstream.auth_strategy !== 'user_bearer') {
     // Pasting a bearer for shared_bearer / none / user_oauth upstreams
     // is meaningless or wrong — surface a 400 so the SPA can disable
     // the input on the wrong card type.
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_bearer' }, 400)
   }
-  const parsed = PasteBearerRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, PasteBearerRequest)
+  if (!parsed.ok) return parsed.res
   const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)
   await upsertUserCredential(c.env, userId, id, {
     kind: 'bearer',
@@ -114,11 +89,3 @@ upstreamsRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   await deleteUserCredential(c.env, userId, id)
   return new Response(null, { status: 204 })
 })
-
-function safeParse(s: string): unknown {
-  try {
-    return JSON.parse(s)
-  } catch {
-    return s
-  }
-}

@@ -13,6 +13,7 @@ import { attachDoc, detachDoc, listAttachmentsForDoc } from '../db/queries/doc-a
 import { getDocById } from '../db/queries/docs'
 import { getUpstreamById } from '../db/queries/upstreams'
 import { audit } from '../audit/log'
+import { notFound, parseJsonBody } from './respond'
 
 export const docAttachmentsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 docAttachmentsRoute.use('*', requireUser)
@@ -21,7 +22,7 @@ docAttachmentsRoute.use('*', requireCsrf)
 docAttachmentsRoute.get('/', async (c) => {
   const docId = c.req.query('docId')
   if (!docId) return c.json({ error: 'missing_doc_id' }, 400)
-  if (!(await getDocById(c.env, docId))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getDocById(c.env, docId))) return notFound(c)
   const rows = await listAttachmentsForDoc(c.env, docId)
   return c.json(
     rows.map((r) => ({
@@ -33,14 +34,14 @@ docAttachmentsRoute.get('/', async (c) => {
 })
 
 docAttachmentsRoute.post('/', requireAdmin, async (c) => {
-  const parsed = AttachDocRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, AttachDocRequest)
+  if (!parsed.ok) return parsed.res
   const { docId, upstreamId, toolName } = parsed.data
   const [doc, upstream] = await Promise.all([
     getDocById(c.env, docId),
     getUpstreamById(c.env, upstreamId)
   ])
-  if (!doc || !upstream) return c.json({ error: 'not_found' }, 404)
+  if (!doc || !upstream) return notFound(c)
   const actor = c.get('user')
   await attachDoc(c.env, { docId, upstreamId, toolName, createdBy: actor.userId })
   await audit(c.env, {
@@ -53,8 +54,8 @@ docAttachmentsRoute.post('/', requireAdmin, async (c) => {
 })
 
 docAttachmentsRoute.delete('/', requireAdmin, async (c) => {
-  const parsed = AttachDocRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, AttachDocRequest)
+  if (!parsed.ok) return parsed.res
   const { docId, upstreamId, toolName } = parsed.data
   await detachDoc(c.env, { docId, upstreamId, toolName })
   await audit(c.env, {

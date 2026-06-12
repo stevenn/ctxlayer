@@ -6,6 +6,7 @@
 
 import type { Env } from '../../env'
 import type { ProductRef, TeamProductsAssignment } from '@ctxlayer/shared'
+import { buildPatchUpdate } from './util'
 
 interface ProductRow {
   id: string
@@ -70,26 +71,14 @@ export interface PatchProductInput {
 }
 
 export async function patchProduct(env: Env, id: string, patch: PatchProductInput): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  if (patch.slug !== undefined) {
-    fields.push(`slug = ?${fields.length + 1}`)
-    binds.push(patch.slug)
-  }
-  if (patch.displayName !== undefined) {
-    fields.push(`display_name = ?${fields.length + 1}`)
-    binds.push(patch.displayName)
-  }
-  if (patch.description !== undefined) {
-    fields.push(`description = ?${fields.length + 1}`)
-    binds.push(patch.description)
-  }
-  if (fields.length === 0) return
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(`UPDATE products SET ${fields.join(', ')} WHERE id = ?${binds.length}`)
-    .bind(...binds)
+  const update = buildPatchUpdate(
+    'products',
+    { slug: patch.slug, display_name: patch.displayName, description: patch.description },
+    id
+  )
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 
