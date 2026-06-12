@@ -11,6 +11,7 @@ import type { AdmissionIdentity } from '../util/allowlist'
 import { resolveAdmission } from '../auth/admission'
 import { upsertUser, type UpsertUserInput, type UserRow } from '../db/queries/users'
 import { markInviteRedeemed } from '../db/queries/invites'
+import { audit } from '../audit/log'
 import { clearStateCookie, signInErrorRedirect, type ErrorReason } from './common'
 
 export type AdmitOutcome = { user: UserRow } | { response: Response }
@@ -32,7 +33,18 @@ export async function admitOrReject(
   const decision = await resolveAdmission({ identity, joinCode, env })
   if (decision.kind === 'reject') return { response: redirectClearingState(env, decision.reason) }
 
-  const user = await upsertUser(env, upsertInput, decision.status)
+  const { user, promotedToAdmin } = await upsertUser(env, upsertInput, decision.status)
+  // Audit-log the ADMIN_EMAILS-driven promotion. Fires on every sign-in
+  // by an allowlisted admin email (no prior-role read in the upsert);
+  // readers can dedupe downstream if it matters.
+  if (promotedToAdmin) {
+    await audit(env, {
+      actorId: user.id,
+      action: 'user.admin_promote',
+      target: user.id,
+      meta: { via: 'ADMIN_EMAILS' }
+    })
+  }
   if (decision.redeemInviteId) await markInviteRedeemed(env, decision.redeemInviteId, user.id)
 
   // Stored status wins for an existing user: a re-sign-in by a suspended or

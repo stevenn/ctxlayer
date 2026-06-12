@@ -2,6 +2,30 @@ import type { AuditLogEntry, AuditLogResponse } from '@ctxlayer/shared'
 import type { Env } from '../../env'
 
 /**
+ * Append one row to `audit_log`. Pure persistence — id/ts generation,
+ * meta serialisation, and the best-effort error swallowing live in the
+ * semantic wrapper `audit/log.ts` (`audit()`), which is what callers
+ * should use.
+ */
+export interface InsertAuditRow {
+  id: string
+  ts: number
+  actorId: string
+  action: string
+  target: string | null
+  meta: string | null
+}
+
+export async function insertAuditRow(env: Env, row: InsertAuditRow): Promise<void> {
+  await env.DB.prepare(
+    `INSERT INTO audit_log (id, ts, actor_id, action, target, meta)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6)`
+  )
+    .bind(row.id, row.ts, row.actorId, row.action, row.target, row.meta)
+    .run()
+}
+
+/**
  * Read the audit log, newest first. Cursor pagination keyed on `ts`
  * — pass `before` to fetch the page older than that timestamp. The
  * `nextBefore` returned in the response is the oldest `ts` on the

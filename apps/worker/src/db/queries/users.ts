@@ -5,7 +5,6 @@
 
 import type { Env } from '../../env'
 import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
-import { audit } from '../../audit/log'
 
 export interface UserRow {
   id: string
@@ -29,21 +28,26 @@ export interface UpsertUserInput {
 }
 
 /**
- * Upsert by (idp, idp_sub). Returns the resulting row. Also promotes the
- * user to admin if their email appears in ADMIN_EMAILS (idempotent).
+ * Upsert by (idp, idp_sub). Returns the resulting row plus a
+ * `promotedToAdmin` flag: true when the email appears in ADMIN_EMAILS,
+ * so the row carries (or just gained) the admin role (idempotent). The
+ * caller is responsible for audit-logging the promotion — we can't
+ * easily detect the prior role without a second read, so the flag fires
+ * on every sign-in by an ADMIN_EMAILS address and readers can dedupe
+ * downstream if it matters.
  *
  * `admitStatus` is the lifecycle status to write for a BRAND-NEW user (the
  * admission decision — see auth/admission.ts). For an EXISTING user the
  * stored status is authoritative and is left untouched: sign-in never
  * un-suspends or re-pends a known user — only an admin flips status. The
- * caller re-reads the returned `row.status` to decide whether to issue a
+ * caller re-reads the returned `user.status` to decide whether to issue a
  * session (active), show the pending page (pending), or reject (suspended).
  */
 export async function upsertUser(
   env: Env,
   input: UpsertUserInput,
   admitStatus: UserStatus = 'active'
-): Promise<UserRow> {
+): Promise<{ user: UserRow; promotedToAdmin: boolean }> {
   const adminSet = parseAdminEmails(env.ADMIN_EMAILS)
   const promoteToAdmin = adminSet.has(input.email.toLowerCase())
   const now = Math.floor(Date.now() / 1000)
@@ -84,20 +88,7 @@ export async function upsertUser(
     .first<UserRow>()
   if (!row) throw new Error('user_upsert_failed')
 
-  // Audit-log the promotion. We can't easily detect the prior role
-  // without a second read, so we audit every sign-in that resulted in
-  // admin role *and* mention of email in ADMIN_EMAILS — readers can
-  // dedupe downstream if it matters.
-  if (promoteToAdmin) {
-    await audit(env, {
-      actorId: row.id,
-      action: 'user.admin_promote',
-      target: row.id,
-      meta: { via: 'ADMIN_EMAILS' }
-    })
-  }
-
-  return row
+  return { user: row, promotedToAdmin: promoteToAdmin }
 }
 
 export async function findById(env: Env, id: string): Promise<UserRow | null> {
