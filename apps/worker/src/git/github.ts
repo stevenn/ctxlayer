@@ -20,8 +20,16 @@ import type {
   OpenOrUpdatePrInput
 } from './provider'
 import { assertSafeFetchUrl, githubApiBase, githubWebBase } from './url'
-
-const MD_RE = /\.(md|mdown|markdown|mkd)$/i
+import {
+  MD_RE,
+  asObj,
+  enc,
+  encPath,
+  fromBase64,
+  normalizePrefix,
+  toBase64,
+  underPrefix
+} from './provider-util'
 
 interface CallResult {
   status: number
@@ -215,42 +223,4 @@ export class GitHubProvider implements GitProviderClient {
     }
     return { status: res.status, json }
   }
-}
-
-// ----- helpers -----------------------------------------------------------
-
-function asObj(v: unknown): Record<string, unknown> {
-  return v && typeof v === 'object' ? (v as Record<string, unknown>) : {}
-}
-
-function enc(s: string): string {
-  return encodeURIComponent(s)
-}
-
-/** Encode a repo path, preserving '/' separators. */
-function encPath(p: string): string {
-  return p.split('/').map(encodeURIComponent).join('/')
-}
-
-function normalizePrefix(prefix: string): string {
-  return prefix.replace(/^\/+|\/+$/g, '')
-}
-
-function underPrefix(path: string, prefix: string): boolean {
-  if (!prefix) return true
-  return path === prefix || path.startsWith(`${prefix}/`)
-}
-
-function toBase64(text: string): string {
-  const bytes = new TextEncoder().encode(text)
-  let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
-  return btoa(bin)
-}
-
-function fromBase64(b64: string): string {
-  const bin = atob(b64.replace(/\s/g, ''))
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return new TextDecoder().decode(bytes)
 }
