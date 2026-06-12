@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { bumpLastSeen, findById } from '../db/queries/users'
+import { bumpLastSeen } from '../db/queries/users'
 import type { MeResponse, Role } from '@ctxlayer/shared'
 
 export const meRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -9,13 +9,9 @@ export const meRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 meRoute.use('*', requireUser)
 
 meRoute.get('/', async (c) => {
-  const { userId } = c.get('user')
-  const row = await findById(c.env, userId)
-  if (!row) {
-    // Cookie referenced a user that no longer exists (deleted in DB).
-    // Caller should sign in again.
-    return c.json({ error: 'not_signed_in' }, 401)
-  }
+  // requireUser's per-request lifecycle re-check already fetched (and
+  // status-gated) the full row — read it instead of a second findById.
+  const row = c.get('userRow')
   // Fire-and-forget last_seen update; tolerate transient D1 errors.
   c.executionCtx.waitUntil(
     bumpLastSeen(c.env, row.id).catch((err) => console.error('bumpLastSeen failed', err))
