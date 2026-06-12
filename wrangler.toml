@@ -126,15 +126,20 @@ queue = "ctxlayer-reindex"
 binding = "GIT_SYNC_QUEUE"
 queue = "ctxlayer-git-sync"
 
+# max_retries bounds the redelivery budget so a poison message (incl. the
+# unknown-queue branch in index.ts) can't retry forever. Consumers alert on the
+# final attempt rather than letting the platform silently drop (ops/alert.ts).
 [[queues.consumers]]
 queue = "ctxlayer-usage"
 max_batch_size = 100
 max_batch_timeout = 5
+max_retries = 5
 
 [[queues.consumers]]
 queue = "ctxlayer-reindex"
 max_batch_size = 10
 max_batch_timeout = 30
+max_retries = 5
 
 # Git mirror sync. One message per source per run; the consumer walks
 # the repo tree, imports changed *.md, and enqueues reindex. Small batch
@@ -143,6 +148,7 @@ max_batch_timeout = 30
 queue = "ctxlayer-git-sync"
 max_batch_size = 5
 max_batch_timeout = 30
+max_retries = 5
 
 [triggers]
 # Nightly (03:00): prune usage_events + orphan oauth clients.

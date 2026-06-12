@@ -23,3 +23,8 @@ PUBLIC_BASE_URL=https://your-worker.workers.dev
 # when not. "invite" = invite/join-code only. Invites + join codes admit under
 # any policy.
 # ACCESS_POLICY=request
+
+# Operator alerting (optional). Slack/Discord/generic incoming-webhook URL —
+# when set, cron/queue/poison-message failures are POSTed here (ops/alert.ts).
+# Set via `wrangler secret put ALERT_WEBHOOK_URL`. Unset ⇒ alerting is a no-op.
+# ALERT_WEBHOOK_URL=https://hooks.slack.com/services/...

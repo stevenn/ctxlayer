@@ -45,5 +45,6 @@ SESSION_COOKIE_SECRET=
 CI_SMOKE_OAUTH_CLIENT_ID=
 CI_SMOKE_OAUTH_CLIENT_SECRET=
 
-# Observability (optional; leave blank to disable)
-SENTRY_DSN_WORKER=
+# Observability (optional; leave blank to disable). Slack/Discord/generic
+# incoming webhook — cron/queue/poison failures are POSTed here.
+ALERT_WEBHOOK_URL=

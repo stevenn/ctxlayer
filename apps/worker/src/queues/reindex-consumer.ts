@@ -7,6 +7,12 @@ import { renderBlocksToMarkdown } from '../rag/markdown'
 import { chunkMarkdown, type Chunk } from '../rag/chunker'
 import { embed } from '../rag/embedder'
 import { upsertChunks } from '../rag/index'
+import { notify } from '../ops/alert'
+
+// Mirror of wrangler.toml's `max_retries` on the reindex consumer: on the
+// final attempt we alert + ack (so a poison message is surfaced, not silently
+// dropped by the platform) instead of retrying into the void.
+const MAX_REINDEX_ATTEMPTS = 5
 
 /**
  * Batch consumer for ctxlayer-reindex.
@@ -94,12 +100,37 @@ export async function reindexConsumer(
           err: message,
           cause: cause instanceof Error ? cause.message : undefined
         })
+        // A doc that will never index is silently unsearchable — surface it.
+        await notify(env, {
+          level: 'error',
+          event: 'reindex.permanent_failure',
+          detail: `doc=${parsed.data.docId}: ${message}`
+        })
+        msg.ack()
+        continue
+      }
+      // Transient (R2 / Workers AI / D1). Retry with backoff — but once the
+      // retry budget is spent, alert + ack rather than let the platform drop
+      // it silently (the doc would stay unsearchable with no signal).
+      if (msg.attempts >= MAX_REINDEX_ATTEMPTS) {
+        console.error('reindex-consumer: retry budget exhausted; dropping', {
+          id: msg.id,
+          body: parsed.data,
+          attempts: msg.attempts,
+          err: message
+        })
+        await notify(env, {
+          level: 'error',
+          event: 'reindex.poison',
+          detail: `doc=${parsed.data.docId} after ${msg.attempts} attempts: ${message}`
+        })
         msg.ack()
         continue
       }
       console.error('reindex-consumer: pipeline error; retrying', {
         id: msg.id,
         body: parsed.data,
+        attempts: msg.attempts,
         err: message
       })
       msg.retry()

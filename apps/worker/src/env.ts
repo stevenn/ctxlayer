@@ -28,7 +28,10 @@ export interface Env {
   GITHUB_CLIENT_SECRET: string
   ENCRYPTION_KEY: string
   SESSION_COOKIE_SECRET: string
-  SENTRY_DSN_WORKER?: string
+  // Optional operator-alert webhook (Slack/Discord/generic incoming webhook).
+  // When set, `ops/alert.ts notify()` POSTs cron/queue/poison failures here so
+  // they're not buried in pull-only logs. Unset ⇒ alerting is a no-op.
+  ALERT_WEBHOOK_URL?: string
 
   // Resource bindings
   DB: D1Database
