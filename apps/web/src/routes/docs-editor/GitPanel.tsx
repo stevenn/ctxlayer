@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Alert, Badge, Button, Group, PasswordInput, Stack, Text } from '@mantine/core'
 import type { GitDocStatus } from '@ctxlayer/shared'
 import { prepareGitReviewUrl, proposeGitPullRequest, putGitUserCredential } from '../../lib/api'
@@ -28,6 +28,25 @@ export function GitPanel({
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [token, setToken] = useState('')
   const [connectOpen, setConnectOpen] = useState(false)
+
+  // Surface the result of the OAuth round-trip (the callback bounces back to
+  // /app/docs/:id?git_oauth_connected=… or ?git_oauth_error=…), then clean the
+  // query so a reload doesn't re-show it.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    const connected = params.get('git_oauth_connected')
+    const err = params.get('git_oauth_error')
+    if (!connected && !err) return
+    setMsg(
+      connected
+        ? 'Connected via OAuth — your commits will be authored as you.'
+        : `OAuth connect failed (${err}).`
+    )
+    params.delete('git_oauth_connected')
+    params.delete('git_oauth_error')
+    const qs = params.toString()
+    window.history.replaceState(null, '', window.location.pathname + (qs ? `?${qs}` : ''))
+  }, [])
 
   const stateColor =
     status.syncState === 'conflict'
@@ -153,6 +172,19 @@ export function GitPanel({
         {canEdit && (
           <Button size="compact-xs" variant="subtle" onClick={reviewInBrowser} loading={busy}>
             Review &amp; create in {status.provider}…
+          </Button>
+        )}
+        {canEdit && status.oauthConfigured && (
+          <Button
+            size="xs"
+            variant="default"
+            onClick={() => {
+              window.location.href =
+                `/api/git-sources/${encodeURIComponent(status.gitSourceId)}/oauth/start` +
+                `?doc=${encodeURIComponent(docId)}`
+            }}
+          >
+            Connect via {status.provider} (OAuth)
           </Button>
         )}
         {canEdit && !connectOpen && (

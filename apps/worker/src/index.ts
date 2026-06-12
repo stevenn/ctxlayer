@@ -12,6 +12,7 @@ import { docTagsRoute } from './api/doc-tags'
 import { foldersRoute } from './api/folders'
 import { searchRoute } from './api/search'
 import { gitDocsRoute, gitSourcesUserRoute } from './api/git'
+import { gitOauthCallbackRoute, gitOauthStartRoute } from './api/git-oauth'
 import { usersRoute } from './api/users'
 import { teamsRoute, productsRoute, rolesRoute } from './api/teams'
 import { adminTeamsRoute } from './api/admin-teams'
@@ -74,6 +75,8 @@ app.route('/api/docs', docTagsRoute)
 app.route('/api/docs', gitDocsRoute)
 // Per-user git credential connect (PAT) for write-back authorship.
 app.route('/api/git-sources', gitSourcesUserRoute)
+app.route('/api/git-sources', gitOauthStartRoute)
+app.route('/api/git-sources/oauth', gitOauthCallbackRoute)
 app.route('/api/folders', foldersRoute)
 // Semantic search over the doc library (RAG). Shares its core with the
 // MCP `search_docs` tool via rag/search.ts.

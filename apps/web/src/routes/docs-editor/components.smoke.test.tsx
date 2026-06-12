@@ -65,6 +65,7 @@ const gitStatus: GitDocStatus = {
   syncState: 'clean',
   syncedAt: 1_700_000_000,
   canWrite: true,
+  oauthConfigured: false,
   pr: null
 }
 

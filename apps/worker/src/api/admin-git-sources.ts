@@ -11,6 +11,7 @@
 import { Hono } from 'hono'
 import {
   CreateGitSourceRequest,
+  GitOAuthConfigRequest,
   GitSetCredentialRequest,
   ReplaceVisibilityRequest,
   UpdateGitSourceRequest,
@@ -29,10 +30,12 @@ import {
   listGitSources,
   patchGitSource,
   replaceGitSourceVisibility,
+  setGitSourceAuthConfig,
   upsertGitSharedCredential
 } from '../db/queries/git-sources'
+import { parseGitAuthConfig } from '../git/git-oauth'
 import { setDocProductTag } from '../db/queries/doc-tags'
-import { seal } from '../crypto/aead'
+import { seal, sealedToString } from '../crypto/aead'
 import { audit } from '../audit/log'
 
 export const adminGitSourcesRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -194,6 +197,63 @@ adminGitSourcesRoute.delete('/:id/shared-credentials', async (c) => {
   await audit(c.env, {
     actorId: actor.userId,
     action: 'git_source.shared_token_clear',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  return new Response(null, { status: 204 })
+})
+
+/**
+ * Configure the source's static (pre-registered) OAuth client so users can
+ * connect via OAuth instead of pasting a PAT. The write-only `clientSecret` is
+ * sealed into `clientSecretCiphertext` and stripped; on edit with no new
+ * secret the existing sealed value is carried forward. The whole auth_config
+ * column is replaced, and the read path redacts the ciphertext.
+ */
+adminGitSourcesRoute.put('/:id/oauth', async (c) => {
+  const id = c.req.param('id')
+  const row = await getGitSourceById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  const parsed = GitOAuthConfigRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const input = parsed.data
+  if (isSameOrigin(input.tokenUrl, c.env.PUBLIC_BASE_URL)) {
+    return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
+
+  const current = parseGitAuthConfig(row.auth_config)
+  let clientSecretCiphertext = current.oauth?.clientSecretCiphertext
+  if (input.clientSecret) {
+    clientSecretCiphertext = sealedToString(await seal(input.clientSecret, c.env.ENCRYPTION_KEY))
+  }
+  const authConfig = {
+    ...current,
+    oauth: {
+      clientId: input.clientId,
+      authorizeUrl: input.authorizeUrl,
+      tokenUrl: input.tokenUrl,
+      scopes: input.scopes,
+      ...(clientSecretCiphertext ? { clientSecretCiphertext } : {})
+    }
+  }
+  await setGitSourceAuthConfig(c.env, id, JSON.stringify(authConfig))
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'git_source.oauth_config',
+    target: id,
+    meta: { slug: row.slug, clientId: input.clientId }
+  })
+  return new Response(null, { status: 204 })
+})
+
+adminGitSourcesRoute.delete('/:id/oauth', async (c) => {
+  const id = c.req.param('id')
+  const row = await getGitSourceById(c.env, id)
+  if (!row) return c.json({ error: 'not_found' }, 404)
+  await setGitSourceAuthConfig(c.env, id, null)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'git_source.oauth_clear',
     target: id,
     meta: { slug: row.slug }
   })

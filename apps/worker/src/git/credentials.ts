@@ -15,6 +15,8 @@ import {
   getGitUserCredential,
   type GitSourceRow
 } from '../db/queries/git-sources'
+import { GitOAuthFlowProvider, gitStaticOAuth } from './git-oauth'
+import { refreshStatic } from '../upstream/oauth-static'
 
 interface SealedRow {
   ciphertext: Uint8Array
@@ -39,6 +41,31 @@ async function openToken(env: Env, row: SealedRow, kind: 'bearer' | 'oauth'): Pr
 }
 
 /**
+ * Resolve the acting user's token for a source: a freshly-refreshed OAuth
+ * access token (static flow, 5-min expiry buffer) when the stored cred is
+ * `oauth` AND the source has OAuth configured, else the stored bearer/oauth
+ * token as-is. Null when there's no usable credential.
+ */
+async function resolveGitUserToken(
+  env: Env,
+  source: GitSourceRow,
+  userId: string
+): Promise<string | null> {
+  const c = await getGitUserCredential(env, userId, source.id)
+  if (!c) return null
+  if (c.kind === 'oauth') {
+    const oauth = gitStaticOAuth(source)
+    if (oauth) {
+      // Refresh near expiry + persist the rotated token.
+      return refreshStatic(env, new GitOAuthFlowProvider(env, source, userId), oauth)
+    }
+    // Legacy: an oauth bundle is stored but no client config to refresh with.
+    return openToken(env, c, 'oauth')
+  }
+  return openToken(env, c, 'bearer')
+}
+
+/**
  * Token for read/sync/index. shared_bearer ⇒ the org token; user_* ⇒ the
  * acting user's token (only available during interactive sync). Returns
  * null when no usable credential is configured.
@@ -53,8 +80,7 @@ export async function resolveGitReadToken(
     return c ? openToken(env, c, 'bearer') : null
   }
   if (!opts.userId) return null
-  const c = await getGitUserCredential(env, opts.userId, source.id)
-  return c ? openToken(env, c, c.kind) : null
+  return resolveGitUserToken(env, source, opts.userId)
 }
 
 export interface ResolvedWriteToken {
@@ -73,11 +99,8 @@ export async function resolveGitWriteToken(
   userId: string
 ): Promise<ResolvedWriteToken | null> {
   if (source.write_strategy !== 'shared_bearer') {
-    const c = await getGitUserCredential(env, userId, source.id)
-    if (c) {
-      const token = await openToken(env, c, c.kind)
-      if (token) return { token, author: 'user' }
-    }
+    const token = await resolveGitUserToken(env, source, userId)
+    if (token) return { token, author: 'user' }
   }
   const s = await getGitSharedCredential(env, source.id)
   if (s) {
