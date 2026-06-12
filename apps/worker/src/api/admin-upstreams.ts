@@ -46,10 +46,10 @@ import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
 import { seal, sealedToString } from '../crypto/aead'
 import { audit } from '../audit/log'
-import { listSkillsForUpstream } from '../db/queries/skill-attachments'
-import { listDocsForUpstream } from '../db/queries/doc-attachments'
 import { listToolAccessForUpstream, replaceToolAccessForTool } from '../db/queries/tool-access'
-import { groupAttachmentsForTools } from './upstreams-attachments'
+import { buildUpstreamToolsPayload } from './upstreams-attachments'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -65,15 +65,13 @@ adminUpstreamsRoute.get('/', async (c) => {
 adminUpstreamsRoute.get('/:id', async (c) => {
   const userId = c.get('user').userId
   const row = await adminRowFor(c.env, c.req.param('id'), userId)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   return c.json(row)
 })
 
 adminUpstreamsRoute.post('/', async (c) => {
-  const parsed = CreateUpstreamRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, CreateUpstreamRequest)
+  if (!parsed.ok) return parsed.res
   const input = parsed.data
   // Self-loop guard: an upstream must not point back at this ctxlayer
   // deployment (host+port match against PUBLIC_BASE_URL), or the proxy
@@ -131,11 +129,9 @@ adminUpstreamsRoute.post('/', async (c) => {
 adminUpstreamsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
   const current = await getUpstreamById(c.env, id)
-  if (!current) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateUpstreamRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  if (!current) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateUpstreamRequest)
+  if (!parsed.ok) return parsed.res
   if (parsed.data.url && isSameOrigin(parsed.data.url, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
@@ -180,11 +176,9 @@ adminUpstreamsRoute.delete('/:id', async (c) => {
 // Replace the visibility rule-set for one upstream in a single batch.
 adminUpstreamsRoute.put('/:id/visibility', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = ReplaceVisibilityRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  if (!(await getUpstreamById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, ReplaceVisibilityRequest)
+  if (!parsed.ok) return parsed.res
   await replaceVisibility(c.env, id, parsed.data.rules)
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -205,7 +199,7 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
  */
 adminUpstreamsRoute.get('/:id/tool-access', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getUpstreamById(c.env, id))) return notFound(c)
   const [rows, tools] = await Promise.all([
     listToolAccessForUpstream(c.env, id),
     listCachedTools(c.env, id)
@@ -232,11 +226,9 @@ adminUpstreamsRoute.get('/:id/tool-access', async (c) => {
 // tool to inherit (open).
 adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = ReplaceToolAccessRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  if (!(await getUpstreamById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, ReplaceToolAccessRequest)
+  if (!parsed.ok) return parsed.res
   await replaceToolAccessForTool(c.env, id, parsed.data.toolName, parsed.data.rules)
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -266,37 +258,18 @@ adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
 adminUpstreamsRoute.get('/:id/tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   // Admin view sees drafts as well as published; non-admin user route
   // (api/upstreams.ts) only sees published.
-  const [tools, skillAtt, docAtt] = await Promise.all([
-    listCachedTools(c.env, id),
-    listSkillsForUpstream(c.env, id, { includeDrafts: true }),
-    listDocsForUpstream(c.env, id)
-  ])
-  const bundle = groupAttachmentsForTools(skillAtt, docAtt)
-  return c.json({
-    upstreamId: id,
-    slug: row.slug,
-    attachedSkills: bundle.whole.skills,
-    attachedDocs: bundle.whole.docs,
-    tools: tools.map((t) => ({
-      toolName: t.tool_name,
-      description: t.description,
-      inputSchema: safeParse(t.input_schema),
-      cachedAt: t.cached_at,
-      lastSchemaChangeAt: t.last_schema_change_at,
-      lastDiffSummary: t.last_diff_summary,
-      attachedSkills: bundle.byTool.get(t.tool_name)?.skills ?? [],
-      attachedDocs: bundle.byTool.get(t.tool_name)?.docs ?? []
-    }))
-  })
+  return c.json(
+    await buildUpstreamToolsPayload(c.env, { id, slug: row.slug }, { includeDrafts: true })
+  )
 })
 
 adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   let conn: ReturnType<typeof toUpstreamConnection>
   try {
     conn = toUpstreamConnection(row)
@@ -336,14 +309,12 @@ adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
 adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   if (row.auth_strategy !== 'shared_bearer') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'shared_bearer' }, 400)
   }
-  const parsed = PasteBearerRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, PasteBearerRequest)
+  if (!parsed.ok) return parsed.res
   const actor = c.get('user')
   const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)
   await upsertSharedCredential(c.env, id, {
@@ -386,7 +357,7 @@ adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
 adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   const actor = c.get('user')
   await deleteSharedCredential(c.env, id)
   await audit(c.env, {
@@ -461,17 +432,4 @@ function oauthEndpointSelfLoop(
   return [oauth.authorizeUrl, oauth.tokenUrl].some(
     (u) => typeof u === 'string' && isSameOrigin(u, env.PUBLIC_BASE_URL)
   )
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
-}
-
-function safeParse(s: string): unknown {
-  try {
-    return JSON.parse(s)
-  } catch {
-    return s
-  }
 }

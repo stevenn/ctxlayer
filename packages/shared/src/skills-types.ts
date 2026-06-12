@@ -122,15 +122,9 @@ export const SkillExportResponse = z.object({
 })
 export type SkillExportResponse = z.infer<typeof SkillExportResponse>
 
-export const SkillRevisionSummary = z.object({
-  id: z.string(),
-  authorId: z.string().nullish(),
-  createdAt: z.number(),
-  byteSize: z.number(),
-  contentHash: z.string(),
-  kind: z.enum(['autosave', 'explicit']).default('explicit')
-})
-export type SkillRevisionSummary = z.infer<typeof SkillRevisionSummary>
+// Same shape as a doc revision — alias the docs schema (both the value
+// and the inferred type travel with this re-export).
+export { RevisionSummary as SkillRevisionSummary } from './docs-types'
 
 // M8: schema-reference linter finding. Server-side warning, never
 // blocks save. SPA renders as a yellow strip above the editor.

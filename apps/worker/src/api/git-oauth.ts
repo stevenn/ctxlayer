@@ -25,6 +25,7 @@ import {
   type GitOAuthReturn
 } from '../git/git-oauth'
 import { buildAuthorizeRedirect, exchangeCode, refreshStatic } from '../upstream/oauth-static'
+import { notFound } from './respond'
 
 /** Build the SPA URL to bounce back to — always from a fixed prefix (no open redirect). */
 function returnUrl(env: Env, ret: GitOAuthReturn | undefined, params: string): string {
@@ -43,7 +44,7 @@ gitOauthStartRoute.get('/:id/oauth/start', async (c) => {
   const actor = c.get('user')
   const userId = actor.userId
   const source = await getGitSourceById(c.env, c.req.param('id'))
-  if (!source) return c.json({ error: 'not_found' }, 404)
+  if (!source) return notFound(c)
   // Same gate as the PAT path (PUT /:id/credentials): sources are
   // invisible-until-granted, so connecting needs a visibility grant too.
   const allowed =
@@ -91,7 +92,7 @@ gitOauthCallbackRoute.get('/callback', async (c) => {
   if (stored.userId !== userId) return c.json({ error: 'oauth_user_mismatch' }, 403)
 
   const source = await getGitSourceById(c.env, stored.gitSourceId)
-  if (!source) return c.json({ error: 'not_found' }, 404)
+  if (!source) return notFound(c)
   // Re-check visibility at token time — a grant revoked mid-dance must not
   // still land a credential.
   const allowed =

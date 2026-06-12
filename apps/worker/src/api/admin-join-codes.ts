@@ -13,6 +13,7 @@ import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { audit } from '../audit/log'
 import { createJoinCode, listJoinCodes, revokeJoinCode } from '../db/queries/join-codes'
+import { parseJsonBody } from './respond'
 
 export const adminJoinCodesRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminJoinCodesRoute.use('*', requireAdmin)
@@ -21,8 +22,8 @@ adminJoinCodesRoute.use('*', requireCsrf)
 adminJoinCodesRoute.get('/', async (c) => c.json(await listJoinCodes(c.env)))
 
 adminJoinCodesRoute.post('/', async (c) => {
-  const parsed = CreateJoinCodeRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateJoinCodeRequest)
+  if (!parsed.ok) return parsed.res
   const { joinCode, code } = await createJoinCode(c.env, parsed.data, c.get('user').userId)
   await audit(c.env, {
     actorId: c.get('user').userId,

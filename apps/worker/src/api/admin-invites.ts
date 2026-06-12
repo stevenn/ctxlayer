@@ -11,6 +11,7 @@ import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { audit } from '../audit/log'
 import { createInvites, deleteInvite, listInvites } from '../db/queries/invites'
+import { parseJsonBody } from './respond'
 
 export const adminInvitesRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminInvitesRoute.use('*', requireAdmin)
@@ -21,8 +22,8 @@ adminInvitesRoute.get('/', async (c) => c.json(await listInvites(c.env)))
 // Accepts a single address or a pasted bulk list; server normalises +
 // dedupes + skips known users/invites. Returns added/skipped/invalid counts.
 adminInvitesRoute.post('/', async (c) => {
-  const parsed = CreateInvitesRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateInvitesRequest)
+  if (!parsed.ok) return parsed.res
   const result = await createInvites(c.env, parsed.data.emails, c.get('user').userId)
   await audit(c.env, {
     actorId: c.get('user').userId,

@@ -19,17 +19,22 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider-types'
-import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { gitlabApiBase, gitlabWebBase } from './url'
-import { MD_RE, asObj, enc, encPath, fromBase64, normalizePrefix, underPrefix } from './provider-util'
+import {
+  MD_RE,
+  asObj,
+  enc,
+  encPath,
+  fromBase64,
+  jsonMessage,
+  normalizePrefix,
+  providerCall,
+  underPrefix,
+  type CallResult
+} from './provider-util'
 
 const TREE_PER_PAGE = 100
 const TREE_MAX_PAGES = 50 // cap the walk at ~5000 entries/page-loop
-
-interface CallResult {
-  status: number
-  json: unknown
-}
 
 export class GitLabProvider implements GitProviderClient {
   private readonly api: string
@@ -207,33 +212,19 @@ export class GitLabProvider implements GitProviderClient {
     path: string,
     opts?: { body?: unknown; allow?: number[] }
   ): Promise<CallResult> {
-    const url = `${this.api}${path}`
-    assertSafeFetchUrl(url)
-    const init: RequestInit = { method, headers: this.headers(opts?.body !== undefined) }
-    if (opts?.body !== undefined) init.body = JSON.stringify(opts.body)
-    const res = await fetch(url, init)
-    const text = await res.text()
-    let json: unknown = null
-    if (text) {
-      try {
-        json = JSON.parse(text)
-      } catch {
-        json = null
-      }
-    }
-    if (!res.ok && !(opts?.allow ?? []).includes(res.status)) {
+    return providerCall({
+      provider: 'gitlab',
+      method,
+      url: `${this.api}${path}`,
+      headers: this.headers(opts?.body !== undefined),
+      body: opts?.body,
+      allow: opts?.allow,
       // GitLab's `message`/`error` is a non-secret summary (the token is never
       // echoed). Log it for diagnostics; never log the full body.
-      const body = json as { message?: unknown; error?: unknown } | null
-      const message =
-        typeof body?.message === 'string'
-          ? body.message
-          : typeof body?.error === 'string'
-            ? body.error
-            : ''
-      console.error(`gitlab: ${method} ${url} -> ${res.status}` + (message ? ` :: ${message}` : ''))
-      throw new Error(`gitlab_api_error:${res.status}`)
-    }
-    return { status: res.status, json }
+      errorDetail: (json) => {
+        const message = jsonMessage(json, 'error')
+        return message ? ` :: ${message}` : ''
+      }
+    })
   }
 }

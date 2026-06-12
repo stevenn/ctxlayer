@@ -9,6 +9,7 @@
 
 import type { Env } from '../../env'
 import type { CreateJoinCodeRequest, JoinCode, JoinCodeRedeem } from '@ctxlayer/shared'
+import { sha256Hex } from '../../crypto/hash'
 
 // Crockford-ish base32 minus ambiguous glyphs (no I/L/O/U, no 0/1) so a
 // code is easy to read aloud and re-type.
@@ -32,11 +33,6 @@ function groupForDisplay(canonical: string): string {
 /** Strip separators/case so `abcd-efgh` and `ABCDEFGH` hash identically. */
 export function normalizeCode(input: string): string {
   return input.toUpperCase().replace(/[^0-9A-Z]/g, '')
-}
-
-async function sha256Hex(s: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s))
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 interface JoinCodeRow {

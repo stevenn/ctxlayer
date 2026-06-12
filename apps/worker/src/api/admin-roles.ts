@@ -20,6 +20,8 @@ import {
   patchRole,
   toRoleRef
 } from '../db/queries/roles'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 export const adminRolesRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminRolesRoute.use('*', requireAdmin)
@@ -28,8 +30,8 @@ adminRolesRoute.use('*', requireCsrf)
 adminRolesRoute.get('/', async (c) => c.json(await listAdminRoles(c.env)))
 
 adminRolesRoute.post('/', async (c) => {
-  const parsed = CreateRoleRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateRoleRequest)
+  if (!parsed.ok) return parsed.res
   try {
     const row = await createRole(c.env, parsed.data)
     await audit(c.env, {
@@ -47,9 +49,9 @@ adminRolesRoute.post('/', async (c) => {
 
 adminRolesRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getRoleById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateRoleRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getRoleById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateRoleRequest)
+  if (!parsed.ok) return parsed.res
   try {
     await patchRole(c.env, id, parsed.data)
     await audit(c.env, {
@@ -79,8 +81,3 @@ adminRolesRoute.delete('/:id', async (c) => {
   }
   return new Response(null, { status: 204 })
 })
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
-}

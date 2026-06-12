@@ -9,15 +9,11 @@
 
 import { Hono } from 'hono'
 import type { Env } from '../env'
-import { signSession, sessionSetCookie } from '../auth/session'
-import { csrfSetCookie, newCsrfToken } from '../auth/csrf'
-import { completeMcpAuthorization } from './complete-mcp'
 import { admitOrReject } from './admit'
 import type { AdmissionIdentity } from '../util/allowlist'
+import { exchangeCodeForToken, finishSignIn } from './flow'
 import {
-  appRedirect,
   callbackUrl,
-  clearStateCookie,
   pkceChallenge,
   pkceVerifier,
   randomToken,
@@ -73,25 +69,22 @@ githubIdpRoute.get('/callback', async (c) => {
   if (!stateRow) return signInErrorRedirect(c.env, 'state_mismatch')
 
   // 1. Exchange code for access token.
-  const tokenRes = await fetch(TOKEN, {
-    method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' },
-    body: new URLSearchParams({
+  const exchanged = await exchangeCodeForToken(
+    c.env,
+    'github',
+    TOKEN,
+    new URLSearchParams({
       grant_type: 'authorization_code',
       code,
       client_id: c.env.GITHUB_CLIENT_ID,
       client_secret: c.env.GITHUB_CLIENT_SECRET,
       redirect_uri: callbackUrl(c.env, 'github'),
       code_verifier: stateRow.codeVerifier
-    })
-  })
-  if (!tokenRes.ok) {
-    // Never log the body — it can carry access_token on partial-success
-    // shapes, plus full IdP error metadata.
-    console.error('github token exchange failed', tokenRes.status)
-    return signInErrorRedirect(c.env, 'token_exchange_failed')
-  }
-  const token = (await tokenRes.json()) as { access_token?: string; error?: string }
+    }),
+    { accept: 'application/json' }
+  )
+  if (!exchanged.ok) return exchanged.res
+  const token = exchanged.json as { access_token?: string; error?: string }
   if (!token.access_token) return signInErrorRedirect(c.env, 'token_exchange_failed')
 
   // 2. Fetch profile + primary verified email.
@@ -144,23 +137,7 @@ githubIdpRoute.get('/callback', async (c) => {
     stateRow.joinCode
   )
   if ('response' in outcome) return outcome.response
-  const user = outcome.user
 
-  // 5a. MCP OAuth path — complete the grant and redirect to the
-  // MCP client's redirect_uri. No SPA cookie is set.
-  if (stateRow.oauthRequestId) {
-    return completeMcpAuthorization(c.env, stateRow.oauthRequestId, user)
-  }
-
-  // 5b. SPA path — issue session + CSRF cookies.
-  const session = await signSession(
-    { userId: user.id, role: user.role },
-    c.env.SESSION_COOKIE_SECRET
-  )
-  const res = appRedirect(c.env, stateRow.returnTo)
-  const out = new Headers(res.headers)
-  out.append('Set-Cookie', sessionSetCookie(session))
-  out.append('Set-Cookie', csrfSetCookie(newCsrfToken()))
-  out.append('Set-Cookie', clearStateCookie())
-  return new Response(null, { status: res.status, headers: out })
+  // 5. Complete: MCP OAuth grant or SPA session + CSRF cookies.
+  return finishSignIn(c.env, stateRow, outcome.user)
 })

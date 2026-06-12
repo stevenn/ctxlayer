@@ -66,9 +66,8 @@ export const UsageDailyTotal = z.object({
 })
 export type UsageDailyTotal = z.infer<typeof UsageDailyTotal>
 
-export const UsageTopTool = z.object({
-  tool: z.string(),
-  upstreamId: z.string(), // '' = built-in
+/** Per-row counters shared by the top-tools / top-upstreams breakdowns. */
+export const UsageCounters = z.object({
   calls: z.number().int().min(0),
   reqTokens: z.number().int().min(0),
   respTokens: z.number().int().min(0),
@@ -77,19 +76,18 @@ export const UsageTopTool = z.object({
   timeouts: z.number().int().min(0).default(0),
   truncations: z.number().int().min(0).default(0)
 })
+export type UsageCounters = z.infer<typeof UsageCounters>
+
+export const UsageTopTool = UsageCounters.extend({
+  tool: z.string(),
+  upstreamId: z.string() // '' = built-in
+})
 export type UsageTopTool = z.infer<typeof UsageTopTool>
 
-export const UsageTopUpstream = z.object({
+export const UsageTopUpstream = UsageCounters.extend({
   upstreamId: z.string(),
   upstreamSlug: z.string().nullable(),
-  upstreamName: z.string().nullable(),
-  calls: z.number().int().min(0),
-  reqTokens: z.number().int().min(0),
-  respTokens: z.number().int().min(0),
-  errors: z.number().int().min(0),
-  // WI-5 resilience analytics. Default 0 so older rows/clients parse.
-  timeouts: z.number().int().min(0).default(0),
-  truncations: z.number().int().min(0).default(0)
+  upstreamName: z.string().nullable()
 })
 export type UsageTopUpstream = z.infer<typeof UsageTopUpstream>
 

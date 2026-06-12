@@ -23,15 +23,14 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { canEditDoc, listDocIdsInFolder, renameFolderPrefix } from '../db/queries/docs'
 import { audit } from '../audit/log'
+import { parseJsonBody } from './respond'
 
 export const foldersRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 foldersRoute.use('*', requireUser)
 
 foldersRoute.patch('/', requireCsrf, async (c) => {
-  const parsed = FolderRenameRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) {
-    return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-  }
+  const parsed = await parseJsonBody(c, FolderRenameRequest)
+  if (!parsed.ok) return parsed.res
   const { oldPath, newPath } = parsed.data
   if (oldPath === newPath) return c.json({ moved: 0, ids: [] })
 

@@ -37,6 +37,8 @@ import { parseGitAuthConfig } from '../git/git-oauth'
 import { setDocProductTag } from '../db/queries/doc-tags'
 import { seal, sealedToString } from '../crypto/aead'
 import { audit } from '../audit/log'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 export const adminGitSourcesRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminGitSourcesRoute.use('*', requireAdmin)
@@ -51,13 +53,13 @@ adminGitSourcesRoute.get('/', async (c) => {
 
 adminGitSourcesRoute.get('/:id', async (c) => {
   const row = await gitAdminRowFor(c.env, c.req.param('id'), c.get('user').userId)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   return c.json(row)
 })
 
 adminGitSourcesRoute.post('/', async (c) => {
-  const parsed = CreateGitSourceRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateGitSourceRequest)
+  if (!parsed.ok) return parsed.res
   const input = parsed.data
   // GitHub/Azure address repos by owner; reject early with a clear code.
   if ((input.provider === 'github' || input.provider === 'azure') && !input.owner) {
@@ -86,9 +88,9 @@ adminGitSourcesRoute.post('/', async (c) => {
 adminGitSourcesRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
   const before = await getGitSourceById(c.env, id)
-  if (!before) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateGitSourceRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!before) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateGitSourceRequest)
+  if (!parsed.ok) return parsed.res
   if (parsed.data.baseUrl && isSameOrigin(parsed.data.baseUrl, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
@@ -140,9 +142,9 @@ adminGitSourcesRoute.delete('/:id', async (c) => {
 
 adminGitSourcesRoute.put('/:id/visibility', async (c) => {
   const id = c.req.param('id')
-  if (!(await getGitSourceById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = ReplaceVisibilityRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getGitSourceById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, ReplaceVisibilityRequest)
+  if (!parsed.ok) return parsed.res
   await replaceGitSourceVisibility(c.env, id, parsed.data.rules)
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -161,9 +163,9 @@ adminGitSourcesRoute.put('/:id/visibility', async (c) => {
 adminGitSourcesRoute.put('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
   const row = await getGitSourceById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  const parsed = GitSetCredentialRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!row) return notFound(c)
+  const parsed = await parseJsonBody(c, GitSetCredentialRequest)
+  if (!parsed.ok) return parsed.res
   const actor = c.get('user')
   const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)
   await upsertGitSharedCredential(c.env, id, {
@@ -191,7 +193,7 @@ adminGitSourcesRoute.put('/:id/shared-credentials', async (c) => {
 adminGitSourcesRoute.delete('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
   const row = await getGitSourceById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   const actor = c.get('user')
   await deleteGitSharedCredential(c.env, id)
   await audit(c.env, {
@@ -213,9 +215,9 @@ adminGitSourcesRoute.delete('/:id/shared-credentials', async (c) => {
 adminGitSourcesRoute.put('/:id/oauth', async (c) => {
   const id = c.req.param('id')
   const row = await getGitSourceById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  const parsed = GitOAuthConfigRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!row) return notFound(c)
+  const parsed = await parseJsonBody(c, GitOAuthConfigRequest)
+  if (!parsed.ok) return parsed.res
   const input = parsed.data
   if (isSameOrigin(input.tokenUrl, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
@@ -249,7 +251,7 @@ adminGitSourcesRoute.put('/:id/oauth', async (c) => {
 adminGitSourcesRoute.delete('/:id/oauth', async (c) => {
   const id = c.req.param('id')
   const row = await getGitSourceById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
   await setGitSourceAuthConfig(c.env, id, null)
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -267,12 +269,7 @@ adminGitSourcesRoute.delete('/:id/oauth', async (c) => {
  */
 adminGitSourcesRoute.post('/:id/sync', async (c) => {
   const id = c.req.param('id')
-  if (!(await getGitSourceById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getGitSourceById(c.env, id))) return notFound(c)
   await c.env.GIT_SYNC_QUEUE.send({ sourceId: id, userId: c.get('user').userId })
   return c.json({ queued: true }, 202)
 })
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
-}

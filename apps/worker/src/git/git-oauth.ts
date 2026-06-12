@@ -21,14 +21,13 @@
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { open as openSecret, seal as sealSecret } from '../crypto/aead'
 import {
   getGitUserCredential,
   upsertGitUserCredential,
   type GitSourceRow
 } from '../db/queries/git-sources'
 import { staticOAuth, type StaticFlowProvider, type StaticOAuth } from '../upstream/oauth-static'
-import { mergeRefreshableTokens } from '../upstream/oauth-provider'
+import { openStoredTokens, prepareStoredTokens } from '../upstream/oauth-tokens'
 
 const VERIFIER_TTL_SECONDS = 600
 const REDIRECT_PATH = '/api/git-sources/oauth/callback'
@@ -45,15 +44,6 @@ interface StoredGitVerifier {
   gitSourceId: string
   return?: GitOAuthReturn
   createdAt: number
-}
-
-interface StoredGitTokens {
-  access_token: string
-  token_type?: string
-  refresh_token?: string
-  scope?: string
-  /** Absolute unix seconds when the access token expires. */
-  expires_at?: number
 }
 
 /** Parse a git source's auth_config JSON (NULL / malformed ⇒ empty). */
@@ -116,41 +106,18 @@ export class GitOAuthFlowProvider implements StaticFlowProvider {
   async tokens(): Promise<OAuthTokens | undefined> {
     const cred = await getGitUserCredential(this.env, this.userId, this.source.id)
     if (!cred || cred.kind !== 'oauth') return undefined
-    try {
-      const plaintext = await openSecret(
-        { ciphertext: cred.ciphertext, iv: cred.iv, keyVersion: cred.key_version },
-        this.env.ENCRYPTION_KEY
-      )
-      const stored = JSON.parse(plaintext) as StoredGitTokens
-      return {
-        access_token: stored.access_token,
-        token_type: stored.token_type ?? 'Bearer',
-        refresh_token: stored.refresh_token,
-        scope: stored.scope,
-        expires_in: stored.expires_at
-          ? Math.max(0, stored.expires_at - Math.floor(Date.now() / 1000))
-          : undefined
-      }
-    } catch (err) {
-      console.error(`git oauth tokens decrypt failed for ${this.source.slug}:`, err)
-      return undefined
-    }
+    return openStoredTokens(
+      this.env,
+      { ciphertext: cred.ciphertext, iv: cred.iv, keyVersion: cred.key_version },
+      `git oauth tokens decrypt failed for ${this.source.slug}`
+    )
   }
 
   async saveTokens(tokens: OAuthTokens): Promise<void> {
-    const now = Math.floor(Date.now() / 1000)
-    // Carry the prior refresh_token + scope forward when a refresh omits them
-    // (same rotation-safety as the upstream provider).
-    const prior = !tokens.refresh_token || !tokens.scope ? await this.tokens() : undefined
-    const merged = mergeRefreshableTokens(tokens, prior)
-    const stored: StoredGitTokens = {
-      access_token: tokens.access_token,
-      token_type: tokens.token_type,
-      refresh_token: merged.refresh_token,
-      scope: merged.scope,
-      expires_at: tokens.expires_in ? now + tokens.expires_in : undefined
-    }
-    const sealed = await sealSecret(JSON.stringify(stored), this.env.ENCRYPTION_KEY)
+    // prepareStoredTokens carries the prior refresh_token + scope forward
+    // when a refresh omits them (same rotation-safety as the upstream
+    // provider).
+    const { sealed } = await prepareStoredTokens(this.env, tokens, () => this.tokens())
     await upsertGitUserCredential(this.env, this.userId, this.source.id, {
       kind: 'oauth',
       ciphertext: sealed.ciphertext,

@@ -12,6 +12,7 @@ import { attachSkill, detachSkill, listAttachmentsForSkill } from '../db/queries
 import { getSkillById } from '../db/queries/skills'
 import { getUpstreamById } from '../db/queries/upstreams'
 import { audit } from '../audit/log'
+import { notFound, parseJsonBody } from './respond'
 
 export const skillAttachmentsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 skillAttachmentsRoute.use('*', requireUser)
@@ -21,9 +22,9 @@ skillAttachmentsRoute.get('/', async (c) => {
   const skillId = c.req.query('skillId')
   if (!skillId) return c.json({ error: 'missing_skill_id' }, 400)
   const skill = await getSkillById(c.env, skillId)
-  if (!skill) return c.json({ error: 'not_found' }, 404)
+  if (!skill) return notFound(c)
   if (c.get('user').role !== 'admin' && skill.status !== 'published')
-    return c.json({ error: 'not_found' }, 404)
+    return notFound(c)
   const rows = await listAttachmentsForSkill(c.env, skillId)
   return c.json(
     rows.map((r) => ({
@@ -35,8 +36,8 @@ skillAttachmentsRoute.get('/', async (c) => {
 })
 
 skillAttachmentsRoute.post('/', requireAdmin, async (c) => {
-  const parsed = AttachSkillRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, AttachSkillRequest)
+  if (!parsed.ok) return parsed.res
   const { skillId, upstreamId, toolName } = parsed.data
   // Both sides must exist; we don't leak which is missing in production
   // (single 'not_found' code).
@@ -44,7 +45,7 @@ skillAttachmentsRoute.post('/', requireAdmin, async (c) => {
     getSkillById(c.env, skillId),
     getUpstreamById(c.env, upstreamId)
   ])
-  if (!skill || !upstream) return c.json({ error: 'not_found' }, 404)
+  if (!skill || !upstream) return notFound(c)
   const actor = c.get('user')
   await attachSkill(c.env, { skillId, upstreamId, toolName, createdBy: actor.userId })
   await audit(c.env, {
@@ -57,8 +58,8 @@ skillAttachmentsRoute.post('/', requireAdmin, async (c) => {
 })
 
 skillAttachmentsRoute.delete('/', requireAdmin, async (c) => {
-  const parsed = AttachSkillRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, AttachSkillRequest)
+  if (!parsed.ok) return parsed.res
   const { skillId, upstreamId, toolName } = parsed.data
   await detachSkill(c.env, { skillId, upstreamId, toolName })
   await audit(c.env, {

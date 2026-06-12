@@ -51,6 +51,8 @@ import {
 } from '../storage/skills-r2'
 import { audit } from '../audit/log'
 import { lintSkillBody } from '../skills/schema-linter'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 const CONTENT_MAX_BYTES = 2 * 1024 * 1024
 
@@ -70,8 +72,8 @@ skillsRoute.get('/', async (c) => {
 })
 
 skillsRoute.post('/', requireAdmin, async (c) => {
-  const parsed = CreateSkillRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateSkillRequest)
+  if (!parsed.ok) return parsed.res
   const { userId } = c.get('user')
   try {
     const { content, ...meta } = parsed.data
@@ -107,8 +109,8 @@ skillsRoute.post('/', requireAdmin, async (c) => {
 skillsRoute.get('/:id', async (c) => {
   const id = c.req.param('id')
   const row = await getSkillById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
+  if (!isVisibleToCaller(row, c.get('user').role)) return notFound(c)
   const [attachments, tags] = await Promise.all([
     listAttachmentsForSkill(c.env, id),
     listTagsForSkill(c.env, id)
@@ -126,9 +128,9 @@ skillsRoute.get('/:id', async (c) => {
 
 skillsRoute.patch('/:id', requireAdmin, async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateSkillRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateSkillRequest)
+  if (!parsed.ok) return parsed.res
   try {
     await patchSkill(c.env, id, parsed.data)
     await audit(c.env, { actorId: c.get('user').userId, action: 'skill.patch', target: id })
@@ -141,7 +143,7 @@ skillsRoute.patch('/:id', requireAdmin, async (c) => {
 
 skillsRoute.delete('/:id', requireAdmin, async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getSkillById(c.env, id))) return notFound(c)
   await softDeleteSkill(c.env, id)
   await audit(c.env, { actorId: c.get('user').userId, action: 'skill.delete', target: id })
   return new Response(null, { status: 204 })
@@ -150,8 +152,8 @@ skillsRoute.delete('/:id', requireAdmin, async (c) => {
 skillsRoute.get('/:id/content', async (c) => {
   const id = c.req.param('id')
   const row = await getSkillById(c.env, id)
-  if (!row) return c.json({ error: 'not_found' }, 404)
-  if (!isVisibleToCaller(row, c.get('user').role)) return c.json({ error: 'not_found' }, 404)
+  if (!row) return notFound(c)
+  if (!isVisibleToCaller(row, c.get('user').role)) return notFound(c)
   const content = (await readSnapshot(c.env, id)) ?? { blocks: [] }
   return c.json(content)
 })
@@ -159,7 +161,7 @@ skillsRoute.get('/:id/content', async (c) => {
 skillsRoute.put('/:id/content', requireAdmin, async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getSkillById(c.env, id))) return notFound(c)
   const raw = await c.req.arrayBuffer()
   if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
   const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
@@ -233,7 +235,7 @@ skillsRoute.put('/:id/content', requireAdmin, async (c) => {
 
 skillsRoute.get('/:id/revisions', requireAdmin, async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getSkillById(c.env, id))) return notFound(c)
   const rows = await listSkillRevisions(c.env, id)
   const body: SkillRevisionSummary[] = rows.map(toRevisionSummary)
   return c.json(body)
@@ -242,9 +244,9 @@ skillsRoute.get('/:id/revisions', requireAdmin, async (c) => {
 skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
   const id = c.req.param('id')
   const rev = c.req.param('rev')
-  if (!(await getSkillRevision(c.env, id, rev))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getSkillRevision(c.env, id, rev))) return notFound(c)
   const content = await readRevision(c.env, id, rev)
-  if (!content) return c.json({ error: 'not_found' }, 404)
+  if (!content) return notFound(c)
   return c.json(content)
 })
 
@@ -255,9 +257,9 @@ skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
 skillsRoute.post('/:id/restore', requireAdmin, async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await getSkillById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = RestoreRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, RestoreRequest)
+  if (!parsed.ok) return parsed.res
   const sourceRev = await getSkillRevision(c.env, id, parsed.data.revisionId)
   if (!sourceRev) return c.json({ error: 'revision_not_found' }, 404)
   const newRevId = newRevisionId()
@@ -348,9 +350,4 @@ function parseDrafterMeta(s: string | null): unknown | null {
   } catch {
     return null
   }
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
 }

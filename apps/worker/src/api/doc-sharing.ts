@@ -17,6 +17,7 @@ import {
   removeEveryoneEditor,
   removeUserEditor
 } from '../db/queries/doc-editors'
+import { notFound, parseJsonBody } from './respond'
 
 export const docSharingRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 
@@ -25,7 +26,7 @@ docSharingRoute.use('*', requireCsrf)
 
 docSharingRoute.get('/:id/editors', async (c) => {
   const id = c.req.param('id')
-  if (!(await getDocById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getDocById(c.env, id))) return notFound(c)
   const view = await listEditors(c.env, id)
   const body: DocEditorsResponse = {
     users: view.users.map((u) => ({ userId: u.user_id, email: u.email, name: u.name })),
@@ -38,8 +39,8 @@ docSharingRoute.post('/:id/editors', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
   if (!(await canShareDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
-  const parsed = AddEditorRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, AddEditorRequest)
+  if (!parsed.ok) return parsed.res
   if (parsed.data.kind === 'user') {
     await addUserEditor(c.env, id, parsed.data.userId, userId)
   } else {

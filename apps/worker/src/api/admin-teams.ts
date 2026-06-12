@@ -22,6 +22,8 @@ import {
   removeTeamMember,
   toAdminTeamRow
 } from '../db/queries/teams'
+import { notFound, parseJsonBody } from './respond'
+import { isUniqueViolation } from '../db/queries/util'
 
 export const adminTeamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminTeamsRoute.use('*', requireAdmin)
@@ -33,8 +35,8 @@ adminTeamsRoute.use('*', requireCsrf)
 adminTeamsRoute.get('/', async (c) => c.json(await listAdminTeams(c.env)))
 
 adminTeamsRoute.post('/', async (c) => {
-  const parsed = CreateTeamRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const parsed = await parseJsonBody(c, CreateTeamRequest)
+  if (!parsed.ok) return parsed.res
   try {
     const row = await createTeam(c.env, parsed.data)
     await audit(c.env, {
@@ -52,9 +54,9 @@ adminTeamsRoute.post('/', async (c) => {
 
 adminTeamsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getTeamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = UpdateTeamRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getTeamById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, UpdateTeamRequest)
+  if (!parsed.ok) return parsed.res
   try {
     await patchTeam(c.env, id, parsed.data)
     await audit(c.env, {
@@ -89,15 +91,15 @@ adminTeamsRoute.delete('/:id', async (c) => {
 
 adminTeamsRoute.get('/:id/members', async (c) => {
   const id = c.req.param('id')
-  if (!(await getTeamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
+  if (!(await getTeamById(c.env, id))) return notFound(c)
   return c.json(await listTeamMembers(c.env, id))
 })
 
 adminTeamsRoute.post('/:id/members', async (c) => {
   const id = c.req.param('id')
-  if (!(await getTeamById(c.env, id))) return c.json({ error: 'not_found' }, 404)
-  const parsed = AddTeamMemberRequest.safeParse(await c.req.json().catch(() => null))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  if (!(await getTeamById(c.env, id))) return notFound(c)
+  const parsed = await parseJsonBody(c, AddTeamMemberRequest)
+  if (!parsed.ok) return parsed.res
   await addTeamMember(c.env, id, parsed.data.userId, parsed.data.role ?? 'member')
   await audit(c.env, {
     actorId: c.get('user').userId,
@@ -120,8 +122,3 @@ adminTeamsRoute.delete('/:id/members/:userId', async (c) => {
   })
   return new Response(null, { status: 204 })
 })
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
-}

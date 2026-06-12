@@ -46,6 +46,7 @@ import {
   staticOAuth
 } from '../upstream/oauth-static'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
+import { notFound } from './respond'
 
 // SPA paths we're allowed to bounce the user back to after the OAuth
 // dance — `return_to=admin` lands them on the admin upstreams page
@@ -73,7 +74,7 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
   const userId = c.get('user').userId
   const id = c.req.param('id')
   const upstream = await getUpstreamById(c.env, id)
-  if (!upstream) return c.json({ error: 'not_found' }, 404)
+  if (!upstream) return notFound(c)
   if (upstream.auth_strategy !== 'user_oauth') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
   }
@@ -214,7 +215,7 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   returnTo = stored.returnTo ?? 'user'
 
   const upstream = await getUpstreamById(c.env, stored.upstreamId)
-  if (!upstream) return c.json({ error: 'not_found' }, 404)
+  if (!upstream) return notFound(c)
 
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, state)
   const staticCfg = staticOAuth(parseAuthConfig(upstream.auth_config))

@@ -19,6 +19,7 @@ import type {
 } from '@ctxlayer/shared'
 import type { AuthStrategy, UpstreamAuthConfig } from '@ctxlayer/shared'
 import { DIALABLE_TRANSPORTS, isDialableTransport } from '../../upstream/upstream-client'
+import { buildPatchUpdate } from './util'
 
 // ----- upstream_servers --------------------------------------------------
 
@@ -174,26 +175,21 @@ export async function patchUpstream(
   id: string,
   patch: PatchUpstreamInput
 ): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  const push = (col: string, val: unknown) => {
-    fields.push(`${col} = ?${fields.length + 1}`)
-    binds.push(val)
-  }
-  if (patch.displayName !== undefined) push('display_name', patch.displayName)
-  if (patch.transport !== undefined) push('transport', patch.transport)
-  if (patch.url !== undefined) push('url', patch.url)
-  if (patch.authStrategy !== undefined) push('auth_strategy', patch.authStrategy)
-  if (patch.authConfig !== undefined) push('auth_config', JSON.stringify(patch.authConfig))
-  if (patch.enabled !== undefined) push('enabled', patch.enabled ? 1 : 0)
-  if (fields.length === 0) return
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(
-    `UPDATE upstream_servers SET ${fields.join(', ')} WHERE id = ?${binds.length}`
+  const update = buildPatchUpdate(
+    'upstream_servers',
+    {
+      display_name: patch.displayName,
+      transport: patch.transport,
+      url: patch.url,
+      auth_strategy: patch.authStrategy,
+      auth_config: patch.authConfig === undefined ? undefined : JSON.stringify(patch.authConfig),
+      enabled: patch.enabled === undefined ? undefined : patch.enabled ? 1 : 0
+    },
+    id
   )
-    .bind(...binds)
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 

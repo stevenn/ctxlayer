@@ -14,6 +14,7 @@
 import type { Env } from '../../env'
 import { suggestSlug } from '@ctxlayer/shared'
 import type { HeadRevision, RevisionKind } from '../revision-policy'
+import { buildPatchUpdate, isUniqueViolation } from './util'
 
 export interface SkillRow {
   id: string
@@ -213,33 +214,20 @@ export interface PatchSkillInput {
 }
 
 export async function patchSkill(env: Env, id: string, patch: PatchSkillInput): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  if (patch.title !== undefined) {
-    fields.push(`title = ?${fields.length + 1}`)
-    binds.push(patch.title)
-  }
-  if (patch.description !== undefined) {
-    fields.push(`description = ?${fields.length + 1}`)
-    binds.push(patch.description)
-  }
-  if (patch.triggerText !== undefined) {
-    fields.push(`trigger_text = ?${fields.length + 1}`)
-    binds.push(patch.triggerText)
-  }
-  if (patch.status !== undefined) {
-    fields.push(`status = ?${fields.length + 1}`)
-    binds.push(patch.status)
-  }
-  if (fields.length === 0) return
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(
-    `UPDATE skills SET ${fields.join(', ')}
-     WHERE id = ?${binds.length} AND deleted_at IS NULL`
+  const update = buildPatchUpdate(
+    'skills',
+    {
+      title: patch.title,
+      description: patch.description,
+      trigger_text: patch.triggerText,
+      status: patch.status
+    },
+    id,
+    { andWhere: 'deleted_at IS NULL' }
   )
-    .bind(...binds)
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 
@@ -426,9 +414,4 @@ function randomSuffix(): string {
   const buf = new Uint8Array(3)
   crypto.getRandomValues(buf)
   return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
 }

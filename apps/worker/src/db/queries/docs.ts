@@ -8,6 +8,7 @@
 import type { Env } from '../../env'
 import { slugifyBody, suggestSlug } from '@ctxlayer/shared'
 import type { HeadRevision, RevisionKind } from '../revision-policy'
+import { buildPatchUpdate, isUniqueViolation } from './util'
 
 export interface DocumentRow {
   id: string
@@ -229,27 +230,16 @@ export interface PatchDocInput {
 }
 
 export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Promise<void> {
-  const fields: string[] = []
-  const binds: unknown[] = []
-  if (patch.title !== undefined) {
-    fields.push(`title = ?${fields.length + 1}`)
-    binds.push(patch.title)
-  }
-  if (patch.kind !== undefined) {
-    fields.push(`kind = ?${fields.length + 1}`)
-    binds.push(patch.kind)
-  }
-  if (patch.folder !== undefined) {
-    fields.push(`folder = ?${fields.length + 1}`)
-    binds.push(patch.folder)
-  }
-  fields.push(`updated_at = ?${fields.length + 1}`)
-  binds.push(Math.floor(Date.now() / 1000))
-  binds.push(id)
-  await env.DB.prepare(
-    `UPDATE documents SET ${fields.join(', ')} WHERE id = ?${binds.length} AND deleted_at IS NULL`
+  // allowEmpty: an empty patch still bumps updated_at (pre-existing behavior).
+  const update = buildPatchUpdate(
+    'documents',
+    { title: patch.title, kind: patch.kind, folder: patch.folder },
+    id,
+    { andWhere: 'deleted_at IS NULL', allowEmpty: true }
   )
-    .bind(...binds)
+  if (!update) return
+  await env.DB.prepare(update.sql)
+    .bind(...update.binds)
     .run()
 }
 
@@ -650,9 +640,4 @@ function randomSuffix(): string {
 // Callers that need the full create-time slug use `suggestSlug('doc', …)`.
 export function slugify(title: string): string {
   return slugifyBody(title, 90)
-}
-
-function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
-  return /UNIQUE constraint failed/i.test(msg)
 }
