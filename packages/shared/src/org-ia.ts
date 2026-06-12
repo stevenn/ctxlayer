@@ -33,11 +33,6 @@ export const RoleRef = z.object({
 })
 export type RoleRef = z.infer<typeof RoleRef>
 
-export const TeamMembership = TeamRef.extend({
-  role: TeamMemberRole
-})
-export type TeamMembership = z.infer<typeof TeamMembership>
-
 // NOTE: the `list_my_context` MCP output shape lives in `mcp-types.ts`
 // (`McpMyContext`) — all-string-arrays, matching `resolveUserScope`. The
 // earlier object-valued `MyContext` here had drifted from the live shape and
@@ -47,15 +42,9 @@ export type TeamMembership = z.infer<typeof TeamMembership>
 // 'role' (added with per-tool ACL) gates a whole upstream by org role,
 // the same way 'team' / 'product' do.
 export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'])
-export const VisibilityRule = z.object({
-  scopeKind: VisibilityScopeKind,
-  scopeId: z.string().nullable()
-})
-export type VisibilityRule = z.infer<typeof VisibilityRule>
 
 // Doc tags. Topic tag values are free-form slugs; team/product tag values
 // reference the corresponding id columns.
-export const DocTagKind = z.enum(['team', 'product', 'topic'])
 export const DocTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),

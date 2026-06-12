@@ -18,7 +18,7 @@ import { prefixedSlug } from './slug'
 import { isHttpsOrLoopback } from './url-trust'
 
 // Remote HTTP transports are the only dialable kinds; admin POST/PATCH
-// validate against this set. Matches `UpstreamTransport` from mcp-types.
+// validate against this set.
 export const SupportedTransport = z.enum(['streamable_http', 'sse'])
 export type SupportedTransport = z.infer<typeof SupportedTransport>
 

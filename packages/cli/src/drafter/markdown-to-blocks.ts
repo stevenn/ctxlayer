@@ -158,7 +158,7 @@ export function markdownToBlocks(md: string): Block[] {
  * No nesting. The pre-styled segments stay flat — sufficient for
  * round-tripping the formats most operator-authored skills use.
  */
-export function parseInline(text: string): Inline[] {
+function parseInline(text: string): Inline[] {
   const out: Inline[] = []
   let buf = ''
   let i = 0

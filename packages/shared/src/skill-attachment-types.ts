@@ -9,6 +9,3 @@ export const AttachSkillRequest = z.object({
   toolName: z.string().optional()
 })
 export type AttachSkillRequest = z.infer<typeof AttachSkillRequest>
-
-export const DetachSkillRequest = AttachSkillRequest
-export type DetachSkillRequest = z.infer<typeof DetachSkillRequest>
