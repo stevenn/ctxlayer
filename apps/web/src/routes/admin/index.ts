@@ -12,4 +12,7 @@ export { AdminAudit } from './audit'
 export { AdminOAuthClients } from './oauth-clients'
 export { AdminUsage } from './usage'
 export { AdminSkills } from './skills'
-export { AdminSkillEditor } from './skill-editor'
+// NOTE: AdminSkillEditor is intentionally NOT re-exported here. It pulls
+// in the whole BlockNote/ProseMirror editor stack; app.tsx lazy-imports
+// it straight from './skill-editor' so this barrel (and everything that
+// statically imports it) stays out of the editor chunk.
