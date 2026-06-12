@@ -20,7 +20,6 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider-types'
-import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { githubApiBase, githubWebBase } from './url'
 import {
   MD_RE,
@@ -28,15 +27,13 @@ import {
   enc,
   encPath,
   fromBase64,
+  jsonMessage,
   normalizePrefix,
+  providerCall,
   toBase64,
-  underPrefix
+  underPrefix,
+  type CallResult
 } from './provider-util'
-
-interface CallResult {
-  status: number
-  json: unknown
-}
 
 export class GitHubProvider implements GitProviderClient {
   private readonly api: string
@@ -204,37 +201,25 @@ export class GitHubProvider implements GitProviderClient {
     path: string,
     opts?: { body?: unknown; allow?: number[] }
   ): Promise<CallResult> {
-    const url = `${this.api}${path}`
-    assertSafeFetchUrl(url)
-    const init: RequestInit = { method, headers: this.headers(opts?.body !== undefined) }
-    if (opts?.body !== undefined) init.body = JSON.stringify(opts.body)
-    const res = await fetch(url, init)
-    const text = await res.text()
-    let json: unknown = null
-    if (text) {
-      try {
-        json = JSON.parse(text)
-      } catch {
-        json = null
-      }
-    }
-    if (!res.ok && !(opts?.allow ?? []).includes(res.status)) {
+    return providerCall({
+      provider: 'github',
+      method,
+      url: `${this.api}${path}`,
+      headers: this.headers(opts?.body !== undefined),
+      body: opts?.body,
+      allow: opts?.allow,
       // Server-side diagnostic only — never returned to the client/agent.
       // GitHub's `message` + the permission / SSO hint headers carry no
       // secrets (the token is never echoed) and pinpoint 403 causes:
       // IP allow list, SAML SSO, or a missing permission.
-      const message =
-        typeof (json as { message?: unknown } | null)?.message === 'string'
-          ? (json as { message: string }).message
-          : ''
-      console.error(
-        `github: ${method} ${url} -> ${res.status}` +
+      errorDetail: (json, res) => {
+        const message = jsonMessage(json)
+        return (
           (message ? ` :: ${message}` : '') +
           ` [need: ${res.headers.get('x-accepted-github-permissions') ?? '-'}` +
           ` | sso: ${res.headers.get('x-github-sso') ?? '-'}]`
-      )
-      throw new Error(`github_api_error:${res.status}`)
-    }
-    return { status: res.status, json }
+        )
+      }
+    })
   }
 }

@@ -24,17 +24,20 @@ import type {
   OpenedPr,
   OpenOrUpdatePrInput
 } from './provider-types'
-import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { azureBase } from './url'
-import { MD_RE, asObj, enc, normalizePrefix, underPrefix } from './provider-util'
+import {
+  MD_RE,
+  asObj,
+  enc,
+  jsonMessage,
+  normalizePrefix,
+  providerCall,
+  underPrefix,
+  type CallResult
+} from './provider-util'
 
 const API_VERSION = '7.1'
 const ZERO_SHA = '0'.repeat(40)
-
-interface CallResult {
-  status: number
-  json: unknown
-}
 
 export class AzureDevOpsProvider implements GitProviderClient {
   /** `.../{org}/{project}/_apis/git/repositories/{repo}` — repo-scoped API. */
@@ -216,28 +219,19 @@ export class AzureDevOpsProvider implements GitProviderClient {
     opts?: { body?: unknown; allow?: number[] }
   ): Promise<CallResult> {
     const sep = path.includes('?') ? '&' : '?'
-    const url = `${this.api}${path}${sep}api-version=${API_VERSION}`
-    assertSafeFetchUrl(url)
-    const init: RequestInit = { method, headers: this.headers(opts?.body !== undefined) }
-    if (opts?.body !== undefined) init.body = JSON.stringify(opts.body)
-    const res = await fetch(url, init)
-    const text = await res.text()
-    let json: unknown = null
-    if (text) {
-      try {
-        json = JSON.parse(text)
-      } catch {
-        json = null
-      }
-    }
-    if (!res.ok && !(opts?.allow ?? []).includes(res.status)) {
+    return providerCall({
+      provider: 'azure',
+      method,
+      url: `${this.api}${path}${sep}api-version=${API_VERSION}`,
+      headers: this.headers(opts?.body !== undefined),
+      body: opts?.body,
+      allow: opts?.allow,
       // ADO's `message` is a non-secret summary (the token is never echoed).
-      const body = json as { message?: unknown } | null
-      const message = typeof body?.message === 'string' ? body.message : ''
-      console.error(`azure: ${method} ${url} -> ${res.status}` + (message ? ` :: ${message}` : ''))
-      throw new Error(`azure_api_error:${res.status}`)
-    }
-    return { status: res.status, json }
+      errorDetail: (json) => {
+        const message = jsonMessage(json)
+        return message ? ` :: ${message}` : ''
+      }
+    })
   }
 }
 
