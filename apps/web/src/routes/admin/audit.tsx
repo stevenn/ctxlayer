@@ -12,8 +12,11 @@ import {
   Title
 } from '@mantine/core'
 import type { AuditLogEntry } from '@ctxlayer/shared'
+import { Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { fetchAdminAudit } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { absDateTime, relativeTime } from '../../lib/time'
 
 /**
  * Admin · Audit log viewer (M5 phase 3).
@@ -124,6 +127,7 @@ export function AdminAudit() {
         <Group gap="xs">
           <TextInput
             size="xs"
+            aria-label="Filter by action prefix"
             placeholder="Action prefix (e.g. doc., user., upstream.)"
             value={actionFilter}
             onChange={(e) => setActionFilter(e.currentTarget.value)}
@@ -131,6 +135,7 @@ export function AdminAudit() {
           />
           <TextInput
             size="xs"
+            aria-label="Filter by actor id"
             placeholder="Actor id"
             value={actorFilter}
             onChange={(e) => setActorFilter(e.currentTarget.value)}
@@ -168,7 +173,7 @@ export function AdminAudit() {
             </thead>
             <tbody>
               {status.entries.map((e) => (
-                <tr key={e.id} onClick={() => setSelected(e)}>
+                <tr key={e.id} {...clickableRow(() => setSelected(e))}>
                   <td className="text-muted" title={absDateTime(e.ts)}>
                     {relativeTime(e.ts)}
                   </td>
@@ -342,40 +347,6 @@ function formatScalar(v: unknown): string {
   if (Array.isArray(v)) return `[${v.length}]`
   if (typeof v === 'object') return '{…}'
   return String(v)
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function absDateTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
-}
-
-function relativeTime(ts: number): string {
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

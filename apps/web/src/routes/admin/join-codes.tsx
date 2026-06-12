@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
   Alert,
   Badge,
@@ -22,6 +22,8 @@ import {
   type CreateJoinCodeInput
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { absDate } from '../../lib/time'
+import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -31,7 +33,6 @@ import { useDialogs } from '../../lib/dialogs'
  */
 export function AdminJoinCodes() {
   const { confirm } = useDialogs()
-  const [items, setItems] = useState<JoinCode[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   // The one-time plaintext of the just-created code (+ its label for context).
@@ -44,20 +45,7 @@ export function AdminJoinCodes() {
   const [maxUses, setMaxUses] = useState<number | ''>('')
   const [expiresInDays, setExpiresInDays] = useState<number | ''>('')
 
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchJoinCodes(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
+  const { data: items, reload } = useLoad(fetchJoinCodes, [], { explain, onError: setError })
 
   async function create() {
     setBusy(true)
@@ -273,10 +261,6 @@ function CodeStateBadge({ jc }: { jc: JoinCode }) {
       {s}
     </Badge>
   )
-}
-
-function absDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

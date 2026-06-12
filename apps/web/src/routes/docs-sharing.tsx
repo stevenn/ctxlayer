@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   ActionIcon,
   Alert,
@@ -10,39 +10,30 @@ import {
   Text,
   TextInput
 } from '@mantine/core'
-import type { DocEditorsResponse, UserSearchResult } from '@ctxlayer/shared'
+import type { UserSearchResult } from '@ctxlayer/shared'
 import { addDocEditor, fetchDocEditors, removeDocEditor, searchUsers } from '../lib/api'
+import { useBusyAction } from '../lib/use-busy'
+import { useLoad } from '../lib/use-load'
 
 interface Props {
   docId: string
   onClose: () => void
 }
 
+// This dialog predates lib/explain — it surfaces the raw error message.
+function rawMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err)
+}
+
 export function SharingDialog({ docId, onClose }: Props) {
-  const [editors, setEditors] = useState<DocEditorsResponse | null>(null)
+  // One error channel shared by the editors load and the grant/revoke actions.
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
+  const { data: editors, reload } = useLoad((signal) => fetchDocEditors(docId, signal), [docId], {
+    explain: (err) => `Could not load sharing: ${rawMessage(err)}`,
+    onError: setError
+  })
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<UserSearchResult>([])
-
-  const reload = useCallback(
-    async (signal?: AbortSignal) => {
-      try {
-        const data = await fetchDocEditors(docId, signal)
-        if (!signal?.aborted) setEditors(data)
-      } catch (err) {
-        if (signal?.aborted) return
-        setError(`Could not load sharing: ${err instanceof Error ? err.message : String(err)}`)
-      }
-    },
-    [docId]
-  )
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   // Debounced search. Server returns [] for prefixes < 2 chars; we
   // still call so cleared queries reset the dropdown.
@@ -65,20 +56,9 @@ export function SharingDialog({ docId, onClose }: Props) {
     }
   }, [query])
 
-  async function withBusy(action: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await action()
-    } catch (err) {
-      // Surface failures so the user sees why the checkbox or list
-      // didn't move. Without this the UI silently reverts and looks
-      // broken.
-      setError(`${label} failed: ${err instanceof Error ? err.message : String(err)}`)
-    } finally {
-      setBusy(false)
-    }
-  }
+  // Surface failures so the user sees why the checkbox or list didn't
+  // move. Without this the UI silently reverts and looks broken.
+  const { busy, run: withBusy } = useBusyAction({ explain: rawMessage, setError })
 
   async function grantUser(userId: string) {
     await withBusy(async () => {
@@ -131,6 +111,7 @@ export function SharingDialog({ docId, onClose }: Props) {
             type="email"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
+            aria-label="Add editor by email"
             placeholder="user@…"
             autoComplete="off"
           />

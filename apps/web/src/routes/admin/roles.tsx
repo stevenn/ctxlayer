@@ -1,9 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useSlugSuggest } from '../../lib/use-slug-suggest'
 import { Alert, Button, Drawer, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core'
 import type { AdminRoleRow } from '@ctxlayer/shared'
+import { clickableRow } from '../../lib/a11y'
 import { adminCreateRole, adminDeleteRole, adminPatchRole, fetchAdminRoles } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { useBusyAction } from '../../lib/use-busy'
+import { useLoad } from '../../lib/use-load'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
 /**
@@ -13,25 +16,9 @@ import { useDrawerConfirm } from '../../lib/dialogs'
  * on Admin · Users. This page only edits the role records.
  */
 export function AdminRoles() {
-  const [roles, setRoles] = useState<AdminRoleRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: roles, error, reload } = useLoad(fetchAdminRoles, [], { explain })
   const [createOpen, setCreateOpen] = useState(false)
   const [editing, setEditing] = useState<AdminRoleRow | null>(null)
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const r = await fetchAdminRoles(signal)
-      if (!signal?.aborted) setRoles(r)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   return (
     <>
@@ -56,8 +43,8 @@ export function AdminRoles() {
 
       {roles && roles.length === 0 && (
         <Text c="dimmed">
-          No roles yet. Click <strong>+ New role</strong> to create the first one (e.g.
-          engineering, qa, product).
+          No roles yet. Click <strong>+ New role</strong> to create the first one (e.g. engineering,
+          qa, product).
         </Text>
       )}
 
@@ -73,7 +60,7 @@ export function AdminRoles() {
           </thead>
           <tbody>
             {roles.map((r) => (
-              <tr key={r.id} onClick={() => setEditing(r)}>
+              <tr key={r.id} {...clickableRow(() => setEditing(r))}>
                 <td style={{ fontWeight: 500 }}>{r.displayName}</td>
                 <td className="text-muted">
                   <code>{r.slug}</code>
@@ -86,14 +73,15 @@ export function AdminRoles() {
         </table>
       )}
 
-      <CreateRoleModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => {
-          setCreateOpen(false)
-          reload()
-        }}
-      />
+      {createOpen && (
+        <CreateRoleModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
 
       {editing && (
         <RoleDrawer
@@ -112,29 +100,14 @@ export function AdminRoles() {
 
 // ----- Create modal ------------------------------------------------------
 
-function CreateRoleModal({
-  opened,
-  onClose,
-  onCreated
-}: {
-  opened: boolean
-  onClose: () => void
-  onCreated: () => void
-}) {
+// Conditionally mounted by the caller (`{createOpen && <CreateRoleModal/>}`),
+// so all state resets for free on close — no `opened` prop / reset effect.
+function CreateRoleModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [displayName, setDisplayName] = useState('')
   const slugField = useSlugSuggest('role', displayName)
   const [description, setDescription] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setDisplayName('')
-      slugField.reset()
-      setDescription('')
-      setError(null)
-    }
-  }, [opened])
 
   async function submit() {
     if (!slugField.slug.trim() || !displayName.trim()) return
@@ -155,7 +128,7 @@ function CreateRoleModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New role" centered>
+    <Modal opened onClose={onClose} title="New role" centered>
       <Stack gap="md">
         <TextInput
           label="Display name"
@@ -215,21 +188,15 @@ function RoleDrawer({
   const [slug, setSlug] = useState(role.slug)
   const [displayName, setDisplayName] = useState(role.displayName)
   const [description, setDescription] = useState(role.description ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-      reveal() // a delete that hid the drawer then failed must show the error
-    } finally {
-      setBusy(false)
-    }
-  }
+  const {
+    busy,
+    error,
+    run: withBusy
+  } = useBusyAction({
+    explain,
+    // a delete that hid the drawer then failed must show the error
+    onError: reveal
+  })
 
   const savePatch = () =>
     withBusy(async () => {

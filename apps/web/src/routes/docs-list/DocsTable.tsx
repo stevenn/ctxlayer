@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Badge, Button, Group, Menu, Stack, Text, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
+import { clickableRow } from '../../lib/a11y'
 import { filterDocs, type FolderGroup, formatRelative, isGitDoc, personLabel } from './helpers'
 
 // ----- Docs table --------------------------------------------------------
@@ -77,7 +78,7 @@ export function DocsTable({
         </thead>
         <tbody>
           {filtered.map((d) => (
-            <tr key={d.id} onClick={() => onOpen(d.id)}>
+            <tr key={d.id} {...clickableRow(() => onOpen(d.id))}>
               <td>
                 <Group gap={6} wrap="nowrap">
                   <span style={{ fontWeight: 500 }}>{d.title}</span>

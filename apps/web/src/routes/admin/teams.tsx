@@ -34,29 +34,17 @@ import {
   removeTeamMember,
   searchUsers
 } from '../../lib/api'
+import { Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
+import { useBusyAction } from '../../lib/use-busy'
+import { useLoad } from '../../lib/use-load'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
 export function AdminTeams() {
-  const [teams, setTeams] = useState<AdminTeamRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: teams, error, reload } = useLoad(fetchAdminTeams, [], { explain })
   const [createOpen, setCreateOpen] = useState(false)
   const [editingTeam, setEditingTeam] = useState<AdminTeamRow | null>(null)
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const t = await fetchAdminTeams(signal)
-      if (!signal?.aborted) setTeams(t)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   return (
     <>
@@ -93,7 +81,7 @@ export function AdminTeams() {
           </thead>
           <tbody>
             {teams.map((t) => (
-              <tr key={t.id} onClick={() => setEditingTeam(t)}>
+              <tr key={t.id} {...clickableRow(() => setEditingTeam(t))}>
                 <td style={{ fontWeight: 500 }}>{t.displayName}</td>
                 <td className="text-muted">
                   <code>{t.slug}</code>
@@ -109,14 +97,15 @@ export function AdminTeams() {
         </table>
       )}
 
-      <CreateTeamModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => {
-          setCreateOpen(false)
-          reload()
-        }}
-      />
+      {createOpen && (
+        <CreateTeamModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
 
       {editingTeam && (
         <TeamDrawer
@@ -135,15 +124,9 @@ export function AdminTeams() {
 
 // ----- Create modal ------------------------------------------------------
 
-function CreateTeamModal({
-  opened,
-  onClose,
-  onCreated
-}: {
-  opened: boolean
-  onClose: () => void
-  onCreated: () => void
-}) {
+// Conditionally mounted by the caller (`{createOpen && <CreateTeamModal/>}`),
+// so all state resets for free on close — no `opened` prop / reset effect.
+function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [displayName, setDisplayName] = useState('')
   const slugField = useSlugSuggest('team', displayName)
   const [description, setDescription] = useState('')
@@ -151,17 +134,6 @@ function CreateTeamModal({
   const [managedByIdp, setManagedByIdp] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setDisplayName('')
-      slugField.reset()
-      setDescription('')
-      setIdpGroup('')
-      setManagedByIdp(false)
-      setError(null)
-    }
-  }, [opened])
 
   async function submit() {
     if (!slugField.slug.trim() || !displayName.trim()) return
@@ -184,7 +156,7 @@ function CreateTeamModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New team" centered>
+    <Modal opened onClose={onClose} title="New team" centered>
       <Stack gap="md">
         <TextInput
           label="Display name"
@@ -262,7 +234,6 @@ function TeamDrawer({
   const [members, setMembers] = useState<TeamMemberRow[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [allTeamProducts, setAllTeamProducts] = useState<TeamProductsAssignment[] | null>(null)
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   // Member-search state
@@ -313,18 +284,12 @@ function TeamDrawer({
     }
   }, [query])
 
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-      reveal() // a delete that hid the drawer then failed must show the error
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    setError,
+    // a delete that hid the drawer then failed must show the error
+    onError: reveal
+  })
 
   const savePatch = () =>
     withBusy(async () => {
@@ -451,6 +416,7 @@ function TeamDrawer({
           <Stack gap={6}>
             <TextInput
               size="xs"
+              aria-label="Add member by email"
               placeholder="Add by email…"
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}
@@ -540,26 +506,6 @@ function TeamDrawer({
         </Section>
       </Stack>
     </Drawer>
-  )
-}
-
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
   )
 }
 

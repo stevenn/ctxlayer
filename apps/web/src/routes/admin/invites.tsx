@@ -1,13 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Button, Group, Stack, Text, Textarea, Title } from '@mantine/core'
 import type { Invite } from '@ctxlayer/shared'
-import {
-  adminCreateInvites,
-  adminDeleteInvite,
-  fetchInvites,
-  type ApiError
-} from '../../lib/api'
+import { adminCreateInvites, adminDeleteInvite, fetchInvites, type ApiError } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { absDate } from '../../lib/time'
+import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -17,26 +14,12 @@ import { useDialogs } from '../../lib/dialogs'
  */
 export function AdminInvites() {
   const { confirm } = useDialogs()
-  const [items, setItems] = useState<Invite[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [emails, setEmails] = useState('')
   const [busy, setBusy] = useState(false)
 
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchInvites(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
+  const { data: items, reload } = useLoad(fetchInvites, [], { explain, onError: setError })
 
   async function submit() {
     if (!emails.trim()) return
@@ -90,6 +73,7 @@ export function AdminInvites() {
 
       <Stack gap="xs" mb="lg">
         <Textarea
+          aria-label="Email addresses to invite"
           placeholder={'alice@example.com\nbob@example.com'}
           value={emails}
           onChange={(e) => setEmails(e.currentTarget.value)}
@@ -164,10 +148,6 @@ export function AdminInvites() {
       )}
     </>
   )
-}
-
-function absDate(ts: number): string {
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

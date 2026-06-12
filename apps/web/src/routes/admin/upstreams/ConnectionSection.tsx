@@ -68,6 +68,7 @@ export function ConnectionSection({
             </Text>
             <PasswordInput
               size="xs"
+              aria-label="Shared token"
               placeholder={
                 row.sharedCredentialConfigured
                   ? 'Paste a new shared token to replace the stored one…'
@@ -108,6 +109,7 @@ export function ConnectionSection({
           <Stack gap="xs">
             <PasswordInput
               size="xs"
+              aria-label="Personal access token"
               placeholder={
                 row.currentUserConnected
                   ? 'Paste a new token to replace the stored one…'

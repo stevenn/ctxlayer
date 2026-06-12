@@ -14,8 +14,11 @@ import {
   Tooltip
 } from '@mantine/core'
 import type { OAuthClientRow, OAuthClientUserRef } from '@ctxlayer/shared'
+import { KV as KVBase, Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { fetchAdminOAuthClients, pruneAdminOAuthClients } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { absDateTime, relativeTime } from '../../lib/time'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -87,12 +90,21 @@ export function AdminOAuthClients() {
 
   async function loadMore() {
     if (status.kind !== 'ready' || !status.nextCursor || status.loadingMore) return
+    // Same ctrlRef discipline as load(): registering this controller means
+    // a concurrent reload (e.g. after a prune) aborts the in-flight page,
+    // so a slow response can never append a stale page onto a fresh list.
+    const ctrl = new AbortController()
+    ctrlRef.current = ctrl
     setStatus({ ...status, loadingMore: true })
     try {
-      const page = await fetchAdminOAuthClients({
-        cursor: status.nextCursor,
-        limit: PAGE_SIZE
-      })
+      const page = await fetchAdminOAuthClients(
+        {
+          cursor: status.nextCursor,
+          limit: PAGE_SIZE
+        },
+        ctrl.signal
+      )
+      if (ctrl.signal.aborted) return
       setStatus((cur) => {
         if (cur.kind !== 'ready') return cur
         return {
@@ -103,6 +115,7 @@ export function AdminOAuthClients() {
         }
       })
     } catch (err) {
+      if (ctrl.signal.aborted) return
       setStatus({ kind: 'error', message: explain(err) })
     }
   }
@@ -196,6 +209,7 @@ export function AdminOAuthClients() {
           </Tooltip>
           <TextInput
             size="xs"
+            aria-label="Filter OAuth clients"
             placeholder="Filter by name, id, or redirect URI…"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
@@ -253,7 +267,7 @@ export function AdminOAuthClients() {
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.clientId} onClick={() => setSelected(c)}>
+                <tr key={c.clientId} {...clickableRow(() => setSelected(c))}>
                   <td style={{ fontWeight: 500 }}>
                     {c.clientName ?? <span style={{ color: 'var(--text-dim)' }}>(unnamed)</span>}
                   </td>
@@ -477,37 +491,9 @@ function RedirectCell({ uris }: { uris: string[] }) {
   )
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <Group gap="xs" wrap="nowrap" align="baseline" mb={4}>
-      <Text fz="xs" c="dimmed" w={110}>
-        {k}
-      </Text>
-      <Text fz="sm" style={{ minWidth: 0 }}>
-        {v}
-      </Text>
-    </Group>
-  )
+// Wider label column + per-row spacing than the shared default.
+function KV(props: { k: string; v: React.ReactNode }) {
+  return <KVBase {...props} w={110} mb={4} />
 }
 
 function listOrDash(items: string[] | null): React.ReactNode {
@@ -533,20 +519,6 @@ function truncateMiddle(s: string, max: number): string {
   if (s.length <= max) return s
   const keep = Math.floor((max - 1) / 2)
   return s.slice(0, keep) + '…' + s.slice(-keep)
-}
-
-function absDateTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
-}
-
-function relativeTime(ts: number): string {
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, TextInput, Title } from '@mantine/core'
 import { fetchConfig } from '../lib/api'
-import type { AccessPolicy, KnownIdp } from '@ctxlayer/shared'
+import type { KnownIdp } from '@ctxlayer/shared'
+import { useLoad } from '../lib/use-load'
 import { BrandMark } from '../components/brand-mark'
 
 const PROVIDER_LABEL: Record<KnownIdp, string> = {
@@ -21,7 +22,8 @@ const ERROR_MESSAGE: Record<string, string> = {
   token_exchange_failed: 'Could not complete sign-in with the identity provider. Try again.',
   profile_fetch_failed: 'Could not read your profile from the identity provider.',
   idp_error: 'The identity provider returned an error during sign-in.',
-  invite_required: 'This workspace is invite-only. Enter a join code below, or ask an admin to invite you.',
+  invite_required:
+    'This workspace is invite-only. Enter a join code below, or ask an admin to invite you.',
   invalid_join_code: "That join code isn't valid. Double-check it and try again.",
   code_expired: 'That join code has expired. Ask an admin for a new one.',
   access_denied: "Your account isn't allowed to access this workspace.",
@@ -34,9 +36,20 @@ const CODE_REASONS = new Set(['invite_required', 'invalid_join_code', 'code_expi
 
 export function SignIn() {
   const [params] = useSearchParams()
-  const [idps, setIdps] = useState<KnownIdp[] | null>(null)
-  const [policy, setPolicy] = useState<AccessPolicy>('open_domain')
-  const [configError, setConfigError] = useState<string | null>(null)
+  const { data: config, error: configError } = useLoad(
+    async (signal) => {
+      try {
+        return await fetchConfig(signal)
+      } catch (err) {
+        if (!signal?.aborted) console.error(err)
+        throw err
+      }
+    },
+    [],
+    { explain: () => 'Could not load sign-in options.' }
+  )
+  const idps = config?.idps ?? null
+  const policy = config?.accessPolicy ?? 'open_domain'
   const [code, setCode] = useState(params.get('join') ?? '')
 
   const urlErrorCode = params.get('error')
@@ -53,23 +66,6 @@ export function SignIn() {
       (urlErrorCode != null && CODE_REASONS.has(urlErrorCode)),
     [policy, params, urlErrorCode]
   )
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    fetchConfig(ctrl.signal).then(
-      (cfg) => {
-        if (ctrl.signal.aborted) return
-        setIdps(cfg.idps)
-        setPolicy(cfg.accessPolicy)
-      },
-      (err) => {
-        if (ctrl.signal.aborted) return
-        setConfigError('Could not load sign-in options.')
-        console.error(err)
-      }
-    )
-    return () => ctrl.abort()
-  }, [])
 
   return (
     <div className="auth-shell">

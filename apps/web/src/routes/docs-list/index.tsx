@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { Suspense, lazy, useCallback, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Button, Group, Menu, Stack, Text, TextInput, Title, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
@@ -15,9 +15,16 @@ import { BlankDocModal } from './BlankDocModal'
 import { CodeDocsTree, FolderTree } from './FolderTree'
 import { DocsTable } from './DocsTable'
 import { computeFolderNodes, EMPTY_DOCS, explain, type FolderSelection, isGitDoc } from './helpers'
-import { ImportDocModal } from './ImportDocModal'
 
 export { personLabel } from './helpers'
+
+// ImportDocModal instantiates a headless BlockNote editor just to parse
+// markdown → blocks, which would drag the whole editor stack into this
+// route's chunk. Lazy-load it at the modal-open site instead so the
+// chunk is only fetched when someone actually clicks "Import markdown…".
+const ImportDocModal = lazy(() =>
+  import('./ImportDocModal').then((m) => ({ default: m.ImportDocModal }))
+)
 
 type Status =
   | { kind: 'loading' }
@@ -256,12 +263,17 @@ export function DocsList() {
         </Stack>
       )}
 
-      <BlankDocModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        defaultFolder={selected.group === 'home' ? selected.path : null}
-      />
-      <ImportDocModal opened={importOpen} onClose={() => setImportOpen(false)} />
+      {createOpen && (
+        <BlankDocModal
+          onClose={() => setCreateOpen(false)}
+          defaultFolder={selected.group === 'home' ? selected.path : null}
+        />
+      )}
+      {importOpen && (
+        <Suspense fallback={null}>
+          <ImportDocModal onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
     </>
   )
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Button, FileButton, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useCreateBlockNote } from '@blocknote/react'
@@ -8,7 +8,9 @@ import { explain } from './helpers'
 
 // ----- Import-markdown modal ---------------------------------------------
 
-export function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: () => void }) {
+// Conditionally mounted by the caller (`{importOpen && <ImportDocModal/>}`),
+// so all state resets for free on close — no `opened` prop / reset effect.
+export function ImportDocModal({ onClose }: { onClose: () => void }) {
   const nav = useNavigate()
   // Headless editor instance used only to parse markdown → blocks.
   // Created once per modal lifetime; never rendered.
@@ -21,16 +23,6 @@ export function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: 
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const slugField = useSlugSuggest('doc', title)
-
-  useEffect(() => {
-    if (!opened) {
-      setTitle('')
-      setTitleTouched(false)
-      setFile(null)
-      setError(null)
-      slugField.reset()
-    }
-  }, [opened])
 
   function onFile(f: File | null) {
     setFile(f)
@@ -70,7 +62,7 @@ export function ImportDocModal({ opened, onClose }: { opened: boolean; onClose: 
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Import markdown" centered>
+    <Modal opened onClose={onClose} title="Import markdown" centered>
       <Stack gap="md">
         <Group gap="sm" align="flex-end">
           <FileButton

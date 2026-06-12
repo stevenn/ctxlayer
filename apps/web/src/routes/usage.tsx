@@ -4,6 +4,14 @@ import { USAGE_RANGE_LABEL, type UsageRange, type UsageResponse } from '@ctxlaye
 import { fetchUsage } from '../lib/api'
 import { explain } from '../lib/explain'
 import { DailyBars, chartDaysForRange } from '../components/usage/charts'
+import {
+  Panel,
+  SummaryRow,
+  sumDailyTotals,
+  viewerOffsetSec,
+  viewerTzLabel
+} from '../components/usage/summary'
+import { ToolTable, UpstreamTable } from '../components/usage/tables'
 
 /**
  * Personal usage dashboard. Self-scoped — the backend never exposes
@@ -20,20 +28,6 @@ const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) =
   value: r,
   label: USAGE_RANGE_LABEL[r]
 }))
-
-// Viewer timezone, shared by both usage pages. `offsetSec` drives the
-// day-bucketing; `label` (IANA zone) is shown in the chart legend so it's
-// clear the day grid follows the viewer's local calendar.
-export function viewerOffsetSec(): number {
-  return -new Date().getTimezoneOffset() * 60
-}
-export function viewerTzLabel(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone
-  } catch {
-    return 'local time'
-  }
-}
 
 export function Usage() {
   const [range, setRange] = useState<UsageRange>('30d')
@@ -91,15 +85,7 @@ export function Usage() {
 }
 
 function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) {
-  const totals = data.dailyTotals.reduce(
-    (acc, d) => ({
-      calls: acc.calls + d.calls,
-      reqTokens: acc.reqTokens + d.reqTokens,
-      respTokens: acc.respTokens + d.respTokens,
-      errors: acc.errors + d.errors
-    }),
-    { calls: 0, reqTokens: 0, respTokens: 0, errors: 0 }
-  )
+  const totals = sumDailyTotals(data.dailyTotals)
   const offsetSec = viewerOffsetSec()
   const chartDays = chartDaysForRange(range, data.dailyTotals, offsetSec)
 
@@ -125,245 +111,5 @@ function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) 
         <UpstreamTable rows={data.topUpstreams} />
       </Panel>
     </Stack>
-  )
-}
-
-function SummaryRow({
-  totals
-}: {
-  totals: { calls: number; reqTokens: number; respTokens: number; errors: number }
-}) {
-  return (
-    <Group gap="xl" wrap="wrap">
-      <Stat label="Calls" value={totals.calls.toLocaleString()} />
-      <Stat label="Request tokens" value={totals.reqTokens.toLocaleString()} />
-      <Stat label="Response tokens" value={totals.respTokens.toLocaleString()} />
-      <Stat
-        label="Errors"
-        value={totals.errors.toLocaleString()}
-        accent={totals.errors > 0 ? 'red' : undefined}
-      />
-    </Group>
-  )
-}
-
-export function Stat({
-  label,
-  value,
-  accent
-}: {
-  label: string
-  value: string
-  accent?: 'red' | 'yellow'
-}) {
-  return (
-    <div>
-      <Text
-        fz={10}
-        fw={600}
-        c="dimmed"
-        style={{ textTransform: 'uppercase', letterSpacing: '0.06em' }}
-      >
-        {label}
-      </Text>
-      <Text fz={22} fw={600} c={accent === 'red' ? 'red' : undefined} style={{ lineHeight: 1.2 }}>
-        {value}
-      </Text>
-    </div>
-  )
-}
-
-export function Panel({
-  title,
-  subtitle,
-  children
-}: {
-  title: string
-  subtitle?: string
-  children: React.ReactNode
-}) {
-  return (
-    <div>
-      <Text fz="sm" fw={600} mb={2}>
-        {title}
-      </Text>
-      {subtitle && (
-        <Text fz="xs" c="dimmed" mb="xs">
-          {subtitle}
-        </Text>
-      )}
-      {children}
-    </div>
-  )
-}
-
-export function ToolTable({
-  rows,
-  showResilience = false
-}: {
-  rows: Array<{
-    tool: string
-    upstreamId: string
-    calls: number
-    reqTokens: number
-    respTokens: number
-    errors: number
-    timeouts: number
-    truncations: number
-  }>
-  // Admin-only: surface the WI-5 timeout / truncation counts.
-  showResilience?: boolean
-}) {
-  if (rows.length === 0) {
-    return (
-      <Text c="dimmed" fz="sm">
-        No tools have been called yet.
-      </Text>
-    )
-  }
-  return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Tool</th>
-          <th style={{ textAlign: 'right' }}>Calls</th>
-          <th style={{ textAlign: 'right' }}>Req tokens</th>
-          <th style={{ textAlign: 'right' }}>Resp tokens</th>
-          <th style={{ textAlign: 'right' }}>Errors</th>
-          {showResilience && <th style={{ textAlign: 'right' }}>Timeouts</th>}
-          {showResilience && <th style={{ textAlign: 'right' }}>Truncated</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={`${r.upstreamId}|${r.tool}`}>
-            <td>
-              <code style={{ fontSize: 12 }}>{r.tool}</code>
-              {r.upstreamId === '' && (
-                <Text component="span" fz="xs" c="dimmed" ml={6}>
-                  built-in
-                </Text>
-              )}
-            </td>
-            <td style={{ textAlign: 'right' }}>{r.calls.toLocaleString()}</td>
-            <td className="text-muted" style={{ textAlign: 'right' }}>
-              {r.reqTokens.toLocaleString()}
-            </td>
-            <td className="text-muted" style={{ textAlign: 'right' }}>
-              {r.respTokens.toLocaleString()}
-            </td>
-            <td
-              className={r.errors > 0 ? undefined : 'text-muted'}
-              style={{
-                textAlign: 'right',
-                color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined
-              }}
-            >
-              {r.errors.toLocaleString()}
-            </td>
-            {showResilience && (
-              <td
-                className={r.timeouts > 0 ? undefined : 'text-muted'}
-                style={{
-                  textAlign: 'right',
-                  color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined
-                }}
-              >
-                {r.timeouts.toLocaleString()}
-              </td>
-            )}
-            {showResilience && (
-              <td className="text-muted" style={{ textAlign: 'right' }}>
-                {r.truncations.toLocaleString()}
-              </td>
-            )}
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  )
-}
-
-export function UpstreamTable({
-  rows,
-  showResilience = false
-}: {
-  rows: Array<{
-    upstreamId: string
-    upstreamSlug: string | null
-    upstreamName: string | null
-    calls: number
-    reqTokens: number
-    respTokens: number
-    errors: number
-    timeouts: number
-    truncations: number
-  }>
-  // Admin-only: surface the WI-5 timeout / truncation counts.
-  showResilience?: boolean
-}) {
-  if (rows.length === 0) {
-    return (
-      <Text c="dimmed" fz="sm">
-        No upstream traffic yet.
-      </Text>
-    )
-  }
-  return (
-    <table className="data-table">
-      <thead>
-        <tr>
-          <th>Upstream</th>
-          <th style={{ textAlign: 'right' }}>Calls</th>
-          <th style={{ textAlign: 'right' }}>Req tokens</th>
-          <th style={{ textAlign: 'right' }}>Resp tokens</th>
-          <th style={{ textAlign: 'right' }}>Errors</th>
-          {showResilience && <th style={{ textAlign: 'right' }}>Timeouts</th>}
-          {showResilience && <th style={{ textAlign: 'right' }}>Truncated</th>}
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map((r) => (
-          <tr key={r.upstreamId || 'builtin'}>
-            <td>
-              {r.upstreamId === ''
-                ? 'Built-in'
-                : (r.upstreamName ?? r.upstreamSlug ?? <code>{r.upstreamId}</code>)}
-            </td>
-            <td style={{ textAlign: 'right' }}>{r.calls.toLocaleString()}</td>
-            <td className="text-muted" style={{ textAlign: 'right' }}>
-              {r.reqTokens.toLocaleString()}
-            </td>
-            <td className="text-muted" style={{ textAlign: 'right' }}>
-              {r.respTokens.toLocaleString()}
-            </td>
-            <td
-              style={{
-                textAlign: 'right',
-                color: r.errors > 0 ? 'var(--mantine-color-red-6)' : undefined
-              }}
-            >
-              {r.errors.toLocaleString()}
-            </td>
-            {showResilience && (
-              <td
-                className={r.timeouts > 0 ? undefined : 'text-muted'}
-                style={{
-                  textAlign: 'right',
-                  color: r.timeouts > 0 ? 'var(--mantine-color-orange-6)' : undefined
-                }}
-              >
-                {r.timeouts.toLocaleString()}
-              </td>
-            )}
-            {showResilience && (
-              <td className="text-muted" style={{ textAlign: 'right' }}>
-                {r.truncations.toLocaleString()}
-              </td>
-            )}
-          </tr>
-        ))}
-      </tbody>
-    </table>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -13,7 +13,7 @@ import {
   TextInput,
   Title
 } from '@mantine/core'
-import type { AdminUserRow, AdminUserTeam, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
+import type { AdminUserRow, AdminUserTeam, Role, UserStatus } from '@ctxlayer/shared'
 import {
   type ApiError,
   adminDeleteUser,
@@ -26,32 +26,21 @@ import {
   fetchRoles,
   putUserRoles
 } from '../../lib/api'
+import { KV, Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
+import { absDateTime, relativeTime } from '../../lib/time'
+import { useBusyAction } from '../../lib/use-busy'
+import { useLoad } from '../../lib/use-load'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
 type StatusFilter = 'all' | UserStatus
 
 export function AdminUsers() {
-  const [items, setItems] = useState<AdminUserRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: items, error, reload } = useLoad(fetchAdminUsers, [], { explain })
   const [editingId, setEditingId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchAdminUsers(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
-
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
 
   const counts = useMemo(() => {
     const c = { all: items?.length ?? 0, active: 0, pending: 0, suspended: 0 }
@@ -86,6 +75,7 @@ export function AdminUsers() {
         </Group>
         <TextInput
           size="xs"
+          aria-label="Filter users"
           placeholder="Filter by email or name…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
@@ -137,7 +127,7 @@ export function AdminUsers() {
           </thead>
           <tbody>
             {filtered.map((u) => (
-              <tr key={u.id} onClick={() => setEditingId(u.id)}>
+              <tr key={u.id} {...clickableRow(() => setEditingId(u.id))}>
                 <td style={{ fontWeight: 500 }}>{u.email}</td>
                 <td className="text-muted">{u.name ?? '—'}</td>
                 <td className="text-muted">{u.idp}</td>
@@ -206,47 +196,31 @@ function UserDrawer({
   onRemoved: () => void
 }) {
   const { hidden, confirm } = useDrawerConfirm()
-  const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   // Local switch state mirrors server until persisted (optimistic UI
   // would be nice but we want to surface the last-admin guard error).
   const [isAdmin, setIsAdmin] = useState(user.role === 'admin')
-  const [allRoles, setAllRoles] = useState<RoleRef[] | null>(null)
+  // Roles list is best-effort; the section just shows a loader on failure.
+  const { data: allRoles } = useLoad(fetchRoles, [], { onError: () => {} })
   const [roleIds, setRoleIds] = useState<string[]>(user.roles.map((r) => r.id))
 
+  // Reset only when a DIFFERENT user is opened. Depending on `user`
+  // identity would re-run after every onChanged()→reload (fresh row
+  // object), wiping the info/error alert the action just set; the
+  // switch/multiselect state is already kept in sync by the handlers.
   useEffect(() => {
     setIsAdmin(user.role === 'admin')
     setRoleIds(user.roles.map((r) => r.id))
     setError(null)
     setInfo(null)
-  }, [user])
+  }, [user.id])
 
-  useEffect(() => {
-    const ctrl = new AbortController()
-    fetchRoles(ctrl.signal).then(
-      (r) => {
-        if (!ctrl.signal.aborted) setAllRoles(r)
-      },
-      () => {
-        /* roles list is best-effort; the section just shows a loader */
-      }
-    )
-    return () => ctrl.abort()
-  }, [])
-
-  async function withBusy(fn: () => Promise<void>, label: string) {
-    setBusy(true)
-    setError(null)
-    setInfo(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(`${label} failed: ${explain(err)}`)
-    } finally {
-      setBusy(false)
-    }
-  }
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    setError,
+    onStart: () => setInfo(null)
+  })
 
   const toggleRole = (next: boolean) =>
     withBusy(
@@ -503,39 +477,6 @@ function UserDrawer({
 
 // ----- helpers -----------------------------------------------------------
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div>
-      <div
-        style={{
-          fontSize: 10,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          letterSpacing: '0.06em',
-          color: 'var(--text-dim)',
-          marginBottom: 6
-        }}
-      >
-        {title}
-      </div>
-      {children}
-    </div>
-  )
-}
-
-function KV({ k, v }: { k: string; v: React.ReactNode }) {
-  return (
-    <Group gap="xs" wrap="nowrap" align="baseline">
-      <Text fz="xs" c="dimmed" w={80}>
-        {k}
-      </Text>
-      <Text fz="sm" style={{ minWidth: 0 }}>
-        {v}
-      </Text>
-    </Group>
-  )
-}
-
 function TeamPill({ team }: { team: AdminUserTeam }) {
   return (
     <Group
@@ -555,21 +496,6 @@ function TeamPill({ team }: { team: AdminUserTeam }) {
       </Badge>
     </Group>
   )
-}
-
-function absDateTime(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
-}
-
-function relativeTime(ts: number | null): string {
-  if (!ts) return '—'
-  const now = Math.floor(Date.now() / 1000)
-  const delta = now - ts
-  if (delta < 60) return `${delta}s ago`
-  if (delta < 3600) return `${Math.floor(delta / 60)}m ago`
-  if (delta < 86400) return `${Math.floor(delta / 3600)}h ago`
-  if (delta < 86400 * 30) return `${Math.floor(delta / 86400)}d ago`
-  return new Date(ts * 1000).toLocaleDateString()
 }
 
 function explain(err: unknown): string {

@@ -1,7 +1,9 @@
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useState } from 'react'
 import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
-import type { AdminUpstreamRow } from '@ctxlayer/shared'
+import { clickableRow } from '../../../lib/a11y'
 import { fetchAdminUpstreams, fetchAdminUpstreamTools } from '../../../lib/api'
+import { useLoad } from '../../../lib/use-load'
+import { useOAuthFlashBanner } from '../../../lib/use-oauth-banner'
 import { explain, type ToolsState } from './helpers'
 import { CreateUpstreamModal } from './CreateUpstreamModal'
 import { ExpandChevron } from './ExpandChevron'
@@ -9,26 +11,16 @@ import { ToolsExpansion } from './ToolsExpansion'
 import { UpstreamDrawer } from './UpstreamDrawer'
 
 export function AdminUpstreams() {
-  const [items, setItems] = useState<AdminUpstreamRow[] | null>(null)
-  const [error, setError] = useState<string | null>(null)
+  const { data: items, error, reload } = useLoad(fetchAdminUpstreams, [], { explain })
   const [createOpen, setCreateOpen] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   // Expanded upstream ids → lazy-fetched tool cache. Toggled by the
   // per-row chevron; the row's main click still opens the drawer.
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set())
   const [toolsByUpstream, setToolsByUpstream] = useState<Map<string, ToolsState>>(new Map())
-  const [oauthBanner, setOauthBanner] = useState<{ kind: 'ok' | 'err'; message: string } | null>(
-    null
-  )
-
-  const reload = useCallback(async (signal?: AbortSignal) => {
-    try {
-      const list = await fetchAdminUpstreams(signal)
-      if (!signal?.aborted) setItems(list)
-    } catch (err) {
-      if (!signal?.aborted) setError(explain(err))
-    }
-  }, [])
+  // OAuth callbacks bounced via `return_to=admin` flash a slug or an error
+  // code on the URL; surface it and clean the URL.
+  const { banner: oauthBanner, clear: clearOauthBanner } = useOAuthFlashBanner()
 
   // Toggle expand for a row. First time a row is expanded, lazy-fetch
   // its tool cache; subsequent toggles reuse the cached state.
@@ -71,36 +63,6 @@ export function AdminUpstreams() {
     })
   }, [])
 
-  useEffect(() => {
-    const ctrl = new AbortController()
-    reload(ctrl.signal)
-    return () => ctrl.abort()
-  }, [reload])
-
-  // OAuth callbacks bounced via `return_to=admin` flash a slug or
-  // an error code on the URL; surface it and clean the URL.
-  useMemo(() => {
-    const params = new URLSearchParams(window.location.search)
-    const connected = params.get('oauth_connected')
-    const errCode = params.get('oauth_error')
-    if (connected) {
-      setOauthBanner({ kind: 'ok', message: `Connected ${connected}.` })
-    } else if (errCode) {
-      const desc = params.get('desc') ?? ''
-      setOauthBanner({
-        kind: 'err',
-        message: `OAuth failed: ${errCode}${desc ? ` — ${desc}` : ''}`
-      })
-    }
-    if (connected || errCode) {
-      params.delete('oauth_connected')
-      params.delete('oauth_error')
-      params.delete('desc')
-      const qs = params.toString()
-      window.history.replaceState({}, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`)
-    }
-  }, [])
-
   return (
     <>
       <Group justify="space-between" align="center" mb="md">
@@ -117,7 +79,7 @@ export function AdminUpstreams() {
           radius="sm"
           mb="md"
           withCloseButton
-          onClose={() => setOauthBanner(null)}
+          onClose={clearOauthBanner}
         >
           {oauthBanner.message}
         </Alert>
@@ -155,7 +117,7 @@ export function AdminUpstreams() {
               const tools = toolsByUpstream.get(u.id)
               return (
                 <Fragment key={u.id}>
-                  <tr onClick={() => setEditingId(u.id)}>
+                  <tr {...clickableRow(() => setEditingId(u.id))}>
                     <td style={{ textAlign: 'center' }}>
                       <button
                         type="button"
@@ -226,15 +188,16 @@ export function AdminUpstreams() {
         </table>
       )}
 
-      <CreateUpstreamModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(id) => {
-          setCreateOpen(false)
-          reload()
-          setEditingId(id)
-        }}
-      />
+      {createOpen && (
+        <CreateUpstreamModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(id) => {
+            setCreateOpen(false)
+            reload()
+            setEditingId(id)
+          }}
+        />
+      )}
 
       {editingId && (
         <UpstreamDrawer

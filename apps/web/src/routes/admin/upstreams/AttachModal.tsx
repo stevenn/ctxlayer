@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack } from '@mantine/core'
-import type { SkillSummary } from '@ctxlayer/shared'
 import { attachSkill, fetchSkills } from '../../../lib/api'
+import { useLoad } from '../../../lib/use-load'
 import { explain } from './helpers'
 
 export function UpstreamSkillAttachModal({
@@ -17,20 +17,15 @@ export function UpstreamSkillAttachModal({
   onClose: () => void
   onAttached: () => void
 }) {
-  const [skills, setSkills] = useState<SkillSummary[] | null>(null)
   const [selectedSkillId, setSelectedSkillId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  // One error channel shared by the skills load and the attach action.
   const [error, setError] = useState<string | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
-    fetchSkills({ status: 'all' })
-      .then((rows) => !cancelled && setSkills(rows))
-      .catch((err) => !cancelled && setError(explain(err)))
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const { data: skills } = useLoad((signal) => fetchSkills({ status: 'all' }, signal), [], {
+    explain,
+    onError: setError
+  })
 
   const options = useMemo(
     () =>

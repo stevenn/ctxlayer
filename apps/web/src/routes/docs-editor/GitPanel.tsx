@@ -196,6 +196,7 @@ export function GitPanel({
           <Stack gap={4}>
             <PasswordInput
               size="xs"
+              aria-label="Personal access token"
               placeholder="Personal access token (repo write)…"
               value={token}
               onChange={(e) => setToken(e.currentTarget.value)}

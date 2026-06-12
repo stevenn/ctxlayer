@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Button, Group, Modal, Stack, TextInput } from '@mantine/core'
 import { createDoc } from '../../lib/api'
@@ -7,31 +7,22 @@ import { explain } from './helpers'
 
 // ----- Blank doc modal ---------------------------------------------------
 
+// Conditionally mounted by the caller (`{createOpen && <BlankDocModal/>}`),
+// so state initialises fresh on every open — the folder default is just
+// the useState initial value, no `opened` prop / reset effect needed.
 export function BlankDocModal({
-  opened,
   onClose,
   defaultFolder
 }: {
-  opened: boolean
   onClose: () => void
   defaultFolder: string | null
 }) {
   const nav = useNavigate()
   const [title, setTitle] = useState('')
-  const [folder, setFolder] = useState('')
+  const [folder, setFolder] = useState(defaultFolder ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const slugField = useSlugSuggest('doc', title)
-
-  useEffect(() => {
-    if (opened) {
-      setTitle('')
-      setFolder(defaultFolder ?? '')
-      setError(null)
-      slugField.reset()
-    }
-    // slugField identity is stable across renders; intentionally not a dep.
-  }, [opened, defaultFolder])
 
   async function submit() {
     const t = title.trim()
@@ -55,7 +46,7 @@ export function BlankDocModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New doc" centered>
+    <Modal opened onClose={onClose} title="New doc" centered>
       <Stack gap="md">
         <TextInput
           label="Title"

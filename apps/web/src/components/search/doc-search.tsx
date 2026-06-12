@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Alert, Badge, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core'
+import { Alert, Button, Group, Loader, Stack, Text, TextInput } from '@mantine/core'
 import type { SearchDocGroup, SearchResponse, SuggestedFilter } from '@ctxlayer/shared'
 import { significantTerms, escapeRegExp } from '@ctxlayer/shared'
 import { searchDocs } from '../../lib/api'
@@ -213,16 +213,16 @@ function FilterBar({
         </Text>
       )}
       {suggestions.map((s) => (
-        <Badge
+        <Button
           key={`${s.kind}:${s.id}`}
+          size="compact-xs"
           variant="light"
           color="grape"
-          style={{ cursor: 'pointer' }}
           onClick={() => onApply(s)}
           title={`Narrow to ${s.kind} ${s.name}`}
         >
           + {s.name}
-        </Badge>
+        </Button>
       ))}
     </Group>
   )
