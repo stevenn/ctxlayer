@@ -27,6 +27,7 @@ import {
   putUserRoles
 } from '../../lib/api'
 import { KV, Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
 import { useBusyAction } from '../../lib/use-busy'
@@ -74,6 +75,7 @@ export function AdminUsers() {
         </Group>
         <TextInput
           size="xs"
+          aria-label="Filter users"
           placeholder="Filter by email or name…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}
@@ -125,7 +127,7 @@ export function AdminUsers() {
           </thead>
           <tbody>
             {filtered.map((u) => (
-              <tr key={u.id} onClick={() => setEditingId(u.id)}>
+              <tr key={u.id} {...clickableRow(() => setEditingId(u.id))}>
                 <td style={{ fontWeight: 500 }}>{u.email}</td>
                 <td className="text-muted">{u.name ?? '—'}</td>
                 <td className="text-muted">{u.idp}</td>
@@ -203,12 +205,16 @@ function UserDrawer({
   const { data: allRoles } = useLoad(fetchRoles, [], { onError: () => {} })
   const [roleIds, setRoleIds] = useState<string[]>(user.roles.map((r) => r.id))
 
+  // Reset only when a DIFFERENT user is opened. Depending on `user`
+  // identity would re-run after every onChanged()→reload (fresh row
+  // object), wiping the info/error alert the action just set; the
+  // switch/multiselect state is already kept in sync by the handlers.
   useEffect(() => {
     setIsAdmin(user.role === 'admin')
     setRoleIds(user.roles.map((r) => r.id))
     setError(null)
     setInfo(null)
-  }, [user])
+  }, [user.id])
 
   const { busy, run: withBusy } = useBusyAction({
     explain,

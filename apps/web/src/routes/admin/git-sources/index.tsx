@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
 import type { AdminGitSourceRow } from '@ctxlayer/shared'
+import { clickableRow } from '../../../lib/a11y'
 import { fetchAdminGitSources, fetchProducts } from '../../../lib/api'
 import { useLoad } from '../../../lib/use-load'
 import { explain, repoLabel } from './helpers'
@@ -56,7 +57,7 @@ export function AdminGitSources() {
           </thead>
           <tbody>
             {items.map((g) => (
-              <tr key={g.id} onClick={() => setEditingId(g.id)}>
+              <tr key={g.id} {...clickableRow(() => setEditingId(g.id))}>
                 <td style={{ fontWeight: 500 }}>{g.displayName}</td>
                 <td className="text-muted">
                   <code>{g.slug}</code>
@@ -82,16 +83,17 @@ export function AdminGitSources() {
         </table>
       )}
 
-      <CreateGitSourceModal
-        opened={createOpen}
-        products={products}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(id) => {
-          setCreateOpen(false)
-          reload()
-          setEditingId(id)
-        }}
-      />
+      {createOpen && (
+        <CreateGitSourceModal
+          products={products}
+          onClose={() => setCreateOpen(false)}
+          onCreated={(id) => {
+            setCreateOpen(false)
+            reload()
+            setEditingId(id)
+          }}
+        />
+      )}
 
       {editingId && (
         <GitSourceDrawer

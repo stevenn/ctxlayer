@@ -52,6 +52,11 @@ export function OAuthSection({
   const [scopes, setScopes] = useState((row.oauth?.scopes ?? defaults.scopes).join(' '))
   const [clientSecret, setClientSecret] = useState('')
 
+  // Re-sync form state from the server row only when the OAuth config
+  // itself changes (own save / Clear OAuth round-trips — incl. clearing
+  // the write-only secret field). Depending on `row` identity would wipe
+  // in-progress edits whenever a SIBLING section saves, because the
+  // drawer's reload() produces a fresh row object every time.
   useEffect(() => {
     const d = defaultOAuthEndpoints(row.provider, row.baseUrl)
     setClientId(row.oauth?.clientId ?? '')
@@ -59,7 +64,16 @@ export function OAuthSection({
     setTokenUrl(row.oauth?.tokenUrl ?? d.tokenUrl)
     setScopes((row.oauth?.scopes ?? d.scopes).join(' '))
     setClientSecret('')
-  }, [row])
+  }, [
+    row.id,
+    row.provider,
+    row.baseUrl,
+    row.oauth?.clientId,
+    row.oauth?.authorizeUrl,
+    row.oauth?.tokenUrl,
+    (row.oauth?.scopes ?? []).join(' '),
+    row.clientSecretConfigured
+  ])
 
   const canSave =
     !!clientId.trim() &&

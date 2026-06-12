@@ -212,6 +212,7 @@ function UpstreamCard({
           <Stack gap="xs">
             <PasswordInput
               size="xs"
+              aria-label="Personal access token"
               placeholder={
                 upstream.connected
                   ? 'Paste a new token to replace the stored one…'

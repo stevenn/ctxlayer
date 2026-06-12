@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useState } from 'react'
 import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
+import { clickableRow } from '../../../lib/a11y'
 import { fetchAdminUpstreams, fetchAdminUpstreamTools } from '../../../lib/api'
 import { useLoad } from '../../../lib/use-load'
 import { useOAuthFlashBanner } from '../../../lib/use-oauth-banner'
@@ -116,7 +117,7 @@ export function AdminUpstreams() {
               const tools = toolsByUpstream.get(u.id)
               return (
                 <Fragment key={u.id}>
-                  <tr onClick={() => setEditingId(u.id)}>
+                  <tr {...clickableRow(() => setEditingId(u.id))}>
                     <td style={{ textAlign: 'center' }}>
                       <button
                         type="button"
@@ -187,15 +188,16 @@ export function AdminUpstreams() {
         </table>
       )}
 
-      <CreateUpstreamModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={(id) => {
-          setCreateOpen(false)
-          reload()
-          setEditingId(id)
-        }}
-      />
+      {createOpen && (
+        <CreateUpstreamModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={(id) => {
+            setCreateOpen(false)
+            reload()
+            setEditingId(id)
+          }}
+        />
+      )}
 
       {editingId && (
         <UpstreamDrawer

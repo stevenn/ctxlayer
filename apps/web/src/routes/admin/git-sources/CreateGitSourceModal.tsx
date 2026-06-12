@@ -1,17 +1,17 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
 import type { ProductRef } from '@ctxlayer/shared'
 import { adminCreateGitSource } from '../../../lib/api'
 import { parseGitUrl, type ParsedGitUrl } from '../../../lib/git-url'
 import { explain } from './helpers'
 
+// Conditionally mounted by the caller (`{createOpen && …}`), so all state
+// resets for free on close — no `opened` prop / reset effect.
 export function CreateGitSourceModal({
-  opened,
   products,
   onClose,
   onCreated
 }: {
-  opened: boolean
   products: ProductRef[] | null
   onClose: () => void
   onCreated: (id: string) => void
@@ -34,23 +34,6 @@ export function CreateGitSourceModal({
   const [folderTouched, setFolderTouched] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setUrl('')
-      setParsed(null)
-      setBranch('main')
-      setFolder('')
-      setDisplayName('')
-      setSlug('')
-      setProductId(null)
-      setNameTouched(false)
-      setSlugTouched(false)
-      setBranchTouched(false)
-      setFolderTouched(false)
-      setError(null)
-    }
-  }, [opened])
 
   function onUrlChange(value: string) {
     setUrl(value)
@@ -92,7 +75,7 @@ export function CreateGitSourceModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New git source" centered size="lg">
+    <Modal opened onClose={onClose} title="New git source" centered size="lg">
       <Stack gap="md">
         <TextInput
           label="Git repo URL"

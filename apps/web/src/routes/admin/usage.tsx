@@ -93,6 +93,7 @@ export function AdminUsage() {
           <UserPicker value={user} onChange={setUser} />
           <TextInput
             size="xs"
+            aria-label="Filter by upstream id"
             placeholder="Filter by upstream id"
             value={upstreamId}
             onChange={(e) => setUpstreamId(e.currentTarget.value)}
@@ -166,6 +167,7 @@ function UserPicker({
     <Select
       size="xs"
       w={240}
+      aria-label="Filter by user email"
       placeholder="Filter by user (email)"
       searchable
       clearable

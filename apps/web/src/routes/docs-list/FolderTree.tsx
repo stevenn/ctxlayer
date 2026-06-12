@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
 import { Button, Group, Menu, Text } from '@mantine/core'
 import type { DocSummary, FolderTreeNode } from '@ctxlayer/shared'
+import { clickableRow } from '../../lib/a11y'
 import {
   buildTree,
   type FolderGroup,
@@ -147,7 +148,7 @@ function FolderNodeRow({
           cursor: 'pointer',
           background: isActive ? 'var(--bg-hover)' : undefined
         }}
-        onClick={() => onSelect({ group, path: node.path, sourceId })}
+        {...clickableRow(() => onSelect({ group, path: node.path, sourceId }))}
       >
         <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive || isRoot ? 600 : 400 }}>
           {node.label}

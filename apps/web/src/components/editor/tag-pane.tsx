@@ -150,6 +150,7 @@ export function TagPane({ docId, canEdit }: Props) {
                   addTopic()
                 }
               }}
+              aria-label="Add topic tag"
               placeholder="topic-slug"
               size="xs"
               style={{ flex: 1 }}

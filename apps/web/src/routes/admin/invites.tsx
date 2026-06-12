@@ -73,6 +73,7 @@ export function AdminInvites() {
 
       <Stack gap="xs" mb="lg">
         <Textarea
+          aria-label="Email addresses to invite"
           placeholder={'alice@example.com\nbob@example.com'}
           value={emails}
           onChange={(e) => setEmails(e.currentTarget.value)}

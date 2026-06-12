@@ -29,6 +29,7 @@ export function SyncSection({
         </Text>
         <PasswordInput
           size="xs"
+          aria-label="Read token (personal access token)"
           placeholder={
             row.sharedCredentialConfigured
               ? 'Paste a new PAT to replace the stored one…'

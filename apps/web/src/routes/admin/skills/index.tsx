@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Badge, Button, Group, Select, Text, TextInput, Title } from '@mantine/core'
+import { clickableRow } from '../../../lib/a11y'
 import { fetchSkills } from '../../../lib/api'
 import { relativeTime } from '../../../lib/time'
 import { useLoad } from '../../../lib/use-load'
@@ -60,6 +61,7 @@ export function AdminSkills() {
           />
           <TextInput
             size="xs"
+            aria-label="Filter skills"
             placeholder="Filter by title or slug…"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
@@ -101,7 +103,7 @@ export function AdminSkills() {
           </thead>
           <tbody>
             {filtered.map((s) => (
-              <tr key={s.id} onClick={() => setEditingId(s.id)}>
+              <tr key={s.id} {...clickableRow(() => setEditingId(s.id))}>
                 <td style={{ fontWeight: 500 }}>
                   <Group gap="xs" wrap="nowrap">
                     <span>{s.title}</span>

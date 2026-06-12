@@ -15,6 +15,7 @@ import {
 } from '@mantine/core'
 import type { OAuthClientRow, OAuthClientUserRef } from '@ctxlayer/shared'
 import { KV as KVBase, Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { fetchAdminOAuthClients, pruneAdminOAuthClients } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
@@ -89,12 +90,21 @@ export function AdminOAuthClients() {
 
   async function loadMore() {
     if (status.kind !== 'ready' || !status.nextCursor || status.loadingMore) return
+    // Same ctrlRef discipline as load(): registering this controller means
+    // a concurrent reload (e.g. after a prune) aborts the in-flight page,
+    // so a slow response can never append a stale page onto a fresh list.
+    const ctrl = new AbortController()
+    ctrlRef.current = ctrl
     setStatus({ ...status, loadingMore: true })
     try {
-      const page = await fetchAdminOAuthClients({
-        cursor: status.nextCursor,
-        limit: PAGE_SIZE
-      })
+      const page = await fetchAdminOAuthClients(
+        {
+          cursor: status.nextCursor,
+          limit: PAGE_SIZE
+        },
+        ctrl.signal
+      )
+      if (ctrl.signal.aborted) return
       setStatus((cur) => {
         if (cur.kind !== 'ready') return cur
         return {
@@ -105,6 +115,7 @@ export function AdminOAuthClients() {
         }
       })
     } catch (err) {
+      if (ctrl.signal.aborted) return
       setStatus({ kind: 'error', message: explain(err) })
     }
   }
@@ -198,6 +209,7 @@ export function AdminOAuthClients() {
           </Tooltip>
           <TextInput
             size="xs"
+            aria-label="Filter OAuth clients"
             placeholder="Filter by name, id, or redirect URI…"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
@@ -255,7 +267,7 @@ export function AdminOAuthClients() {
             </thead>
             <tbody>
               {filtered.map((c) => (
-                <tr key={c.clientId} onClick={() => setSelected(c)}>
+                <tr key={c.clientId} {...clickableRow(() => setSelected(c))}>
                   <td style={{ fontWeight: 500 }}>
                     {c.clientName ?? <span style={{ color: 'var(--text-dim)' }}>(unnamed)</span>}
                   </td>

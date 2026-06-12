@@ -35,6 +35,7 @@ import {
   searchUsers
 } from '../../lib/api'
 import { Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
 import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
@@ -80,7 +81,7 @@ export function AdminTeams() {
           </thead>
           <tbody>
             {teams.map((t) => (
-              <tr key={t.id} onClick={() => setEditingTeam(t)}>
+              <tr key={t.id} {...clickableRow(() => setEditingTeam(t))}>
                 <td style={{ fontWeight: 500 }}>{t.displayName}</td>
                 <td className="text-muted">
                   <code>{t.slug}</code>
@@ -96,14 +97,15 @@ export function AdminTeams() {
         </table>
       )}
 
-      <CreateTeamModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        onCreated={() => {
-          setCreateOpen(false)
-          reload()
-        }}
-      />
+      {createOpen && (
+        <CreateTeamModal
+          onClose={() => setCreateOpen(false)}
+          onCreated={() => {
+            setCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
 
       {editingTeam && (
         <TeamDrawer
@@ -122,15 +124,9 @@ export function AdminTeams() {
 
 // ----- Create modal ------------------------------------------------------
 
-function CreateTeamModal({
-  opened,
-  onClose,
-  onCreated
-}: {
-  opened: boolean
-  onClose: () => void
-  onCreated: () => void
-}) {
+// Conditionally mounted by the caller (`{createOpen && <CreateTeamModal/>}`),
+// so all state resets for free on close — no `opened` prop / reset effect.
+function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
   const [displayName, setDisplayName] = useState('')
   const slugField = useSlugSuggest('team', displayName)
   const [description, setDescription] = useState('')
@@ -138,17 +134,6 @@ function CreateTeamModal({
   const [managedByIdp, setManagedByIdp] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setDisplayName('')
-      slugField.reset()
-      setDescription('')
-      setIdpGroup('')
-      setManagedByIdp(false)
-      setError(null)
-    }
-  }, [opened])
 
   async function submit() {
     if (!slugField.slug.trim() || !displayName.trim()) return
@@ -171,7 +156,7 @@ function CreateTeamModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New team" centered>
+    <Modal opened onClose={onClose} title="New team" centered>
       <Stack gap="md">
         <TextInput
           label="Display name"
@@ -431,6 +416,7 @@ function TeamDrawer({
           <Stack gap={6}>
             <TextInput
               size="xs"
+              aria-label="Add member by email"
               placeholder="Add by email…"
               value={query}
               onChange={(e) => setQuery(e.currentTarget.value)}

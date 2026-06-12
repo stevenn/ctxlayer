@@ -42,6 +42,7 @@ export function DocLinkPicker({ currentDocId, onClose, onPick }: DocLinkPickerPr
       <Stack gap="md">
         <TextInput
           autoFocus
+          aria-label="Filter docs"
           placeholder="Filter by title or slug…"
           value={query}
           onChange={(e) => setQuery(e.currentTarget.value)}

@@ -111,6 +111,7 @@ export function SharingDialog({ docId, onClose }: Props) {
             type="email"
             value={query}
             onChange={(e) => setQuery(e.currentTarget.value)}
+            aria-label="Add editor by email"
             placeholder="user@…"
             autoComplete="off"
           />

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack, TextInput } from '@mantine/core'
 import type { SupportedTransport } from '@ctxlayer/shared'
 import { adminCreateUpstream } from '../../../lib/api'
@@ -18,12 +18,12 @@ import {
   type OAuthClientFieldValues
 } from './OAuthClientFields'
 
+// Conditionally mounted by the caller (`{createOpen && …}`), so all state
+// resets for free on close — no `opened` prop / reset effect.
 export function CreateUpstreamModal({
-  opened,
   onClose,
   onCreated
 }: {
-  opened: boolean
   onClose: () => void
   onCreated: (id: string) => void
 }) {
@@ -35,18 +35,6 @@ export function CreateUpstreamModal({
   const [oauthFields, setOauthFields] = useState<OAuthClientFieldValues>(EMPTY_OAUTH_FIELDS)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setDisplayName('')
-      slugField.reset()
-      setTransport('streamable_http')
-      setUrl('')
-      setAuthStrategy('user_bearer')
-      setOauthFields(EMPTY_OAUTH_FIELDS)
-      setError(null)
-    }
-  }, [opened])
 
   async function submit() {
     if (!slugField.slug.trim() || !displayName.trim() || !url.trim()) return
@@ -72,7 +60,7 @@ export function CreateUpstreamModal({
   }
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New upstream" centered size="lg">
+    <Modal opened onClose={onClose} title="New upstream" centered size="lg">
       <Stack gap="md">
         <TextInput
           label="Display name"

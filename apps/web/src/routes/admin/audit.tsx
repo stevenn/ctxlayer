@@ -13,6 +13,7 @@ import {
 } from '@mantine/core'
 import type { AuditLogEntry } from '@ctxlayer/shared'
 import { Section } from '../../components/admin-bits'
+import { clickableRow } from '../../lib/a11y'
 import { fetchAdminAudit } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
@@ -126,6 +127,7 @@ export function AdminAudit() {
         <Group gap="xs">
           <TextInput
             size="xs"
+            aria-label="Filter by action prefix"
             placeholder="Action prefix (e.g. doc., user., upstream.)"
             value={actionFilter}
             onChange={(e) => setActionFilter(e.currentTarget.value)}
@@ -133,6 +135,7 @@ export function AdminAudit() {
           />
           <TextInput
             size="xs"
+            aria-label="Filter by actor id"
             placeholder="Actor id"
             value={actorFilter}
             onChange={(e) => setActorFilter(e.currentTarget.value)}
@@ -170,7 +173,7 @@ export function AdminAudit() {
             </thead>
             <tbody>
               {status.entries.map((e) => (
-                <tr key={e.id} onClick={() => setSelected(e)}>
+                <tr key={e.id} {...clickableRow(() => setSelected(e))}>
                   <td className="text-muted" title={absDateTime(e.ts)}>
                     {relativeTime(e.ts)}
                   </td>

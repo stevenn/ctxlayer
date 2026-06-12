@@ -36,6 +36,12 @@ export function DetailsSection({
   const [syncInterval, setSyncInterval] = useState<GitSyncInterval>(row.syncInterval)
   const [enabled, setEnabled] = useState(row.enabled)
 
+  // Re-sync form state from the server row only when one of the fields
+  // this section actually mirrors changes (i.e. after this section's own
+  // save round-trips). Depending on `row` identity instead would wipe
+  // in-progress edits every time a SIBLING section saves — the drawer's
+  // reload() produces a fresh row object even when these fields are
+  // untouched.
   useEffect(() => {
     setDisplayName(row.displayName)
     setBranch(row.branch)
@@ -46,7 +52,18 @@ export function DetailsSection({
     setWriteStrategy(row.writeStrategy)
     setSyncInterval(row.syncInterval)
     setEnabled(row.enabled)
-  }, [row])
+  }, [
+    row.id,
+    row.displayName,
+    row.branch,
+    row.pathPrefix,
+    row.folderRoot,
+    row.productId,
+    row.readStrategy,
+    row.writeStrategy,
+    row.syncInterval,
+    row.enabled
+  ])
 
   return (
     <Section title="Details">

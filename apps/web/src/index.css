@@ -293,8 +293,13 @@ a:hover {
   border-bottom: none;
 }
 .data-table tbody tr {
-  cursor: pointer;
   transition: background-color 0.1s ease;
+}
+/* Pointer cursor is opt-in: only rows that actually open something
+   (spread `clickableRow(...)` from lib/a11y.ts) advertise clickability.
+   Read-only tables (usage breakdowns, tool lists) keep the default. */
+.data-table tbody tr.row-clickable {
+  cursor: pointer;
 }
 .data-table tbody tr:hover {
   background: var(--bg-elevated);

@@ -7,6 +7,7 @@ import {
   adminPatchProduct,
   fetchProducts
 } from '../../lib/api'
+import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
@@ -47,7 +48,7 @@ export function AdminProducts() {
           </thead>
           <tbody>
             {products.map((p) => (
-              <tr key={p.id} onClick={() => setEditing(p)}>
+              <tr key={p.id} {...clickableRow(() => setEditing(p))}>
                 <td style={{ fontWeight: 500 }}>{p.displayName}</td>
                 <td className="text-muted">
                   <code>{p.slug}</code>
@@ -59,18 +60,18 @@ export function AdminProducts() {
         </table>
       )}
 
-      <ProductFormModal
-        opened={createOpen}
-        onClose={() => setCreateOpen(false)}
-        initial={null}
-        onSaved={() => {
-          setCreateOpen(false)
-          reload()
-        }}
-      />
+      {createOpen && (
+        <ProductFormModal
+          onClose={() => setCreateOpen(false)}
+          initial={null}
+          onSaved={() => {
+            setCreateOpen(false)
+            reload()
+          }}
+        />
+      )}
       {editing && (
         <ProductFormModal
-          opened
           onClose={() => setEditing(null)}
           initial={editing}
           onSaved={() => {
@@ -87,14 +88,15 @@ export function AdminProducts() {
   )
 }
 
+// Conditionally mounted by the caller (create: `{createOpen && …}`, edit:
+// `{editing && …}`), so state initialises from `initial` on every open via
+// the useState initial values — no `opened` prop / reset effect needed.
 function ProductFormModal({
-  opened,
   onClose,
   initial,
   onSaved,
   onDeleted
 }: {
-  opened: boolean
   onClose: () => void
   initial: ProductRef | null
   onSaved: () => void
@@ -106,29 +108,11 @@ function ProductFormModal({
   // In create mode the slug auto-fills from the name until the user edits
   // it; in edit mode it starts "touched" so we never overwrite the
   // existing slug.
-  const [slugTouched, setSlugTouched] = useState(false)
+  const [slugTouched, setSlugTouched] = useState(isEdit)
   const [displayName, setDisplayName] = useState(initial?.displayName ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
-
-  useEffect(() => {
-    if (!opened) {
-      setBusy(false)
-      setError(null)
-    }
-    if (opened && initial) {
-      setSlug(initial.slug)
-      setSlugTouched(true)
-      setDisplayName(initial.displayName)
-      setDescription(initial.description ?? '')
-    } else if (opened) {
-      setSlug('')
-      setSlugTouched(false)
-      setDisplayName('')
-      setDescription('')
-    }
-  }, [opened, initial])
 
   // Create-mode live suggestion: `prod-<slugified-name>` until touched.
   useEffect(() => {
@@ -189,12 +173,7 @@ function ProductFormModal({
   }
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      title={isEdit ? 'Edit product' : 'New product'}
-      centered
-    >
+    <Modal opened onClose={onClose} title={isEdit ? 'Edit product' : 'New product'} centered>
       <Stack gap="md">
         <TextInput
           label="Display name"
