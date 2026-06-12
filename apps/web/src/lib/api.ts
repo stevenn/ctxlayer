@@ -15,17 +15,12 @@ import {
   DocSummary,
   DocTags,
   FolderRenameRequest,
-  FolderTreeResponse,
-  HealthResponse,
   VersionResponse,
   SetLockedRequest,
-  SkillAttachmentRef,
   SkillContentSaveResult,
   SkillDetail,
-  SkillExportResponse,
   SkillRevisionSummary,
   SkillSummary,
-  SkillTags,
   AdminUpstreamRow,
   AdminUserRow,
   Invite,
@@ -114,17 +109,12 @@ import type {
   DocSummary as DocSummaryT,
   DocTags as DocTagsT,
   FolderRenameRequest as FolderRenameRequestT,
-  FolderTreeResponse as FolderTreeResponseT,
-  HealthResponse as HealthResponseT,
   VersionResponse as VersionResponseT,
   SetLockedRequest as SetLockedRequestT,
-  SkillAttachmentRef as SkillAttachmentRefT,
   SkillContentSaveResult as SkillContentSaveResultT,
   SkillDetail as SkillDetailT,
-  SkillExportResponse as SkillExportResponseT,
   SkillRevisionSummary as SkillRevisionSummaryT,
   SkillSummary as SkillSummaryT,
-  SkillTags as SkillTagsT,
   MeResponse as MeResponseT,
   PasteBearerRequest as PasteBearerRequestT,
   ProductRef as ProductRefT,
@@ -223,10 +213,6 @@ async function request<T>(
 
 export function fetchMe(signal?: AbortSignal): Promise<MeResponseT> {
   return request('/api/me', (b) => MeResponse.parse(b), { signal })
-}
-
-export function fetchHealth(signal?: AbortSignal): Promise<HealthResponseT> {
-  return request('/api/health', (b) => HealthResponse.parse(b), { signal })
 }
 
 export function fetchConfig(signal?: AbortSignal): Promise<ConfigResponseT> {
@@ -397,12 +383,6 @@ export function putGitUserCredential(sourceId: string, token: string): Promise<v
   })
 }
 
-export function deleteGitUserCredential(sourceId: string): Promise<void> {
-  return request(`/api/git-sources/${encodeURIComponent(sourceId)}/credentials`, () => undefined, {
-    method: 'DELETE'
-  })
-}
-
 export function createDoc(input: CreateDocRequestT): Promise<{ id: string; slug: string }> {
   return request('/api/docs', (b) => CreateDocResult.parse(b), {
     method: 'POST',
@@ -492,12 +472,6 @@ export function setDocLocked(id: string, body: SetLockedRequestT): Promise<void>
 }
 
 // ----- folders ------------------------------------------------------------
-
-const FolderTreeResponseSchema = FolderTreeResponse
-
-export function fetchFolders(signal?: AbortSignal): Promise<FolderTreeResponseT> {
-  return request('/api/folders', (b) => FolderTreeResponseSchema.parse(b), { signal })
-}
 
 export function renameFolder(
   body: FolderRenameRequestT
@@ -1059,7 +1033,6 @@ export function deleteUpstreamCredentials(upstreamId: string): Promise<void> {
 const SkillList = z.array(SkillSummary)
 const CreateSkillResult = z.object({ id: z.string(), slug: z.string() })
 const SkillRevisionList = z.array(SkillRevisionSummary)
-const SkillAttachmentList = z.array(SkillAttachmentRef)
 const DocAttachmentList = z.array(DocAttachmentRef)
 
 export interface FetchSkillsOpts {
@@ -1156,30 +1129,7 @@ export function fetchSkillRevisionContent(
   )
 }
 
-export function fetchSkillTags(id: string, signal?: AbortSignal): Promise<SkillTagsT> {
-  return request(`/api/skills/${encodeURIComponent(id)}/tags`, (b) => SkillTags.parse(b), {
-    signal
-  })
-}
-
-export function putSkillTags(id: string, tags: SkillTagsT): Promise<void> {
-  return request(`/api/skills/${encodeURIComponent(id)}/tags`, () => undefined, {
-    method: 'PUT',
-    body: JSON.stringify(SkillTags.parse(tags))
-  })
-}
-
 // ----- attachments (M7a) --------------------------------------------------
-
-export function fetchSkillAttachments(
-  skillId: string,
-  signal?: AbortSignal
-): Promise<SkillAttachmentRefT[]> {
-  const qs = new URLSearchParams({ skillId })
-  return request(`/api/skill-attachments?${qs}`, (b) => SkillAttachmentList.parse(b), {
-    signal
-  })
-}
 
 export function attachSkill(input: AttachSkillRequestT): Promise<void> {
   return request('/api/skill-attachments', () => undefined, {
@@ -1217,11 +1167,4 @@ export function detachDoc(input: AttachDocRequestT): Promise<void> {
     method: 'DELETE',
     body: JSON.stringify(AttachDocRequest.parse(input))
   })
-}
-
-// CLI-only typically; the SPA might surface this for "preview the
-// SKILL.md the CLI will write". Available for both roles since it's
-// just a transformation of published skills.
-export function fetchSkillsExport(signal?: AbortSignal): Promise<SkillExportResponseT> {
-  return request('/api/skills/export', (b) => SkillExportResponse.parse(b), { signal })
 }
