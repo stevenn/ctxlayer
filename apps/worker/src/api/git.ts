@@ -33,7 +33,7 @@ import {
 } from '../db/queries/git-sources'
 import { createGitProvider, type GitRepoConfig } from '../git/provider'
 import { resolveGitReadToken } from '../git/credentials'
-import { openWriteBackPr } from '../git/writeback'
+import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
 import { seal } from '../crypto/aead'
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
@@ -128,6 +128,22 @@ gitDocsRoute.post('/:id/git/pull-request', async (c) => {
   const parsed = CreatePullRequestRequest.safeParse(await c.req.json().catch(() => null))
   if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
   const outcome = await openWriteBackPr(c.env, id, {
+    actorId: userId,
+    markdown: parsed.data.markdown
+  })
+  if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 502)
+  return c.json(outcome.result)
+})
+
+// Commit the branch, then return the provider's New-PR deep-link for the user
+// to review + open in the provider UI (no PR opened by us, no local mutation).
+gitDocsRoute.post('/:id/git/review-url', async (c) => {
+  const id = c.req.param('id')
+  const userId = c.get('user').userId
+  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const parsed = CreatePullRequestRequest.safeParse(await c.req.json().catch(() => null))
+  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
+  const outcome = await prepareWriteBackRedirect(c.env, id, {
     actorId: userId,
     markdown: parsed.data.markdown
   })

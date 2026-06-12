@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Group, PasswordInput, Stack, Text } from '@mantine/core'
 import type { GitDocStatus } from '@ctxlayer/shared'
-import { proposeGitPullRequest, putGitUserCredential } from '../../lib/api'
+import { prepareGitReviewUrl, proposeGitPullRequest, putGitUserCredential } from '../../lib/api'
 import { explain } from './helpers'
 
 /**
@@ -25,6 +25,7 @@ export function GitPanel({
 }) {
   const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
+  const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [token, setToken] = useState('')
   const [connectOpen, setConnectOpen] = useState(false)
 
@@ -40,6 +41,7 @@ export function GitPanel({
   async function propose() {
     setBusy(true)
     setMsg(null)
+    setReviewUrl(null)
     try {
       const md = await getMarkdown()
       const res = await proposeGitPullRequest(docId, md)
@@ -51,6 +53,26 @@ export function GitPanel({
             : 'Pull request updated.'
       )
       await onRefresh()
+    } catch (err) {
+      setMsg(explain(err))
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function reviewInBrowser() {
+    setBusy(true)
+    setMsg(null)
+    setReviewUrl(null)
+    try {
+      const md = await getMarkdown()
+      const res = await prepareGitReviewUrl(docId, md)
+      if (res.redirectUrl) {
+        setReviewUrl(res.redirectUrl)
+        setMsg('Branch pushed — open the New-PR page to review and create it:')
+      } else {
+        setMsg('No changes vs the synced version.')
+      }
     } catch (err) {
       setMsg(explain(err))
     } finally {
@@ -111,11 +133,26 @@ export function GitPanel({
         {msg && (
           <Alert color="gray" variant="light" radius="sm" p={6}>
             <Text fz="xs">{msg}</Text>
+            {reviewUrl && (
+              <a
+                href={reviewUrl}
+                target="_blank"
+                rel="noreferrer"
+                style={{ fontSize: 12, display: 'inline-block', marginTop: 4 }}
+              >
+                Open New-PR page on {status.provider} ↗
+              </a>
+            )}
           </Alert>
         )}
         {canEdit && (
           <Button size="xs" variant="default" onClick={propose} loading={busy}>
             Propose change (open PR)
+          </Button>
+        )}
+        {canEdit && (
+          <Button size="compact-xs" variant="subtle" onClick={reviewInBrowser} loading={busy}>
+            Review &amp; create in {status.provider}…
           </Button>
         )}
         {canEdit && !connectOpen && (

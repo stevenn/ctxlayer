@@ -72,6 +72,20 @@ describe('GitLabProvider read path', () => {
     )
   })
 
+  it('builds a prefilled new-MR deep link', () => {
+    const gl = new GitLabProvider(config, 't')
+    const url = gl.newPrWebUrl({
+      headBranch: 'ctxlayer/doc-x-abcd1234',
+      baseRef: 'main',
+      title: 'Update docs/guide.md',
+      body: 'hello'
+    })
+    expect(url).toContain('/group/docs/-/merge_requests/new?')
+    expect(url).toContain('merge_request%5Bsource_branch%5D=ctxlayer%2Fdoc-x-abcd1234')
+    expect(url).toContain('merge_request%5Btarget_branch%5D=main')
+    expect(url).toContain('merge_request%5Btitle%5D=Update+docs%2Fguide.md')
+  })
+
   it('maps merge-request state', async () => {
     vi.stubGlobal(
       'fetch',

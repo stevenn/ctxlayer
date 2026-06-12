@@ -78,6 +78,20 @@ describe('AzureDevOpsProvider read path', () => {
     )
   })
 
+  it('builds a new-PR deep link (branches only — ADO has no title/body prefill)', () => {
+    const az = new AzureDevOpsProvider(config, 'pat')
+    const url = az.newPrWebUrl({
+      headBranch: 'ctxlayer/doc-x-abcd1234',
+      baseRef: 'main',
+      title: 'ignored',
+      body: 'ignored'
+    })
+    expect(url).toBe(
+      'https://dev.azure.com/acme-org/Platform/_git/docs/pullrequestcreate' +
+        '?sourceRef=ctxlayer%2Fdoc-x-abcd1234&targetRef=main'
+    )
+  })
+
   it('maps PR status', async () => {
     vi.stubGlobal(
       'fetch',

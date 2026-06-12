@@ -168,3 +168,14 @@ export const CreatePullRequestResult = z.object({
   pr: GitPrRef.nullable()
 })
 export type CreatePullRequestResult = z.infer<typeof CreatePullRequestResult>
+
+// POST /api/docs/:id/git/review-url — commit the branch, then return the
+// provider's New-PR deep-link for the user to review + open in the provider
+// UI. `redirectUrl` is null only on a no-op with no existing PR (nothing to
+// open). `branch` is the head branch the change was pushed to.
+export const GitReviewUrlResult = z.object({
+  redirectUrl: z.string().nullable(),
+  branch: z.string().nullable()
+})
+export type GitReviewUrlResult = z.infer<typeof GitReviewUrlResult>
+

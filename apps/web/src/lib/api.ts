@@ -65,6 +65,7 @@ import {
   GitDocStatus,
   CreatePullRequestRequest,
   CreatePullRequestResult,
+  GitReviewUrlResult,
   AdminTeamRow,
   TeamMemberRow,
   TeamProductsAssignment,
@@ -141,6 +142,7 @@ import type {
   UpdateGitSourceRequest as UpdateGitSourceRequestT,
   GitDocStatus as GitDocStatusT,
   CreatePullRequestResult as CreatePullRequestResultT,
+  GitReviewUrlResult as GitReviewUrlResultT,
   AdminTeamRow as AdminTeamRowT,
   TeamMemberRow as TeamMemberRowT,
   TeamProductsAssignment as TeamProductsAssignmentT,
@@ -352,6 +354,22 @@ export function proposeGitPullRequest(
   return request(
     `/api/docs/${encodeURIComponent(id)}/git/pull-request`,
     (b) => CreatePullRequestResult.parse(b),
+    {
+      method: 'POST',
+      body: JSON.stringify(CreatePullRequestRequest.parse({ markdown }))
+    }
+  )
+}
+
+/**
+ * Commit the change to a branch and get the provider's New-PR deep-link to
+ * open in a new tab (review + open in the provider's own UI). Reuses the
+ * pull-request request body (markdown).
+ */
+export function prepareGitReviewUrl(id: string, markdown: string): Promise<GitReviewUrlResultT> {
+  return request(
+    `/api/docs/${encodeURIComponent(id)}/git/review-url`,
+    (b) => GitReviewUrlResult.parse(b),
     {
       method: 'POST',
       body: JSON.stringify(CreatePullRequestRequest.parse({ markdown }))
