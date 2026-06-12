@@ -372,12 +372,15 @@ export interface RecordRevisionInput {
  */
 export async function recordRevision(env: Env, input: RecordRevisionInput): Promise<RevisionRow> {
   const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(
-    `INSERT INTO doc_revisions
-       (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-  )
-    .bind(
+  // Atomic: the revision INSERT and the head/snapshot UPDATE land together as
+  // one D1 transaction, so a crash can't leave a revision row without a head
+  // pointer (or a head pointing at a revision that never inserted).
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO doc_revisions
+         (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
+    ).bind(
       input.revisionId,
       input.docId,
       input.authorId,
@@ -386,13 +389,11 @@ export async function recordRevision(env: Env, input: RecordRevisionInput): Prom
       input.contentHash,
       now,
       input.kind ?? 'explicit'
-    )
-    .run()
-  await env.DB.prepare(
-    `UPDATE documents SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
-  )
-    .bind(input.revisionId, input.r2Key, now, input.docId)
-    .run()
+    ),
+    env.DB.prepare(
+      `UPDATE documents SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
+    ).bind(input.revisionId, input.r2Key, now, input.docId)
+  ])
   const row = await env.DB.prepare(
     `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
      FROM doc_revisions WHERE id = ?1`

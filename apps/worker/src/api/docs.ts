@@ -49,6 +49,7 @@ import {
   type RevisionRow
 } from '../db/queries/docs'
 import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
+import { markGitDocLocallyEdited } from '../db/queries/git-sources'
 import { audit } from '../audit/log'
 import {
   contentDigest,
@@ -191,6 +192,10 @@ docsRoute.put('/:id/content', async (c) => {
       )
     }
   }
+  // A local edit diverges a git-sourced doc from its synced baseline. Flag it
+  // (clean → local_edits) so inbound cron sync won't clobber the edit before
+  // it's proposed as a PR. No-op for ordinary (non-git) docs.
+  await markGitDocLocallyEdited(c.env, id)
   c.executionCtx.waitUntil(
     c.env.DOC_REINDEX_QUEUE.send({ docId: id, revisionId }).catch((err) =>
       console.error('reindex enqueue failed', err)
