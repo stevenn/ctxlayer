@@ -46,6 +46,8 @@ import { pruneUsageEvents } from './db/queries/usage'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { listEnabledGitSources } from './db/queries/git-sources'
 import { isGitSyncDue } from './git/sync'
+import { notify } from './ops/alert'
+import { LAST_CRON_KV_KEY } from './ops/cron-heartbeat'
 import { withHsts } from './util/security-headers'
 
 export { McpSessionDO } from './mcp/session-do'
@@ -159,10 +161,22 @@ const worker: ExportedHandler<Env> = {
     if (queue === 'ctxlayer-usage') return usageConsumer(batch, env, ctx)
     if (queue === 'ctxlayer-reindex') return reindexConsumer(batch, env, ctx)
     if (queue === 'ctxlayer-git-sync') return gitSyncConsumer(batch, env, ctx)
+    // A configured consumer with no code branch = deploy/config skew. Retry
+    // (bounded by max_retries in wrangler.toml) rather than silently drop, and
+    // alert so it's not invisible.
     console.error(`unknown queue: ${batch.queue}`)
+    await notify(env, { level: 'error', event: 'queue.unknown', detail: String(batch.queue) })
     for (const msg of batch.messages) msg.retry()
   },
   async scheduled(controller, env, ctx) {
+    // Liveness heartbeat for /api/health — any cron firing refreshes it, so a
+    // stalled scheduler becomes visible (it otherwise emits nothing at all).
+    ctx.waitUntil(
+      env.OAUTH_KV.put(
+        LAST_CRON_KV_KEY,
+        String(Math.floor(controller.scheduledTime / 1000))
+      ).catch((e) => console.error('[cron] heartbeat write failed', e))
+    )
     // Hourly cron (`0 * * * *`): git-sync due-check. Enqueue one message
     // per enabled shared_bearer source whose sync_interval has elapsed.
     // (user_* read strategies have no token without an interactive user,
@@ -184,6 +198,7 @@ const worker: ExportedHandler<Env> = {
           } catch (err) {
             const m = err instanceof Error ? err.message : String(err)
             console.error(`[cron] git-sync due-check failed: ${m}`)
+            await notify(env, { level: 'error', event: 'cron.git_sync_failed', detail: m })
           }
         })()
       )
@@ -203,6 +218,7 @@ const worker: ExportedHandler<Env> = {
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.usage_prune_failed', detail: m })
         }
       })()
     )
@@ -226,6 +242,7 @@ const worker: ExportedHandler<Env> = {
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err)
           console.error(`[cron] oauth-client prune failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.oauth_prune_failed', detail: m })
         }
       })()
     )
