@@ -28,11 +28,11 @@ import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import {
-  deleteUserCredential,
   getUpstreamById,
   parseAuthConfig,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
+import { deleteUserCredential } from '../db/queries/upstream-credentials'
 import {
   UpstreamOAuthProvider,
   deleteVerifierState,

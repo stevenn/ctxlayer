@@ -16,7 +16,8 @@ import {
   type DraftContextBundle
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { getUpstreamBySlug, listCachedTools } from '../db/queries/upstreams'
+import { getUpstreamBySlug } from '../db/queries/upstreams'
+import { listCachedTools } from '../db/queries/upstream-tools'
 import { listPublishedSkills } from '../db/queries/skills'
 import { readSnapshot } from '../storage/skills-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'

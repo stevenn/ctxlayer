@@ -26,17 +26,19 @@ import { requireCsrf } from '../auth/csrf'
 import {
   adminRowFor,
   createUpstream,
-  deleteSharedCredential,
   deleteUpstream,
   getUpstreamById,
-  listCachedTools,
   listUpstreams,
   parseAuthConfig,
   patchUpstream,
   replaceVisibility,
-  toUpstreamConnection,
-  upsertSharedCredential
+  toUpstreamConnection
 } from '../db/queries/upstreams'
+import { listCachedTools } from '../db/queries/upstream-tools'
+import {
+  deleteSharedCredential,
+  upsertSharedCredential
+} from '../db/queries/upstream-credentials'
 import {
   refreshCatalogueByUpstreamId,
   refreshCatalogueForConnection,
