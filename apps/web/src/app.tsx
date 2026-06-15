@@ -3,6 +3,7 @@ import { Loader } from '@mantine/core'
 import { Navigate, Route } from 'react-router-dom'
 import { SignIn } from './routes/sign-in'
 import { SearchHome } from './routes/search-home'
+import { DocPathRedirect } from './routes/doc-path-redirect'
 import { DocsList } from './routes/docs-list'
 import { Upstreams } from './routes/upstreams'
 import { McpSetup } from './routes/mcp-setup'
@@ -101,7 +102,9 @@ export function appRoutes() {
           />
         </Route>
       </Route>
-      <Route path="*" element={<Navigate to="/app/search" replace />} />
+      {/* OKF concept-path URLs (/dir/slug.md) resolve to the doc; anything
+          else falls back to search. */}
+      <Route path="*" element={<DocPathRedirect />} />
     </Route>
   )
 }

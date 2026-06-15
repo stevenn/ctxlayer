@@ -209,29 +209,23 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       return () => host.removeEventListener('keydown', onKeyDown)
     }, [editor])
 
-    // Intercept clicks on in-app doc links (OKF concept paths like
-    // `/specs/api/auth.md`, or legacy `/app/docs/{id}`) so they route via
-    // React Router instead of a full page load. External URLs / anchors fall
-    // through to the browser. Modifier keys + non-primary buttons fall through
-    // so "open in new tab" still works.
+    // Doc / external link navigation. We fully preempt BlockNote's own link
+    // handling: it focuses + opens the link on mousedown, which otherwise drops
+    // the editor into edit mode AND opens the raw href in a new tab (→
+    // /app/search for an OKF path). A doc link routes in-app via React Router;
+    // an external link opens in a new tab. Modified / non-primary clicks fall
+    // through so native open-in-new-tab still works.
     const nav = useNavigate()
     const resolveDocHrefRef = useRef(props.resolveDocHref)
     resolveDocHrefRef.current = props.resolveDocHref
     useEffect(() => {
       const host = hostRef.current
       if (!host) return
-      const onClick = (e: MouseEvent) => {
-        // Let modified / non-primary clicks use native behaviour (open in a
-        // new tab, etc.).
-        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
-        const anchor = (e.target as HTMLElement | null)?.closest('a')
-        if (!anchor) return // not a link → let the editor handle the click
+      // Reduce an href to a classification. BlockNote can render it as a
+      // resolved absolute URL, so a same-origin one is folded to its path.
+      const classify = (anchor: HTMLAnchorElement) => {
         const raw = (anchor.getAttribute('href') ?? '').trim()
-        if (!raw) return
-        // BlockNote can render the href as a resolved absolute URL — reduce a
-        // same-origin one back to its path before classifying, else an internal
-        // doc path looks "external" and the browser navigates to a 404 that the
-        // SPA catch-all bounces to /app/search.
+        if (!raw) return null
         let href = raw
         if (/^https?:\/\//i.test(raw)) {
           try {
@@ -241,32 +235,60 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
             /* keep raw */
           }
         }
-        const target = classifyHref(href)
-        // Capture phase + stopPropagation: a link click NAVIGATES instead of
-        // falling through to the editor (which would place the cursor / drop
-        // into edit mode). Editing a link still works via BlockNote's hover
-        // toolbar.
-        e.stopPropagation()
+        return { href, target: classifyHref(href) }
+      }
+      const linkAt = (e: Event): HTMLAnchorElement | null => {
+        const a = (e.target as HTMLElement | null)?.closest('a')
+        return a && host.contains(a) ? (a as HTMLAnchorElement) : null
+      }
+      const plain = (e: MouseEvent) =>
+        e.button === 0 && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.altKey
+
+      // Preempt BlockNote's mousedown link handling (focus + open).
+      const onMouseDown = (e: MouseEvent) => {
+        const a = linkAt(e)
+        if (plain(e) && a && classify(a)) {
+          e.preventDefault()
+          e.stopPropagation()
+        }
+      }
+      const onClick = (e: MouseEvent) => {
+        if (!plain(e)) return
+        const a = linkAt(e)
+        if (!a) return
+        const c = classify(a)
+        if (!c) return
         e.preventDefault()
-        if (!target) {
-          // External link — open in a new tab so the open editor isn't lost.
-          if (anchor.href) window.open(anchor.href, '_blank', 'noopener,noreferrer')
+        e.stopPropagation()
+        if (!c.target) {
+          // External link → new tab, so the open editor isn't lost.
+          if (a.href) window.open(a.href, '_blank', 'noopener,noreferrer')
           return
         }
-        if (target.kind === 'id') {
-          nav(`/app/docs/${target.id}`)
+        // Defer the route change so the click finishes + BlockNote settles
+        // before this editor unmounts (avoids a tiptap "view not available"
+        // crash on the doc → doc swap). Carry the source doc id so the target
+        // can offer a "back to source" link.
+        const from = window.location.pathname.match(/\/app\/docs\/([^/?#]+)/)?.[1]
+        const go = (path: string) =>
+          window.setTimeout(() => nav(path, from ? { state: { fromDocId: from } } : undefined), 0)
+        if (c.target.kind === 'id') {
+          go(`/app/docs/${c.target.id}`)
           return
         }
-        // OKF concept path → resolve the slug to a doc id client-side.
-        resolveDocHrefRef.current?.(href).then(
+        resolveDocHrefRef.current?.(c.href).then(
           (docId) => {
-            if (docId) nav(`/app/docs/${docId}`)
+            if (docId) go(`/app/docs/${docId}`)
           },
           () => {}
         )
       }
-      host.addEventListener('click', onClick, true)
-      return () => host.removeEventListener('click', onClick, true)
+      document.addEventListener('mousedown', onMouseDown, true)
+      document.addEventListener('click', onClick, true)
+      return () => {
+        document.removeEventListener('mousedown', onMouseDown, true)
+        document.removeEventListener('click', onClick, true)
+      }
     }, [nav])
 
     const { colorScheme } = useMantineColorScheme()
