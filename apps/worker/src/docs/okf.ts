@@ -64,7 +64,11 @@ export async function okfBody(env: Env, row: DocOkfExportRow): Promise<string> {
     if (src !== null) return splitFrontmatter(src).body.replace(/^\s+/, '')
   }
   const snap = await readSnapshot(env, row.id)
-  return snap ? renderBlocksToMarkdown(snap.blocks) : ''
+  if (snap) return renderBlocksToMarkdown(snap.blocks)
+  // No snapshot yet — fall back to source.md (a freshly-imported bundle doc
+  // whose blocks haven't been materialised in the editor yet).
+  const src = await readSourceMarkdown(env, row.id)
+  return src !== null ? splitFrontmatter(src).body.replace(/^\s+/, '') : ''
 }
 
 /** Compose a full OKF markdown export for download, or null if the doc is gone. */
