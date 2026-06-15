@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { prefixedSlug } from './slug'
+import { clampTags } from './doc-limits'
 
 export const TeamRef = z.object({
   id: z.string(),
@@ -43,12 +44,15 @@ export type RoleRef = z.infer<typeof RoleRef>
 // the same way 'team' / 'product' do.
 export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'])
 
-// Doc tags. Topic tag values are free-form slugs; team/product tag values
-// reference the corresponding id columns.
+// Doc tags. Free-form `tags` values are slugs; team/product tag values
+// reference the corresponding id columns. Teams/products gate visibility;
+// `tags` only organise (and map to OKF frontmatter `tags`).
 export const DocTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),
-  topics: z.array(z.string())
+  // Free-form tags: clamped (per-tag length + count + dedup) on every
+  // read/write so the rail save path matches git-sync + import.
+  tags: z.array(z.string()).transform(clampTags)
 })
 export type DocTags = z.infer<typeof DocTags>
 

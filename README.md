@@ -5,11 +5,14 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-149ECA?logo=react&logoColor=white)
 ![MCP](https://img.shields.io/badge/MCP-Model_Context_Protocol-black)
+[![OKF](https://img.shields.io/badge/OKF-early_adopter-F38020)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
 
 Agent context layer — an MCP service on Cloudflare that:
 
 - serves curated org docs (Markdown, with Vectorize-backed RAG search) as MCP
-  resources and a `search_docs` tool;
+  resources and a `search_docs` tool — and speaks the [Open Knowledge Format
+  (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)
+  in and out, so an org's library round-trips with any OKF bundle;
 - proxies other MCP servers (HTTP/SSE natively; a stdio MCP server is
   supported via bring-your-own-bridge — run your own stdio↔HTTP bridge and
   register its URL as a `streamable_http` upstream), centralising per-user
@@ -65,6 +68,31 @@ milestone-driven plan is retired — see `CLAUDE.md`).
 | **Skills** — curated playbooks | ✅ done | Published skills surface over MCP (`list_skills` / `get_skill` + `mcp://ctxlayer/skills/{slug}`), per-upstream/per-tool attachments, admin skill editor, CLI `draft-skill` |
 | **Git sync** — code docs from repos | ✅ done | Register a GitHub repo (PAT or OAuth), mirror Markdown into the doc store, product-link auto-tagging, scheduled cron sync |
 | **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
+| **OKF interop** — Open Knowledge Format | ✅ done | Import/export/git-write-back of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) docs; the editor rail *is* the YAML frontmatter editor; unknown keys preserved for round-trip. Deep-dive: [`docs/plan/M-okf.md`](docs/plan/M-okf.md) |
+
+## Open Knowledge Format (OKF) — early adopter
+
+ctxlayer natively speaks the **[Open Knowledge
+Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)**,
+Google Cloud's open convention for agent-friendly knowledge: a directory of
+Markdown files with YAML frontmatter. ctxlayer's doc library *is*, structurally,
+an OKF bundle — so an org's curated context is portable, not locked in.
+
+- **Import** — register an OKF git repo as a source (or paste/upload a `.md`).
+  Frontmatter (`type`, `description`, `resource`, `tags`, `title`, …) is parsed
+  onto the doc; unknown / extra producer keys (`okf_version`, etc.) are kept
+  verbatim.
+- **Edit** — the doc editor's right rail *is* the frontmatter editor. The OKF
+  fields carry an **OKF** badge with a tooltip pointing at the matching spec key.
+- **Export** — **"Export as OKF (.md)"** in the rail, or `GET
+  /api/docs/:id/export`, emits a spec-compliant file: synthesised frontmatter
+  (rail fields + preserved unknown keys) followed by the body.
+- **Git write-back** — edits to a doc synced from an OKF repo propose a PR that
+  keeps and refreshes the frontmatter block.
+
+OKF `tags` map to ctxlayer's free-form tags (not the team/product tags, which
+gate visibility). Full mapping, round-trip contract, and fidelity caveats:
+**[`docs/plan/M-okf.md`](docs/plan/M-okf.md)**.
 
 ## Quickstart (contributors hacking on ctxlayer)
 

@@ -2,13 +2,13 @@
  * D1 queries for `doc_tags` and the user-scope resolver used by both
  * the reindex consumer (chunk metadata) and `search_docs` (filter
  * predicate). Per PLAN.md F1, tag_value stores team_id / product_id
- * for the 'team' / 'product' kinds; topic tags carry free-form slugs.
+ * for the 'team' / 'product' kinds; free-form 'tag' kind carries slugs.
  */
 
 import type { Env } from '../../env'
-import type { DocTags } from '@ctxlayer/shared'
+import { clampTags, type DocTags } from '@ctxlayer/shared'
 
-export type TagKind = 'team' | 'product' | 'topic'
+export type TagKind = 'team' | 'product' | 'tag'
 
 interface TagRow {
   tag_kind: TagKind
@@ -20,11 +20,11 @@ export async function listTagsForDoc(env: Env, docId: string): Promise<DocTags> 
   const res = await env.DB.prepare(`SELECT tag_kind, tag_value FROM doc_tags WHERE doc_id = ?1`)
     .bind(docId)
     .all<TagRow>()
-  const out: DocTags = { teams: [], products: [], topics: [] }
+  const out: DocTags = { teams: [], products: [], tags: [] }
   for (const row of res.results ?? []) {
     if (row.tag_kind === 'team') out.teams.push(row.tag_value)
     else if (row.tag_kind === 'product') out.products.push(row.tag_value)
-    else if (row.tag_kind === 'topic') out.topics.push(row.tag_value)
+    else if (row.tag_kind === 'tag') out.tags.push(row.tag_value)
   }
   return out
 }
@@ -53,11 +53,11 @@ export async function replaceTagsForDoc(env: Env, docId: string, tags: DocTags):
       ).bind(docId, productId)
     )
   }
-  for (const topic of tags.topics) {
+  for (const tag of tags.tags) {
     stmts.push(
       env.DB.prepare(
-        `INSERT INTO doc_tags (doc_id, tag_kind, tag_value) VALUES (?1, 'topic', ?2)`
-      ).bind(docId, topic)
+        `INSERT INTO doc_tags (doc_id, tag_kind, tag_value) VALUES (?1, 'tag', ?2)`
+      ).bind(docId, tag)
     )
   }
   await env.DB.batch(stmts)
@@ -66,7 +66,7 @@ export async function replaceTagsForDoc(env: Env, docId: string, tags: DocTags):
 /**
  * Set the sole product tag on a doc (used by git sync: a synced doc's
  * product is owned by its source). Replaces only `product`-kind tags —
- * team / topic tags the user added are left intact. `productId === null`
+ * team / free-form tags the user added are left intact. `productId === null`
  * just clears product tags. Single batch.
  */
 export async function setDocProductTag(
@@ -85,6 +85,27 @@ export async function setDocProductTag(
       ).bind(docId, productId)
     )
   }
+  await env.DB.batch(stmts)
+}
+
+/**
+ * Add free-form tags to a doc without disturbing its team/product/existing
+ * tags. Used by OKF import (git sync + import modal): frontmatter `tags` map
+ * to these VERBATIM (trim + collapse whitespace + length cap only — no
+ * slugging, so `BigQuery Table` round-trips intact). Additive + idempotent
+ * (ON CONFLICT DO NOTHING) — a re-sync never removes a tag, matching the
+ * "tags organise, never gate" stance.
+ */
+export async function addDocTags(env: Env, docId: string, tags: string[]): Promise<void> {
+  // Same clamp (per-tag length + count + dedup) as every other write path.
+  const normalised = clampTags(tags)
+  if (normalised.length === 0) return
+  const stmts = normalised.map((tag) =>
+    env.DB.prepare(
+      `INSERT INTO doc_tags (doc_id, tag_kind, tag_value) VALUES (?1, 'tag', ?2)
+       ON CONFLICT (doc_id, tag_kind, tag_value) DO NOTHING`
+    ).bind(docId, tag)
+  )
   await env.DB.batch(stmts)
 }
 

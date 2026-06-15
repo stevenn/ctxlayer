@@ -18,6 +18,10 @@ export interface DocumentRow {
   // Folder path (`/specs/api/v2`) or null for root. Format validated
   // at the request layer (packages/shared/src/docs-types.ts).
   folder: string | null
+  // OKF frontmatter fields (migration 0025). All nullable.
+  doc_type: string | null
+  description: string | null
+  resource: string | null
   current_rev_id: string | null
   r2_snapshot: string | null
   created_by: string | null
@@ -53,7 +57,8 @@ export interface DocumentWithUsersRow extends DocumentRow {
 }
 
 const SELECT_DOC_WITH_USERS = `
-  SELECT d.id, d.title, d.slug, d.kind, d.folder, d.current_rev_id,
+  SELECT d.id, d.title, d.slug, d.kind, d.folder,
+         d.doc_type, d.description, d.resource, d.current_rev_id,
          d.r2_snapshot, d.created_by, d.created_at, d.updated_at,
          d.deleted_at, d.chunk_count,
          d.locked_at, d.locked_by, d.git_source_id,
@@ -100,6 +105,38 @@ export async function getDocById(env: Env, id: string): Promise<DocumentWithUser
   )
     .bind(id)
     .first<DocumentWithUsersRow>()
+  return row ?? null
+}
+
+/**
+ * The fields the OKF export + write-back need: the rail-editable frontmatter
+ * columns, the preserved raw block (unknown-key carry-through), the git
+ * origin + sync state (so a clean git doc exports its verbatim source.md
+ * body rather than a lossy blocks render), and updated_at for the OKF
+ * `timestamp`. One flat read, no joins.
+ */
+export interface DocOkfExportRow {
+  id: string
+  title: string
+  slug: string
+  kind: 'doc' | 'prompt'
+  doc_type: string | null
+  description: string | null
+  resource: string | null
+  okf_frontmatter: string | null
+  updated_at: number
+  git_source_id: string | null
+  git_sync_state: string | null
+}
+
+export async function getDocForOkfExport(env: Env, id: string): Promise<DocOkfExportRow | null> {
+  const row = await env.DB.prepare(
+    `SELECT id, title, slug, kind, doc_type, description, resource,
+            okf_frontmatter, updated_at, git_source_id, git_sync_state
+     FROM documents WHERE id = ?1 AND deleted_at IS NULL`
+  )
+    .bind(id)
+    .first<DocOkfExportRow>()
   return row ?? null
 }
 
@@ -281,13 +318,28 @@ export interface PatchDocInput {
   kind?: 'doc' | 'prompt'
   // `null` moves the doc to root; `undefined` leaves folder unchanged.
   folder?: string | null
+  // OKF frontmatter fields. `null` clears, `undefined` leaves unchanged.
+  docType?: string | null
+  description?: string | null
+  resource?: string | null
+  // Raw imported frontmatter block (unknown-key preservation). Internal —
+  // set by git sync / import, never exposed on UpdateDocRequest.
+  okfFrontmatter?: string | null
 }
 
 export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Promise<void> {
   // allowEmpty: an empty patch still bumps updated_at (pre-existing behavior).
   const update = buildPatchUpdate(
     'documents',
-    { title: patch.title, kind: patch.kind, folder: patch.folder },
+    {
+      title: patch.title,
+      kind: patch.kind,
+      folder: patch.folder,
+      doc_type: patch.docType,
+      description: patch.description,
+      resource: patch.resource,
+      okf_frontmatter: patch.okfFrontmatter
+    },
     id,
     { andWhere: 'deleted_at IS NULL', allowEmpty: true }
   )

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { Button, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
+import { Button, Group, Modal, Stack, Text, Textarea, TextInput } from '@mantine/core'
 
 /**
  * Modal-based replacement for `window.confirm` / `window.alert` /
@@ -27,6 +27,9 @@ type PromptOpts = {
   placeholder?: string
   confirmLabel?: string
   cancelLabel?: string
+  // Render a multi-line Textarea instead of a single-line TextInput. Enter
+  // then inserts a newline; the confirm button is the only way to submit.
+  multiline?: boolean
 }
 
 type AlertOpts = {
@@ -182,15 +185,27 @@ export function DialogProvider({ children }: { children: ReactNode }) {
         {state?.kind === 'prompt' && (
           <Stack gap="md">
             {state.opts.message && <Text fz="sm">{state.opts.message}</Text>}
-            <TextInput
-              value={promptValue}
-              onChange={(e) => setPromptValue(e.currentTarget.value)}
-              placeholder={state.opts.placeholder}
-              data-autofocus
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') close(() => state.resolve(promptValue))
-              }}
-            />
+            {state.opts.multiline ? (
+              <Textarea
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.currentTarget.value)}
+                placeholder={state.opts.placeholder}
+                data-autofocus
+                autosize
+                minRows={2}
+                maxRows={8}
+              />
+            ) : (
+              <TextInput
+                value={promptValue}
+                onChange={(e) => setPromptValue(e.currentTarget.value)}
+                placeholder={state.opts.placeholder}
+                data-autofocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') close(() => state.resolve(promptValue))
+                }}
+              />
+            )}
             <Group justify="flex-end" gap="xs">
               <Button variant="default" onClick={() => close(() => state.resolve(null))}>
                 {state.opts.cancelLabel ?? 'Cancel'}

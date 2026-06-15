@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Alert, Button, FileButton, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { useCreateBlockNote } from '@blocknote/react'
+import { parseFrontmatter } from '@ctxlayer/shared'
 import { createDoc, putDocContent } from '../../lib/api'
 import { useSlugSuggest } from '../../lib/use-slug-suggest'
 import { explain } from './helpers'
@@ -24,12 +25,20 @@ export function ImportDocModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState<string | null>(null)
   const slugField = useSlugSuggest('doc', title)
 
-  function onFile(f: File | null) {
+  async function onFile(f: File | null) {
     setFile(f)
     if (f && !titleTouched) {
       // Strip the common markdown extensions; leave anything else
-      // (e.g. .txt, no extension) intact.
-      setTitle(f.name.replace(/\.(md|mdown|markdown|mkd|mdx|txt)$/i, ''))
+      // (e.g. .txt, no extension) intact. An OKF `title` in the file's
+      // frontmatter wins over the filename.
+      let next = f.name.replace(/\.(md|mdown|markdown|mkd|mdx|txt)$/i, '')
+      try {
+        const fmTitle = parseFrontmatter(await f.text()).known.title?.trim()
+        if (fmTitle) next = fmTitle
+      } catch {
+        // fall back to the filename-derived title
+      }
+      setTitle(next)
     }
   }
 
@@ -39,10 +48,19 @@ export function ImportDocModal({ onClose }: { onClose: () => void }) {
     setError(null)
     try {
       const text = await file.text()
-      const blocks = parser.tryParseMarkdownToBlocks(text)
+      // Split OKF frontmatter off the body: parse blocks from the body only
+      // (so YAML doesn't render as a paragraph), and carry the metadata onto
+      // the doc — tags, the rail fields, and the raw block for round-trip.
+      const { body, raw, known } = parseFrontmatter(text)
+      const blocks = parser.tryParseMarkdownToBlocks(body)
       const { id } = await createDoc({
         title: title.trim(),
-        slug: slugField.slug.trim() || undefined
+        slug: slugField.slug.trim() || undefined,
+        docType: known.type ?? undefined,
+        description: known.description ?? undefined,
+        resource: known.resource ?? undefined,
+        tags: known.tags,
+        frontmatter: raw ?? undefined
       })
       try {
         await putDocContent(id, { blocks: blocks as unknown[] })

@@ -22,6 +22,9 @@ verifies over interactive flows.
 - SQL migrations → `apps/worker/src/db/migrations/*.sql`
 - React SPA → `apps/web/src/`
 - Shared types/schemas → `packages/shared/src/`
+- OKF (Open Knowledge Format) interop → `packages/shared/src/frontmatter.ts`
+  + `apps/worker/src/docs/okf.ts`; the doc rail is the frontmatter editor.
+  Reference → `docs/plan/M-okf.md`
 - Architecture reference → `docs/PLAN.md` (reference, not a roadmap)
 
 ## Module rules

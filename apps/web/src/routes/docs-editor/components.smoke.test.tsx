@@ -50,6 +50,9 @@ const doc: DocDetail = {
   lockedAt: null,
   lockedBy: null,
   currentRevId: 'rev_1',
+  docType: null,
+  description: null,
+  resource: null,
   canEdit: true,
   canShare: true,
   canLock: true

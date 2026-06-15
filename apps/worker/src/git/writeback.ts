@@ -29,6 +29,7 @@ import {
   type GitSourceRow
 } from '../db/queries/git-sources'
 import { readSourceMarkdown, writeSourceMarkdown } from '../storage/docs-r2'
+import { okfReattachForWriteBack } from '../docs/okf'
 import { createGitProvider } from './provider'
 import type { GitProviderClient, GitRepoConfig } from './provider-types'
 import { resolveGitWriteToken } from './credentials'
@@ -75,7 +76,13 @@ async function setupWriteBack(
   const source = await getGitSourceById(env, origin.git_source_id)
   if (!source) return { kind: 'error', status: 400, error: 'source_gone' }
 
-  const normalized = normalizeMarkdown(input.markdown)
+  // Re-attach OKF frontmatter (refreshed from the rail, unknown keys
+  // preserved) for docs imported WITH frontmatter, so the PR keeps the
+  // block instead of stripping it. Plain docs pass through untouched. Both
+  // sides of the diff then carry the same frontmatter shape, so a no-op
+  // stays a no-op. The editor body never includes frontmatter.
+  const editedFull = await okfReattachForWriteBack(env, docId, input.markdown)
+  const normalized = normalizeMarkdown(editedFull)
   const baseline = normalizeMarkdown((await readSourceMarkdown(env, docId)) ?? '')
   const openPr = await getOpenPrForDoc(env, docId)
   if (normalized === baseline) return { kind: 'noop', openPr }

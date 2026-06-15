@@ -163,7 +163,6 @@ export function filterDocs(docs: DocSummary[], query: string): DocSummary[] {
   return docs.filter((d) => {
     if (d.title.toLowerCase().includes(q)) return true
     if (d.slug.toLowerCase().includes(q)) return true
-    if (d.kind.toLowerCase().includes(q)) return true
     const creator = personLabel(d.createdBy).toLowerCase()
     if (creator.includes(q)) return true
     const editor = personLabel(d.updatedBy ?? d.createdBy).toLowerCase()

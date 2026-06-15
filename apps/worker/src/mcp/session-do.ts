@@ -333,7 +333,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           resources: docs.map((d) => ({
             uri: `mcp://ctxlayer/docs/${d.id}`,
             name: d.title,
-            description: `${d.slug} (${d.kind})`,
+            description: d.doc_type ? `${d.slug} · ${d.doc_type}` : d.slug,
             mimeType: 'text/markdown'
           }))
         }

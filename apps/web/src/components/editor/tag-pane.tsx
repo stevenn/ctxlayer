@@ -10,8 +10,10 @@ import {
   TextInput
 } from '@mantine/core'
 import type { DocTags, ProductRef, TeamRef } from '@ctxlayer/shared'
+import { DOC_LIMITS } from '@ctxlayer/shared'
 import { fetchDocTags, fetchProducts, fetchTeams, putDocTags } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
+import { OkfBadge } from './okf-badge'
 
 interface Props {
   docId: string
@@ -21,8 +23,8 @@ interface Props {
 /**
  * Compact tag editor for the doc editor's right rail. Reads the
  * doc's tags + the org's teams/products on mount; saves on Save
- * click. Topic tags are free-form chips (lowercased + dashed at
- * insert time per the conventions in PLAN.md F).
+ * click. Free-form tags are chips (lowercased + dashed at insert
+ * time per the conventions in PLAN.md F).
  *
  * For non-editors we still render the section but lock the inputs
  * and hide the Save button — readers can see how the doc is tagged
@@ -33,7 +35,7 @@ export function TagPane({ docId, canEdit }: Props) {
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [original, setOriginal] = useState<DocTags | null>(null)
   const [draft, setDraft] = useState<DocTags | null>(null)
-  const [topicInput, setTopicInput] = useState('')
+  const [tagInput, setTagInput] = useState('')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -62,19 +64,21 @@ export function TagPane({ docId, canEdit }: Props) {
 
   const dirty = draft !== null && original !== null && !sameTags(draft, original)
 
-  function addTopic() {
-    const cleaned = normaliseTopic(topicInput)
+  function addTag() {
+    const cleaned = normaliseTag(tagInput)
     if (!cleaned || !draft) return
-    if (draft.topics.includes(cleaned)) {
-      setTopicInput('')
+    // Case-insensitive dedup so "Billing" + "billing" don't both land, but
+    // store the value as typed (tags are human labels, not slugs).
+    if (draft.tags.some((t) => t.toLowerCase() === cleaned.toLowerCase())) {
+      setTagInput('')
       return
     }
-    setDraft({ ...draft, topics: [...draft.topics, cleaned] })
-    setTopicInput('')
+    setDraft({ ...draft, tags: [...draft.tags, cleaned] })
+    setTagInput('')
   }
-  function removeTopic(topic: string) {
+  function removeTag(tag: string) {
     if (!draft) return
-    setDraft({ ...draft, topics: draft.topics.filter((t) => t !== topic) })
+    setDraft({ ...draft, tags: draft.tags.filter((t) => t !== tag) })
   }
 
   const onSave = useCallback(async () => {
@@ -109,8 +113,6 @@ export function TagPane({ docId, canEdit }: Props) {
 
   return (
     <Stack gap={8}>
-      <SectionLabel>Tags</SectionLabel>
-
       <MultiSelect
         label="Teams"
         data={teams.map((t) => ({ value: t.id, label: t.displayName }))}
@@ -138,42 +140,40 @@ export function TagPane({ docId, canEdit }: Props) {
       />
 
       <div>
-        <div style={tagLabelStyle}>Topics</div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={tagLabelStyle}>Tags</div>
+          <OkfBadge field="tags" />
+        </div>
         {canEdit && (
           <Group gap={4} mt={4}>
             <TextInput
-              value={topicInput}
-              onChange={(e) => setTopicInput(e.currentTarget.value)}
+              value={tagInput}
+              onChange={(e) => setTagInput(e.currentTarget.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
                   e.preventDefault()
-                  addTopic()
+                  addTag()
                 }
               }}
-              aria-label="Add topic tag"
-              placeholder="topic-slug"
+              aria-label="Add tag"
+              placeholder="e.g. customer research"
               size="xs"
               style={{ flex: 1 }}
               disabled={busy}
             />
-            <Button
-              size="xs"
-              variant="default"
-              onClick={addTopic}
-              disabled={!topicInput.trim() || busy}
-            >
+            <Button size="xs" variant="default" onClick={addTag} disabled={!tagInput.trim() || busy}>
               Add
             </Button>
           </Group>
         )}
         <Group gap={4} mt={6}>
-          {draft.topics.length === 0 && (
+          {draft.tags.length === 0 && (
             <Text c="dimmed" fz="xs">
-              No topics
+              No tags
             </Text>
           )}
-          {draft.topics.map((t) => (
-            <Chip key={t} label={t} onRemove={canEdit ? () => removeTopic(t) : undefined} />
+          {draft.tags.map((t) => (
+            <Chip key={t} label={t} onRemove={canEdit ? () => removeTag(t) : undefined} />
           ))}
         </Group>
       </div>
@@ -245,18 +245,15 @@ function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
   )
 }
 
-function normaliseTopic(raw: string): string {
-  return raw
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 96)
+// Free-form: trim + collapse internal whitespace, cap length. No slugging —
+// tags are human-readable labels and map verbatim to OKF frontmatter `tags`.
+// Same per-tag cap as the server (DOC_LIMITS.tag).
+function normaliseTag(raw: string): string {
+  return raw.trim().replace(/\s+/g, ' ').slice(0, DOC_LIMITS.tag)
 }
 
 function sameTags(a: DocTags, b: DocTags): boolean {
-  return sameSet(a.teams, b.teams) && sameSet(a.products, b.products) && sameSet(a.topics, b.topics)
+  return sameSet(a.teams, b.teams) && sameSet(a.products, b.products) && sameSet(a.tags, b.tags)
 }
 function sameSet(a: string[], b: string[]): boolean {
   if (a.length !== b.length) return false

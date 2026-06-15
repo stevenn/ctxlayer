@@ -13,8 +13,8 @@
  */
 
 import type { Env } from '../env'
-import type { GitSyncInterval, GitSyncResult } from '@ctxlayer/shared'
-import { slugifyHeading } from '@ctxlayer/shared'
+import type { GitSyncInterval, GitSyncResult, OkfKnownFields } from '@ctxlayer/shared'
+import { DOC_LIMITS, clampText, parseFrontmatter, slugifyHeading } from '@ctxlayer/shared'
 import {
   getGitSourceById,
   listGitDocPaths,
@@ -23,8 +23,8 @@ import {
   setDocGitSyncState,
   type GitSourceRow
 } from '../db/queries/git-sources'
-import { createDoc, softDeleteDoc } from '../db/queries/docs'
-import { setDocProductTag } from '../db/queries/doc-tags'
+import { createDoc, patchDoc, softDeleteDoc } from '../db/queries/docs'
+import { addDocTags, setDocProductTag } from '../db/queries/doc-tags'
 import { writeSourceMarkdown } from '../storage/docs-r2'
 import { createGitProvider } from './provider'
 import type { GitRepoConfig } from './provider-types'
@@ -106,17 +106,26 @@ export async function runGitSync(
       }
 
       const file = await provider.readFile(entry.path, source.branch)
+      // Parse OKF frontmatter once: title falls back to the body's H1, the
+      // well-known fields land on the doc, the rest is preserved verbatim.
+      const fm = parseFrontmatter(file.text)
       let docId: string
       if (doc) {
         docId = doc.id
       } else {
         const created = await createDoc(env, {
-          title: deriveTitle(file.text, entry.path),
+          title: clampText(
+            fm.known.title?.trim() || deriveTitle(fm.body, entry.path),
+            DOC_LIMITS.title
+          ),
           folder: repoPathToFolder(source.folder_root, entry.path),
           createdBy: source.created_by
         })
         docId = created.id
       }
+      // source.md stays the EXACT repo file (incl. frontmatter) — it's the
+      // write-back diff baseline. The reindex consumer strips frontmatter
+      // before chunking; OKF fields are projected onto the doc separately.
       await writeSourceMarkdown(env, docId, file.text)
       await markDocGitOrigin(env, docId, {
         sourceId,
@@ -124,6 +133,7 @@ export async function runGitSync(
         blobSha: entry.blobSha,
         commitSha: headSha
       })
+      await applyOkfMetadata(env, docId, fm.known, fm.raw)
       // Auto-tag with the source's product (drives search_docs scope).
       // Set BEFORE the reindex enqueue so the consumer's tag read picks
       // it up. null clears any product tag (source has no product).
@@ -163,6 +173,32 @@ function repoConfig(s: GitSourceRow): GitRepoConfig {
     project: s.project,
     repo: s.repo
   }
+}
+
+/**
+ * Project the parsed OKF frontmatter onto the doc: the well-known scalar
+ * fields + the preserved raw block (one patch), and the `tags` as additive
+ * free-form tags. A plain (no-frontmatter) file passes nulls — clearing any
+ * stale OKF fields and leaving okf_frontmatter null so write-back stays
+ * frontmatter-free. Title is set at create only (sync-owned), not here.
+ */
+async function applyOkfMetadata(
+  env: Env,
+  docId: string,
+  known: OkfKnownFields,
+  raw: string | null
+): Promise<void> {
+  // Clamp to the same limits the request schemas enforce, so a synced value
+  // can always be re-saved through the rail. The raw block can't be truncated
+  // without corrupting the YAML, so an over-limit block is dropped instead.
+  await patchDoc(env, docId, {
+    docType: known.type ? clampText(known.type, DOC_LIMITS.type) : null,
+    description: known.description ? clampText(known.description, DOC_LIMITS.description) : null,
+    resource: known.resource ? clampText(known.resource, DOC_LIMITS.resource) : null,
+    okfFrontmatter: raw && raw.length <= DOC_LIMITS.frontmatter ? raw : null
+  })
+  // addDocTags clamps (per-tag length + count + dedup) internally.
+  if (known.tags?.length) await addDocTags(env, docId, known.tags)
 }
 
 /** Title from the first H1, else the filename sans markdown extension. */

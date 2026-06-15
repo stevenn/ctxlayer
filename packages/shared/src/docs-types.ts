@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { prefixedSlug } from './slug'
+import { DOC_LIMITS, clampTags, clampText } from './doc-limits'
+
+// OKF scalar field: truncate to its limit rather than reject, so a valid OKF
+// file never 400s on length. Same limits everywhere (git sync clamps too).
+const okfScalar = (max: number) => z.string().transform((s) => clampText(s, max))
 
 export const DocKind = z.enum(['doc', 'prompt'])
 export type DocKind = z.infer<typeof DocKind>
@@ -91,6 +96,14 @@ export type DocSummary = z.infer<typeof DocSummary>
 
 export const DocDetail = DocSummary.extend({
   currentRevId: z.string().nullish(),
+  // OKF frontmatter fields, edited inline in the rail. `docType` is OKF
+  // `type` (free string, distinct from `kind`); `description` is a one-
+  // sentence summary; `resource` is a URI for the underlying asset. All
+  // null until set. OKF `tags` live as free-form tags (see DocTags),
+  // `title` and `timestamp` map to title + updatedAt.
+  docType: z.string().nullable(),
+  description: z.string().nullable(),
+  resource: z.string().nullable(),
   // Server-computed for the calling user. The SPA renders the editor
   // read-only when false; the Sharing button only appears when caller
   // is author or admin (a stricter property the server returns
@@ -113,18 +126,39 @@ export const SetLockedRequest = z.object({
 export type SetLockedRequest = z.infer<typeof SetLockedRequest>
 
 export const CreateDocRequest = z.object({
-  title: z.string().min(1).max(200),
+  title: z
+    .string()
+    .min(1)
+    .transform((s) => clampText(s, DOC_LIMITS.title)),
   // If omitted, the server derives `doc-<slugified-title>` and appends a
   // 6-char suffix on collision. If provided, must carry the `doc-` prefix.
   slug: prefixedSlug('doc').optional(),
   kind: DocKind.optional(),
   // Folder path. Omit or pass null to create at root.
-  folder: FolderPath.nullable().optional()
+  folder: FolderPath.nullable().optional(),
+  // OKF frontmatter captured at import time (the SPA import modal parses it
+  // client-side). `tags` map to free-form tags; `frontmatter` is the raw
+  // YAML block kept verbatim for unknown-key round-trip on export. All clamp
+  // to DOC_LIMITS (truncate, don't reject) so a valid OKF file always imports.
+  docType: okfScalar(DOC_LIMITS.type).optional(),
+  description: okfScalar(DOC_LIMITS.description).optional(),
+  resource: okfScalar(DOC_LIMITS.resource).optional(),
+  tags: z.array(z.string()).transform(clampTags).optional(),
+  // Too-large raw blocks are dropped (not truncated — that would corrupt the
+  // YAML), so unknown-key preservation is simply skipped for that doc.
+  frontmatter: z
+    .string()
+    .transform((s) => (s.length <= DOC_LIMITS.frontmatter ? s : ''))
+    .optional()
 })
 export type CreateDocRequest = z.infer<typeof CreateDocRequest>
 
 export const UpdateDocRequest = z.object({
-  title: z.string().min(1).max(200).optional(),
+  title: z
+    .string()
+    .min(1)
+    .transform((s) => clampText(s, DOC_LIMITS.title))
+    .optional(),
   // Slug is immutable after creation: it's a stable reference (get_doc
   // accepts id-or-slug, search deep-links, doc-link hrefs), so renaming
   // it would silently orphan those. Set once at create; never patched.
@@ -132,7 +166,14 @@ export const UpdateDocRequest = z.object({
   // Pass `null` to move to root, a FolderPath to move, or omit to leave
   // the folder unchanged. `.nullable()` admits null; `.optional()` admits
   // omission — together they distinguish "set to null" from "no change".
-  folder: FolderPath.nullable().optional()
+  folder: FolderPath.nullable().optional(),
+  // OKF frontmatter fields. `null` clears, omit leaves unchanged. `resource`
+  // is a free string (URI/URN/path), not validated as a URL — OKF only
+  // says "a URI identifying the underlying asset". Truncate to DOC_LIMITS,
+  // matching create + git-sync so a synced value can always be re-saved.
+  docType: okfScalar(DOC_LIMITS.type).nullable().optional(),
+  description: okfScalar(DOC_LIMITS.description).nullable().optional(),
+  resource: okfScalar(DOC_LIMITS.resource).nullable().optional()
 })
 export type UpdateDocRequest = z.infer<typeof UpdateDocRequest>
 
