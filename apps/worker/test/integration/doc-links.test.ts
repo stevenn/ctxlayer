@@ -1,7 +1,12 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { rebuildDocLinks } from '../../src/docs/doc-links'
-import { getIncomingLinks, getOutgoingLinks } from '../../src/db/queries/doc-links'
+import {
+  getIncomingLinkDocs,
+  getIncomingLinks,
+  getOutgoingLinkTargets,
+  getOutgoingLinks
+} from '../../src/db/queries/doc-links'
 import type { Env as WorkerEnv } from '../../src/env'
 
 /**
@@ -75,5 +80,48 @@ describe('rebuildDocLinks', () => {
     expect((await getOutgoingLinks(testEnv, 'A')).length).toBe(1)
     await rebuildDocLinks(testEnv, 'A', 'no links anymore')
     expect((await getOutgoingLinks(testEnv, 'A')).length).toBe(0)
+  })
+})
+
+// Rail panel queries: incoming backlinks (distinct source docs) + outgoing
+// links with their resolved target (or null = dangling).
+describe('rail link queries', () => {
+  it('getIncomingLinkDocs returns distinct source docs with title + slug', async () => {
+    await seedDoc('A', '/specs', 'doc-a')
+    await seedDoc('B', '/specs/api', 'doc-b')
+    await seedDoc('C', null, 'doc-c')
+    // A links to B twice (absolute + relative); C links to B once.
+    await rebuildDocLinks(testEnv, 'A', '[B](/specs/api/doc-b.md) and [B](../api/doc-b.md)')
+    await rebuildDocLinks(testEnv, 'C', 'see [B](/specs/api/doc-b.md)')
+
+    const incoming = await getIncomingLinkDocs(testEnv, 'B')
+    // Distinct sources (A once despite two refs), ordered by title.
+    expect(incoming).toEqual([
+      { id: 'A', title: 'Doc A', slug: 'doc-a' },
+      { id: 'C', title: 'Doc C', slug: 'doc-c' }
+    ])
+  })
+
+  it('getIncomingLinkDocs excludes a soft-deleted source', async () => {
+    await seedDoc('A', null, 'doc-a')
+    await seedDoc('B', null, 'doc-b')
+    await rebuildDocLinks(testEnv, 'A', '[B](/doc-b.md)')
+    await testEnv.DB.prepare('UPDATE documents SET deleted_at = ?2 WHERE id = ?1')
+      .bind('A', NOW)
+      .run()
+    expect(await getIncomingLinkDocs(testEnv, 'B')).toEqual([])
+  })
+
+  it('getOutgoingLinkTargets resolves targets and reports dangling as null', async () => {
+    await seedDoc('A', '/specs', 'doc-a')
+    await seedDoc('B', '/specs/api', 'doc-b')
+    await rebuildDocLinks(testEnv, 'A', '[B](/specs/api/doc-b.md) then [gone](/specs/gone.md)')
+
+    const out = await getOutgoingLinkTargets(testEnv, 'A')
+    expect(out.length).toBe(2)
+    const resolved = out.find((o) => o.ref === '/specs/api/doc-b.md')
+    expect(resolved?.target).toEqual({ id: 'B', title: 'Doc B', slug: 'doc-b' })
+    const dangling = out.find((o) => o.ref === '/specs/gone.md')
+    expect(dangling?.target).toBeNull()
   })
 })

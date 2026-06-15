@@ -153,6 +153,22 @@ export const CreateDocRequest = z.object({
 })
 export type CreateDocRequest = z.infer<typeof CreateDocRequest>
 
+// GET /api/docs/:id/links — the doc's link graph for the editor rail.
+export const DocLinkRefSummary = z.object({
+  id: z.string(),
+  title: z.string(),
+  slug: z.string()
+})
+export const DocLinksResponse = z.object({
+  // Docs that link TO this one.
+  incoming: z.array(DocLinkRefSummary),
+  // This doc's outgoing links; `target` null = a dangling (unresolved) link.
+  outgoing: z.array(
+    z.object({ ref: z.string(), target: DocLinkRefSummary.nullable() })
+  )
+})
+export type DocLinksResponse = z.infer<typeof DocLinksResponse>
+
 export const UpdateDocRequest = z.object({
   title: z
     .string()

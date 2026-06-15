@@ -17,6 +17,7 @@ import { authRoute } from './api/auth'
 import { docsRoute } from './api/docs'
 import { docSharingRoute } from './api/doc-sharing'
 import { docTagsRoute } from './api/doc-tags'
+import { tagsRoute } from './api/tags'
 import { bundlesRoute } from './api/bundles'
 import { foldersRoute } from './api/folders'
 import { searchRoute } from './api/search'
@@ -59,6 +60,7 @@ app.route('/api/users', usersRoute)
 app.route('/api/teams', teamsRoute)
 app.route('/api/products', productsRoute)
 app.route('/api/roles', rolesRoute)
+app.route('/api/tags', tagsRoute)
 // Docs CRUD, per-doc ACL, and tags share the same /api/docs prefix;
 // the sub-routers each match disjoint subpaths so mount order does
 // not matter.

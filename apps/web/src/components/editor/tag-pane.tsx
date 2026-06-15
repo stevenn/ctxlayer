@@ -1,17 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  MultiSelect,
-  Stack,
-  Text,
-  TextInput
-} from '@mantine/core'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Alert, MultiSelect, Stack, TagsInput, Text } from '@mantine/core'
 import type { DocTags, ProductRef, TeamRef } from '@ctxlayer/shared'
-import { DOC_LIMITS } from '@ctxlayer/shared'
-import { fetchDocTags, fetchProducts, fetchTeams, putDocTags } from '../../lib/api'
+import { DOC_LIMITS, clampTags } from '@ctxlayer/shared'
+import { fetchDocTags, fetchProducts, fetchTagVocab, fetchTeams, putDocTags } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { OkfBadge } from './okf-badge'
 
@@ -20,23 +11,26 @@ interface Props {
   canEdit: boolean
 }
 
+type SaveStatus = 'idle' | 'saving' | 'saved' | 'error'
+const SAVE_DEBOUNCE_MS = 700
+
 /**
- * Compact tag editor for the doc editor's right rail. Reads the
- * doc's tags + the org's teams/products on mount; saves on Save
- * click. Free-form tags are chips (lowercased + dashed at insert
- * time per the conventions in PLAN.md F).
+ * Compact tag editor for the doc editor's right rail. Reads the doc's tags +
+ * the org's teams/products on mount; autosaves on change (debounced) like the
+ * rest of the editor — no Save button. Free-form tags use a TagsInput: type to
+ * see suggestions from the org-wide vocabulary, Enter / click to add. Tags are
+ * verbatim human labels (NOT slugs) — they map 1:1 to OKF frontmatter `tags`.
  *
- * For non-editors we still render the section but lock the inputs
- * and hide the Save button — readers can see how the doc is tagged
- * without being able to change it.
+ * For non-editors we still render the section but lock the inputs — readers
+ * can see how the doc is tagged without being able to change it.
  */
 export function TagPane({ docId, canEdit }: Props) {
   const [teams, setTeams] = useState<TeamRef[] | null>(null)
   const [products, setProducts] = useState<ProductRef[] | null>(null)
+  const [vocab, setVocab] = useState<string[]>([])
   const [original, setOriginal] = useState<DocTags | null>(null)
   const [draft, setDraft] = useState<DocTags | null>(null)
-  const [tagInput, setTagInput] = useState('')
-  const [busy, setBusy] = useState(false)
+  const [status, setStatus] = useState<SaveStatus>('idle')
   const [error, setError] = useState<string | null>(null)
 
   // Mount: fetch org-wide teams + products + this doc's tags in parallel.
@@ -62,38 +56,61 @@ export function TagPane({ docId, canEdit }: Props) {
     return () => ctrl.abort()
   }, [docId])
 
+  // Tag vocabulary for autocomplete — best-effort, never blocks tag editing.
+  useEffect(() => {
+    const ctrl = new AbortController()
+    fetchTagVocab(ctrl.signal).then(
+      (v) => {
+        if (!ctrl.signal.aborted) setVocab(v)
+      },
+      () => {}
+    )
+    return () => ctrl.abort()
+  }, [])
+
   const dirty = draft !== null && original !== null && !sameTags(draft, original)
 
-  function addTag() {
-    const cleaned = normaliseTag(tagInput)
-    if (!cleaned || !draft) return
-    // Case-insensitive dedup so "Billing" + "billing" don't both land, but
-    // store the value as typed (tags are human labels, not slugs).
-    if (draft.tags.some((t) => t.toLowerCase() === cleaned.toLowerCase())) {
-      setTagInput('')
-      return
-    }
-    setDraft({ ...draft, tags: [...draft.tags, cleaned] })
-    setTagInput('')
-  }
-  function removeTag(tag: string) {
-    if (!draft) return
-    setDraft({ ...draft, tags: draft.tags.filter((t) => t !== tag) })
-  }
+  // Autosave: persist whenever the draft diverges from the last-saved value,
+  // debounced so rapid edits (typing several tags, toggling chips) coalesce
+  // into one PUT. Refs let the debounce timer + the unmount flush read the
+  // latest draft/original without re-arming on every keystroke.
+  const draftRef = useRef(draft)
+  draftRef.current = draft
+  const originalRef = useRef(original)
+  originalRef.current = original
 
-  const onSave = useCallback(async () => {
-    if (!draft) return
-    setBusy(true)
+  const flush = useCallback(async () => {
+    const d = draftRef.current
+    const o = originalRef.current
+    if (!d || !o || sameTags(d, o)) return
+    setStatus('saving')
     setError(null)
     try {
-      await putDocTags(docId, draft)
-      setOriginal(draft)
+      await putDocTags(docId, d)
+      setOriginal(d)
+      setStatus('saved')
     } catch (err) {
       setError(explain(err))
-    } finally {
-      setBusy(false)
+      setStatus('error')
     }
-  }, [docId, draft])
+  }, [docId])
+
+  useEffect(() => {
+    if (!canEdit || !dirty) return
+    const t = window.setTimeout(() => void flush(), SAVE_DEBOUNCE_MS)
+    return () => clearTimeout(t)
+  }, [canEdit, dirty, flush])
+
+  // Flush a pending change before this pane unmounts or the doc switches, so a
+  // fast edit-then-navigate doesn't lose the last keystroke. Fire-and-forget;
+  // the PUT replaces tags wholesale so a redundant send is harmless.
+  useEffect(() => {
+    return () => {
+      const d = draftRef.current
+      const o = originalRef.current
+      if (d && o && !sameTags(d, o)) void putDocTags(docId, d).catch(() => {})
+    }
+  }, [docId])
 
   if (!draft || !teams || !products) {
     return (
@@ -118,7 +135,7 @@ export function TagPane({ docId, canEdit }: Props) {
         data={teams.map((t) => ({ value: t.id, label: t.displayName }))}
         value={draft.teams}
         onChange={(v) => setDraft({ ...draft, teams: v })}
-        disabled={!canEdit || busy}
+        disabled={!canEdit}
         searchable
         clearable
         size="xs"
@@ -131,7 +148,7 @@ export function TagPane({ docId, canEdit }: Props) {
         data={products.map((p) => ({ value: p.id, label: p.displayName }))}
         value={draft.products}
         onChange={(v) => setDraft({ ...draft, products: v })}
-        disabled={!canEdit || busy}
+        disabled={!canEdit}
         searchable
         clearable
         size="xs"
@@ -140,42 +157,26 @@ export function TagPane({ docId, canEdit }: Props) {
       />
 
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
           <div style={tagLabelStyle}>Tags</div>
           <OkfBadge field="tags" />
         </div>
-        {canEdit && (
-          <Group gap={4} mt={4}>
-            <TextInput
-              value={tagInput}
-              onChange={(e) => setTagInput(e.currentTarget.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.preventDefault()
-                  addTag()
-                }
-              }}
-              aria-label="Add tag"
-              placeholder="e.g. customer research"
-              size="xs"
-              style={{ flex: 1 }}
-              disabled={busy}
-            />
-            <Button size="xs" variant="default" onClick={addTag} disabled={!tagInput.trim() || busy}>
-              Add
-            </Button>
-          </Group>
-        )}
-        <Group gap={4} mt={6}>
-          {draft.tags.length === 0 && (
-            <Text c="dimmed" fz="xs">
-              No tags
-            </Text>
-          )}
-          {draft.tags.map((t) => (
-            <Chip key={t} label={t} onRemove={canEdit ? () => removeTag(t) : undefined} />
-          ))}
-        </Group>
+        <TagsInput
+          data={vocab}
+          value={draft.tags}
+          // TagsInput hands back the full list on every add/remove; clamp it
+          // exactly like the server (trim, collapse, cap length + count, dedup
+          // case-insensitively) so what we show matches what gets stored.
+          onChange={(vals) => setDraft({ ...draft, tags: clampTags(vals) })}
+          disabled={!canEdit}
+          maxTags={DOC_LIMITS.tagCount}
+          maxLength={DOC_LIMITS.tag}
+          clearable={false}
+          size="xs"
+          placeholder={draft.tags.length === 0 ? 'e.g. customer research' : undefined}
+          aria-label="Tags"
+          comboboxProps={{ withinPortal: true }}
+        />
       </div>
 
       {error && (
@@ -184,17 +185,10 @@ export function TagPane({ docId, canEdit }: Props) {
         </Alert>
       )}
 
-      {canEdit && (
-        <Button
-          size="xs"
-          onClick={onSave}
-          loading={busy}
-          disabled={!dirty}
-          fullWidth
-          variant={dirty ? 'filled' : 'default'}
-        >
-          {dirty ? 'Save tags' : 'Tags saved'}
-        </Button>
+      {canEdit && !error && (
+        <Text c="dimmed" fz="xs" ta="right" style={{ minHeight: 16 }}>
+          {dirty || status === 'saving' ? 'Saving…' : status === 'saved' ? 'Saved' : ''}
+        </Text>
       )}
     </Stack>
   )
@@ -212,44 +206,6 @@ const tagLabelStyle: React.CSSProperties = {
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return <div style={tagLabelStyle}>{children}</div>
-}
-
-function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
-  return (
-    <span
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 4,
-        padding: '2px 6px 2px 8px',
-        borderRadius: 10,
-        border: '1px solid var(--border)',
-        background: 'var(--bg-elevated)',
-        color: 'var(--text-muted)',
-        fontSize: 11
-      }}
-    >
-      {label}
-      {onRemove && (
-        <ActionIcon
-          variant="subtle"
-          size="xs"
-          onClick={onRemove}
-          aria-label={`Remove ${label}`}
-          style={{ marginRight: -4 }}
-        >
-          ×
-        </ActionIcon>
-      )}
-    </span>
-  )
-}
-
-// Free-form: trim + collapse internal whitespace, cap length. No slugging —
-// tags are human-readable labels and map verbatim to OKF frontmatter `tags`.
-// Same per-tag cap as the server (DOC_LIMITS.tag).
-function normaliseTag(raw: string): string {
-  return raw.trim().replace(/\s+/g, ' ').slice(0, DOC_LIMITS.tag)
 }
 
 function sameTags(a: DocTags, b: DocTags): boolean {

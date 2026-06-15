@@ -4,6 +4,7 @@ import {
   DocContent,
   DocDetail,
   DocEditorsResponse,
+  DocLinksResponse,
   DocSummary,
   DocTags,
   FolderRenameRequest,
@@ -12,6 +13,7 @@ import {
   SearchRequest,
   SearchResponse,
   SetLockedRequest,
+  TagVocab,
   UpdateDocRequest,
   UserSearchResult
 } from '@ctxlayer/shared'
@@ -130,6 +132,16 @@ export function fetchRevisionContent(
   )
 }
 
+// ----- link graph ---------------------------------------------------------
+
+// Incoming references + outgoing links (with resolved targets) for the rail.
+// Populated on reindex, so a just-saved doc shows links after its next pass.
+export function fetchDocLinks(id: string, signal?: AbortSignal): Promise<DocLinksResponse> {
+  return request(`/api/docs/${encodeURIComponent(id)}/links`, (b) => DocLinksResponse.parse(b), {
+    signal
+  })
+}
+
 // ----- lock toggle --------------------------------------------------------
 
 export function setDocLocked(id: string, body: SetLockedRequest): Promise<void> {
@@ -215,4 +227,10 @@ export function putDocTags(id: string, tags: DocTags): Promise<void> {
     method: 'PUT',
     body: JSON.stringify(DocTags.parse(tags))
   })
+}
+
+// Org-wide free-form tag vocabulary (most-used first) for the editor's
+// tag autocomplete.
+export function fetchTagVocab(signal?: AbortSignal): Promise<TagVocab> {
+  return request('/api/tags', (b) => TagVocab.parse(b), { signal })
 }

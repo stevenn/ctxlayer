@@ -9,6 +9,7 @@ import { Hono } from 'hono'
 import {
   CreateDocRequest,
   type DocDetail,
+  type DocLinksResponse,
   type DocSummary,
   type RevisionSummary,
   RestoreRequest,
@@ -38,6 +39,7 @@ import {
   type RevisionRow
 } from '../db/queries/docs'
 import { addDocTags } from '../db/queries/doc-tags'
+import { getIncomingLinkDocs, getOutgoingLinkTargets } from '../db/queries/doc-links'
 import { composeOkfExport } from '../docs/okf'
 import { audit } from '../audit/log'
 import { saveDocContent } from './docs-save-content'
@@ -168,6 +170,22 @@ docsRoute.put('/:id/content', async (c) => {
     explicit: c.req.query('mode') !== 'autosave'
   })
   return c.json(result.body, result.status)
+})
+
+// The doc's link graph for the editor rail: docs that reference this one
+// (incoming) + this doc's outgoing links with their resolved targets
+// (`target: null` = dangling). Open-read like the other doc GETs. The graph
+// is rebuilt on reindex, so a freshly-imported/edited doc populates after its
+// next reindex pass (admin "Reindex search" backfills the whole library).
+docsRoute.get('/:id/links', async (c) => {
+  const id = c.req.param('id')
+  if (!(await getDocById(c.env, id))) return notFound(c)
+  const [incoming, outgoing] = await Promise.all([
+    getIncomingLinkDocs(c.env, id),
+    getOutgoingLinkTargets(c.env, id)
+  ])
+  const body: DocLinksResponse = { incoming, outgoing }
+  return c.json(body)
 })
 
 docsRoute.get('/:id/revisions', async (c) => {

@@ -42,6 +42,7 @@ import { SharingDialog } from '../docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../../lib/yjs-ws-provider'
 import { useDialogs } from '../../lib/dialogs'
 import { DocAttachmentsRail } from './DocAttachmentsRail'
+import { DocLinksRail } from './DocLinksRail'
 import { DocLinkPicker } from './DocLinkPicker'
 import { FolderField } from './FolderField'
 import { PropertyField } from './PropertyField'
@@ -803,6 +804,8 @@ export function DocsEditor() {
           >
             Export as OKF (.md)
           </Button>
+
+          <DocLinksRail docId={doc.id} />
 
           <DocAttachmentsRail docId={doc.id} canManage={!!me?.role && me.role === 'admin'} />
         </aside>

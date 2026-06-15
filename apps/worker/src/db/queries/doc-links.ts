@@ -114,6 +114,44 @@ export async function replaceDocLinks(
   await env.DB.batch(stmts)
 }
 
+export interface LinkRefSummary {
+  id: string
+  title: string
+  slug: string
+}
+
+/** Distinct docs that link TO `docId`, with title + slug for the rail panel. */
+export async function getIncomingLinkDocs(env: Env, docId: string): Promise<LinkRefSummary[]> {
+  const res = await env.DB.prepare(
+    `SELECT DISTINCT s.id, s.title, s.slug
+     FROM doc_links l JOIN documents s ON s.id = l.source_doc_id
+     WHERE l.target_doc_id = ?1 AND s.deleted_at IS NULL
+     ORDER BY s.title`
+  )
+    .bind(docId)
+    .all<LinkRefSummary>()
+  return res.results ?? []
+}
+
+/** Outgoing links FROM `docId`: each ref with its resolved target (null = dangling). */
+export async function getOutgoingLinkTargets(
+  env: Env,
+  docId: string
+): Promise<Array<{ ref: string; target: LinkRefSummary | null }>> {
+  const res = await env.DB.prepare(
+    `SELECT l.target_ref AS ref, t.id AS id, t.title AS title, t.slug AS slug
+     FROM doc_links l LEFT JOIN documents t ON t.id = l.target_doc_id AND t.deleted_at IS NULL
+     WHERE l.source_doc_id = ?1
+     ORDER BY t.title IS NULL, t.title, l.target_ref`
+  )
+    .bind(docId)
+    .all<{ ref: string; id: string | null; title: string | null; slug: string | null }>()
+  return (res.results ?? []).map((r) => ({
+    ref: r.ref,
+    target: r.id && r.title && r.slug ? { id: r.id, title: r.title, slug: r.slug } : null
+  }))
+}
+
 /** Source docs that link TO `docId` (incoming refs + move-rewrite driver). */
 export async function getIncomingLinks(env: Env, docId: string): Promise<DocLinkRow[]> {
   const res = await env.DB.prepare(
