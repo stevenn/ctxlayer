@@ -1,4 +1,4 @@
-import { useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   FormattingToolbar,
@@ -20,8 +20,27 @@ import {
 import { Loader, useMantineColorScheme } from '@mantine/core'
 import { classifyHref, slugifyHeading } from '@ctxlayer/shared'
 import type * as Y from 'yjs'
+import { LinkMenu } from './link-menu'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
+
+// State for the edit-mode link popover (anchored to the clicked link).
+type LinkMenuState = {
+  anchor: HTMLAnchorElement
+  href: string
+  target: ReturnType<typeof classifyHref>
+  rawHref: string
+}
+
+// The link-mark methods BlockNote's core editor exposes but doesn't surface on
+// the React editor type. Used to edit/remove the specific link the user
+// clicked (resolved via posAtDOM on the anchor element).
+type LinkEditing = {
+  editLink(url: string, text: string, pos?: number): void
+  deleteLink(pos?: number): void
+  getLinkMarkAtPos(pos: number): { href: string; from: number; to: number; text: string } | undefined
+  prosemirrorView?: { posAtDOM(node: Node, offset: number): number }
+}
 
 interface CollaborationConfig {
   /** Yjs provider exposing `.awareness` (for y-prosemirror cursor plugin). */
@@ -117,6 +136,7 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
         }
     const editor = useCreateBlockNote(editorOptions)
     const hostRef = useRef<HTMLDivElement | null>(null)
+    const [linkMenu, setLinkMenu] = useState<LinkMenuState | null>(null)
 
     // Collab load gate. In collab mode the Y.Doc starts empty and the
     // server streams the content as a syncStep2 — for a large doc that's a
@@ -209,15 +229,89 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       return () => host.removeEventListener('keydown', onKeyDown)
     }, [editor])
 
-    // Doc / external link navigation. We fully preempt BlockNote's own link
-    // handling: it focuses + opens the link on mousedown, which otherwise drops
-    // the editor into edit mode AND opens the raw href in a new tab (→
-    // /app/search for an OKF path). A doc link routes in-app via React Router;
-    // an external link opens in a new tab. Modified / non-primary clicks fall
-    // through so native open-in-new-tab still works.
+    // Link interaction. We fully preempt BlockNote's own link handling (it
+    // focuses + would drop the editor into edit mode on click, and open the raw
+    // href — → /app/search for an OKF path). In READ-ONLY mode a click
+    // navigates (doc link → in-app route, external → new tab). In EDIT mode a
+    // click opens an anchored Open/Edit/Remove popover instead — deterministic,
+    // and immune to the hover LinkToolbar's stacked-link re-target bug (that
+    // toolbar is disabled via `linkToolbar={false}` below). Modified /
+    // non-primary clicks fall through so native open-in-new-tab still works.
     const nav = useNavigate()
     const resolveDocHrefRef = useRef(props.resolveDocHref)
     resolveDocHrefRef.current = props.resolveDocHref
+    const resolveDocLinkRef = useRef(props.resolveDocLink)
+    resolveDocLinkRef.current = props.resolveDocLink
+    const editableRef = useRef(props.editable)
+    editableRef.current = props.editable
+
+    const navigateLink = useCallback(
+      (href: string, target: ReturnType<typeof classifyHref>, rawHref: string) => {
+        if (!target) {
+          // External link → new tab, so the open editor isn't lost.
+          if (rawHref) window.open(rawHref, '_blank', 'noopener,noreferrer')
+          return
+        }
+        // Defer the route change so the click finishes + BlockNote settles
+        // before this editor unmounts (avoids a tiptap "view not available"
+        // crash on the doc → doc swap). Carry the source doc id so the target
+        // can offer a "back to source" link.
+        const from = window.location.pathname.match(/\/app\/docs\/([^/?#]+)/)?.[1]
+        const go = (path: string) =>
+          window.setTimeout(() => nav(path, from ? { state: { fromDocId: from } } : undefined), 0)
+        if (target.kind === 'id') {
+          go(`/app/docs/${target.id}`)
+          return
+        }
+        resolveDocHrefRef.current?.(href).then(
+          (docId) => {
+            if (docId) go(`/app/docs/${docId}`)
+          },
+          () => {}
+        )
+      },
+      [nav]
+    )
+
+    // Edit-mode link popover actions. Edit/Remove target the exact link the
+    // user clicked, resolved from the anchor's document position.
+    const openLinkTarget = useCallback(() => {
+      if (!linkMenu) return
+      navigateLink(linkMenu.href, linkMenu.target, linkMenu.rawHref)
+      setLinkMenu(null)
+    }, [linkMenu, navigateLink])
+    const editLinkTarget = useCallback(async () => {
+      if (!linkMenu) return
+      const anchor = linkMenu.anchor
+      setLinkMenu(null)
+      const link = await resolveDocLinkRef.current?.()
+      if (!link) return
+      const le = editor as unknown as LinkEditing
+      // The anchor can go stale across the async picker (collab edit / unmount);
+      // posAtDOM throws on a detached node, so fail soft.
+      try {
+        const pos = le.prosemirrorView?.posAtDOM(anchor, 0)
+        if (pos == null) return
+        // Keep the visible text; Edit only re-points the destination.
+        const text = le.getLinkMarkAtPos(pos + 1)?.text ?? link.label
+        le.editLink(link.href, text, pos)
+      } catch {
+        /* link moved/removed before apply — no-op */
+      }
+    }, [linkMenu, editor])
+    const removeLinkTarget = useCallback(() => {
+      if (!linkMenu) return
+      const anchor = linkMenu.anchor
+      setLinkMenu(null)
+      const le = editor as unknown as LinkEditing
+      try {
+        const pos = le.prosemirrorView?.posAtDOM(anchor, 0)
+        if (pos != null) le.deleteLink(pos)
+      } catch {
+        /* link already gone — no-op */
+      }
+    }, [linkMenu, editor])
+
     useEffect(() => {
       const host = hostRef.current
       if (!host) return
@@ -260,28 +354,14 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
         if (!c) return
         e.preventDefault()
         e.stopPropagation()
-        if (!c.target) {
-          // External link → new tab, so the open editor isn't lost.
-          if (a.href) window.open(a.href, '_blank', 'noopener,noreferrer')
+        if (!editableRef.current) {
+          // Read-only: a click goes straight to the target.
+          navigateLink(c.href, c.target, a.href)
           return
         }
-        // Defer the route change so the click finishes + BlockNote settles
-        // before this editor unmounts (avoids a tiptap "view not available"
-        // crash on the doc → doc swap). Carry the source doc id so the target
-        // can offer a "back to source" link.
-        const from = window.location.pathname.match(/\/app\/docs\/([^/?#]+)/)?.[1]
-        const go = (path: string) =>
-          window.setTimeout(() => nav(path, from ? { state: { fromDocId: from } } : undefined), 0)
-        if (c.target.kind === 'id') {
-          go(`/app/docs/${c.target.id}`)
-          return
-        }
-        resolveDocHrefRef.current?.(c.href).then(
-          (docId) => {
-            if (docId) go(`/app/docs/${docId}`)
-          },
-          () => {}
-        )
+        // Edit mode: open the anchored Open/Edit/Remove menu (no navigate, no
+        // cursor placement).
+        setLinkMenu({ anchor: a, href: c.href, target: c.target, rawHref: a.href })
       }
       document.addEventListener('mousedown', onMouseDown, true)
       document.addEventListener('click', onClick, true)
@@ -289,7 +369,7 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
         document.removeEventListener('mousedown', onMouseDown, true)
         document.removeEventListener('click', onClick, true)
       }
-    }, [nav])
+    }, [navigateLink])
 
     const { colorScheme } = useMantineColorScheme()
     const resolved: 'light' | 'dark' =
@@ -301,11 +381,9 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
             ? 'dark'
             : 'light'
 
-    // Snapshot the host callback in a ref so the SuggestionMenuController
-    // closure always sees the latest version (host modal state can
-    // change between renders).
-    const resolveDocLinkRef = useRef(props.resolveDocLink)
-    resolveDocLinkRef.current = props.resolveDocLink
+    // `resolveDocLinkRef` is declared with the link handlers above so the
+    // SuggestionMenuController / FormattingToolbar closures + the popover's
+    // Edit action all read the latest host callback.
 
     return (
       <div ref={hostRef} style={{ height: '100%', position: 'relative' }}>
@@ -340,6 +418,9 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
           theme={resolved}
           slashMenu={false}
           formattingToolbar={false}
+          // Our click-anchored LinkMenu replaces the hover link toolbar (which
+          // is unreliable with vertically-stacked links).
+          linkToolbar={false}
         >
           <SuggestionMenuController
             triggerCharacter="/"
@@ -385,6 +466,16 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
             )}
           />
         </BlockNoteView>
+        {linkMenu && (
+          <LinkMenu
+            anchor={linkMenu.anchor}
+            href={linkMenu.href}
+            onOpen={openLinkTarget}
+            onEdit={editLinkTarget}
+            onRemove={removeLinkTarget}
+            onClose={() => setLinkMenu(null)}
+          />
+        )}
       </div>
     )
   }
