@@ -43,10 +43,14 @@ re-emitting it on export — the well-known fields above are overlaid from the
 rail (so UI edits win), and every other producer key rides through untouched.
 
 The serialiser lives in `packages/shared/src/frontmatter.ts`
-(`splitFrontmatter` / `parseFrontmatter` / `emitFrontmatter`) — a flat-YAML
-subset (scalars + a `tags` list) with no YAML dependency. The contract that
-makes it safe is *preservation*, not full parsing: only well-known keys are
-interpreted; the rest are carried as raw text.
+(`splitFrontmatter` / `parseFrontmatter` / `emitFrontmatter`), built on the
+[`yaml`](https://eemeli.org/yaml/) package's Document API — so block scalars,
+comments, quoted/escaped strings, flow vs. block lists, and a bare scalar
+`tags:` value all parse correctly. The contract that makes round-tripping safe
+is *preservation*: only the well-known keys are interpreted and re-emitted; the
+Document API carries every other key through verbatim, comments and ordering
+intact. (`splitFrontmatter` still owns the `---`-fence delimiting — that's a
+frontmatter convention, not YAML.)
 
 **Tags are free-form, not slugs.** A producer's `tags: [BigQuery Table]` is
 stored and re-emitted verbatim (trim + whitespace-collapse + length cap only) —

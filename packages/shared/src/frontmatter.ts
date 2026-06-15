@@ -1,11 +1,14 @@
 /**
- * Minimal YAML-frontmatter (de)serialiser for OKF (Open Knowledge Format)
- * interop. OKF frontmatter is shallow — a handful of scalar fields plus a
- * `tags` list — so we parse a flat subset by hand rather than pull a YAML
- * dependency. The contract that makes round-tripping safe is *preservation*:
- * we only interpret the well-known keys; every other key in the block is
- * carried through verbatim, because OKF requires consumers to preserve
- * unknown keys.
+ * YAML-frontmatter (de)serialiser for OKF (Open Knowledge Format) interop,
+ * built on the `yaml` package's Document API. The round-trip contract is
+ * *preservation*: only the well-known keys are interpreted; every other key
+ * (and its comments + ordering) is carried through verbatim, because OKF
+ * requires consumers to preserve unknown keys.
+ *
+ * We use a real YAML parser (not a hand-rolled subset) so block scalars,
+ * comments, quoted/escaped strings, flow vs. block lists, and a bare scalar
+ * `tags:` value all parse correctly. `splitFrontmatter` still owns the
+ * `---`-fence delimiting (that's a frontmatter convention, not YAML).
  *
  * Spec: https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md
  * Reference: docs/plan/M-okf.md
@@ -13,6 +16,8 @@
  * Used by both the worker (git sync import, export, write-back, reindex) and
  * the SPA import modal, so it lives in the shared package.
  */
+
+import { Document, isMap, parse, parseDocument } from 'yaml'
 
 /** The OKF-recommended fields ctxlayer projects onto the doc rail. */
 export interface OkfKnownFields {
@@ -33,8 +38,8 @@ export interface ParsedFrontmatter {
   known: OkfKnownFields
 }
 
-// Canonical emit order. Also the set of keys we "manage" (strip from the
-// preserved remainder when present in the fields object).
+// Canonical emit order. Also the set of keys we "manage" (a key present in the
+// fields object is set/cleared; a key absent is left untouched in the raw).
 const KNOWN_ORDER = ['type', 'title', 'description', 'resource', 'tags', 'timestamp'] as const
 
 // Leading frontmatter fence: `---`, the block, closing `---`. (A leading BOM
@@ -54,134 +59,85 @@ export function splitFrontmatter(text: string): { raw: string | null; body: stri
 /** Split + parse the well-known fields out of a document's frontmatter. */
 export function parseFrontmatter(text: string): ParsedFrontmatter {
   const { raw, body } = splitFrontmatter(text)
-  return { raw, body, known: raw === null ? {} : parseKnownFields(raw) }
+  if (raw === null) return { raw: null, body, known: {} }
+  let parsed: unknown
+  try {
+    parsed = parse(raw)
+  } catch {
+    // Malformed YAML — don't crash the import; just surface no known fields.
+    parsed = null
+  }
+  return { raw, body, known: extractKnown(parsed) }
 }
 
-function parseKnownFields(raw: string): OkfKnownFields {
-  const lines = raw.split(/\r?\n/)
+function extractKnown(obj: unknown): OkfKnownFields {
   const known: OkfKnownFields = {}
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i] ?? ''
-    if (/^\s/.test(line)) continue // not a top-level key
-    const m = /^([A-Za-z0-9_.-]+)\s*:\s?(.*)$/.exec(line)
-    if (!m) continue
-    const key = (m[1] ?? '').toLowerCase()
-    const rest = m[2] ?? ''
-    if (key === 'title') known.title = unquote(rest)
-    else if (key === 'type') known.type = unquote(rest)
-    else if (key === 'description') known.description = unquote(rest)
-    else if (key === 'resource') known.resource = unquote(rest)
-    else if (key === 'timestamp') known.timestamp = unquote(rest)
-    else if (key === 'tags') {
-      const inline = rest.trim()
-      if (inline.startsWith('[')) {
-        // Flow list: `tags: [a, b]`
-        known.tags = parseInlineList(inline)
-      } else if (inline !== '') {
-        // Scalar: `tags: storytime` (or quoted) → a single-element list.
-        const single = unquote(inline)
-        known.tags = single ? [single] : []
-      } else {
-        // Block list: `tags:` then indented `- item` lines.
-        const tags: string[] = []
-        let j = i + 1
-        for (; j < lines.length && /^\s*-\s+/.test(lines[j] ?? ''); j++) {
-          const item = unquote((lines[j] ?? '').replace(/^\s*-\s+/, ''))
-          if (item) tags.push(item)
-        }
-        known.tags = tags
-      }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return known
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    const key = k.toLowerCase()
+    if (key === 'tags') {
+      known.tags = toStringList(v)
+      continue
     }
+    const s = scalar(v)
+    if (s === undefined) continue
+    if (key === 'title') known.title = s
+    else if (key === 'type') known.type = s
+    else if (key === 'description') known.description = s
+    else if (key === 'resource') known.resource = s
+    else if (key === 'timestamp') known.timestamp = s
   }
   return known
 }
 
+/** A scalar known-field value as a string; undefined for null / nested shapes. */
+function scalar(v: unknown): string | undefined {
+  if (v == null || typeof v === 'object') return undefined
+  return String(v)
+}
+
+/** Coerce a `tags` value to a string list: a YAML list, or a bare scalar → [scalar]. */
+function toStringList(v: unknown): string[] {
+  if (Array.isArray(v)) {
+    return v
+      .filter((x) => x != null && typeof x !== 'object')
+      .map((x) => String(x).trim())
+      .filter(Boolean)
+  }
+  if (v == null || typeof v === 'object') return []
+  const s = String(v).trim()
+  return s ? [s] : []
+}
+
 /**
  * Emit a `---`-fenced frontmatter block. Keys *present* in `fields` (even when
- * null) are "managed": stripped from `rawPreserve` and re-emitted from the
- * field value (null/empty → omitted entirely). Keys absent from `fields` are
- * left untouched in `rawPreserve` and carried through verbatim. Returns `''`
- * when there's nothing at all to emit.
+ * null) are "managed": set from the field value, or deleted when null/empty.
+ * Keys absent from `fields` are left untouched in `rawPreserve` and carried
+ * through verbatim, comments and ordering intact. Returns `''` when the
+ * resulting mapping is empty.
  */
 export function emitFrontmatter(fields: OkfKnownFields, rawPreserve?: string | null): string {
-  const managed = new Set<string>(KNOWN_ORDER.filter((k) => k in fields))
-  const preserved = rawPreserve ? stripManagedKeys(rawPreserve, managed) : ''
+  const doc =
+    rawPreserve && rawPreserve.trim() !== '' ? parseDocument(rawPreserve) : new Document({})
+  if (!isMap(doc.contents)) doc.contents = doc.createNode({})
 
-  const lines: string[] = []
   for (const key of KNOWN_ORDER) {
     if (!(key in fields)) continue
     if (key === 'tags') {
       const tags = (fields.tags ?? []).map((t) => t.trim()).filter(Boolean)
-      if (tags.length === 0) continue
-      lines.push('tags:')
-      for (const t of tags) lines.push(`  - ${emitScalar(t)}`)
+      if (tags.length === 0) doc.delete('tags')
+      else doc.set('tags', tags)
       continue
     }
     const value = fields[key]
-    if (value == null) continue
-    const s = String(value).replace(/[\r\n]+/g, ' ').trim()
-    if (s === '') continue
-    lines.push(`${key}: ${emitScalar(s)}`)
+    const s = value == null ? '' : String(value).replace(/[\r\n]+/g, ' ').trim()
+    if (s === '') doc.delete(key)
+    else doc.set(key, s)
   }
 
-  const all = [...lines, ...(preserved ? [preserved] : [])]
-  if (all.length === 0) return ''
-  return `---\n${all.join('\n')}\n---\n\n`
-}
-
-/** Drop the top-level managed keys (and their indented continuations). */
-function stripManagedKeys(raw: string, managed: Set<string>): string {
-  const lines = raw.split(/\r?\n/)
-  const out: string[] = []
-  let i = 0
-  while (i < lines.length) {
-    const line = lines[i] ?? ''
-    const m = /^([A-Za-z0-9_.-]+)\s*:/.exec(line)
-    if (m && !/^\s/.test(line)) {
-      const key = (m[1] ?? '').toLowerCase()
-      const block = [line]
-      i++
-      // Consume indented continuation lines (list items / block scalars).
-      for (; i < lines.length && /^\s+\S/.test(lines[i] ?? ''); i++) block.push(lines[i] ?? '')
-      if (!managed.has(key)) out.push(...block)
-    } else {
-      out.push(line)
-      i++
-    }
-  }
-  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim()
-}
-
-function emitScalar(value: string): string {
-  return needsQuote(value) ? JSON.stringify(value) : value
-}
-
-function needsQuote(s: string): boolean {
-  if (s === '') return true
-  if (/[:#[\]{}&*!|>'"%@`,]/.test(s)) return true
-  if (/^[\s?-]/.test(s) || /\s$/.test(s)) return true
-  if (/^(true|false|null|yes|no|on|off|~)$/i.test(s)) return true
-  if (/^[-+]?[\d.]/.test(s)) return true
-  return false
-}
-
-function unquote(s: string): string {
-  const t = s.trim()
-  if (t.length >= 2 && t.startsWith('"') && t.endsWith('"')) {
-    try {
-      return JSON.parse(t)
-    } catch {
-      return t.slice(1, -1)
-    }
-  }
-  if (t.length >= 2 && t.startsWith("'") && t.endsWith("'")) return t.slice(1, -1).replace(/''/g, "'")
-  return t
-}
-
-function parseInlineList(s: string): string[] {
-  return s
-    .replace(/^\[|\]$/g, '')
-    .split(',')
-    .map((x) => unquote(x.trim()))
-    .filter(Boolean)
+  const root = doc.contents
+  if (!isMap(root) || root.items.length === 0) return ''
+  // lineWidth: 0 disables line-wrapping so URLs / long values aren't folded.
+  const yamlText = doc.toString({ lineWidth: 0 }).replace(/\n+$/, '')
+  return `---\n${yamlText}\n---\n\n`
 }

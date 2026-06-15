@@ -193,11 +193,13 @@ reference: **`docs/plan/M-okf.md`**. Key facts so you don't re-derive them:
   single concept field; the `kind` column lingers as a vestigial `'doc'`
   default.
 - **Serialiser**: `packages/shared/src/frontmatter.ts`
-  (`splitFrontmatter`/`parseFrontmatter`/`emitFrontmatter`) — a flat-YAML
-  subset, no dep. The round-trip contract is **preservation**: only well-known
-  keys are interpreted; unknown producer keys (`okf_version`, …) are stored raw
-  in `documents.okf_frontmatter` and re-emitted verbatim. Don't "fix" this into
-  a full YAML parser.
+  (`splitFrontmatter`/`parseFrontmatter`/`emitFrontmatter`) — built on the
+  `yaml` package's Document API (block scalars, comments, quoted strings, flow
+  vs. block lists, scalar `tags:` all handled). The round-trip contract is
+  **preservation**: only well-known keys are interpreted; unknown producer keys
+  (`okf_version`, …) are kept in `documents.okf_frontmatter` and re-emitted
+  verbatim with their comments + ordering via the Document API. `splitFrontmatter`
+  still owns the `---`-fence delimiting (not YAML's job).
 - **Worker glue**: `apps/worker/src/docs/okf.ts` (export compose + write-back
   reattach). Import parses frontmatter in `git/sync.ts` (+ the SPA import
   modal); the reindex consumer strips frontmatter before chunking so YAML isn't

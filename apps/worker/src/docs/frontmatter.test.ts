@@ -54,6 +54,19 @@ describe('parseFrontmatter', () => {
     expect(parseFrontmatter('---\ntags: "storytime"\n---\nbody').known.tags).toEqual(['storytime'])
     expect(parseFrontmatter('---\ntags: storytime\n---\nbody').known.tags).toEqual(['storytime'])
   })
+
+  it('reads a block-scalar description without corrupting it', () => {
+    const { known } = parseFrontmatter('---\ndescription: |\n  line one\n  line two\n---\nbody')
+    expect(known.description).toBe('line one\nline two\n')
+  })
+
+  it('ignores trailing comments on a scalar value', () => {
+    expect(parseFrontmatter('---\ntype: Document # the kind\n---\nbody').known.type).toBe('Document')
+  })
+
+  it('handles a flow list with a comma inside a quoted item', () => {
+    expect(parseFrontmatter('---\ntags: ["a, b", c]\n---\nbody').known.tags).toEqual(['a, b', 'c'])
+  })
 })
 
 describe('emitFrontmatter', () => {
@@ -81,9 +94,9 @@ describe('emitFrontmatter', () => {
     expect(out).toContain('foo: bar')
   })
 
-  it('quotes values that would otherwise be mis-parsed as YAML', () => {
+  it('quotes values that would otherwise be mis-parsed as YAML (round-trips)', () => {
     const out = emitFrontmatter({ title: 'a: b #c' })
-    expect(out).toContain('title: "a: b #c"')
+    expect(parseFrontmatter(`${out}body`).known.title).toBe('a: b #c')
   })
 
   it('returns empty string when there is nothing to emit', () => {
