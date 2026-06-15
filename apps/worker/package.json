@@ -23,6 +23,7 @@
     "@ctxlayer/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "agents": "^0.13.2",
+    "fflate": "^0.8.2",
     "hono": "^4.6.0",
     "js-tiktoken": "^1.0.21",
     "lib0": "^0.2.117",
