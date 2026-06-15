@@ -77,6 +77,18 @@ function renderPage(
     ? `<strong>${escapeHtml(clientName)}</strong> wants to access ctxlayer.`
     : 'An MCP client wants to access ctxlayer.'
 
+  // Inline "layers" mark — same SVG as the SPA sign-in card / favicon, brand
+  // orange via `--brand`. Dependency-free so it renders without the bundle.
+  const brand = `<div class="brand">
+      <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor"
+           stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+        <path d="M2 17l10 5 10-5" />
+        <path d="M2 12l10 5 10-5" />
+      </svg>
+      <span>ctxlayer</span>
+    </div>`
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -84,7 +96,8 @@ function renderPage(
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Authorize · ctxlayer</title>
 <style>
-  :root { color-scheme: light dark; }
+  :root { color-scheme: light dark; --brand: #f38020; }
+  *, *::before, *::after { box-sizing: border-box; }
   body {
     margin: 0;
     min-height: 100vh;
@@ -108,6 +121,9 @@ function renderPage(
     background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px;
     padding: 28px;
   }
+  .brand { display: flex; align-items: center; gap: 8px; margin: 0 0 18px; }
+  .brand svg { color: var(--brand); flex: none; }
+  .brand span { font-size: 22px; font-weight: 700; letter-spacing: -0.01em; }
   h1 { margin: 0 0 4px; font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
   .muted { color: #64748b; font-size: 13px; margin: 0 0 20px; }
   .btn {
@@ -126,6 +142,7 @@ function renderPage(
 </head>
 <body>
   <div class="card">
+    ${brand}
     <h1>Authorize</h1>
     <p class="muted">${subtitle}</p>
     ${
