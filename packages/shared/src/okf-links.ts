@@ -45,6 +45,25 @@ export function classifyHref(href: string): LinkTarget {
   return null
 }
 
+/**
+ * Rewrite each markdown link's href via `replace` (returns the new href, or
+ * null to leave it unchanged). Image links (`![…]`) are skipped. Used by the
+ * export path to re-point doc links at their target's current concept path.
+ */
+export function rewriteMarkdownLinkHrefs(
+  markdown: string,
+  replace: (href: string) => string | null
+): string {
+  return markdown.replace(
+    /(!?\[[^\]]*\]\(\s*)([^()\s]+)((?:\s+[^()]*)?\))/g,
+    (full, pre: string, href: string, post: string) => {
+      if (pre.startsWith('!')) return full // image, not a link
+      const next = replace(href)
+      return next == null ? full : `${pre}${next}${post}`
+    }
+  )
+}
+
 /** Extract every link href from markdown `[text](href)` syntax. */
 export function scanMarkdownLinkHrefs(markdown: string): string[] {
   const out: string[] = []

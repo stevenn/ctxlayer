@@ -15,6 +15,7 @@ import { getDocForOkfExport, type DocOkfExportRow } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readSnapshot, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
+import { rewriteDocLinkHrefs } from './link-rewrite'
 
 interface BlockOpts {
   /** Synthesise OKF `type` from `kind` when the doc has no explicit type. */
@@ -76,7 +77,9 @@ export async function composeOkfExport(
   const tags = (await listTagsForDoc(env, docId)).tags
   const block = okfFrontmatterBlock(row, tags, { synthesizeType: true, includeTimestamp: true })
   const body = await okfBody(env, row)
-  return { markdown: block + body.replace(/^\n+/, ''), filename: `${row.slug}.md` }
+  // Re-point doc links at their target's current OKF path (move-consistency).
+  const linked = await rewriteDocLinkHrefs(env, body)
+  return { markdown: block + linked.replace(/^\n+/, ''), filename: `${row.slug}.md` }
 }
 
 /**

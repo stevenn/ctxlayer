@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { classifyHref, conceptPath, scanMarkdownLinkHrefs } from '@ctxlayer/shared'
+import {
+  classifyHref,
+  conceptPath,
+  rewriteMarkdownLinkHrefs,
+  scanMarkdownLinkHrefs
+} from '@ctxlayer/shared'
 
 describe('conceptPath', () => {
   it('builds /folder/slug.md', () => {
@@ -36,5 +41,13 @@ describe('scanMarkdownLinkHrefs', () => {
   it('extracts link hrefs and skips images', () => {
     const md = 'see [a](/x/a.md) and [b](https://e.com) ![img](/p.png) and [c](./c.md "t")'
     expect(scanMarkdownLinkHrefs(md)).toEqual(['/x/a.md', 'https://e.com', './c.md'])
+  })
+})
+
+describe('rewriteMarkdownLinkHrefs', () => {
+  it('rewrites hrefs, skips images, leaves null-returns + titles intact', () => {
+    const md = '[a](/x/a.md) ![img](/p.png) [b](https://e.com) [c](./c.md "title")'
+    const out = rewriteMarkdownLinkHrefs(md, (h) => (h.endsWith('.md') ? '/new/x.md' : null))
+    expect(out).toBe('[a](/new/x.md) ![img](/p.png) [b](https://e.com) [c](/new/x.md "title")')
   })
 })

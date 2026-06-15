@@ -30,6 +30,48 @@ export async function getDocIdsBySlugs(
   return out
 }
 
+/** The current concept (folder + slug) of a doc — its OKF path is built from this. */
+export interface DocConcept {
+  folder: string | null
+  slug: string
+}
+
+/** Resolve slugs → their current concept (folder + slug) for export link rewrite. */
+export async function getDocConceptsBySlugs(
+  env: Env,
+  slugs: string[]
+): Promise<Map<string, DocConcept>> {
+  const out = new Map<string, DocConcept>()
+  const uniq = [...new Set(slugs)]
+  if (uniq.length === 0) return out
+  const placeholders = uniq.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT slug, folder FROM documents WHERE slug IN (${placeholders}) AND deleted_at IS NULL`
+  )
+    .bind(...uniq)
+    .all<{ slug: string; folder: string | null }>()
+  for (const r of res.results ?? []) out.set(r.slug, { folder: r.folder, slug: r.slug })
+  return out
+}
+
+/** Resolve ids → their current concept (folder + slug). For legacy id links. */
+export async function getDocConceptsByIds(
+  env: Env,
+  ids: string[]
+): Promise<Map<string, DocConcept>> {
+  const out = new Map<string, DocConcept>()
+  const uniq = [...new Set(ids)]
+  if (uniq.length === 0) return out
+  const placeholders = uniq.map((_, i) => `?${i + 1}`).join(', ')
+  const res = await env.DB.prepare(
+    `SELECT id, slug, folder FROM documents WHERE id IN (${placeholders}) AND deleted_at IS NULL`
+  )
+    .bind(...uniq)
+    .all<{ id: string; slug: string; folder: string | null }>()
+  for (const r of res.results ?? []) out.set(r.id, { folder: r.folder, slug: r.slug })
+  return out
+}
+
 /** Of the supplied ids, which exist (non-deleted). For legacy `/app/docs/{id}`. */
 export async function existingDocIds(env: Env, ids: string[]): Promise<Set<string>> {
   const uniq = [...new Set(ids)]
