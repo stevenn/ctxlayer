@@ -3,7 +3,14 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, TextInput, Title } from '@mantine/core'
 import * as Y from 'yjs'
 import { useCreateBlockNote } from '@blocknote/react'
-import type { DocContent, DocDetail, GitDocStatus, MeResponse } from '@ctxlayer/shared'
+import {
+  classifyHref,
+  type DocContent,
+  type DocDetail,
+  type DocSummary,
+  type GitDocStatus,
+  type MeResponse
+} from '@ctxlayer/shared'
 import {
   ApiError,
   deleteDoc,
@@ -11,6 +18,7 @@ import {
   fetchDocContent,
   fetchDocGitSource,
   fetchDocGitStatus,
+  fetchDocs,
   fetchMe,
   fetchRevisionContent,
   fetchRevisions,
@@ -512,6 +520,19 @@ export function DocsEditor() {
     linkResolverRef.current = null
   }
 
+  // Click navigation for OKF doc-path links: resolve the path's slug → doc id
+  // client-side. The doc list is loaded once and cached (also used by the
+  // picker). External URLs never reach here (classifyHref filters them).
+  const docsCacheRef = useRef<Promise<DocSummary[]> | null>(null)
+  const resolveDocHref = useCallback(async (href: string): Promise<string | null> => {
+    const target = classifyHref(href)
+    if (!target) return null
+    if (target.kind === 'id') return target.id
+    if (!docsCacheRef.current) docsCacheRef.current = fetchDocs()
+    const docs = await docsCacheRef.current
+    return docs.find((d) => d.slug === target.slug)?.id ?? null
+  }, [])
+
   if (status.kind === 'loading') return <Text c="dimmed">Loading…</Text>
   if (status.kind === 'error') {
     return (
@@ -644,6 +665,7 @@ export function DocsEditor() {
                 user: collab.user
               }}
               resolveDocLink={doc.canEdit ? resolveDocLink : undefined}
+              resolveDocHref={resolveDocHref}
             />
           )}
         </div>

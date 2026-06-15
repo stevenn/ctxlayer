@@ -106,10 +106,10 @@ describe('docs-editor extracted sub-components (render smoke)', () => {
     expect(screen.getByText(/Propose change/)).toBeInTheDocument()
   })
 
-  it('DocLinkPicker renders its modal with the filter input', () => {
+  it('DocLinkPicker renders its modal with the search/URL input', () => {
     wrap(<DocLinkPicker currentDocId="d_1" onClose={() => {}} onPick={() => {}} />)
-    expect(screen.getByText('Link to doc')).toBeInTheDocument()
-    expect(screen.getByPlaceholderText(/Filter by title or slug/)).toBeInTheDocument()
+    expect(screen.getByText('Add link')).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Search docs or paste a URL/)).toBeInTheDocument()
   })
 
   it('DocAttachmentsRail renders its section header', () => {

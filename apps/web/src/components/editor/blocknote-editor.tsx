@@ -18,7 +18,7 @@ import {
   type BlockNoteEditorOptions
 } from '@blocknote/core'
 import { Loader, useMantineColorScheme } from '@mantine/core'
-import { slugifyHeading } from '@ctxlayer/shared'
+import { classifyHref, slugifyHeading } from '@ctxlayer/shared'
 import type * as Y from 'yjs'
 import '@blocknote/core/fonts/inter.css'
 import '@blocknote/mantine/style.css'
@@ -52,12 +52,19 @@ export interface BlockNoteEditorProps {
    *  tracking. In collab mode prefer subscribing to the Y.Doc itself. */
   onChange?: (blocks: unknown[]) => void
   /**
-   * Slash-menu "Link to doc" handler. When the user picks the item
-   * the wrapper awaits this; on resolution to `{label, href}` it
-   * inserts the link inline. Resolving to `null` (e.g. user closes
-   * the picker) is a no-op. Omit to hide the item entirely.
+   * Unified "Link" handler. When the user invokes the link tool the
+   * wrapper awaits this; on resolution to `{label, href}` it inserts the
+   * link (a doc concept-path or an external URL). `null` (picker closed)
+   * is a no-op. Omit to hide the tool entirely (read-only docs).
    */
   resolveDocLink?: () => Promise<{ label: string; href: string } | null>
+  /**
+   * Resolve an in-app doc-link href (an OKF concept path, or a legacy
+   * `/app/docs/{id}`) to a doc id, for click navigation. Returns null for a
+   * dangling/unknown link. External URLs are never passed here. Provided
+   * regardless of edit permission so links are clickable read-only.
+   */
+  resolveDocHref?: (href: string) => Promise<string | null>
   /** Wire BlockNote's Yjs collab extension. Omit for REST autosave mode. */
   collaboration?: CollaborationConfig
 }
@@ -202,11 +209,14 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       return () => host.removeEventListener('keydown', onKeyDown)
     }, [editor])
 
-    // Intercept clicks on internal SPA links (e.g. /app/docs/<id>) so
-    // they navigate via React Router instead of triggering a full page
-    // load. Modifier keys + non-primary buttons fall through to the
-    // browser so "open in new tab" still works.
+    // Intercept clicks on in-app doc links (OKF concept paths like
+    // `/specs/api/auth.md`, or legacy `/app/docs/{id}`) so they route via
+    // React Router instead of a full page load. External URLs / anchors fall
+    // through to the browser. Modifier keys + non-primary buttons fall through
+    // so "open in new tab" still works.
     const nav = useNavigate()
+    const resolveDocHrefRef = useRef(props.resolveDocHref)
+    resolveDocHrefRef.current = props.resolveDocHref
     useEffect(() => {
       const host = hostRef.current
       if (!host) return
@@ -216,11 +226,22 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
         const anchor = (e.target as HTMLElement | null)?.closest('a')
         if (!anchor) return
         const href = anchor.getAttribute('href')
-        if (!href || !href.startsWith('/app/')) return
-        // Respect target="_blank" / explicit download even on internal links.
+        if (!href) return
         if (anchor.target && anchor.target !== '' && anchor.target !== '_self') return
+        const target = classifyHref(href)
+        if (!target) return // external URL / anchor → let the browser handle it
         e.preventDefault()
-        nav(href)
+        if (target.kind === 'id') {
+          nav(`/app/docs/${target.id}`)
+          return
+        }
+        // OKF concept path → resolve the slug to a doc id client-side.
+        resolveDocHrefRef.current?.(href).then(
+          (docId) => {
+            if (docId) nav(`/app/docs/${docId}`)
+          },
+          () => {}
+        )
       }
       host.addEventListener('click', onClick)
       return () => host.removeEventListener('click', onClick)
@@ -283,9 +304,9 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
                 ...(resolveDocLinkRef.current
                   ? [
                       {
-                        title: 'Link to doc',
-                        subtext: 'Pick another document to link to',
-                        aliases: ['doc', 'link', 'reference', 'ref'],
+                        title: 'Link',
+                        subtext: 'Link to a doc or an external URL',
+                        aliases: ['link', 'doc', 'url', 'reference', 'ref'],
                         group: 'Other',
                         icon: <span aria-hidden>🔗</span>,
                         onItemClick: async () => {
@@ -310,7 +331,9 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
           <FormattingToolbarController
             formattingToolbar={() => (
               <FormattingToolbar>
-                {getFormattingToolbarItems()}
+                {/* Hide BlockNote's built-in URL-only link button: our unified
+                    "Link" tool (DocLinkToolbarButton) handles docs + URLs. */}
+                {getFormattingToolbarItems().filter((item) => item.key !== 'createLinkButton')}
                 {resolveDocLinkRef.current && (
                   <DocLinkToolbarButton resolveRef={resolveDocLinkRef} />
                 )}
@@ -324,10 +347,10 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
 )
 
 /**
- * Toolbar button that wraps the current selection in an internal
- * doc link. Sits next to BlockNote's default "Create Link" button —
- * that one is for arbitrary URLs; this one resolves to a doc in our
- * library via the host-provided picker.
+ * The unified "Link" toolbar button. Replaces BlockNote's built-in
+ * "Create Link" button (which is filtered out above) — the host picker it
+ * opens handles BOTH a doc (inserts an OKF concept-path href) and an
+ * external URL.
  *
  * `editor.createLink(url)` (no `text` arg) wraps the current selection
  * in a link with the given URL — selection text is preserved. The
@@ -417,8 +440,8 @@ function DocLinkToolbarButton({
   if (!Components) return null
   return (
     <Components.FormattingToolbar.Button
-      mainTooltip="Link to doc"
-      label="Link to doc"
+      mainTooltip="Link (doc or URL)"
+      label="Link"
       icon={<span aria-hidden>🔗</span>}
       onClick={async () => {
         const link = await resolveRef.current?.()
@@ -426,7 +449,7 @@ function DocLinkToolbarButton({
         editor.createLink(link.href)
       }}
     >
-      Doc
+      Link
     </Components.FormattingToolbar.Button>
   )
 }
