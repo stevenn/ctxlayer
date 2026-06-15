@@ -103,26 +103,24 @@ Migration `0025_doc_okf_meta.sql` adds `doc_type`, `description`, `resource`,
 free-form `doc_tags` / `skill_tags` kind `topic` → `tag` (rebuild + remap;
 both are leaf tables, so the §G1 cascade trap does not apply).
 
-## Deferred — bundle-level semantics (not implemented)
+## Bundle-level support → see [N — OKF bundles](N-okf-bundles.md)
 
-OKF is a *directory* format, not just per-file frontmatter. Today ctxlayer
-imports each `.md` as an independent doc; the following bundle-level features
-are deliberately **not** built yet (tracked here so the gap is explicit):
+The bundle layer (directory-tree up/download, reserved `index.md` / `log.md`,
+and the path-based inter-doc link graph) is **implemented** — full design and
+flows in [N-okf-bundles.md](N-okf-bundles.md):
 
-- **Bundle recognition** — `okf_version: "0.1"` in a root `index.md` marks a
-  directory as an OKF bundle. We preserve the key but don't act on it (no
-  "this source is an OKF bundle" treatment).
-- **`log.md` provenance** — OKF's dated change-history files import as ordinary
-  docs; they're not mapped onto revisions / a changelog view.
-- **Inter-doc link graph + concept IDs** — OKF identity is the file path minus
-  `.md`, and links (`/tables/users.md`, `./other.md`) express relationships.
-  We store them as literal markdown; they don't resolve to ctxlayer doc links
-  or a navigable graph.
-- **Bundle as a unit** — import/export of a whole directory tree (git repo
-  already works file-by-file; a tarball/zip round-trip does not).
+- **Path-based links** — doc links are stored as OKF concept paths; a
+  `doc_links` graph resolves them by slug + surfaces dangling; exports recompute
+  paths so moves stay consistent.
+- **Bundle export** — `GET /api/bundles/export` packs a folder subtree
+  (tar.gz / zip) with a generated `index.md` (`okf_version`) + `log.md`.
+- **Bundle import** — `POST /api/bundles/import` grafts an archive under a
+  target folder with a two-pass link resolve; reads `okf_version`, skips
+  reserved files.
 
-These are a separate, larger effort than per-file parsing — pursue if/when
-ctxlayer should be a first-class OKF *bundle* tool rather than a file importer.
+Still deferred (noted in N-okf-bundles.md): queue-backing import for very large
+bundles (currently synchronous, capped at `MAX_DOCS`), per-directory `index.md`,
+and a link-graph *browse* UI.
 
 ## Why this matters
 
