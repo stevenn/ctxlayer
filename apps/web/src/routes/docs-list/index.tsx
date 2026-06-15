@@ -25,6 +25,12 @@ export { personLabel } from './helpers'
 const ImportDocModal = lazy(() =>
   import('./ImportDocModal').then((m) => ({ default: m.ImportDocModal }))
 )
+const BundleImportModal = lazy(() =>
+  import('./BundleImportModal').then((m) => ({ default: m.BundleImportModal }))
+)
+const BundleExportModal = lazy(() =>
+  import('./BundleExportModal').then((m) => ({ default: m.BundleExportModal }))
+)
 
 type Status =
   | { kind: 'loading' }
@@ -37,6 +43,8 @@ export function DocsList() {
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [createOpen, setCreateOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
+  const [bundleImportOpen, setBundleImportOpen] = useState(false)
+  const [bundleExportOpen, setBundleExportOpen] = useState(false)
   // Client-side filter over the list. Title / slug / creator / kind /
   // folder are all matched case-insensitively. RAG search lives behind
   // the hero box (semantic) — this bar is "find a doc I know exists".
@@ -192,6 +200,9 @@ export function DocsList() {
             <Menu.Dropdown>
               <Menu.Item onClick={() => setCreateOpen(true)}>Blank doc</Menu.Item>
               <Menu.Item onClick={() => setImportOpen(true)}>Import markdown…</Menu.Item>
+              <Menu.Divider />
+              <Menu.Item onClick={() => setBundleImportOpen(true)}>Import OKF bundle…</Menu.Item>
+              <Menu.Item onClick={() => setBundleExportOpen(true)}>Export OKF bundle…</Menu.Item>
             </Menu.Dropdown>
           </Menu>
         </Group>
@@ -272,6 +283,19 @@ export function DocsList() {
       {importOpen && (
         <Suspense fallback={null}>
           <ImportDocModal onClose={() => setImportOpen(false)} />
+        </Suspense>
+      )}
+      {bundleImportOpen && (
+        <Suspense fallback={null}>
+          <BundleImportModal
+            onClose={() => setBundleImportOpen(false)}
+            onImported={() => reload()}
+          />
+        </Suspense>
+      )}
+      {bundleExportOpen && (
+        <Suspense fallback={null}>
+          <BundleExportModal onClose={() => setBundleExportOpen(false)} />
         </Suspense>
       )}
     </>

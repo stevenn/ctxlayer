@@ -3,6 +3,7 @@
 // `request` stays internal to this folder (import it from './core').
 export { ApiError, ApiSchemaError, fetchConfig, fetchMe, fetchVersion, signOut } from './core'
 export * from './docs'
+export * from './bundles'
 export * from './git'
 export * from './skills'
 export * from './org'

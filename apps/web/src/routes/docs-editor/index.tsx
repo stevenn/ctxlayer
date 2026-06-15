@@ -1,9 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate, useParams, useSearchParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, TextInput, Title } from '@mantine/core'
 import * as Y from 'yjs'
 import { useCreateBlockNote } from '@blocknote/react'
-import type { DocContent, DocDetail, GitDocStatus, MeResponse } from '@ctxlayer/shared'
+import {
+  classifyHref,
+  type DocContent,
+  type DocDetail,
+  type DocSummary,
+  type GitDocStatus,
+  type MeResponse
+} from '@ctxlayer/shared'
 import {
   ApiError,
   deleteDoc,
@@ -11,6 +18,7 @@ import {
   fetchDocContent,
   fetchDocGitSource,
   fetchDocGitStatus,
+  fetchDocs,
   fetchMe,
   fetchRevisionContent,
   fetchRevisions,
@@ -34,6 +42,7 @@ import { SharingDialog } from '../docs-sharing'
 import { CollabWSProvider, type CollabStatus } from '../../lib/yjs-ws-provider'
 import { useDialogs } from '../../lib/dialogs'
 import { DocAttachmentsRail } from './DocAttachmentsRail'
+import { DocLinksRail } from './DocLinksRail'
 import { DocLinkPicker } from './DocLinkPicker'
 import { FolderField } from './FolderField'
 import { PropertyField } from './PropertyField'
@@ -132,13 +141,16 @@ export function DocsEditor() {
         ])
         if (ctrl.signal.aborted) return
         let gs: GitDocStatus | null = null
-        try {
-          gs = await fetchDocGitStatus(id, ctrl.signal)
-        } catch (e) {
-          // 404 = not a git doc; anything else is unexpected but
-          // non-fatal for opening the editor.
-          if (!(e instanceof ApiError && e.status === 404)) {
-            console.warn('git status fetch failed', e)
+        // Only probe git status for docs actually synced from a git source.
+        // Authored docs have no git endpoint (it 404s by design), so skipping
+        // the probe avoids a 404 on every authored-doc open.
+        if (doc.gitSourceId) {
+          try {
+            gs = await fetchDocGitStatus(id, ctrl.signal)
+          } catch (e) {
+            if (!(e instanceof ApiError && e.status === 404)) {
+              console.warn('git status fetch failed', e)
+            }
           }
         }
         let effective = content
@@ -198,20 +210,17 @@ export function DocsEditor() {
       fragment: doc.getXmlFragment(COLLAB_FRAGMENT),
       user: { name: userLabel, color }
     })
+    // Subscribe to status HERE (not a separate effect) so we can unsubscribe
+    // BEFORE destroy on a doc→doc switch — otherwise destroy()'s terminal
+    // 'disconnected' flashes "Offline" on the badge while the next doc loads.
+    const offStatus = provider.onStatus(setCollabStatus)
     return () => {
+      offStatus()
       provider.destroy()
       doc.destroy()
       setCollab(null)
     }
   }, [id, userId, userLabel])
-
-  // Track provider status so the badge stays in sync. The provider
-  // calls back synchronously with the current status on subscribe.
-  useEffect(() => {
-    const provider = collab?.provider
-    if (!provider) return
-    return provider.onStatus(setCollabStatus)
-  }, [collab])
 
   // Seed migration: if the Y.Doc fragment is still empty after the
   // first 'connected' status AND we have legacy JSON content AND
@@ -512,6 +521,41 @@ export function DocsEditor() {
     linkResolverRef.current = null
   }
 
+  // Click navigation for OKF doc-path links: resolve the path's slug → doc id
+  // client-side. The doc list is loaded once and cached (also used by the
+  // picker). External URLs never reach here (classifyHref filters them).
+  const docsCacheRef = useRef<Promise<DocSummary[]> | null>(null)
+  const resolveDocHref = useCallback(async (href: string): Promise<string | null> => {
+    const target = classifyHref(href)
+    if (!target) return null
+    if (target.kind === 'id') return target.id
+    if (!docsCacheRef.current) docsCacheRef.current = fetchDocs()
+    const docs = await docsCacheRef.current
+    return docs.find((d) => d.slug === target.slug)?.id ?? null
+  }, [])
+
+  // "Back to source": when we arrived here via a doc link the editor stashed the
+  // source doc id in the route state. Look up its title from the cached doc list
+  // (populated when the link was clicked — this route doesn't remount on an id
+  // change, so the ref persists across the jump).
+  const location = useLocation()
+  const fromDocId = (location.state as { fromDocId?: string } | null)?.fromDocId ?? null
+  const [fromTitle, setFromTitle] = useState<string | null>(null)
+  useEffect(() => {
+    const cache = docsCacheRef.current
+    if (!fromDocId || fromDocId === id || !cache) {
+      setFromTitle(null)
+      return
+    }
+    let cancelled = false
+    cache.then((docs) => {
+      if (!cancelled) setFromTitle(docs.find((d) => d.id === fromDocId)?.title ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [fromDocId, id])
+
   if (status.kind === 'loading') return <Text c="dimmed">Loading…</Text>
   if (status.kind === 'error') {
     return (
@@ -540,6 +584,21 @@ export function DocsEditor() {
           >
             ← Docs
           </Button>
+          {fromDocId && fromDocId !== doc.id && (
+            <Button
+              variant="subtle"
+              size="xs"
+              onClick={() => nav(`/app/docs/${fromDocId}`)}
+              style={{ paddingLeft: 6, paddingRight: 6, maxWidth: 220 }}
+              title={fromTitle ? `Back to ${fromTitle}` : 'Back to the source doc'}
+            >
+              <span
+                style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+              >
+                ← {fromTitle ?? 'Back to source'}
+              </span>
+            </Button>
+          )}
           <CollabBadge canEdit={doc.canEdit} status={collabStatus} />
         </Group>
         <Group gap="xs">
@@ -644,6 +703,7 @@ export function DocsEditor() {
                 user: collab.user
               }}
               resolveDocLink={doc.canEdit ? resolveDocLink : undefined}
+              resolveDocHref={resolveDocHref}
             />
           )}
         </div>
@@ -744,6 +804,8 @@ export function DocsEditor() {
           >
             Export as OKF (.md)
           </Button>
+
+          <DocLinksRail docId={doc.id} />
 
           <DocAttachmentsRail docId={doc.id} canManage={!!me?.role && me.role === 'admin'} />
         </aside>

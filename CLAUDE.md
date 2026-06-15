@@ -10,7 +10,7 @@ milestone-driven plan that built ctxlayer (M1–M8) is retired; future work proc
 ad hoc, tracked in code + commits + this file, not in a larger plan. Topic deep-dives
 are under **`docs/plan/`** (A: auth, B: stdio bridge, C: upstream proxy, D: UI+REST,
 E: dev environment, F: org IA, G: conventions, I: upstream resilience, M: OKF
-interop). Skim
+interop, N: OKF bundles). Skim
 PLAN.md for the lay of the land and pull in a deep-dive when the topic comes up —
 but trust the code first; these docs are reference, not kept in lockstep with every change.
 
@@ -208,7 +208,17 @@ reference: **`docs/plan/M-okf.md`**. Key facts so you don't re-derive them:
 - **Tags are free-form, NOT slugs.** `addDocTags` stores them verbatim (trim +
   whitespace-collapse + cap) so `BigQuery Table` round-trips. Don't re-introduce
   slugification on the tag path — it breaks OKF fidelity.
-- Migrations `0025` (OKF columns) + `0026` (`topic`→`tag` rename).
+- Migrations `0025` (OKF columns) + `0026` (`topic`→`tag` rename) + `0027`
+  (`doc_links` graph).
+- **Bundles** (`docs/plan/N-okf-bundles.md`): doc links are **OKF-native path
+  hrefs** (`/folder/slug.md`), resolved by slug, tracked in `doc_links`;
+  moves recompute paths at export (no body rewrites — Yjs-owned bodies).
+  `GET /api/bundles/export` packs a folder subtree (tar.gz/zip, `fflate` +
+  hand-rolled tar in `apps/worker/src/bundle/`) with generated `index.md`/
+  `log.md`; `POST /api/bundles/import` grafts an archive under a target folder
+  (two-pass link resolve, synchronous, capped at `MAX_DOCS`). The editor link
+  click-handler is **document-capture** + preempts BlockNote's own link open —
+  don't revert it to a bubble-phase host listener.
 
 ## Where to start
 

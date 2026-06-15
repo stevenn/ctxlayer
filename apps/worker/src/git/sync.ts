@@ -13,8 +13,9 @@
  */
 
 import type { Env } from '../env'
-import type { GitSyncInterval, GitSyncResult, OkfKnownFields } from '@ctxlayer/shared'
+import type { GitSyncInterval, GitSyncResult } from '@ctxlayer/shared'
 import { DOC_LIMITS, clampText, parseFrontmatter, slugifyHeading } from '@ctxlayer/shared'
+import { applyOkfMetadata } from '../docs/okf-import'
 import {
   getGitSourceById,
   listGitDocPaths,
@@ -23,8 +24,8 @@ import {
   setDocGitSyncState,
   type GitSourceRow
 } from '../db/queries/git-sources'
-import { createDoc, patchDoc, softDeleteDoc } from '../db/queries/docs'
-import { addDocTags, setDocProductTag } from '../db/queries/doc-tags'
+import { createDoc, softDeleteDoc } from '../db/queries/docs'
+import { setDocProductTag } from '../db/queries/doc-tags'
 import { writeSourceMarkdown } from '../storage/docs-r2'
 import { createGitProvider } from './provider'
 import type { GitRepoConfig } from './provider-types'
@@ -173,32 +174,6 @@ function repoConfig(s: GitSourceRow): GitRepoConfig {
     project: s.project,
     repo: s.repo
   }
-}
-
-/**
- * Project the parsed OKF frontmatter onto the doc: the well-known scalar
- * fields + the preserved raw block (one patch), and the `tags` as additive
- * free-form tags. A plain (no-frontmatter) file passes nulls — clearing any
- * stale OKF fields and leaving okf_frontmatter null so write-back stays
- * frontmatter-free. Title is set at create only (sync-owned), not here.
- */
-async function applyOkfMetadata(
-  env: Env,
-  docId: string,
-  known: OkfKnownFields,
-  raw: string | null
-): Promise<void> {
-  // Clamp to the same limits the request schemas enforce, so a synced value
-  // can always be re-saved through the rail. The raw block can't be truncated
-  // without corrupting the YAML, so an over-limit block is dropped instead.
-  await patchDoc(env, docId, {
-    docType: known.type ? clampText(known.type, DOC_LIMITS.type) : null,
-    description: known.description ? clampText(known.description, DOC_LIMITS.description) : null,
-    resource: known.resource ? clampText(known.resource, DOC_LIMITS.resource) : null,
-    okfFrontmatter: raw && raw.length <= DOC_LIMITS.frontmatter ? raw : null
-  })
-  // addDocTags clamps (per-tag length + count + dedup) internally.
-  if (known.tags?.length) await addDocTags(env, docId, known.tags)
 }
 
 /** Title from the first H1, else the filename sans markdown extension. */

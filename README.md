@@ -69,6 +69,7 @@ milestone-driven plan is retired — see `CLAUDE.md`).
 | **Git sync** — code docs from repos | ✅ done | Register a GitHub repo (PAT or OAuth), mirror Markdown into the doc store, product-link auto-tagging, scheduled cron sync |
 | **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
 | **OKF interop** — Open Knowledge Format | ✅ done | Import/export/git-write-back of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) docs; the editor rail *is* the YAML frontmatter editor; unknown keys preserved for round-trip. Deep-dive: [`docs/plan/M-okf.md`](docs/plan/M-okf.md) |
+| **OKF bundles** — directory up/download | ✅ done | Export a folder subtree as a `tar.gz` / `zip` OKF bundle (generated `index.md`/`log.md`); import an archive under a target folder. OKF-native path-based doc links with a consistency graph. Deep-dive: [`docs/plan/N-okf-bundles.md`](docs/plan/N-okf-bundles.md) |
 
 ## Open Knowledge Format (OKF) — early adopter
 

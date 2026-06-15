@@ -30,6 +30,23 @@ export async function listTagsForDoc(env: Env, docId: string): Promise<DocTags> 
 }
 
 /**
+ * The org-wide free-form tag vocabulary: every distinct `tag` value in use
+ * across non-deleted docs, most-used first (then alphabetical). Powers the
+ * editor's tag autocomplete so existing tags get reused rather than re-coined
+ * with slight variations. Open-read like the rest of the doc surface.
+ */
+export async function listAllTagValues(env: Env): Promise<string[]> {
+  const res = await env.DB.prepare(
+    `SELECT t.tag_value AS tag, COUNT(*) AS n
+       FROM doc_tags t JOIN documents d ON d.id = t.doc_id
+      WHERE t.tag_kind = 'tag' AND d.deleted_at IS NULL
+      GROUP BY t.tag_value
+      ORDER BY n DESC, t.tag_value`
+  ).all<{ tag: string; n: number }>()
+  return (res.results ?? []).map((r) => r.tag)
+}
+
+/**
  * Replace all tags for a doc with the supplied set. Single D1 batch
  * (delete + per-tag insert) so the table is never partially updated.
  * Caller has already validated ids (canEdit + existence checks live

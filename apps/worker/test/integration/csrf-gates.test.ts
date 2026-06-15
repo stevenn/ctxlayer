@@ -125,6 +125,7 @@ const CASES: GateCase[] = [
   { method: 'POST', path: '/api/search' },
   { method: 'PATCH', path: '/api/folders' },
   { method: 'DELETE', path: '/api/folders/f1' },
+  { method: 'POST', path: '/api/bundles/import' },
   { method: 'POST', path: '/api/skills' },
   { method: 'PATCH', path: '/api/skills/s1' },
   { method: 'DELETE', path: '/api/skills/s1' },

@@ -15,6 +15,7 @@ import { getDocForOkfExport, type DocOkfExportRow } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readSnapshot, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
+import { rewriteDocLinkHrefs } from './link-rewrite'
 
 interface BlockOpts {
   /** Synthesise OKF `type` from `kind` when the doc has no explicit type. */
@@ -63,7 +64,11 @@ export async function okfBody(env: Env, row: DocOkfExportRow): Promise<string> {
     if (src !== null) return splitFrontmatter(src).body.replace(/^\s+/, '')
   }
   const snap = await readSnapshot(env, row.id)
-  return snap ? renderBlocksToMarkdown(snap.blocks) : ''
+  if (snap) return renderBlocksToMarkdown(snap.blocks)
+  // No snapshot yet — fall back to source.md (a freshly-imported bundle doc
+  // whose blocks haven't been materialised in the editor yet).
+  const src = await readSourceMarkdown(env, row.id)
+  return src !== null ? splitFrontmatter(src).body.replace(/^\s+/, '') : ''
 }
 
 /** Compose a full OKF markdown export for download, or null if the doc is gone. */
@@ -76,7 +81,9 @@ export async function composeOkfExport(
   const tags = (await listTagsForDoc(env, docId)).tags
   const block = okfFrontmatterBlock(row, tags, { synthesizeType: true, includeTimestamp: true })
   const body = await okfBody(env, row)
-  return { markdown: block + body.replace(/^\n+/, ''), filename: `${row.slug}.md` }
+  // Re-point doc links at their target's current OKF path (move-consistency).
+  const linked = await rewriteDocLinkHrefs(env, body)
+  return { markdown: block + linked.replace(/^\n+/, ''), filename: `${row.slug}.md` }
 }
 
 /**

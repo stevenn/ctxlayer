@@ -44,9 +44,10 @@ export type RoleRef = z.infer<typeof RoleRef>
 // the same way 'team' / 'product' do.
 export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'])
 
-// Doc tags. Free-form `tags` values are slugs; team/product tag values
-// reference the corresponding id columns. Teams/products gate visibility;
-// `tags` only organise (and map to OKF frontmatter `tags`).
+// Doc tags. Free-form `tags` values are verbatim human labels (NOT slugs —
+// they map 1:1 to OKF frontmatter `tags`); team/product tag values reference
+// the corresponding id columns. Teams/products gate visibility; `tags` only
+// organise.
 export const DocTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),
@@ -55,6 +56,12 @@ export const DocTags = z.object({
   tags: z.array(z.string()).transform(clampTags)
 })
 export type DocTags = z.infer<typeof DocTags>
+
+// GET /api/tags — the org-wide free-form tag vocabulary (most-used first),
+// for the editor's tag autocomplete. Just the values; team/product names
+// come from their own endpoints.
+export const TagVocab = z.array(z.string())
+export type TagVocab = z.infer<typeof TagVocab>
 
 // search_docs scope argument.
 export const SearchScope = z.union([
