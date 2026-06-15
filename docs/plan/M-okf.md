@@ -103,6 +103,27 @@ Migration `0025_doc_okf_meta.sql` adds `doc_type`, `description`, `resource`,
 free-form `doc_tags` / `skill_tags` kind `topic` → `tag` (rebuild + remap;
 both are leaf tables, so the §G1 cascade trap does not apply).
 
+## Deferred — bundle-level semantics (not implemented)
+
+OKF is a *directory* format, not just per-file frontmatter. Today ctxlayer
+imports each `.md` as an independent doc; the following bundle-level features
+are deliberately **not** built yet (tracked here so the gap is explicit):
+
+- **Bundle recognition** — `okf_version: "0.1"` in a root `index.md` marks a
+  directory as an OKF bundle. We preserve the key but don't act on it (no
+  "this source is an OKF bundle" treatment).
+- **`log.md` provenance** — OKF's dated change-history files import as ordinary
+  docs; they're not mapped onto revisions / a changelog view.
+- **Inter-doc link graph + concept IDs** — OKF identity is the file path minus
+  `.md`, and links (`/tables/users.md`, `./other.md`) express relationships.
+  We store them as literal markdown; they don't resolve to ctxlayer doc links
+  or a navigable graph.
+- **Bundle as a unit** — import/export of a whole directory tree (git repo
+  already works file-by-file; a tarball/zip round-trip does not).
+
+These are a separate, larger effort than per-file parsing — pursue if/when
+ctxlayer should be a first-class OKF *bundle* tool rather than a file importer.
+
 ## Why this matters
 
 OKF is a young, open standard (v0.1) for the exact problem ctxlayer
