@@ -90,15 +90,25 @@ to the path form on the next save** — no bulk R2 migration.
 
 ### Move / rename consistency (the "affects moves" part)
 
-When a doc's bundle path changes (folder move, or a folder rename that moves
-descendants):
-1. find incoming links via `doc_links` (indexed by `target_doc_id`),
-2. for each source doc, rewrite the old path href → the new path in its body
-   (R2 + a new revision), and re-resolve its links.
+Links resolve by **slug** (location-independent), so a folder move never *breaks*
+a link — only the stored path *string* can go stale. The single place a path
+must be current is the OKF **export**, so rather than mutating bodies on move
+(authored bodies are Yjs-owned by the collab DO — the live state is the Y.Doc in
+`yjs/snapshot.bin`, not just `snapshot.json`, so a server-side href rewrite would
+need Yjs surgery + race open editors), we **recompute each link's path at export
+/ render time** from the target's current location:
 
-So a move keeps every link valid automatically. Folder rename/delete already
-walk the affected doc set (`renameFolderPrefix`, `listDocIdsInFolder`) — the
-link rewrite hooks in there.
+- `rewriteDocLinkHrefs(env, markdown)` scans the doc's links, resolves each
+  doc-link (slug, or legacy id) → the target doc → its **current**
+  `conceptPath(folder, slug)`, and replaces the href. Dangling + external links
+  are left as-is.
+- Applied in `composeOkfExport` (per-doc export) and the bundle export, so any
+  doc that links to a moved doc exports the correct current path — no body
+  mutation, no Yjs work, moves stay cheap.
+
+(The `doc_links` graph's `target_doc_id` is already slug-resolved, so a move
+needs no graph update either. Refreshing the *stored* body href string so the
+editor displays the new path is an optional, separable Yjs effort — deferred.)
 
 ### Editor link UX (one tool, docs + external URLs)
 

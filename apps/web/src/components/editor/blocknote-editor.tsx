@@ -221,16 +221,38 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
       const host = hostRef.current
       if (!host) return
       const onClick = (e: MouseEvent) => {
-        if (e.defaultPrevented || e.button !== 0) return
-        if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
+        // Let modified / non-primary clicks use native behaviour (open in a
+        // new tab, etc.).
+        if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return
         const anchor = (e.target as HTMLElement | null)?.closest('a')
-        if (!anchor) return
-        const href = anchor.getAttribute('href')
-        if (!href) return
-        if (anchor.target && anchor.target !== '' && anchor.target !== '_self') return
+        if (!anchor) return // not a link → let the editor handle the click
+        const raw = (anchor.getAttribute('href') ?? '').trim()
+        if (!raw) return
+        // BlockNote can render the href as a resolved absolute URL — reduce a
+        // same-origin one back to its path before classifying, else an internal
+        // doc path looks "external" and the browser navigates to a 404 that the
+        // SPA catch-all bounces to /app/search.
+        let href = raw
+        if (/^https?:\/\//i.test(raw)) {
+          try {
+            const u = new URL(raw)
+            if (u.origin === window.location.origin) href = u.pathname + u.search + u.hash
+          } catch {
+            /* keep raw */
+          }
+        }
         const target = classifyHref(href)
-        if (!target) return // external URL / anchor → let the browser handle it
+        // Capture phase + stopPropagation: a link click NAVIGATES instead of
+        // falling through to the editor (which would place the cursor / drop
+        // into edit mode). Editing a link still works via BlockNote's hover
+        // toolbar.
+        e.stopPropagation()
         e.preventDefault()
+        if (!target) {
+          // External link — open in a new tab so the open editor isn't lost.
+          if (anchor.href) window.open(anchor.href, '_blank', 'noopener,noreferrer')
+          return
+        }
         if (target.kind === 'id') {
           nav(`/app/docs/${target.id}`)
           return
@@ -243,8 +265,8 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
           () => {}
         )
       }
-      host.addEventListener('click', onClick)
-      return () => host.removeEventListener('click', onClick)
+      host.addEventListener('click', onClick, true)
+      return () => host.removeEventListener('click', onClick, true)
     }, [nav])
 
     const { colorScheme } = useMantineColorScheme()
