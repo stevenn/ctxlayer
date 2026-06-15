@@ -100,14 +100,38 @@ So a move keeps every link valid automatically. Folder rename/delete already
 walk the affected doc set (`renameFolderPrefix`, `listDocIdsInFolder`) — the
 link rewrite hooks in there.
 
+### Editor link UX (one tool, docs + external URLs)
+
+Today the editor has TWO link affordances: BlockNote's built-in "Create Link"
+button (arbitrary URLs) and a custom "Doc" button (`DocLinkToolbarButton` +
+a "Link to doc" slash item). That duplication goes away:
+
+- **Hide** BlockNote's built-in create-link button (filter it out of
+  `getFormattingToolbarItems()`); keep its native **LinkToolbar** (edit / open /
+  remove an existing link — works for any href).
+- **One** "Link" tool (formatting-toolbar button + slash item) opens a unified
+  picker: search → pick a doc (inserts the **OKF path href**) OR type/paste a
+  **URL** (inserts that href). Both via `editor.createLink(href)` /
+  `insertInlineContent`.
+- **External URLs are first-class**: the same tool creates them; `doc_links`
+  ignores any non-doc href (http/mailto/anchor); `renderBlocksToMarkdown` emits
+  them verbatim; the click interceptor only catches doc-path hrefs and lets the
+  browser handle real URLs.
+
+(Extending BlockNote's *internal* URL input with inline doc-autocomplete would
+be more native but means overriding its LinkToolbar component — deferred; the
+unified replacement button delivers the same single-experience result.)
+
 ### Navigation + rendering
 
 - In-app, the click interceptor (`blocknote-editor.tsx`) resolves a doc-path
-  href → the target doc and routes via React Router. Resolution is by **slug**
-  (the path's last segment minus `.md`; slugs are globally unique), and
-  `GET /api/docs/:id` is widened to accept id-or-slug so `/app/docs/{slug}`
-  resolves. Slug-resolution means a link never truly breaks on a folder move —
-  the move-rewrite below only keeps the *path* (and thus OKF export) accurate.
+  href → the target doc id **client-side** (a host-provided `resolveDocHref`
+  backed by the doc list) and routes to `/app/docs/{id}`. Resolution is by
+  **slug** (the path's last segment minus `.md`; slugs are globally unique).
+  Route params stay **ids** — the editor passes `:id` straight to the collab
+  WebSocket + content fetch, so slug-routing is intentionally avoided.
+  Slug-resolution means a link never truly breaks on a folder move — the
+  move-rewrite below only keeps the *path* (and thus OKF export) accurate.
 - `renderBlocksToMarkdown` emits the path href as-is (already an OKF concept
   link). On **bundle export** the global-absolute path is re-rooted relative to
   the bundle root (pure path math, not a scheme change); on **import** archive

@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { splitFrontmatter } from '@ctxlayer/shared'
 import type { Env } from '../env'
+import { rebuildDocLinks } from '../docs/doc-links'
 import { getDocReindexState, setDocIndexedState } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
 import { readRevision, readSourceMarkdown } from '../storage/docs-r2'
@@ -226,6 +227,10 @@ async function handle(
     console.log('reindex-consumer: content unchanged; skipping', { docId, revisionId })
     return
   }
+
+  // Rebuild the doc-link graph from the same markdown. BEFORE embedding so it
+  // still runs when Vectorize is soft-skipped in dev; idempotent on retry.
+  await rebuildDocLinks(env, docId, markdown)
 
   const chunks = chunkMarkdown(markdown, { title: doc.title })
   // Embed the doc title + section breadcrumb ALONG WITH each chunk's
