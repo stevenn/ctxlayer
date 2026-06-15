@@ -56,6 +56,16 @@ frontmatter convention, not YAML.)
 stored and re-emitted verbatim (trim + whitespace-collapse + length cap only) —
 no slugging — so OKF tags round-trip intact.
 
+**Field limits are unified.** All metadata length caps live in one place —
+`packages/shared/src/doc-limits.ts` (`DOC_LIMITS` + `clampText` / `clampTags`)
+— and every write path clamps to them: the create/update request schemas (modal
++ REST, via Zod transforms), git-sync import, and the tag-write path. Behaviour
+is uniform: over-limit values are **truncated, not rejected**, so a valid OKF
+file never 400s on length, and a synced value always satisfies the rail-edit
+limits (no "synced doc can't be re-saved" drift). The lone exception is the raw
+`frontmatter` block — it can't be truncated without corrupting the YAML, so an
+over-limit block is dropped (unknown-key preservation skipped for that doc).
+
 **One honest fidelity limit:** the frontmatter round-trips byte-stably, but the
 *body* of an *edited* doc is re-rendered from BlockNote (`renderBlocksToMarkdown`
 — collapses blank lines, drops underline/colour). A clean, unedited git-synced

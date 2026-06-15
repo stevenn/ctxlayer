@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { prefixedSlug } from './slug'
+import { clampTags } from './doc-limits'
 
 export const TeamRef = z.object({
   id: z.string(),
@@ -49,7 +50,9 @@ export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'
 export const DocTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),
-  tags: z.array(z.string())
+  // Free-form tags: clamped (per-tag length + count + dedup) on every
+  // read/write so the rail save path matches git-sync + import.
+  tags: z.array(z.string()).transform(clampTags)
 })
 export type DocTags = z.infer<typeof DocTags>
 

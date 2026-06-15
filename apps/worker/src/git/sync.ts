@@ -14,7 +14,7 @@
 
 import type { Env } from '../env'
 import type { GitSyncInterval, GitSyncResult, OkfKnownFields } from '@ctxlayer/shared'
-import { parseFrontmatter, slugifyHeading } from '@ctxlayer/shared'
+import { DOC_LIMITS, clampText, parseFrontmatter, slugifyHeading } from '@ctxlayer/shared'
 import {
   getGitSourceById,
   listGitDocPaths,
@@ -114,7 +114,10 @@ export async function runGitSync(
         docId = doc.id
       } else {
         const created = await createDoc(env, {
-          title: fm.known.title?.trim() || deriveTitle(fm.body, entry.path),
+          title: clampText(
+            fm.known.title?.trim() || deriveTitle(fm.body, entry.path),
+            DOC_LIMITS.title
+          ),
           folder: repoPathToFolder(source.folder_root, entry.path),
           createdBy: source.created_by
         })
@@ -185,12 +188,16 @@ async function applyOkfMetadata(
   known: OkfKnownFields,
   raw: string | null
 ): Promise<void> {
+  // Clamp to the same limits the request schemas enforce, so a synced value
+  // can always be re-saved through the rail. The raw block can't be truncated
+  // without corrupting the YAML, so an over-limit block is dropped instead.
   await patchDoc(env, docId, {
-    docType: known.type ?? null,
-    description: known.description ?? null,
-    resource: known.resource ?? null,
-    okfFrontmatter: raw
+    docType: known.type ? clampText(known.type, DOC_LIMITS.type) : null,
+    description: known.description ? clampText(known.description, DOC_LIMITS.description) : null,
+    resource: known.resource ? clampText(known.resource, DOC_LIMITS.resource) : null,
+    okfFrontmatter: raw && raw.length <= DOC_LIMITS.frontmatter ? raw : null
   })
+  // addDocTags clamps (per-tag length + count + dedup) internally.
   if (known.tags?.length) await addDocTags(env, docId, known.tags)
 }
 

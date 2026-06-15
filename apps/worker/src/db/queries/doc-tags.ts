@@ -6,7 +6,7 @@
  */
 
 import type { Env } from '../../env'
-import type { DocTags } from '@ctxlayer/shared'
+import { clampTags, type DocTags } from '@ctxlayer/shared'
 
 export type TagKind = 'team' | 'product' | 'tag'
 
@@ -97,15 +97,8 @@ export async function setDocProductTag(
  * "tags organise, never gate" stance.
  */
 export async function addDocTags(env: Env, docId: string, tags: string[]): Promise<void> {
-  const seen = new Set<string>()
-  const normalised: string[] = []
-  for (const raw of tags) {
-    const value = raw.trim().replace(/\s+/g, ' ').slice(0, 96)
-    const key = value.toLowerCase()
-    if (!value || seen.has(key)) continue
-    seen.add(key)
-    normalised.push(value)
-  }
+  // Same clamp (per-tag length + count + dedup) as every other write path.
+  const normalised = clampTags(tags)
   if (normalised.length === 0) return
   const stmts = normalised.map((tag) =>
     env.DB.prepare(

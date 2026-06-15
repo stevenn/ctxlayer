@@ -10,6 +10,7 @@ import {
   TextInput
 } from '@mantine/core'
 import type { DocTags, ProductRef, TeamRef } from '@ctxlayer/shared'
+import { DOC_LIMITS } from '@ctxlayer/shared'
 import { fetchDocTags, fetchProducts, fetchTeams, putDocTags } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { OkfBadge } from './okf-badge'
@@ -246,8 +247,9 @@ function Chip({ label, onRemove }: { label: string; onRemove?: () => void }) {
 
 // Free-form: trim + collapse internal whitespace, cap length. No slugging —
 // tags are human-readable labels and map verbatim to OKF frontmatter `tags`.
+// Same per-tag cap as the server (DOC_LIMITS.tag).
 function normaliseTag(raw: string): string {
-  return raw.trim().replace(/\s+/g, ' ').slice(0, 96)
+  return raw.trim().replace(/\s+/g, ' ').slice(0, DOC_LIMITS.tag)
 }
 
 function sameTags(a: DocTags, b: DocTags): boolean {

@@ -1,6 +1,6 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { parseFrontmatter } from '@ctxlayer/shared'
+import { DOC_LIMITS, parseFrontmatter } from '@ctxlayer/shared'
 import { addDocTags, listTagsForDoc } from '../../src/db/queries/doc-tags'
 import type { Env as WorkerEnv } from '../../src/env'
 
@@ -62,5 +62,17 @@ describe('OKF tag import', () => {
     await addDocTags(testEnv, 'd4', known.tags ?? [])
     const tags = await listTagsForDoc(testEnv, 'd4')
     expect(tags.tags).toEqual(['storytime'])
+  })
+
+  it('clamps over-limit tags (count + per-tag length) on the write path', async () => {
+    await seedDoc('d5')
+    const many = Array.from({ length: DOC_LIMITS.tagCount + 10 }, (_, i) => `tag-${i}`)
+    const longTag = 'x'.repeat(DOC_LIMITS.tag + 50)
+    await addDocTags(testEnv, 'd5', [longTag, ...many])
+    const { tags } = await listTagsForDoc(testEnv, 'd5')
+    expect(tags.length).toBe(DOC_LIMITS.tagCount)
+    // The over-long tag (first in the input, so kept) was truncated to the cap.
+    expect(tags).toContain('x'.repeat(DOC_LIMITS.tag))
+    expect(Math.max(...tags.map((t) => t.length))).toBe(DOC_LIMITS.tag)
   })
 })
