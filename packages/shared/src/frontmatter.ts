@@ -73,9 +73,16 @@ function parseKnownFields(raw: string): OkfKnownFields {
     else if (key === 'resource') known.resource = unquote(rest)
     else if (key === 'timestamp') known.timestamp = unquote(rest)
     else if (key === 'tags') {
-      if (rest.trim().startsWith('[')) {
-        known.tags = parseInlineList(rest.trim())
+      const inline = rest.trim()
+      if (inline.startsWith('[')) {
+        // Flow list: `tags: [a, b]`
+        known.tags = parseInlineList(inline)
+      } else if (inline !== '') {
+        // Scalar: `tags: storytime` (or quoted) → a single-element list.
+        const single = unquote(inline)
+        known.tags = single ? [single] : []
       } else {
+        // Block list: `tags:` then indented `- item` lines.
         const tags: string[] = []
         let j = i + 1
         for (; j < lines.length && /^\s*-\s+/.test(lines[j] ?? ''); j++) {

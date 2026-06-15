@@ -49,6 +49,11 @@ describe('parseFrontmatter', () => {
     const { known } = parseFrontmatter('---\ntags: [a, "b c", d]\n---\nbody')
     expect(known.tags).toEqual(['a', 'b c', 'd'])
   })
+
+  it('reads a scalar tag (string, not a list) as a single-element list', () => {
+    expect(parseFrontmatter('---\ntags: "storytime"\n---\nbody').known.tags).toEqual(['storytime'])
+    expect(parseFrontmatter('---\ntags: storytime\n---\nbody').known.tags).toEqual(['storytime'])
+  })
 })
 
 describe('emitFrontmatter', () => {

@@ -53,4 +53,14 @@ describe('OKF tag import', () => {
     const tags = await listTagsForDoc(testEnv, 'd3')
     expect(tags.tags).toEqual(['alpha', 'beta'])
   })
+
+  it('scalar tag (a single quoted string, not a list) imports', async () => {
+    await seedDoc('d4')
+    // The exact shape of the ali-baba sample: `tags: "storytime"`.
+    const { known } = parseFrontmatter('---\ntype: Document\ntags: "storytime"\n---\nbody')
+    expect(known.tags).toEqual(['storytime'])
+    await addDocTags(testEnv, 'd4', known.tags ?? [])
+    const tags = await listTagsForDoc(testEnv, 'd4')
+    expect(tags.tags).toEqual(['storytime'])
+  })
 })
