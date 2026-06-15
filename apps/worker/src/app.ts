@@ -17,6 +17,7 @@ import { authRoute } from './api/auth'
 import { docsRoute } from './api/docs'
 import { docSharingRoute } from './api/doc-sharing'
 import { docTagsRoute } from './api/doc-tags'
+import { bundlesRoute } from './api/bundles'
 import { foldersRoute } from './api/folders'
 import { searchRoute } from './api/search'
 import { gitDocsRoute, gitSourcesUserRoute } from './api/git'
@@ -71,6 +72,7 @@ app.route('/api/git-sources', gitSourcesUserRoute)
 app.route('/api/git-sources', gitOauthStartRoute)
 app.route('/api/git-sources/oauth', gitOauthCallbackRoute)
 app.route('/api/folders', foldersRoute)
+app.route('/api/bundles', bundlesRoute)
 // Semantic search over the doc library (RAG). Shares its core with the
 // MCP `search_docs` tool via rag/search.ts.
 app.route('/api/search', searchRoute)

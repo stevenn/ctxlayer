@@ -120,6 +120,7 @@ export interface DocOkfExportRow {
   title: string
   slug: string
   kind: 'doc' | 'prompt'
+  folder: string | null
   doc_type: string | null
   description: string | null
   resource: string | null
@@ -131,13 +132,56 @@ export interface DocOkfExportRow {
 
 export async function getDocForOkfExport(env: Env, id: string): Promise<DocOkfExportRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, title, slug, kind, doc_type, description, resource,
-            okf_frontmatter, updated_at, git_source_id, git_sync_state
-     FROM documents WHERE id = ?1 AND deleted_at IS NULL`
+    `SELECT ${OKF_EXPORT_COLS} FROM documents WHERE id = ?1 AND deleted_at IS NULL`
   )
     .bind(id)
     .first<DocOkfExportRow>()
   return row ?? null
+}
+
+const OKF_EXPORT_COLS = `id, title, slug, kind, folder, doc_type, description, resource,
+  okf_frontmatter, updated_at, git_source_id, git_sync_state`
+
+// A folder root of '' or '/' means the whole library; otherwise the bundle is
+// the root folder and its descendants.
+function folderScope(root: string): { clause: string; binds: string[] } {
+  if (root === '' || root === '/') return { clause: '', binds: [] }
+  return { clause: ` AND (folder = ?1 OR folder LIKE ?1 || '/%')`, binds: [root] }
+}
+
+/** OKF export rows for every doc under a bundle root (folder subtree). */
+export async function listDocOkfExportsUnderFolder(
+  env: Env,
+  root: string
+): Promise<DocOkfExportRow[]> {
+  const scope = folderScope(root)
+  const res = await env.DB.prepare(
+    `SELECT ${OKF_EXPORT_COLS} FROM documents
+     WHERE deleted_at IS NULL${scope.clause}
+     ORDER BY folder, slug`
+  )
+    .bind(...scope.binds)
+    .all<DocOkfExportRow>()
+  return res.results ?? []
+}
+
+/** Explicit revisions under a bundle root, newest first — feeds the bundle log.md. */
+export async function listBundleLogEntries(
+  env: Env,
+  root: string
+): Promise<Array<{ created_at: number; title: string }>> {
+  const scope = folderScope(root)
+  // folderScope's clause names `folder`; qualify it for the joined alias.
+  const clause = scope.clause.replace(/folder/g, 'd.folder')
+  const res = await env.DB.prepare(
+    `SELECT r.created_at AS created_at, d.title AS title
+     FROM doc_revisions r JOIN documents d ON d.id = r.doc_id
+     WHERE d.deleted_at IS NULL AND r.kind = 'explicit'${clause}
+     ORDER BY r.created_at DESC LIMIT 200`
+  )
+    .bind(...scope.binds)
+    .all<{ created_at: number; title: string }>()
+  return res.results ?? []
 }
 
 async function getDocBySlug(env: Env, slug: string): Promise<DocumentWithUsersRow | null> {

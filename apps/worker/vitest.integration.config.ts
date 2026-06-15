@@ -34,6 +34,7 @@ export default defineWorkersConfig(async () => {
             // file that imports the composed app (csrf-gates.test.ts).
             compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
             d1Databases: ['DB'],
+            r2Buckets: ['DOCS_BUCKET'],
             bindings: {
               TEST_MIGRATIONS: migrations
             }
