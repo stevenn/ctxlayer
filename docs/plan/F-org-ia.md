@@ -72,11 +72,12 @@ CREATE TABLE upstream_visibility (
 
 -- Tags on documents. Used for filtering / shaping default agent context.
 -- Does NOT gate read access — every signed-in user can read every
--- non-deleted document.
+-- non-deleted document. The free-form kind is 'tag' (renamed from 'topic'
+-- in migration 0026); it maps to OKF frontmatter `tags` — see plan/M-okf.md.
 CREATE TABLE doc_tags (
   doc_id    TEXT NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
-  tag_kind  TEXT NOT NULL,                    -- 'team' | 'product' | 'topic'
-  tag_value TEXT NOT NULL,                    -- team_id | product_id | free-form topic slug
+  tag_kind  TEXT NOT NULL,                    -- 'team' | 'product' | 'tag'
+  tag_value TEXT NOT NULL,                    -- team_id | product_id | free-form tag (verbatim, not slugged)
   PRIMARY KEY (doc_id, tag_kind, tag_value)
 );
 CREATE INDEX idx_doc_tags_lookup ON doc_tags(tag_kind, tag_value);
@@ -115,7 +116,7 @@ When the agent calls `search_docs({query, k, scope?})`:
 
 - **omitted** — build a Vectorize metadata filter:
   `tag_team IN user_teams OR tag_product IN user_products OR is_global=true`.
-  "Global" = a doc with zero team/product tags (it may still have topic
+  "Global" = a doc with zero team/product tags (it may still have free-form
   tags). Untagged docs are everyone's by design.
 - **`scope: 'all'`** — drop the filter.
 - **`scope: { teams?: [...], products?: [...] }`** — explicit; intersected
@@ -150,7 +151,8 @@ Chunk metadata stored in Vectorize when (re)indexing a doc:
   Default on create: empty → invisible until granted. The form shows a
   live "users with access: N" counter before save.
 - **`/app/admin/docs`** and `/app/docs/:id` editor — tag editor pane:
-  team multi-select, product multi-select, free-form topic-tag chips.
+  team multi-select, product multi-select, free-form tag chips (the rail's
+  Tags section, which doubles as the OKF `tags` frontmatter editor).
 
 ### F6. REST endpoints (additions to D5)
 
@@ -158,7 +160,7 @@ Chunk metadata stored in Vectorize when (re)indexing a doc:
 GET    /api/me/context                 -> { teams, products, accessibleUpstreams }
 GET    /api/teams                      -> [{ id, slug, displayName }]      (public org-wide)
 GET    /api/products                   -> [{ id, slug, displayName }]      (public org-wide)
-GET    /api/docs/:id/tags              -> { teams:[...], products:[...], topics:[...] }
+GET    /api/docs/:id/tags              -> { teams:[...], products:[...], tags:[...] }
 PUT    /api/docs/:id/tags              -> body: same shape                  (author + admin)
 
 GET    /api/admin/teams

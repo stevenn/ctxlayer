@@ -103,7 +103,7 @@ export function DocsTable({
                   )}
                 </Group>
                 <div className="text-dim" style={{ fontSize: 12, marginTop: 2 }}>
-                  {d.slug} · {d.kind}
+                  {d.slug}
                 </div>
               </td>
               <td className="text-muted">

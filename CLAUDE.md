@@ -9,7 +9,8 @@ onboarding + collaborative markdown editing + admin/usage analytics.
 milestone-driven plan that built ctxlayer (M1–M8) is retired; future work proceeds
 ad hoc, tracked in code + commits + this file, not in a larger plan. Topic deep-dives
 are under **`docs/plan/`** (A: auth, B: stdio bridge, C: upstream proxy, D: UI+REST,
-E: dev environment, F: org IA, G: conventions, I: upstream resilience). Skim
+E: dev environment, F: org IA, G: conventions, I: upstream resilience, M: OKF
+interop). Skim
 PLAN.md for the lay of the land and pull in a deep-dive when the topic comes up —
 but trust the code first; these docs are reference, not kept in lockstep with every change.
 
@@ -169,13 +170,43 @@ belong to) and **products** (what the org delivers). Defaults are "spread
 context, gate execution":
 
 - Docs are open-read by everyone signed in. Tags on docs (team / product /
-  topic) shape what `search_docs` returns by default — they do not gate
-  read access.
+  free-form **tag**) shape what `search_docs` returns by default — they do
+  not gate read access. The free-form kind is `doc_tags.tag_kind='tag'`
+  (renamed from `topic` in migration 0026); only it maps to OKF `tags`.
 - MCP upstreams are invisible until an admin grants visibility to a team
   or product. `list_upstreams` only returns what the user can use.
 
 Schema: `apps/worker/src/db/migrations/0004_org_ia.sql`. Design rationale:
 `docs/plan/F-org-ia.md`.
+
+## Open Knowledge Format (OKF)
+
+ctxlayer is an early adopter of the **[Open Knowledge
+Format](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md)**
+— docs interop with OKF (YAML-frontmatter Markdown bundles) in and out. Full
+reference: **`docs/plan/M-okf.md`**. Key facts so you don't re-derive them:
+
+- **The doc editor's right rail *is* the OKF frontmatter editor.** `type` →
+  `documents.doc_type`, `description`, `resource` are rail rows; OKF `tags` →
+  free-form tags; `title`/`timestamp` → title/updated_at. There is no separate
+  OKF panel. `kind` (`doc`/`prompt`) is no longer surfaced — `type` is the
+  single concept field; the `kind` column lingers as a vestigial `'doc'`
+  default.
+- **Serialiser**: `packages/shared/src/frontmatter.ts`
+  (`splitFrontmatter`/`parseFrontmatter`/`emitFrontmatter`) — a flat-YAML
+  subset, no dep. The round-trip contract is **preservation**: only well-known
+  keys are interpreted; unknown producer keys (`okf_version`, …) are stored raw
+  in `documents.okf_frontmatter` and re-emitted verbatim. Don't "fix" this into
+  a full YAML parser.
+- **Worker glue**: `apps/worker/src/docs/okf.ts` (export compose + write-back
+  reattach). Import parses frontmatter in `git/sync.ts` (+ the SPA import
+  modal); the reindex consumer strips frontmatter before chunking so YAML isn't
+  embedded as body text; `git/writeback.ts` re-attaches frontmatter only when
+  the doc was imported *with* it.
+- **Tags are free-form, NOT slugs.** `addDocTags` stores them verbatim (trim +
+  whitespace-collapse + cap) so `BigQuery Table` round-trips. Don't re-introduce
+  slugification on the tag path — it breaks OKF fidelity.
+- Migrations `0025` (OKF columns) + `0026` (`topic`→`tag` rename).
 
 ## Where to start
 

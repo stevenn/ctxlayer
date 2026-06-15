@@ -43,12 +43,13 @@ export type RoleRef = z.infer<typeof RoleRef>
 // the same way 'team' / 'product' do.
 export const VisibilityScopeKind = z.enum(['everyone', 'team', 'product', 'role'])
 
-// Doc tags. Topic tag values are free-form slugs; team/product tag values
-// reference the corresponding id columns.
+// Doc tags. Free-form `tags` values are slugs; team/product tag values
+// reference the corresponding id columns. Teams/products gate visibility;
+// `tags` only organise (and map to OKF frontmatter `tags`).
 export const DocTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),
-  topics: z.array(z.string())
+  tags: z.array(z.string())
 })
 export type DocTags = z.infer<typeof DocTags>
 

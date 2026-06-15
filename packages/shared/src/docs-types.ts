@@ -91,6 +91,14 @@ export type DocSummary = z.infer<typeof DocSummary>
 
 export const DocDetail = DocSummary.extend({
   currentRevId: z.string().nullish(),
+  // OKF frontmatter fields, edited inline in the rail. `docType` is OKF
+  // `type` (free string, distinct from `kind`); `description` is a one-
+  // sentence summary; `resource` is a URI for the underlying asset. All
+  // null until set. OKF `tags` live as free-form tags (see DocTags),
+  // `title` and `timestamp` map to title + updatedAt.
+  docType: z.string().nullable(),
+  description: z.string().nullable(),
+  resource: z.string().nullable(),
   // Server-computed for the calling user. The SPA renders the editor
   // read-only when false; the Sharing button only appears when caller
   // is author or admin (a stricter property the server returns
@@ -119,7 +127,15 @@ export const CreateDocRequest = z.object({
   slug: prefixedSlug('doc').optional(),
   kind: DocKind.optional(),
   // Folder path. Omit or pass null to create at root.
-  folder: FolderPath.nullable().optional()
+  folder: FolderPath.nullable().optional(),
+  // OKF frontmatter captured at import time (the SPA import modal parses it
+  // client-side). `tags` map to free-form tags; `frontmatter` is the raw
+  // YAML block kept verbatim for unknown-key round-trip on export.
+  docType: z.string().max(120).optional(),
+  description: z.string().max(2000).optional(),
+  resource: z.string().max(2000).optional(),
+  tags: z.array(z.string()).max(50).optional(),
+  frontmatter: z.string().max(8000).optional()
 })
 export type CreateDocRequest = z.infer<typeof CreateDocRequest>
 
@@ -132,7 +148,13 @@ export const UpdateDocRequest = z.object({
   // Pass `null` to move to root, a FolderPath to move, or omit to leave
   // the folder unchanged. `.nullable()` admits null; `.optional()` admits
   // omission — together they distinguish "set to null" from "no change".
-  folder: FolderPath.nullable().optional()
+  folder: FolderPath.nullable().optional(),
+  // OKF frontmatter fields. `null` clears, omit leaves unchanged. `resource`
+  // is a free string (URI/URN/path), not validated as a URL — OKF only
+  // says "a URI identifying the underlying asset".
+  docType: z.string().max(120).nullable().optional(),
+  description: z.string().max(2000).nullable().optional(),
+  resource: z.string().max(2000).nullable().optional()
 })
 export type UpdateDocRequest = z.infer<typeof UpdateDocRequest>
 

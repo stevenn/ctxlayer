@@ -36,6 +36,8 @@ import { useDialogs } from '../../lib/dialogs'
 import { DocAttachmentsRail } from './DocAttachmentsRail'
 import { DocLinkPicker } from './DocLinkPicker'
 import { FolderField } from './FolderField'
+import { PropertyField } from './PropertyField'
+import { OkfBadge } from '../../components/editor/okf-badge'
 import { GitPanel } from './GitPanel'
 import { explain, formatAbsolute, userColor } from './helpers'
 import { LockIndicator } from './LockIndicator'
@@ -667,6 +669,49 @@ export function DocsEditor() {
             />
           )}
 
+          <div>
+            <MetaRow label="Type" badge={<OkfBadge field="type" />}>
+              <PropertyField
+                doc={doc}
+                field="docType"
+                onChanged={refreshDoc}
+                prompt={{
+                  title: 'Set type',
+                  message: 'OKF concept type, e.g. Playbook, API Endpoint, Reference.',
+                  placeholder: 'Playbook'
+                }}
+              />
+            </MetaRow>
+            <MetaRow label="Description" badge={<OkfBadge field="description" />}>
+              <PropertyField
+                doc={doc}
+                field="description"
+                multiline
+                onChanged={refreshDoc}
+                prompt={{
+                  title: 'Set description',
+                  message: 'A one-sentence summary of this doc.',
+                  placeholder: 'What this doc covers, in one sentence.'
+                }}
+              />
+            </MetaRow>
+            <MetaRow label="Resource" badge={<OkfBadge field="resource" />}>
+              <PropertyField
+                doc={doc}
+                field="resource"
+                onChanged={refreshDoc}
+                prompt={{
+                  title: 'Set resource',
+                  message: 'A URI identifying the underlying asset this doc describes.',
+                  placeholder: 'https://…'
+                }}
+              />
+            </MetaRow>
+            <MetaRow label="Folder">
+              <FolderField doc={doc} onChanged={refreshDoc} />
+            </MetaRow>
+          </div>
+
           <TagPane docId={doc.id} canEdit={doc.canEdit} />
 
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
@@ -684,14 +729,21 @@ export function DocsEditor() {
                 <span>Never edited</span>
               )}
             </MetaRow>
-            <MetaRow label="Folder">
-              <FolderField doc={doc} onChanged={refreshDoc} />
-            </MetaRow>
             <MetaRow label="Slug">
               <code>{doc.slug}</code>
             </MetaRow>
-            <MetaRow label="Kind">{doc.kind}</MetaRow>
           </div>
+
+          <Button
+            component="a"
+            href={`/api/docs/${encodeURIComponent(doc.id)}/export`}
+            download={`${doc.slug}.md`}
+            variant="default"
+            size="xs"
+            fullWidth
+          >
+            Export as OKF (.md)
+          </Button>
 
           <DocAttachmentsRail docId={doc.id} canManage={!!me?.role && me.role === 'admin'} />
         </aside>

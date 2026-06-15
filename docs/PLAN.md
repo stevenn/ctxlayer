@@ -10,7 +10,7 @@ commits, and `CLAUDE.md`, not here. Topic deep-dives live under
 
 **ctxlayer** is a remote MCP server that:
 
-1. Serves a curated library of internal docs/specs (markdown, with RAG search via Vectorize) so every AI agent in the org sees the same baseline context.
+1. Serves a curated library of internal docs/specs (markdown, with RAG search via Vectorize) so every AI agent in the org sees the same baseline context. The library interops with the [Open Knowledge Format (OKF)](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) — import, export, and git-write-back of YAML-frontmatter Markdown — see deep-dive [M](plan/M-okf.md).
 2. Acts as an OAuth-fronted **proxy** to other MCP servers in the org (Notion, Linear, internal APIs, ...), centralising credential storage so users only authenticate once.
 3. Provides a self-onboarding SPA where users sign in (Google Workspace or GitHub), connect upstream services, and collaboratively edit the curated docs in a visual markdown editor (BlockNote + Yjs).
 4. Provides an admin UI for upstream configuration, user management, and per-user usage analytics (tool calls, bytes, approximate tokens via tiktoken).
@@ -317,3 +317,4 @@ Topic-specific deep-dives live under [`docs/plan/`](plan/):
 - [F — Org information architecture](plan/F-org-ia.md) — teams, products, upstream visibility, doc tags; data model additions in `0004_org_ia.sql`; access resolution; default search scope; `list_my_context`; admin UI + REST additions; UX guardrails.
 - [G — Conventions](plan/G-conventions.md) — SQLite/D1 quirks, Workers Assets, DO migration rules, Hono entry, Bun/Wrangler, SPA conventions, smoke + seed scripts, admin guardrails, local HTTPS + cookie shape.
 - [I — Upstream resilience: long calls + oversized responses](plan/I-upstream-resilience.md) — diagnosis + work items for silent-upstream timeouts and oversized responses: per-upstream timeout overrides, Driver-side progress emission, response-size cap, timeout-rate observability, DO wall-clock verification; plus the usage-outbox follow-up.
+- [M — Open Knowledge Format (OKF) interop](plan/M-okf.md) — ctxlayer as an early adopter of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md): the doc rail as YAML-frontmatter editor, the field↔frontmatter mapping, import / export / git-write-back flows, the unknown-key preservation contract, free-form (non-slug) tags, and migrations 0025 + 0026.

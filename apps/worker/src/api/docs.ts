@@ -37,6 +37,8 @@ import {
   type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
+import { addDocTags } from '../db/queries/doc-tags'
+import { composeOkfExport } from '../docs/okf'
 import { audit } from '../audit/log'
 import { saveDocContent } from './docs-save-content'
 import {
@@ -61,7 +63,25 @@ docsRoute.post('/', async (c) => {
   const parsed = await parseJsonBody(c, CreateDocRequest)
   if (!parsed.ok) return parsed.res
   const { userId } = c.get('user')
-  const row = await createDoc(c.env, { ...parsed.data, createdBy: userId })
+  const d = parsed.data
+  const row = await createDoc(c.env, {
+    title: d.title,
+    slug: d.slug,
+    kind: d.kind,
+    folder: d.folder,
+    createdBy: userId
+  })
+  // OKF metadata captured at import time. Applied after create so the doc
+  // INSERT stays the common path; the rail then edits these in place.
+  if (d.docType || d.description || d.resource || d.frontmatter) {
+    await patchDoc(c.env, row.id, {
+      docType: d.docType ?? null,
+      description: d.description ?? null,
+      resource: d.resource ?? null,
+      okfFrontmatter: d.frontmatter ?? null
+    })
+  }
+  if (d.tags?.length) await addDocTags(c.env, row.id, d.tags)
   return c.json({ id: row.id, slug: row.slug }, 201)
 })
 
@@ -78,6 +98,9 @@ docsRoute.get('/:id', async (c) => {
   const body: DocDetail = {
     ...toSummary(row),
     currentRevId: row.current_rev_id,
+    docType: row.doc_type,
+    description: row.description,
+    resource: row.resource,
     canEdit,
     canShare,
     canLock
@@ -103,6 +126,23 @@ docsRoute.delete('/:id', async (c) => {
   if (blocked) return blocked
   await softDeleteDoc(c.env, id)
   return new Response(null, { status: 204 })
+})
+
+// Download a doc as an OKF markdown file: synthesised `---` frontmatter
+// (from the rail fields + preserved unknown keys) followed by the body.
+// Open-read like the rest of the doc GETs.
+docsRoute.get('/:id/export', async (c) => {
+  const id = c.req.param('id')
+  const out = await composeOkfExport(c.env, id)
+  if (!out) return notFound(c)
+  return new Response(out.markdown, {
+    status: 200,
+    headers: {
+      'content-type': 'text/markdown; charset=utf-8',
+      'content-disposition': `attachment; filename="${out.filename}"`,
+      'cache-control': 'no-store'
+    }
+  })
 })
 
 docsRoute.get('/:id/content', async (c) => {

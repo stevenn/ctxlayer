@@ -2,11 +2,23 @@ import { Badge } from '@mantine/core'
 import type { DocDetail } from '@ctxlayer/shared'
 import type { CollabStatus } from '../../lib/yjs-ws-provider'
 
-export function MetaRow({ label, children }: { label: string; children: React.ReactNode }) {
+export function MetaRow({
+  label,
+  badge,
+  children
+}: {
+  label: string
+  // Optional trailing chip (e.g. the OKF badge) shown next to the label.
+  badge?: React.ReactNode
+  children: React.ReactNode
+}) {
   return (
     <div style={{ marginBottom: 10 }}>
       <div
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
           fontSize: 10,
           fontWeight: 600,
           textTransform: 'uppercase',
@@ -15,7 +27,8 @@ export function MetaRow({ label, children }: { label: string; children: React.Re
           marginBottom: 2
         }}
       >
-        {label}
+        <span>{label}</span>
+        {badge}
       </div>
       <div style={{ color: 'var(--text-muted)' }}>{children}</div>
     </div>

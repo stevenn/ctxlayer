@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { splitFrontmatter } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { getDocReindexState, setDocIndexedState } from '../db/queries/docs'
 import { listTagsForDoc } from '../db/queries/doc-tags'
@@ -183,7 +184,9 @@ async function handle(
       console.log('reindex-consumer: git source.md missing; skipping', { docId, revisionId })
       return
     }
-    markdown = src
+    // Strip OKF/YAML frontmatter so the metadata block isn't embedded as
+    // body text (it would pollute the chunks + dilute relevance).
+    markdown = splitFrontmatter(src).body
   } else {
     const content = await readRevision(env, docId, revisionId)
     if (!content) {
@@ -236,10 +239,10 @@ async function handle(
     env,
     chunks.map((c) => embedInput(doc.title, c))
   )
-  // Topic tags aren't part of the search filter today; we pass only
-  // team + product onto chunk metadata. Topics live in `doc_tags`
-  // for the editor + (future) drill-down browse, not the scope
-  // predicate. `is_global` is derived in upsertChunks from these two.
+  // Free-form tags aren't part of the search filter today; we pass only
+  // team + product onto chunk metadata. Tags live in `doc_tags` for the
+  // editor + (future) drill-down browse, not the scope predicate.
+  // `is_global` is derived in upsertChunks from these two.
   await upsertChunks(env, {
     docId,
     revisionId,

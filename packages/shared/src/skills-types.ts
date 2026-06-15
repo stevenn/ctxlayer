@@ -33,7 +33,7 @@ export type SkillAttachmentRef = z.infer<typeof SkillAttachmentRef>
 export const SkillTags = z.object({
   teams: z.array(z.string()),
   products: z.array(z.string()),
-  topics: z.array(z.string())
+  tags: z.array(z.string())
 })
 export type SkillTags = z.infer<typeof SkillTags>
 
