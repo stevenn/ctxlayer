@@ -3,6 +3,7 @@ import {
   truncateDescription,
   truncationNotice,
   perToolPointers,
+  wholeUpstreamPointers,
   isTimeoutError
 } from './tools-proxy'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
@@ -48,6 +49,30 @@ describe('perToolPointers', () => {
   it('skips whole-upstream rows (empty tool_name)', () => {
     const map = perToolPointers([skill('', 'org-wide')], [doc('', 'org-doc')])
     expect(map.size).toBe(0)
+  })
+})
+
+describe('wholeUpstreamPointers', () => {
+  const skill = (tool_name: string, slug: string): SkillForUpstreamRow =>
+    ({ tool_name, slug, title: slug }) as SkillForUpstreamRow
+  const doc = (tool_name: string, slug: string): DocForUpstreamRow =>
+    ({ tool_name, slug, title: slug, doc_id: `id-${slug}` }) as DocForUpstreamRow
+
+  it('returns refs for whole-upstream rows, skills then docs', () => {
+    const refs = wholeUpstreamPointers(
+      [skill('', 'driverai-planning'), skill('', 'driverai-research')],
+      [doc('', 'driver-overview')]
+    )
+    expect(refs).toEqual([
+      'skill `driverai-planning` (get_skill)',
+      'skill `driverai-research` (get_skill)',
+      'doc `driver-overview` (get_doc)'
+    ])
+  })
+
+  it('ignores per-tool rows (non-empty tool_name)', () => {
+    const refs = wholeUpstreamPointers([skill('search', 'how-to-search')], [doc('search', 'sdoc')])
+    expect(refs).toEqual([])
   })
 })
 

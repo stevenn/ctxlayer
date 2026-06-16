@@ -166,18 +166,27 @@ export class UpstreamProxyRegistry {
       if (!prep) continue
       const { conn, client, tools } = prep
       this.clients.set(conn.id, client)
-      // Per-tool attachment pointers (tool_name != ''), sliced per tool —
-      // whole-upstream attachments (tool_name = '') are skipped here; they
-      // surface in the server `instructions` via `upstreamGuidance` instead.
-      const pointers = perToolPointers(
-        skillsByUpstream.get(conn.id) ?? [],
-        docsByUpstream.get(conn.id) ?? []
-      )
+      const skills = skillsByUpstream.get(conn.id) ?? []
+      const docs = docsByUpstream.get(conn.id) ?? []
+      // Two attachment scopes, both surfaced on the tool description so the
+      // binding nudge rides in context at call time (not just the easily-
+      // skipped server `instructions` tail): whole-upstream playbooks
+      // (tool_name = '') fan out onto EVERY tool of this upstream; per-tool
+      // pointers (tool_name != '') attach only to their named tool. The
+      // server `instructions` still names the whole-upstream ones too
+      // (`upstreamGuidance`) — intentional redundancy, the description is
+      // the reliable surface.
+      const wholeUpstream = wholeUpstreamPointers(skills, docs)
+      const perTool = perToolPointers(skills, docs)
       for (const t of tools) {
         const key = accessKey(conn.id, t.tool_name)
         if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
         this.allowedToolKeys.add(key)
-        this.registerTool(server, conn, t, pointers.get(t.tool_name) ?? [])
+        // Whole-upstream first (the general "how we do X here" playbook),
+        // then the narrower per-tool pointers; dedup so an attachment that
+        // is both scopes isn't named twice.
+        const pointers = [...new Set([...wholeUpstream, ...(perTool.get(t.tool_name) ?? [])])]
+        this.registerTool(server, conn, t, pointers)
       }
     }
   }
@@ -194,12 +203,10 @@ export class UpstreamProxyRegistry {
   static upstreamGuidance(ctx: UpstreamUserContext): string {
     const lines: string[] = []
     for (const row of ctx.rows) {
-      const skills = ctx.skillsByUpstream.get(row.id) ?? []
-      const docs = ctx.docsByUpstream.get(row.id) ?? []
-      const refs = [
-        ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\` (get_skill)`),
-        ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\` (get_doc)`)
-      ]
+      const refs = wholeUpstreamPointers(
+        ctx.skillsByUpstream.get(row.id) ?? [],
+        ctx.docsByUpstream.get(row.id) ?? []
+      )
       if (refs.length > 0) {
         lines.push(`- \`${row.slug}\`: consult ${refs.join(', ')} before using its tools.`)
       }
@@ -540,11 +547,30 @@ export function truncateDescription(s: string, max = 1024): string {
 }
 
 /**
- * Group per-tool attachment pointers by upstream tool name. Skips
- * whole-upstream rows (tool_name = '') — those go into the server
- * `instructions` via `UpstreamProxyRegistry.upstreamGuidance`, not onto
- * individual tools. Skills and docs are merged into one ordered list per
- * tool so a tool can carry both.
+ * Whole-upstream attachment pointers (tool_name = '') as ready-to-render
+ * ref strings, in skills-then-docs order. These name the org playbook for
+ * the WHOLE upstream and feed two surfaces: the server `instructions` tail
+ * (`upstreamGuidance`) and — fanned out onto every one of that upstream's
+ * tools in `init` — the per-tool description suffix. Per-tool rows
+ * (tool_name != '') are skipped here; `perToolPointers` owns those.
+ */
+export function wholeUpstreamPointers(
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): string[] {
+  return [
+    ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\` (get_skill)`),
+    ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\` (get_doc)`)
+  ]
+}
+
+/**
+ * Group per-tool attachment pointers (tool_name != '') by upstream tool
+ * name. Whole-upstream rows (tool_name = '') are skipped here — they are
+ * fanned out onto every tool of the upstream in `init` via
+ * `wholeUpstreamPointers`, and also named in the server `instructions`.
+ * Skills and docs are merged into one ordered list per tool so a tool can
+ * carry both.
  */
 export function perToolPointers(
   skills: SkillForUpstreamRow[],
