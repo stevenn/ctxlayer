@@ -16,6 +16,13 @@ export interface Env {
   // env-allowlist behaviour; 'request' = domain match lands pending;
   // 'invite' = invite/join-code only. Parsed via parseAccessPolicy().
   ACCESS_POLICY?: string
+  // Cloudflare Access (Zero Trust) trust mode. When the app is deployed behind
+  // Cloudflare Access, set BOTH of these to accept the edge-asserted identity
+  // (the Cf-Access-Jwt-Assertion header) as a sign-in source — see
+  // auth/cf-access.ts. Neither is a secret; both are injected as [vars] by the
+  // deploy. Unset ⇒ Access trust is off and only the IdP/cookie path runs.
+  CF_ACCESS_TEAM_DOMAIN?: string // e.g. 'myteam.cloudflareaccess.com'
+  CF_ACCESS_AUD?: string // the Access application's AUD tag
   // Build provenance, injected by the `deploy` script via `--var`.
   // Empty in local dev / a bare `wrangler deploy`.
   GIT_SHA: string

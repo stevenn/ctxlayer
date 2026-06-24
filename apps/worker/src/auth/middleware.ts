@@ -1,7 +1,15 @@
 import type { Context, MiddlewareHandler } from 'hono'
 import type { Env } from '../env'
-import { readSessionCookie, sessionClearCookie, verifySession } from './session'
-import { findById, type UserRow } from '../db/queries/users'
+import {
+  readSessionCookie,
+  sessionClearCookie,
+  sessionSetCookie,
+  signSession,
+  verifySession
+} from './session'
+import { csrfSetCookie, newCsrfToken } from './csrf'
+import { accessTrustConfigured, verifyCfAccessJwt } from './cf-access'
+import { findById, upsertUser, type UserRow } from '../db/queries/users'
 import type { Role } from '@ctxlayer/shared'
 
 export interface SessionUser {
@@ -29,17 +37,75 @@ type Ctx = Context<{ Bindings: Env; Variables: AuthedVariables }>
 async function resolveActiveUser(
   c: Ctx
 ): Promise<{ user: SessionUser; row: UserRow } | { error: Response }> {
+  // 1. An existing session cookie wins — the cheap path, no Access/IdP work.
   const cookie = readSessionCookie(c.req.raw)
   const payload = await verifySession(cookie, c.env.SESSION_COOKIE_SECRET)
-  if (!payload) return { error: c.json({ error: 'not_signed_in' }, 401) }
+  if (payload) {
+    const row = await findById(c.env, payload.userId)
+    if (!row || row.status !== 'active') {
+      const res = c.json({ error: 'not_signed_in' }, 401)
+      res.headers.append('Set-Cookie', sessionClearCookie())
+      return { error: res }
+    }
+    return { user: { userId: row.id, role: row.role }, row }
+  }
 
-  const row = await findById(c.env, payload.userId)
-  if (!row || row.status !== 'active') {
+  // 2. No session yet — when deployed behind Cloudflare Access, mint one from
+  //    the edge-asserted identity. Only the first request of a session reaches
+  //    here; the cookie set below short-circuits every request after it.
+  if (accessTrustConfigured(c.env)) {
+    const established = await establishFromAccess(c)
+    if (established) return established
+  }
+
+  return { error: c.json({ error: 'not_signed_in' }, 401) }
+}
+
+/**
+ * Establish a session from a Cloudflare Access token (Cf-Access-Jwt-Assertion).
+ * On success returns the resolved user AND appends fresh session + CSRF cookies
+ * to the response — exactly like the IdP sign-in tail (idp/flow.ts) — so the
+ * SPA behaves identically afterwards. Returns an error Response for a
+ * known-but-inactive account, or null when there's no usable Access token (the
+ * caller then falls through to a 401).
+ *
+ * Cloudflare Access has already decided WHO may reach the app (its own policy /
+ * group rules), so this admits the verified identity directly: it does NOT run
+ * the local IdP allowlist/admission. A user suspended IN THE APP is still
+ * blocked (stored status wins), and ADMIN_EMAILS still confers admin.
+ */
+async function establishFromAccess(
+  c: Ctx
+): Promise<{ user: SessionUser; row: UserRow } | { error: Response } | null> {
+  const token = c.req.header('cf-access-jwt-assertion')
+  if (!token) return null
+  const identity = await verifyCfAccessJwt(token, c.env)
+  if (!identity) return null
+
+  const { user } = await upsertUser(
+    c.env,
+    {
+      idp: 'access',
+      idpSub: identity.sub,
+      email: identity.email,
+      name: identity.name,
+      avatarUrl: null
+    },
+    'active'
+  )
+  if (user.status !== 'active') {
     const res = c.json({ error: 'not_signed_in' }, 401)
     res.headers.append('Set-Cookie', sessionClearCookie())
     return { error: res }
   }
-  return { user: { userId: row.id, role: row.role }, row }
+
+  const session = await signSession(
+    { userId: user.id, role: user.role },
+    c.env.SESSION_COOKIE_SECRET
+  )
+  c.header('Set-Cookie', sessionSetCookie(session), { append: true })
+  c.header('Set-Cookie', csrfSetCookie(newCsrfToken()), { append: true })
+  return { user: { userId: user.id, role: user.role }, row: user }
 }
 
 /**
