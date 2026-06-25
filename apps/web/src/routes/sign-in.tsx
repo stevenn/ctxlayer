@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { Alert, Button, Group, Stack, Text, TextInput, Title } from '@mantine/core'
 import { fetchConfig } from '../lib/api'
@@ -50,6 +50,33 @@ export function SignIn() {
   )
   const idps = config?.idps ?? null
   const policy = config?.accessPolicy ?? 'open_domain'
+
+  // The SPA belongs on the canonical browser host (publicBaseUrl). If it's
+  // loaded on a different host — e.g. the public MCP host (mcp.<tenant>), which
+  // serves machine endpoints but not the human app — bounce to the canonical
+  // host. Without this, visiting the MCP host in a browser shows a dead sign-in
+  // shell (no IdPs in Access mode). Skipped in local dev, where the vite origin
+  // differs from the worker's PUBLIC_BASE_URL by design.
+  const offHostRedirect = useMemo(() => {
+    const base = config?.publicBaseUrl
+    if (!base) return null
+    let canonical: URL
+    try {
+      canonical = new URL(base)
+    } catch {
+      return null
+    }
+    const isLocal = (h: string) =>
+      h === 'localhost' || h.startsWith('localhost:') || h.startsWith('127.0.0.1')
+    const here = window.location
+    if (isLocal(here.host) || isLocal(canonical.host) || here.host === canonical.host) return null
+    return canonical.origin + here.pathname + here.search + here.hash
+  }, [config])
+
+  useEffect(() => {
+    if (offHostRedirect) window.location.replace(offHostRedirect)
+  }, [offHostRedirect])
+
   const [code, setCode] = useState(params.get('join') ?? '')
 
   const urlErrorCode = params.get('error')
@@ -66,6 +93,18 @@ export function SignIn() {
       (urlErrorCode != null && CODE_REASONS.has(urlErrorCode)),
     [policy, params, urlErrorCode]
   )
+
+  // On a non-canonical host the effect above is navigating away — render a
+  // minimal placeholder instead of the (dead) sign-in card so it never flashes.
+  if (offHostRedirect) {
+    return (
+      <div className="auth-shell">
+        <div className="auth-card">
+          <Text c="dimmed">Redirecting…</Text>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="auth-shell">
