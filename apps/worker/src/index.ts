@@ -1,5 +1,6 @@
 import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
-import type { Env, QueueName } from './env'
+import type { Env } from './env'
+import { queueKind } from './queues/route'
 import { app } from './app'
 import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
@@ -46,10 +47,18 @@ const worker: ExportedHandler<Env> = {
     return withHsts(req, await oauthProvider.fetch(req, env, ctx))
   },
   async queue(batch, env, ctx) {
-    const queue = batch.queue as QueueName
-    if (queue === 'ctxlayer-usage') return usageConsumer(batch, env, ctx)
-    if (queue === 'ctxlayer-reindex') return reindexConsumer(batch, env, ctx)
-    if (queue === 'ctxlayer-git-sync') return gitSyncConsumer(batch, env, ctx)
+    // Match on the type SUFFIX, not an exact name: queue names are
+    // deployment-specific (tenants prefix them with the worker name, e.g.
+    // `ctxlayer-yukitools-usage`). See queues/route.ts. Matching exact base
+    // names silently broke usage/reindex/git-sync on every tenant.
+    switch (queueKind(batch.queue)) {
+      case 'usage':
+        return usageConsumer(batch, env, ctx)
+      case 'reindex':
+        return reindexConsumer(batch, env, ctx)
+      case 'git-sync':
+        return gitSyncConsumer(batch, env, ctx)
+    }
     // A configured consumer with no code branch = deploy/config skew. Retry
     // (bounded by max_retries in wrangler.toml) rather than silently drop, and
     // alert so it's not invisible.

@@ -80,5 +80,3 @@ export interface McpProps extends Record<string, unknown> {
   email: string
   role: 'user' | 'admin'
 }
-
-export type QueueName = 'ctxlayer-usage' | 'ctxlayer-reindex' | 'ctxlayer-git-sync'
