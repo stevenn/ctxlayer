@@ -12,6 +12,7 @@ import {
   viewerTzLabel
 } from '../../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../../components/usage/tables'
+import { useUsageRange } from '../../lib/use-usage-range'
 
 /**
  * Admin org-wide usage dashboard. Hits `/api/admin/usage` which is
@@ -35,7 +36,7 @@ const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) =
 type PickedUser = { id: string; email: string }
 
 export function AdminUsage() {
-  const [range, setRange] = useState<UsageRange>('30d')
+  const [range, setRange] = useUsageRange('admin')
   const [user, setUser] = useState<PickedUser | null>(null)
   const [upstreamId, setUpstreamId] = useState('')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })

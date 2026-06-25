@@ -12,6 +12,7 @@ import {
   viewerTzLabel
 } from '../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../components/usage/tables'
+import { useUsageRange } from '../lib/use-usage-range'
 
 /**
  * Personal usage dashboard. Self-scoped — the backend never exposes
@@ -30,7 +31,7 @@ const RANGE_OPTIONS = (Object.keys(USAGE_RANGE_LABEL) as UsageRange[]).map((r) =
 }))
 
 export function Usage() {
-  const [range, setRange] = useState<UsageRange>('30d')
+  const [range, setRange] = useUsageRange('personal')
   const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const ctrlRef = useRef<AbortController | null>(null)
 
