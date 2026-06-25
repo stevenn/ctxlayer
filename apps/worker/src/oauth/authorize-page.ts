@@ -13,6 +13,9 @@
 
 import type { Env } from '../env'
 import { randomToken } from '../idp/common'
+import { accessTrustConfigured, verifyCfAccessJwt } from '../auth/cf-access'
+import { upsertUser } from '../db/queries/users'
+import { completeMcpAuthorization } from '../idp/complete-mcp'
 
 const AUTH_REQ_TTL_SECONDS = 600
 
@@ -22,6 +25,20 @@ export async function handleAuthorize(request: Request, env: Env): Promise<Respo
   await env.OAUTH_KV.put(`authReq:${requestId}`, JSON.stringify(authReq), {
     expirationTtl: AUTH_REQ_TTL_SECONDS
   })
+
+  // Cloudflare Access bridge. When this path is gated by Access (e.g. the mcp.*
+  // custom domain), the edge has already authenticated the user against the org
+  // IdP and forwards a signed `Cf-Access-Jwt-Assertion`. Trust it to complete
+  // the MCP grant directly — skipping the GitHub/Google chooser, which Entra-only
+  // users can't satisfy. Mirrors `establishFromAccess` in auth/middleware.ts (the
+  // SPA path); the only difference is the tail completes an OAuth grant instead
+  // of minting a session cookie. Falls through to the chooser when there's no /
+  // an invalid Access token, so the app stays generic for non-Access deploys.
+  if (accessTrustConfigured(env)) {
+    const viaAccess = await tryCompleteViaAccess(request, env, requestId)
+    if (viaAccess) return viaAccess
+  }
+
   const idps = enabledIdps(env)
   const clientName = await tryClientName(env, authReq.clientId)
   return new Response(renderPage(requestId, idps, clientName), {
@@ -42,6 +59,73 @@ export async function consumeAuthRequest(env: Env, requestId: string): Promise<u
   } catch {
     return null
   }
+}
+
+/**
+ * Complete the MCP authorize grant from a Cloudflare Access token, or return
+ * null to fall back to the IdP chooser.
+ *
+ * Returns a Response in two terminal cases: the grant completed (302 to the
+ * client, from `completeMcpAuthorization`), or a 403 page for a stored
+ * suspended/pending account. Returns null only when there is no usable Access
+ * token (header absent or verification failed) so the caller renders the
+ * chooser — keeping the handler generic for non-Access deployments.
+ *
+ * Admission mirrors `establishFromAccess` (auth/middleware.ts): Access has
+ * already decided WHO may reach this path, so we skip the local IdP allowlist —
+ * but the stored lifecycle status still wins (an in-app suspend blocks) and
+ * ADMIN_EMAILS still confers admin via `upsertUser`. `requestId` is the id under
+ * which the parsed authorize request was just stashed in OAUTH_KV;
+ * `completeMcpAuthorization` consumes it.
+ */
+async function tryCompleteViaAccess(
+  request: Request,
+  env: Env,
+  requestId: string
+): Promise<Response | null> {
+  const token = request.headers.get('cf-access-jwt-assertion')
+  if (!token) return null
+  const identity = await verifyCfAccessJwt(token, env)
+  if (!identity) return null
+
+  const { user } = await upsertUser(
+    env,
+    {
+      idp: 'access',
+      idpSub: identity.sub,
+      email: identity.email,
+      name: identity.name,
+      avatarUrl: null
+    },
+    'active'
+  )
+  if (user.status !== 'active') return renderBlockedPage(user.status)
+
+  return completeMcpAuthorization(env, requestId, user)
+}
+
+/**
+ * A 403 page for an Access-authenticated user whose in-app account isn't active.
+ * Falling through to the chooser would be a dead end (Entra-only users can't use
+ * the GitHub/Google legs either), so we state the reason plainly instead.
+ */
+function renderBlockedPage(status: string): Response {
+  const message =
+    status === 'pending'
+      ? 'Your account is awaiting administrator approval. Try again once it has been approved.'
+      : 'Your account has been suspended. Contact an administrator if you believe this is a mistake.'
+  const html = `<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Authorize · ctxlayer</title></head>
+<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;max-width:420px;margin:80px auto;padding:0 24px;color:#0f172a">
+<h1 style="font-size:20px">Can't authorize</h1>
+<p style="color:#64748b;font-size:14px">${escapeHtml(message)}</p>
+</body></html>`
+  return new Response(html, {
+    status: 403,
+    headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
+  })
 }
 
 function enabledIdps(env: Env): Array<'google' | 'github'> {
