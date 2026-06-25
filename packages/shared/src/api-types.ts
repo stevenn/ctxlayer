@@ -65,6 +65,13 @@ export type VersionResponse = z.infer<typeof VersionResponse>
 export const ConfigResponse = z.object({
   idps: z.array(KnownIdp),
   publicBaseUrl: z.string(),
+  // Public base URL of the MCP surface. Equals publicBaseUrl on single-host
+  // deployments; on deployments with a dedicated MCP host (e.g. behind Access,
+  // where the browser host is fully gated and unusable by machine clients) this
+  // is that separate host. The MCP-setup page builds the connect URL from this,
+  // not publicBaseUrl. Optional for forward/backward compat across deploy skew —
+  // readers fall back to publicBaseUrl when absent.
+  mcpBaseUrl: z.string().optional(),
   // Admission policy. The sign-in page shows a join-code input when this
   // is `invite`. `.catch` keeps an older SPA bundle working if the field
   // is ever absent.

@@ -14,10 +14,13 @@ import { fetchConfig } from '../lib/api'
 import { useLoad } from '../lib/use-load'
 
 /**
- * "Connect your AI tool" page. Pulls the live `publicBaseUrl` from
+ * "Connect your AI tool" page. Pulls the live `mcpBaseUrl` from
  * `/api/config` so the snippets always render the right URL — works
  * the same on localhost dev, workers.dev, and any custom domain we
- * point at the worker later.
+ * point at the worker later. `mcpBaseUrl` is the MCP surface's host,
+ * which on Access deployments is a dedicated `mcp.<tenant>` domain
+ * separate from the (fully gated) browser host; it falls back to
+ * `publicBaseUrl` on single-host deployments.
  *
  * Auth is OAuth 2.1 (Dynamic Client Registration + PKCE) per the MCP
  * spec, served at `/oauth/*` + `/.well-known/oauth-authorization-server`.
@@ -29,7 +32,9 @@ export function McpSetup() {
     async (signal) => {
       try {
         const cfg = await fetchConfig(signal)
-        return cfg.publicBaseUrl.replace(/\/$/, '')
+        // Prefer the dedicated MCP host; fall back to publicBaseUrl when a
+        // deployment doesn't set one (or an older server omits the field).
+        return (cfg.mcpBaseUrl || cfg.publicBaseUrl).replace(/\/$/, '')
       } catch (err) {
         if (!signal?.aborted) console.error(err)
         throw err
@@ -76,8 +81,7 @@ export function McpSetup() {
         body={
           <>
             In <strong>Settings → Connectors → Customize → Add custom connector</strong>, paste the MCP endpoint
-            above. Claude connects to the remote server directly and walks you through GitHub /
-            Google sign-in.
+            above. Claude connects to the remote server directly and walks you through sign-in.
           </>
         }
       />
@@ -93,7 +97,7 @@ export function McpSetup() {
         <Snippet lang="bash" value={`claude mcp add --transport http ctxlayer ${mcpUrl}`} />
         <Text c="dimmed" fz="sm" mt="xs">
           Then run <code>/mcp</code> in a session and pick <strong>ctxlayer → Authenticate</strong>{' '}
-          to complete GitHub / Google sign-in in your browser.
+          to complete sign-in in your browser.
         </Text>
       </Section>
 

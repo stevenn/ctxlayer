@@ -7,6 +7,12 @@ import type { OAuthHelpers } from '@cloudflare/workers-oauth-provider'
 export interface Env {
   // Static vars (wrangler.toml [vars])
   PUBLIC_BASE_URL: string
+  // Public base URL of the MCP surface, when it differs from PUBLIC_BASE_URL —
+  // e.g. a dedicated `mcp.<tenant>` host fronting the same Worker (the browser
+  // host may be fully Access-gated and thus unusable by machine MCP clients).
+  // Surfaced via /api/config as `mcpBaseUrl`; empty/unset ⇒ falls back to
+  // PUBLIC_BASE_URL. Not a secret; injected as a [var] by the deploy.
+  MCP_PUBLIC_URL?: string
   ALLOWED_GOOGLE_HD: string
   ALLOWED_GOOGLE_EMAILS: string
   ALLOWED_GITHUB_ORG: string

@@ -31,6 +31,9 @@ configRoute.get('/', (c) => {
   const body: ConfigResponse = {
     idps,
     publicBaseUrl: c.env.PUBLIC_BASE_URL,
+    // Dedicated MCP host when configured (Access deployments front the same
+    // Worker at mcp.<tenant>); otherwise the MCP surface is the same host.
+    mcpBaseUrl: c.env.MCP_PUBLIC_URL || c.env.PUBLIC_BASE_URL,
     accessPolicy: policy
   }
   return c.json(body)
