@@ -6,12 +6,21 @@ import { MantineProvider } from '@mantine/core'
 // Mock the shared api module (resolves to the same file for both pages,
 // regardless of the relative specifier each uses).
 vi.mock('../lib/api', () => ({
-  fetchUsage: vi
-    .fn()
-    .mockResolvedValue({ range: '30d', dailyTotals: [], topTools: [], topUpstreams: [] }),
-  fetchAdminUsage: vi
-    .fn()
-    .mockResolvedValue({ range: '30d', dailyTotals: [], topTools: [], topUpstreams: [], topUsers: [] }),
+  fetchUsage: vi.fn().mockResolvedValue({
+    range: '30d',
+    dailyTotals: [],
+    topTools: [],
+    topUpstreams: [],
+    recentErrors: []
+  }),
+  fetchAdminUsage: vi.fn().mockResolvedValue({
+    range: '30d',
+    dailyTotals: [],
+    topTools: [],
+    topUpstreams: [],
+    topUsers: [],
+    recentErrors: []
+  }),
   searchUsers: vi.fn().mockResolvedValue([])
 }))
 

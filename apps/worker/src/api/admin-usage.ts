@@ -11,7 +11,14 @@ import { Hono } from 'hono'
 import type { AdminUsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
-import { dailyTotals, topTools, topUpstreams, topUsers, rangeCutoff } from '../db/queries/usage-read'
+import {
+  dailyTotals,
+  topTools,
+  topUpstreams,
+  topUsers,
+  recentErrors,
+  rangeCutoff
+} from '../db/queries/usage-read'
 import { parseRange, parseOffset } from './usage'
 
 export const adminUsageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
@@ -25,11 +32,12 @@ adminUsageRoute.get('/', async (c) => {
   const upstreamId = url.searchParams.get('upstreamId')?.trim() || null
 
   const scope = { sinceDay: rangeCutoff(range, offsetSec), userId, upstreamId }
-  const [daily, tools, upstreams, users] = await Promise.all([
+  const [daily, tools, upstreams, users, errors] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
     topUpstreams(c.env, scope, 10),
-    topUsers(c.env, scope, 10)
+    topUsers(c.env, scope, 10),
+    recentErrors(c.env, scope)
   ])
 
   const body: AdminUsageResponse = {
@@ -37,7 +45,8 @@ adminUsageRoute.get('/', async (c) => {
     dailyTotals: daily,
     topTools: tools,
     topUpstreams: upstreams,
-    topUsers: users
+    topUsers: users,
+    recentErrors: errors
   }
   return c.json(body)
 })

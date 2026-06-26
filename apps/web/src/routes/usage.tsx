@@ -12,6 +12,7 @@ import {
   viewerTzLabel
 } from '../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../components/usage/tables'
+import { ErrorsTable } from '../components/usage/errors-table'
 import { useUsageRange } from '../lib/use-usage-range'
 
 /**
@@ -104,6 +105,12 @@ function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) 
         ) : (
           <DailyBars rows={data.dailyTotals} daysBack={chartDays} offsetSec={offsetSec} />
         )}
+      </Panel>
+      <Panel
+        title="Errors"
+        subtitle="Individual failed tool calls — credential-scrubbed root detail."
+      >
+        <ErrorsTable rows={data.recentErrors} range={range} />
       </Panel>
       <Panel title="Top tools">
         <ToolTable rows={data.topTools} />

@@ -63,6 +63,21 @@ export interface TopUserRow {
   errors: number
 }
 
+export interface RecentErrorRow {
+  ts: number
+  tool: string
+  upstreamId: string // '' = built-in / local
+  upstreamSlug: string | null
+  code: string
+  message: string | null
+}
+
+// Raw `usage_events` retains 30 days (the nightly prune). The drill-down
+// can't reach further back than that even when the range dropdown asks
+// for more, so we clamp the lower bound to the retention floor.
+const RAW_RETENTION_DAYS = 30
+const RECENT_ERRORS_LIMIT = 200
+
 /**
  * Lower-bound cutoff (UTC epoch, not necessarily day-aligned) for a named
  * range, evaluated in the viewer's timezone (`offsetSec` = seconds east of
@@ -273,6 +288,66 @@ export async function topUsers(env: Env, scope: UsageScope, limit = 10): Promise
     respTokens: r.resp_tokens ?? 0,
     errors: r.errors ?? 0
   }))
+}
+
+/**
+ * Recent individual failures (status <> 'ok') for the usage error table.
+ * Unlike the leaderboards this reads the RAW `usage_events` rows so each
+ * carries its classified code + scrubbed message; the lower bound is
+ * clamped to the 30-day raw-retention floor regardless of the requested
+ * range. Honours the same user / upstream scope filters as the rollup
+ * reads. Most-recent first, capped. A code is synthesised for rows that
+ * predate the error-detail columns so the wire shape stays non-null.
+ */
+export async function recentErrors(
+  env: Env,
+  scope: UsageScope,
+  limit = RECENT_ERRORS_LIMIT
+): Promise<RecentErrorRow[]> {
+  const retentionFloor = Math.floor(Date.now() / 1000) - RAW_RETENTION_DAYS * SECONDS_PER_DAY
+  const since = scope.sinceDay == null ? retentionFloor : Math.max(scope.sinceDay, retentionFloor)
+  const where: string[] = [`e.status <> 'ok'`, `e.ts >= ?`]
+  const binds: unknown[] = [since]
+  if (scope.userId) {
+    where.push(`e.user_id = ?`)
+    binds.push(scope.userId)
+  }
+  if (scope.upstreamId != null) {
+    where.push(`e.upstream_id = ?`)
+    binds.push(scope.upstreamId)
+  }
+  const sql = `
+    SELECT e.ts, e.tool, e.upstream_id, us.slug AS upstream_slug,
+           e.error_code, e.error_message
+    FROM usage_events e
+    LEFT JOIN upstream_servers us ON us.id = e.upstream_id
+    WHERE ${where.join(' AND ')}
+    ORDER BY e.ts DESC
+    LIMIT ?
+  `
+  const { results } = await env.DB.prepare(sql)
+    .bind(...binds, limit)
+    .all<{
+      ts: number
+      tool: string
+      upstream_id: string | null
+      upstream_slug: string | null
+      error_code: string | null
+      error_message: string | null
+    }>()
+  return (results ?? []).map((r) => {
+    const upstreamId = r.upstream_id ?? ''
+    return {
+      ts: r.ts,
+      tool: r.tool,
+      upstreamId,
+      upstreamSlug: r.upstream_slug ?? null,
+      // Fallback for pre-0029 error rows: no stored class, so infer
+      // local vs remote from whether an upstream was involved.
+      code: r.error_code ?? (upstreamId ? 'upstream_error' : 'local_error'),
+      message: r.error_message ?? null
+    }
+  })
 }
 
 /**

@@ -1,6 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { pruneUsageEvents, writeUsageEvent } from '../../src/db/queries/usage'
+import { recentErrors } from '../../src/db/queries/usage-read'
 import type { UsageEventMsg } from '../../src/usage/event'
 import type { Env as WorkerEnv } from '../../src/env'
 
@@ -108,6 +109,74 @@ describe('writeUsageEvent', () => {
       tool: string
     }>()
     expect(r).toEqual({ upstream_id: 'ups-notion', tool: 'notion__search' })
+  })
+})
+
+describe('recentErrors', () => {
+  const dayAgo = Math.floor(Date.now() / 1000) - SECONDS_PER_DAY
+
+  it('returns only failures, newest first, with code + scrubbed message', async () => {
+    await writeUsageEvent(testEnv, event({ ts: dayAgo - 10, status: 'ok' }))
+    await writeUsageEvent(
+      testEnv,
+      event({
+        ts: dayAgo,
+        status: 'error',
+        upstreamId: 'ups-notion',
+        tool: 'notion__search',
+        errorCode: 'upstream_5xx',
+        errorMessage: '500 internal server error'
+      })
+    )
+    await writeUsageEvent(
+      testEnv,
+      event({
+        ts: dayAgo - 5,
+        status: 'timeout',
+        tool: 'whoami',
+        errorCode: 'local_error',
+        errorMessage: 'deadline exceeded'
+      })
+    )
+
+    const rows = await recentErrors(testEnv, { sinceDay: null, userId: 'u-alice' })
+    expect(rows).toHaveLength(2)
+    // Newest first: the 5xx (dayAgo) before the timeout (dayAgo - 5).
+    expect(rows[0]).toMatchObject({
+      tool: 'notion__search',
+      upstreamId: 'ups-notion',
+      code: 'upstream_5xx',
+      message: '500 internal server error'
+    })
+    // Built-in failure → upstreamId normalised to '' (NULL on the raw row).
+    expect(rows[1]).toMatchObject({ tool: 'whoami', upstreamId: '', code: 'local_error' })
+  })
+
+  it('scopes to the requesting user', async () => {
+    await writeUsageEvent(testEnv, event({ ts: dayAgo, status: 'error', userId: 'u-alice' }))
+    await writeUsageEvent(testEnv, event({ ts: dayAgo, status: 'error', userId: 'u-bob' }))
+
+    const alice = await recentErrors(testEnv, { sinceDay: null, userId: 'u-alice' })
+    expect(alice).toHaveLength(1)
+  })
+
+  it('clamps the lower bound to the 30-day raw-retention floor', async () => {
+    const old = Math.floor(Date.now() / 1000) - 40 * SECONDS_PER_DAY
+    await writeUsageEvent(testEnv, event({ ts: old, status: 'error' }))
+
+    // Even the unbounded "all" range can't surface a 40-day-old error.
+    const rows = await recentErrors(testEnv, { sinceDay: null, userId: 'u-alice' })
+    expect(rows).toHaveLength(0)
+  })
+
+  it('synthesises a code for rows written before the error-detail columns', async () => {
+    // Simulate a pre-0029 error row: status set, but no code/message.
+    await writeUsageEvent(
+      testEnv,
+      event({ ts: dayAgo, status: 'error', upstreamId: 'ups-x', tool: 'x__y' })
+    )
+    const rows = await recentErrors(testEnv, { sinceDay: null, userId: 'u-alice' })
+    expect(rows[0]).toMatchObject({ code: 'upstream_error', message: null })
   })
 })
 

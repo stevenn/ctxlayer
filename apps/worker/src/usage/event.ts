@@ -28,6 +28,12 @@ export const UsageEventMsg = z.object({
   // WI-5: set when the proxy replaced an oversized response with a
   // truncation notice. Optional with a default so messages enqueued
   // before this field existed still parse on the consumer.
-  truncated: z.boolean().default(false)
+  truncated: z.boolean().default(false),
+  // Per-error forensics (status <> 'ok' only): a coarse class + a
+  // credential-scrubbed detail message, written to the raw event row and
+  // surfaced in the usage error table. Nullish so events enqueued before
+  // these fields existed still parse on the consumer.
+  errorCode: z.string().nullish(),
+  errorMessage: z.string().nullish()
 })
 export type UsageEventMsg = z.infer<typeof UsageEventMsg>

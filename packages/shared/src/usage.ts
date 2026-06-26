@@ -101,11 +101,47 @@ export const UsageTopUser = z.object({
 })
 export type UsageTopUser = z.infer<typeof UsageTopUser>
 
+// Coarse, filterable class for a failed tool call. `local_error` is a
+// built-in / ctxlayer-side failure; every other code involved a remote
+// upstream. Exported for the SPA's label/colour maps + filter options.
+export const USAGE_ERROR_CODES = [
+  'timeout',
+  'upstream_5xx',
+  'upstream_4xx',
+  'upstream_auth',
+  'upstream_unreachable',
+  'upstream_error',
+  'local_error'
+] as const
+export type UsageErrorCode = (typeof USAGE_ERROR_CODES)[number]
+
+// One failed tool call for the error drill-down table. Sourced from the
+// raw `usage_events` table (not the rollups), so the listing is bounded
+// by the 30-day raw retention window. `upstreamId === ''` ⇒ a built-in /
+// local call (the UI derives the local/remote origin from it). `code` is
+// typed loosely so a worker that learns a new class can't fail an older
+// SPA's response parse — the UI maps known codes and shows the rest
+// verbatim. `message` is credential-scrubbed server-side (host/IP/URL
+// kept); null when an error predates this column.
+export const UsageErrorRow = z.object({
+  ts: z.number().int(), // unix seconds
+  tool: z.string(),
+  upstreamId: z.string(), // '' = built-in / local
+  upstreamSlug: z.string().nullable(),
+  code: z.string(),
+  message: z.string().nullable()
+})
+export type UsageErrorRow = z.infer<typeof UsageErrorRow>
+
 export const UsageResponse = z.object({
   range: UsageRange,
   dailyTotals: z.array(UsageDailyTotal),
   topTools: z.array(UsageTopTool),
-  topUpstreams: z.array(UsageTopUpstream)
+  topUpstreams: z.array(UsageTopUpstream),
+  // Recent individual failures within the window (most-recent first,
+  // capped). Default [] so a response from a worker predating this field
+  // still parses on a newer SPA.
+  recentErrors: z.array(UsageErrorRow).default([])
 })
 export type UsageResponse = z.infer<typeof UsageResponse>
 

@@ -33,6 +33,7 @@ import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { listUserRoleIds } from '../db/queries/roles'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
+import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
 import {
   SearchScope,
@@ -149,7 +150,9 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       const reqJson = safeJson(args)
       const userId = this.props?.userId ?? ''
       const sessionId = this.getSessionId()
-      const finalize = (respJson: string, status: 'ok' | 'error') =>
+      // Built-ins have no upstream, so a failure is always `local_error`;
+      // `errorSrc` is the raw detail (scrubbed here for the usage table).
+      const finalize = (respJson: string, status: 'ok' | 'error', errorSrc?: string) =>
         this.stageUsage({
           userId,
           sessionId,
@@ -158,15 +161,26 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           reqJson,
           respJson,
           latencyMs: Date.now() - t0,
-          status
+          status,
+          ...(status === 'error'
+            ? {
+                errorCode: 'local_error',
+                errorMessage: scrubErrorForStorage(errorSrc ?? respJson)
+              }
+            : {})
         })
       return exec().then(
         async (result) => {
-          await finalize(safeJson(result.content), result.isError ? 'error' : 'ok')
+          await finalize(
+            safeJson(result.content),
+            result.isError ? 'error' : 'ok',
+            result.isError ? errorTextFromContent(result.content) : undefined
+          )
           return result
         },
         async (err) => {
-          await finalize(stringifyError(err), 'error')
+          const m = stringifyError(err)
+          await finalize(m, 'error', m)
           throw err
         }
       )

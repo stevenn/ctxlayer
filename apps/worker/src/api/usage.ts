@@ -12,7 +12,13 @@ import { Hono } from 'hono'
 import { UsageRange, type UsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { dailyTotals, topTools, topUpstreams, rangeCutoff } from '../db/queries/usage-read'
+import {
+  dailyTotals,
+  topTools,
+  topUpstreams,
+  recentErrors,
+  rangeCutoff
+} from '../db/queries/usage-read'
 
 export const usageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 usageRoute.use('*', requireUser)
@@ -24,17 +30,19 @@ usageRoute.get('/', async (c) => {
   const user = c.get('user')
 
   const scope = { sinceDay: rangeCutoff(range, offsetSec), userId: user.userId }
-  const [daily, tools, upstreams] = await Promise.all([
+  const [daily, tools, upstreams, errors] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
-    topUpstreams(c.env, scope, 10)
+    topUpstreams(c.env, scope, 10),
+    recentErrors(c.env, scope)
   ])
 
   const body: UsageResponse = {
     range,
     dailyTotals: daily,
     topTools: tools,
-    topUpstreams: upstreams
+    topUpstreams: upstreams,
+    recentErrors: errors
   }
   return c.json(body)
 })

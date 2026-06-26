@@ -58,6 +58,11 @@ import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
+import {
+  classifyUpstreamError,
+  errorTextFromContent,
+  scrubErrorForStorage
+} from '../usage/error-detail'
 import type { RecordUsageArgs } from '../usage/record'
 import { byteLength } from '../usage/tokens'
 import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
@@ -429,12 +434,20 @@ export class UpstreamProxyRegistry {
       let status: 'ok' | 'error' | 'timeout' = 'ok'
       let truncated = false
       let respJson = ''
+      // Set only on failures — a coarse class + the raw detail (scrubbed
+      // for storage in the `finally`). Drives the usage error table.
+      let errorCode: string | undefined
+      let errorDetail: string | undefined
       try {
         const result = await callWithHeartbeat(extra, () =>
           client.callTool(upstreamToolName, args)
         )
         respJson = safeJson(result.content ?? null)
-        if (result.isError) status = 'error'
+        if (result.isError) {
+          status = 'error'
+          errorDetail = errorTextFromContent(result.content)
+          errorCode = classifyUpstreamError('error', errorDetail)
+        }
         // Response-size guardrail (WI-4). An oversized upstream payload
         // (e.g. Driver's whole-repo get_code_map ≈ 1.4 MB) would nuke the
         // agent's context and waste the usage tokeniser. Replace it with a
@@ -461,6 +474,8 @@ export class UpstreamProxyRegistry {
         status = isTimeoutError(err) ? 'timeout' : 'error'
         const msg = stringifyError(err)
         respJson = msg
+        errorCode = classifyUpstreamError(status, msg)
+        errorDetail = msg
         // Don't echo the raw upstream error verbatim — it can carry
         // API keys, internal hostnames, or stack frames. Sanitise via
         // `formatUpstreamError` (URL/Bearer/IP/stack-frame strip +
@@ -488,7 +503,9 @@ export class UpstreamProxyRegistry {
           respJson,
           latencyMs: Date.now() - t0,
           status,
-          truncated
+          truncated,
+          errorCode,
+          errorMessage: errorDetail != null ? scrubErrorForStorage(errorDetail) : undefined
         })
       }
     }

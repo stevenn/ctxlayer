@@ -25,6 +25,11 @@ export interface RecordUsageArgs {
   // True when the proxy replaced an oversized response with a truncation
   // notice (WI-4). Optional so built-in tool call sites need not pass it.
   truncated?: boolean
+  // Set on failures (status !== 'ok'): coarse class + credential-scrubbed
+  // detail for the usage error drill-down. Omitted on the ok path. See
+  // `usage/error-detail.ts`.
+  errorCode?: string
+  errorMessage?: string
 }
 
 export function buildUsageMsg(args: RecordUsageArgs): UsageEventMsg {
@@ -41,6 +46,8 @@ export function buildUsageMsg(args: RecordUsageArgs): UsageEventMsg {
     respTokens: tokenCount(args.respJson),
     latencyMs: args.latencyMs,
     status: args.status,
-    truncated: args.truncated ?? false
+    truncated: args.truncated ?? false,
+    errorCode: args.errorCode ?? null,
+    errorMessage: args.errorMessage ?? null
   }
 }
