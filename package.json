@@ -49,10 +49,5 @@
     "typescript": "^5.6.3",
     "wrangler": "^4.0.0"
   },
-  "//overrides": "Dedupe the MCP SDK's zod onto OUR zod 4. @modelcontextprotocol/sdk pulls zod 3.25 via its zod-to-json-schema@3 dep, so its registerTool types (zod-compat: zod/v3 + zod/v4/core) resolve to a DIFFERENT zod package than our schemas -> zod-4 raw shapes fail type-identity. The SDK is version-agnostic at runtime (dispatches on _zod vs _def), so this is safe. SCOPED to the SDK subtree on purpose: a global zod-4 override breaks the test runner's bundled wrangler@3.100.0/miniflare, which call zod-3-only z.ostring().",
-  "overrides": {
-    "@modelcontextprotocol/sdk": {
-      "zod": "4.4.3"
-    }
-  }
+  "//zod": "No override needed: @modelcontextprotocol/sdk accepts zod '^3.25 || ^4.0', and every workspace now pins ^4, so bun hoists a single zod@4.4.3 that the SDK binds to (its registerTool zod-compat types then match our schemas). The test runner's bundled wrangler@3.100.0/miniflare keeps its own scoped zod@3.25.76 (it calls zod-3-only z.ostring()). Do NOT add a global zod override -> it forces zod 4 onto that test tooling and breaks suite load. A SCOPED 'overrides' on the SDK is also pointless here: bun does not support nested overrides (warns + ignores), and hoisting already does the job."
 }
