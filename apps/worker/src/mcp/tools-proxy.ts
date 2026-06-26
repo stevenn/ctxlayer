@@ -412,7 +412,7 @@ export class UpstreamProxyRegistry {
     // would no longer round-trip — we rely on `row.tool_name` here
     // instead. Sanity-check the mangled name shape only.
     const upstreamToolName = row.tool_name
-    const handler = async (args: unknown) => {
+    const handler = async (args: unknown, extra?: ProxyToolExtra) => {
       if (!unmangleToolName(mangled)) return errText(`bad tool name: ${mangled}`)
       // Defense-in-depth: only ACL-allowed tools are ever registered, so
       // this can't fire on the normal path. It backstops a future
@@ -430,7 +430,9 @@ export class UpstreamProxyRegistry {
       let truncated = false
       let respJson = ''
       try {
-        const result = await client.callTool(upstreamToolName, args)
+        const result = await callWithHeartbeat(extra, () =>
+          client.callTool(upstreamToolName, args)
+        )
         respJson = safeJson(result.content ?? null)
         if (result.isError) status = 'error'
         // Response-size guardrail (WI-4). An oversized upstream payload
@@ -499,7 +501,7 @@ export class UpstreamProxyRegistry {
       server.registerTool as unknown as (
         name: string,
         cfg: { title: string; description: string; inputSchema: unknown },
-        cb: (args: unknown) => unknown
+        cb: (args: unknown, extra: ProxyToolExtra) => unknown
       ) => unknown
     )(
       mangled,
@@ -609,6 +611,57 @@ export function isTimeoutError(err: unknown): boolean {
   // Both the upstream/http-client 60s wall cap and the MCP SDK's
   // own RequestTimeoutError surface as messages mentioning timeout.
   return /timeout|timed out|deadline/i.test(msg)
+}
+
+/** Emit a heartbeat progress ping roughly this often during a long call. */
+const HEARTBEAT_MS = 25_000
+
+/**
+ * The slice of the SDK's `RequestHandlerExtra` the proxy handler needs:
+ * the caller's `progressToken` (present only if the client requested
+ * progress) and a `sendNotification` bound to this request's stream.
+ * Typed minimally so the `registerTool` cast stays self-contained.
+ */
+type ProxyToolExtra = {
+  _meta?: { progressToken?: string | number }
+  sendNotification?: (n: {
+    method: 'notifications/progress'
+    params: { progressToken: string | number; progress: number; message?: string }
+  }) => Promise<void>
+}
+
+/**
+ * Run a (potentially multi-minute) upstream call while keeping the stream
+ * back to the agent alive. A silent call lets intermediaries drop the
+ * connection — notably Anthropic's hosted MCP proxy (`-32000 "MCP server
+ * connection lost"`) and Claude Code's 5-min idle timer — so we send a
+ * `notifications/progress` ping every HEARTBEAT_MS for the duration.
+ *
+ * No-op unless the client supplied a `progressToken` (i.e. requested
+ * progress): the spec ties progress notifications to that token, so
+ * without one there is nothing valid to send. Best-effort — a failed
+ * ping (e.g. the stream is already closing) is swallowed.
+ */
+export async function callWithHeartbeat<T>(
+  extra: ProxyToolExtra | undefined,
+  run: () => Promise<T>
+): Promise<T> {
+  const token = extra?._meta?.progressToken
+  const send = extra?.sendNotification
+  if (token == null || !send) return run()
+  let progress = 0
+  const timer = setInterval(() => {
+    progress += 1
+    void send({
+      method: 'notifications/progress',
+      params: { progressToken: token, progress, message: 'Upstream call in progress…' }
+    }).catch(() => {})
+  }, HEARTBEAT_MS)
+  try {
+    return await run()
+  } finally {
+    clearInterval(timer)
+  }
 }
 
 function safeJson(v: unknown): string {

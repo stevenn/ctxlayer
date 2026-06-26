@@ -1,10 +1,11 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import {
   truncateDescription,
   truncationNotice,
   perToolPointers,
   wholeUpstreamPointers,
-  isTimeoutError
+  isTimeoutError,
+  callWithHeartbeat
 } from './tools-proxy'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import type { DocForUpstreamRow } from '../db/queries/doc-attachments'
@@ -85,5 +86,71 @@ describe('isTimeoutError', () => {
 
   it('does not match unrelated errors', () => {
     expect(isTimeoutError(new Error('401 unauthorized'))).toBe(false)
+  })
+})
+
+describe('callWithHeartbeat', () => {
+  it('runs without pinging when the client sent no progressToken', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const out = await callWithHeartbeat({ sendNotification: send }, async () => 'result')
+    expect(out).toBe('result')
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('runs without pinging when extra is undefined', async () => {
+    expect(await callWithHeartbeat(undefined, async () => 42)).toBe(42)
+  })
+
+  it('pings progress on an interval while running, then stops on completion', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn().mockResolvedValue(undefined)
+      let finish: (v: string) => void = () => {}
+      const work = new Promise<string>((r) => {
+        finish = r
+      })
+      const p = callWithHeartbeat(
+        { _meta: { progressToken: 'tok-1' }, sendNotification: send },
+        () => work
+      )
+
+      await vi.advanceTimersByTimeAsync(26_000)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(send.mock.calls.at(0)?.[0]).toEqual({
+        method: 'notifications/progress',
+        params: { progressToken: 'tok-1', progress: 1, message: expect.any(String) }
+      })
+
+      await vi.advanceTimersByTimeAsync(25_000)
+      expect(send).toHaveBeenCalledTimes(2)
+      expect(send.mock.calls.at(1)?.[0]?.params.progress).toBe(2)
+
+      finish('done')
+      await expect(p).resolves.toBe('done')
+
+      // Interval cleared on completion — no further pings.
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(send).toHaveBeenCalledTimes(2)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('clears the interval even when the call throws', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn().mockResolvedValue(undefined)
+      const p = callWithHeartbeat(
+        { _meta: { progressToken: 7 }, sendNotification: send },
+        async () => {
+          throw new Error('upstream boom')
+        }
+      )
+      await expect(p).rejects.toThrow('upstream boom')
+      await vi.advanceTimersByTimeAsync(60_000)
+      expect(send).not.toHaveBeenCalled()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
