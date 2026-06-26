@@ -12,11 +12,11 @@ import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
 import type { Env } from '../env'
-import { getSkillBySlug, listPublishedSkills } from '../db/queries/skills'
+import { listPublishedSkills } from '../db/queries/skills'
 import { listAttachmentsForSkills } from '../db/queries/skill-attachments'
 import { type McpSkillSummary, McpListSkillsResult } from '@ctxlayer/shared'
-import { readSnapshot } from '../storage/skills-r2'
-import { renderBlocksToMarkdown } from '../rag/markdown'
+import { loadPublishedSkillMarkdown } from './skill-render'
+import { registerSkillSep2640 } from './skill-sep2640'
 
 export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
   tool: string,
@@ -71,16 +71,9 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
     },
     (args) =>
       rec('get_skill', args, async () => {
-        const { slug } = args
-        const row = await getSkillBySlug(env, slug)
-        if (!row || row.status !== 'published') return errText(`skill not found: ${slug}`)
-        const content = await readSnapshot(env, row.id)
-        const body = content ? renderBlocksToMarkdown(content.blocks) : ''
-        return {
-          content: [
-            { type: 'text', text: renderSkillMd(row.slug, row.description, row.trigger_text, body) }
-          ]
-        }
+        const md = await loadPublishedSkillMarkdown(env, args.slug)
+        if (md == null) return errText(`skill not found: ${args.slug}`)
+        return { content: [{ type: 'text', text: md }] }
       })
   )
 
@@ -113,46 +106,23 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
       if (!slug) {
         return { contents: [{ uri: uri.toString(), text: 'missing skill slug' }] }
       }
-      const row = await getSkillBySlug(env, slug)
-      if (!row || row.status !== 'published') {
+      const md = await loadPublishedSkillMarkdown(env, slug)
+      if (md == null) {
         return { contents: [{ uri: uri.toString(), text: `skill not found: ${slug}` }] }
       }
-      const content = await readSnapshot(env, row.id)
-      const body = content ? renderBlocksToMarkdown(content.blocks) : ''
       return {
-        contents: [
-          {
-            uri: uri.toString(),
-            mimeType: 'text/markdown',
-            text: renderSkillMd(row.slug, row.description, row.trigger_text, body)
-          }
-        ]
+        contents: [{ uri: uri.toString(), mimeType: 'text/markdown', text: md }]
       }
     }
   )
+
+  // Additive SEP-2640 future-proofing: serve the same skills over the
+  // standard `skill://` scheme + a discovery document, and advertise the
+  // skills extension capability. See skill-sep2640.ts.
+  registerSkillSep2640(server, env)
 }
 
 // ----- helpers -----------------------------------------------------------
-
-/**
- * Render the SKILL.md envelope an agent expects: YAML frontmatter
- * (name + description) + optional trigger paragraph + body.
- * Matches what the CLI's `ctxlayer pull` writes to disk so MCP and
- * filesystem agents see the same shape.
- */
-function renderSkillMd(slug: string, description: string, trigger: string, body: string): string {
-  const fm = `---\nname: ${slug}\ndescription: ${yamlOneLine(description)}\n---\n`
-  const triggerPart = trigger.trim() ? `\n${trigger.trim()}\n` : ''
-  return `${fm}${triggerPart}\n${body || '_empty skill_'}`
-}
-
-function yamlOneLine(s: string): string {
-  // Quote if the value contains characters that would confuse YAML's
-  // simple-scalar parser. Cheap heuristic; full YAML quoting is overkill
-  // for a description string.
-  if (/[:#\n"\\]/.test(s)) return JSON.stringify(s)
-  return s
-}
 
 function errText(msg: string) {
   return { isError: true, content: [{ type: 'text' as const, text: msg }] }
