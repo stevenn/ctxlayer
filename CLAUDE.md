@@ -139,8 +139,12 @@ Full rationale in `docs/plan/G-conventions.md`.
   parent* table relying on `PRAGMA foreign_keys=OFF`** — that pragma
   no-ops inside D1's migration transaction, so `DROP TABLE` cascades and
   wipes child rows (0013 silently nuked `upstream_visibility` grants +
-  creds + cached tools this way). Snapshot children → swap parent →
-  restore. Full rule in `docs/plan/G-conventions.md` §G1.
+  creds + cached tools this way). Detach every ref → swap parent →
+  reattach: a snapshot-and-DROP is NOT enough, because a NOT-NULL
+  NO-ACTION child (e.g. `skills.created_by`) makes D1 fail the rebuild
+  outright (and `writable_schema`/`legacy_alter_table` shortcuts are
+  blocked). `0028_idp_access.sql` is the worked example; full rule in
+  `docs/plan/G-conventions.md` §G1.
 - **Workers Assets SPA fallback**: lives in `[assets]
   not_found_handling = "single-page-application"`, NOT in a hand-rolled
   `app.notFound`. `run_worker_first` lists both bare and glob forms

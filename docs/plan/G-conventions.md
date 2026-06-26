@@ -32,21 +32,48 @@ gotchas the rest of the build should respect.
   `upstream_tools`, `user_credentials`, `upstream_visibility`
   (the "everyone" grants), `upstream_shared_credentials`, and the
   `*_attachments`. (`usage_events` survived — its `upstream_id` has
-  no FK.) **Rules for any future rebuild of a table that other tables
-  reference:**
+  no FK.) `0028` then showed the rebuild is harder still when the
+  parent has a NOT-NULL `NO ACTION` child: D1 records a NO-ACTION FK
+  violation the instant a parent row is deleted and **never clears
+  it** — even re-`INSERT`ing the same id (which `DROP`+`RENAME` does)
+  fails the commit-time check, so the `DROP` cannot proceed at all
+  while such a child has rows. **Rules for any future rebuild of a
+  table that other tables reference:**
   1. Prefer NOT rebuilding a referenced parent at all. A CHECK can
      only be changed by rebuild, but consider whether app-layer
-     validation suffices instead of tightening the DB CHECK.
-  2. If you must rebuild a parent, snapshot every cascading child
-     into a plain holding table first, do the parent swap, then
-     re-insert the children (parent ids are preserved, so the FKs
-     resolve). `defer_foreign_keys=on` is valid inside a txn but only
-     defers the *violation check* — it does NOT suppress the cascade
-     *action*, so snapshots are mandatory, not optional.
-  3. Enumerate children by grepping `REFERENCES <table>(` across ALL
-     migrations — do not trust a hand-written list in a comment
+     validation suffices instead of tightening the DB CHECK. The
+     in-place shortcuts are both unavailable on D1: `PRAGMA
+     writable_schema` returns `SQLITE_AUTH` (blocked) and `PRAGMA
+     legacy_alter_table` is ignored (the rename-swap still rewrites
+     child FK refs, so the old table's `DROP` cascades anyway).
+  2. If you must rebuild a parent, DETACH every reference, swap, then
+     REATTACH — snapshotting only the CASCADE children is NOT enough:
+     - CASCADE children → snapshot whole rows, re-insert after.
+     - SET NULL + nullable NO-ACTION refs → snapshot `(pk, fk)`, set
+       them NULL before the swap, restore after.
+     - NOT-NULL NO-ACTION children (e.g. `skills.created_by`) →
+       snapshot the rows + their own CASCADE children, `DELETE` before
+       the swap, restore after.
+     Clear the CASCADE children EXPLICITLY (don't lean on the `DROP`'s
+     cascade) so the migration behaves identically whether FK
+     enforcement is on (D1) or off (some local runners) — otherwise
+     the restore collides on a primary key. Parent ids are preserved,
+     so the deferred check passes at COMMIT. `defer_foreign_keys=on`
+     is valid inside a txn but only defers the *violation check* — it
+     does NOT suppress the CASCADE/SET NULL *actions* and does NOT
+     rescue the NO-ACTION case, so the detach is mandatory.
+     `0028_idp_access.sql` is the worked example.
+  3. Enumerate children from the LIVE schema (`SELECT name, sql FROM
+     sqlite_master WHERE sql LIKE '%REFERENCES <table>%'`), classified
+     by `ON DELETE` — do not trust a hand-written list in a comment
      (0013's comment both included a non-child, `usage_events`, and
      would have missed nothing only by luck).
+  4. Test the rewrite on a throwaway D1 before it touches prod. D1's
+     `/query` HTTP API reproduces the same FK-check-at-commit +
+     auto-rollback as a real migration, so a seeded scratch DB tells
+     you whether the rebuild actually preserves rows (and the
+     auto-rollback means a botched rebuild fails closed, never
+     half-applies).
 
 ### G2. Cloudflare Workers Assets
 
