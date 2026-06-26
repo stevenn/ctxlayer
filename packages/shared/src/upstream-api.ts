@@ -53,7 +53,6 @@ const ReservedSlugs = new Set([
  * runtime's `global_fetch_strictly_public` flag (set in wrangler.toml).
  */
 export const UpstreamUrl = z
-  .string()
   .url()
   .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
 
@@ -116,7 +115,7 @@ export const AdminUpstreamRow = z.object({
   slug: UpstreamSlug,
   displayName: z.string(),
   transport: SupportedTransport,
-  url: z.string().url(),
+  url: z.url(),
   authStrategy: AuthStrategy,
   authConfig: UpstreamAuthConfig,
   enabled: z.boolean(),

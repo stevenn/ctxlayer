@@ -41,7 +41,7 @@ export function jsonSchemaToZod(input: unknown): ConvertedSchema {
   const node = (input ?? {}) as JsonSchemaNode
   if (isObjectSchema(node)) {
     const shape = objectShape(node)
-    return { shape, zod: z.object(shape).passthrough() }
+    return { shape, zod: z.looseObject(shape) }
   }
   return { shape: null, zod: nodeToZod(node) }
 }
@@ -55,7 +55,9 @@ function isObjectSchema(node: JsonSchemaNode): boolean {
 
 function objectShape(node: JsonSchemaNode): ZodRawShape {
   const required = new Set(node.required ?? [])
-  const shape: ZodRawShape = {}
+  // zod 4's ZodRawShape is Readonly, so accumulate into a mutable record
+  // and return it (mutable -> readonly is assignable).
+  const shape: Record<string, ZodTypeAny> = {}
   for (const [key, child] of Object.entries(node.properties ?? {})) {
     let schema = nodeToZod(child)
     if (child.description) schema = schema.describe(child.description)
@@ -83,7 +85,7 @@ function nodeToZod(node: JsonSchemaNode): ZodTypeAny {
     for (const member of node.allOf) {
       if (isObjectSchema(member)) Object.assign(merged, objectShape(member))
     }
-    return z.object(merged).passthrough()
+    return z.looseObject(merged)
   }
   if (Array.isArray(node.oneOf) || Array.isArray(node.anyOf)) {
     const members = (node.oneOf ?? node.anyOf ?? []).map(nodeToZod)
@@ -116,7 +118,7 @@ function nodeToZod(node: JsonSchemaNode): ZodTypeAny {
       return z.array(itemNode ? nodeToZod(itemNode) : z.any())
     }
     case 'object':
-      return z.object(objectShape(node)).passthrough()
+      return z.looseObject(objectShape(node))
     default:
       return z.any()
   }

@@ -48,5 +48,11 @@
     "concurrently": "^9.1.0",
     "typescript": "^5.6.3",
     "wrangler": "^4.0.0"
+  },
+  "//overrides": "Dedupe the MCP SDK's zod onto OUR zod 4. @modelcontextprotocol/sdk pulls zod 3.25 via its zod-to-json-schema@3 dep, so its registerTool types (zod-compat: zod/v3 + zod/v4/core) resolve to a DIFFERENT zod package than our schemas -> zod-4 raw shapes fail type-identity. The SDK is version-agnostic at runtime (dispatches on _zod vs _def), so this is safe. SCOPED to the SDK subtree on purpose: a global zod-4 override breaks the test runner's bundled wrangler@3.100.0/miniflare, which call zod-3-only z.ostring().",
+  "overrides": {
+    "@modelcontextprotocol/sdk": {
+      "zod": "4.4.3"
+    }
   }
 }

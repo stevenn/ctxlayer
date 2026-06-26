@@ -23,12 +23,11 @@ const HttpAuthConfig = z.object({
 // authorization code, refresh token, and the sealed client secret travel
 // to these endpoints — https only (loopback http allowed for local dev).
 const OAuthEndpointUrl = z
-  .string()
   .url()
-  .refine(isHttpsOrLoopback, { message: 'must be https' })
+  .refine(isHttpsOrLoopback, { error: 'must be https' })
 
 const OauthAuthConfig = z
-  .object({
+  .looseObject({
     authorizeUrl: OAuthEndpointUrl.optional(),
     tokenUrl: OAuthEndpointUrl.optional(),
     scopes: z.array(z.string()).optional(),
@@ -43,7 +42,6 @@ const OauthAuthConfig = z
     client_secret: z.string().optional(),
     client_info: z.record(z.string(), z.unknown()).optional()
   })
-  .passthrough()
 
 // Per-upstream resilience overrides. All optional — absent fields fall
 // back to the module-level defaults in `upstream/http-client.ts`. Stored

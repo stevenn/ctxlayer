@@ -40,7 +40,6 @@ export const GitFolderRoot = z.union([z.literal(''), FolderPath])
 // self-loop guard (never ctxlayer's own host) is enforced server-side in
 // the admin handler via `isSameOrigin`, since it needs `PUBLIC_BASE_URL`.
 export const GitBaseUrl = z
-  .string()
   .url()
   .refine(isHttpsOrLoopback, 'must be https (http allowed only for localhost)')
 
@@ -139,9 +138,8 @@ export type GitSetCredentialRequest = z.infer<typeof GitSetCredentialRequest>
 // used (see J-git.md), so the operator supplies the app's endpoints + id, and
 // optionally the secret (sealed server-side; never round-tripped on read).
 const HttpsUrl = z
-  .string()
   .url()
-  .refine((v) => v.startsWith('https://'), { message: 'must be https' })
+  .refine((v) => v.startsWith('https://'), { error: 'must be https' })
 
 export const GitOAuthConfigRequest = z.object({
   clientId: z.string().min(1).max(512),
