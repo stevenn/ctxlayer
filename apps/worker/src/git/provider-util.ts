@@ -32,10 +32,34 @@ export interface ProviderCallInput {
 }
 
 /**
+ * A 2xx-but-not-really response that is actually an auth challenge. Azure
+ * DevOps answers a wrong-audience / expired bearer token with `203
+ * Non-Authoritative Information` + an HTML sign-in page instead of `401` —
+ * and 203 is `res.ok`, so without this guard the call reads as success with
+ * a null (unparseable-HTML) body, and the caller then throws a misleading
+ * downstream error (e.g. `azure_ref_unresolved` from empty refs) with no log.
+ * Every `providerCall` consumer requests `application/json`, so an ok response
+ * that didn't parse as JSON is never legitimate data.
+ */
+function isAuthInterstitial(res: Response, text: string, json: unknown): boolean {
+  // 203 is unambiguous for ADO here; no git REST API returns it for real data.
+  if (res.status === 203) return true
+  // Belt-and-suspenders for SSO proxies that wrap a 200 around a login page:
+  // only when the body genuinely failed to parse as JSON (never reinterpret a
+  // real payload) and declares/looks like HTML.
+  if (json === null && text) {
+    const ct = res.headers.get('content-type') ?? ''
+    if (/text\/html/i.test(ct) || /<html|<!doctype html/i.test(text)) return true
+  }
+  return false
+}
+
+/**
  * fetch + JSON-parse-or-null + allow-listed statuses. On a non-allowed
  * failure, logs `provider: METHOD url -> status` (+ errorDetail) — never
  * the response body, which can carry tokens or internal detail — and
- * throws the generic `<provider>_api_error:<status>` code.
+ * throws the generic `<provider>_api_error:<status>` code. A 2xx auth
+ * interstitial (see `isAuthInterstitial`) throws `<provider>_auth_failed`.
  */
 export async function providerCall(input: ProviderCallInput): Promise<CallResult> {
   assertSafeFetchUrl(input.url)
@@ -50,6 +74,13 @@ export async function providerCall(input: ProviderCallInput): Promise<CallResult
     } catch {
       json = null
     }
+  }
+  if (isAuthInterstitial(res, text, json)) {
+    // Log status only — the HTML body can carry sign-in URLs / correlation ids.
+    console.error(
+      `${input.provider}: ${input.method} ${input.url} -> ${res.status} auth_interstitial (wrong token audience or scope?)`
+    )
+    throw new Error(`${input.provider}_auth_failed`)
   }
   if (!res.ok && !(input.allow ?? []).includes(res.status)) {
     const detail = input.errorDetail ? input.errorDetail(json, res) : ''

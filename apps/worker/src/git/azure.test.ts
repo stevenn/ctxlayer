@@ -113,6 +113,29 @@ describe('AzureDevOpsProvider read path', () => {
     expect(logged).not.toContain('super-secret')
     errSpy.mockRestore()
   })
+
+  it('flags a 203 HTML sign-in interstitial as auth_failed, not ref_unresolved', async () => {
+    // ADO answers a wrong-audience token with 203 + an HTML sign-in page; 203
+    // is res.ok, so the old code read it as an empty ref list → the misleading
+    // azure_ref_unresolved with no log. Now it's a clear, logged auth failure.
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response(
+            '<html><body>Sign in to your account — https://login.microsoftonline.com/…</body></html>',
+            { status: 203, headers: { 'content-type': 'text/html; charset=utf-8' } }
+          )
+      )
+    )
+    const az = new AzureDevOpsProvider(config, 'eyJhbGc.eyJ.wrongaud')
+    await expect(az.resolveRef('main')).rejects.toThrow('azure_auth_failed')
+    const logged = errSpy.mock.calls.map((c) => c.join(' ')).join('\n')
+    expect(logged).toContain('auth_interstitial')
+    expect(logged).not.toContain('login.microsoftonline.com') // HTML body not leaked
+    errSpy.mockRestore()
+  })
 })
 
 describe('AzureDevOpsProvider auth scheme', () => {

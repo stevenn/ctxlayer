@@ -10,6 +10,7 @@ import {
   adminPutGitSourceOAuth,
   adminPutGitSourceVisibility,
   adminSyncGitSource,
+  deleteGitUserCredential,
   fetchAdminGitSource,
   fetchProducts,
   fetchTeams
@@ -195,6 +196,20 @@ export function GitSourceDrawer({
               await reload()
               onChanged()
             }, 'Clear OAuth')
+          }
+          onDisconnect={() =>
+            withBusy(async () => {
+              const ok = await confirm({
+                title: 'Disconnect?',
+                message: `Clear your stored OAuth token for "${row.displayName}"? You can reconnect to re-authorize (e.g. under a corrected scope).`,
+                confirmLabel: 'Disconnect',
+                danger: true
+              })
+              if (!ok) return
+              await deleteGitUserCredential(sourceId)
+              await reload()
+              onChanged()
+            }, 'Disconnect')
           }
         />
 

@@ -133,3 +133,15 @@ export function putGitUserCredential(sourceId: string, token: string): Promise<v
     body: JSON.stringify(GitSetCredentialRequest.parse({ token }))
   })
 }
+
+/**
+ * Clear the caller's own stored git credential (PAT or OAuth tokens) for a
+ * source. Needed before re-connecting under a corrected OAuth scope — the
+ * oauth/start route refreshes an existing token (keeping its audience) rather
+ * than re-authorizing, so a wrong-audience token must be deleted first.
+ */
+export function deleteGitUserCredential(sourceId: string): Promise<void> {
+  return request(`/api/git-sources/${encodeURIComponent(sourceId)}/credentials`, () => undefined, {
+    method: 'DELETE'
+  })
+}
