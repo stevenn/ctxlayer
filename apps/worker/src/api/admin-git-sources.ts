@@ -32,7 +32,11 @@ import {
   replaceGitSourceVisibility,
   upsertGitSharedCredential
 } from '../db/queries/git-sources'
-import { getGitConnectionForSource, setGitConnectionAuthConfig } from '../db/queries/git-connections'
+import {
+  getGitConnectionById,
+  getGitConnectionForSource,
+  setGitConnectionAuthConfig
+} from '../db/queries/git-connections'
 import { parseGitAuthConfig } from '../git/git-oauth'
 import { setDocProductTag } from '../db/queries/doc-tags'
 import { seal, sealedToString } from '../crypto/aead'
@@ -68,6 +72,16 @@ adminGitSourcesRoute.post('/', async (c) => {
   // Self-loop guard: base URL must not be this ctxlayer deployment.
   if (input.baseUrl && isSameOrigin(input.baseUrl, c.env.PUBLIC_BASE_URL)) {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
+  }
+  // Attach mode: a repo joining an existing connection inherits its auth +
+  // base URL, and must be on the same provider.
+  if (input.connectionId) {
+    const connection = await getGitConnectionById(c.env, input.connectionId)
+    if (!connection) return c.json({ error: 'connection_not_found' }, 400)
+    if (connection.provider !== input.provider) {
+      return c.json({ error: 'provider_mismatch', message: `connection is ${connection.provider}` }, 400)
+    }
+    input.baseUrl = connection.base_url ?? undefined
   }
   try {
     const row = await createGitSource(c.env, { ...input, createdBy: c.get('user').userId })

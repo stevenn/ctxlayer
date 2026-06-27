@@ -1,18 +1,27 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
-import type { ProductRef } from '@ctxlayer/shared'
+import type { GitProvider, ProductRef } from '@ctxlayer/shared'
 import { adminCreateGitSource } from '../../../lib/api'
 import { parseGitUrl, type ParsedGitUrl } from '../../../lib/git-url'
 import { explain } from './helpers'
+
+/** When set, the new repo joins an existing connection (auth inherited). */
+export interface AttachTarget {
+  connectionId: string
+  provider: GitProvider
+  displayName: string
+}
 
 // Conditionally mounted by the caller (`{createOpen && …}`), so all state
 // resets for free on close — no `opened` prop / reset effect.
 export function CreateGitSourceModal({
   products,
+  attachTo,
   onClose,
   onCreated
 }: {
   products: ProductRef[] | null
+  attachTo?: AttachTarget
   onClose: () => void
   onCreated: (id: string) => void
 }) {
@@ -50,8 +59,10 @@ export function CreateGitSourceModal({
     if (!folderTouched) setFolder(p.pathPrefix)
   }
 
+  // When attaching, the pasted repo must be on the connection's provider.
+  const providerMismatch = !!attachTo && !!parsed && parsed.provider !== attachTo.provider
   // Branch is optional now (blank = auto-detect), so it's not a submit gate.
-  const canSubmit = !!parsed && !!slug.trim() && !!displayName.trim()
+  const canSubmit = !!parsed && !!slug.trim() && !!displayName.trim() && !providerMismatch
 
   async function submit() {
     if (!parsed || !canSubmit) return
@@ -63,6 +74,7 @@ export function CreateGitSourceModal({
         displayName: displayName.trim(),
         provider: parsed.provider,
         baseUrl: parsed.baseUrl ?? undefined,
+        connectionId: attachTo?.connectionId,
         owner: parsed.owner || undefined,
         project: parsed.project || undefined,
         repo: parsed.repo,
@@ -80,15 +92,33 @@ export function CreateGitSourceModal({
   }
 
   return (
-    <Modal opened onClose={onClose} title="New git source" centered size="lg">
+    <Modal
+      opened
+      onClose={onClose}
+      title={attachTo ? `Add repo to ${attachTo.displayName}` : 'New git source'}
+      centered
+      size="lg"
+    >
       <Stack gap="md">
+        {attachTo && (
+          <Alert color="blue" variant="light" radius="sm">
+            This repo joins the <strong>{attachTo.displayName}</strong> connection — its OAuth /
+            token / visibility are inherited. Paste a <strong>{attachTo.provider}</strong> repo URL.
+          </Alert>
+        )}
         <TextInput
           label="Git repo URL"
           placeholder="https://github.com/acme/docs  (or …/tree/main/docs)"
           description="Paste the repo URL. Provider, owner, repo — and branch + folder from a /tree/ link — are filled in automatically."
           value={url}
           onChange={(e) => onUrlChange(e.currentTarget.value)}
-          error={url.trim() && !parsed ? 'Not a recognizable git repo URL' : undefined}
+          error={
+            url.trim() && !parsed
+              ? 'Not a recognizable git repo URL'
+              : providerMismatch
+                ? `That's a ${parsed?.provider} URL, but this connection is ${attachTo?.provider}.`
+                : undefined
+          }
           data-autofocus
         />
 
@@ -157,7 +187,9 @@ export function CreateGitSourceModal({
         </Group>
 
         <Text fz="xs" c="dimmed">
-          After creating, set the read token + adjust credential strategy / cadence in the drawer.
+          {attachTo
+            ? 'Auth is inherited from the connection. Adjust cadence / folder / product in the drawer after creating.'
+            : 'After creating, set the read token + adjust credential strategy / cadence in the drawer.'}
         </Text>
 
         {error && (

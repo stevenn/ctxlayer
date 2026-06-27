@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Alert, Drawer, Stack, Text } from '@mantine/core'
+import { Alert, Button, Drawer, Group, Stack, Text } from '@mantine/core'
 import type { AdminGitSourceRow, ProductRef, TeamRef } from '@ctxlayer/shared'
 import {
   adminDeleteGitSharedCredential,
@@ -18,6 +18,7 @@ import {
 import { useBusyAction } from '../../../lib/use-busy'
 import { useDrawerConfirm } from '../../../lib/dialogs'
 import { explain } from './helpers'
+import { CreateGitSourceModal } from './CreateGitSourceModal'
 import { DetailsSection } from './DetailsSection'
 import { SyncSection } from './SyncSection'
 import { OAuthSection } from './OAuthSection'
@@ -40,6 +41,7 @@ export function GitSourceDrawer({
   const [products, setProducts] = useState<ProductRef[] | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [addRepoOpen, setAddRepoOpen] = useState(false)
   const { busy, run: withBusy } = useBusyAction({
     explain,
     setError,
@@ -111,6 +113,15 @@ export function GitSourceDrawer({
             {notice}
           </Alert>
         )}
+
+        <Group justify="space-between" align="center" wrap="nowrap">
+          <Text fz="xs" c="dimmed">
+            Add another repo that shares this connection's auth (no re-config).
+          </Text>
+          <Button size="xs" variant="light" onClick={() => setAddRepoOpen(true)}>
+            + Add repo to connection
+          </Button>
+        </Group>
 
         <DetailsSection
           row={row}
@@ -227,6 +238,23 @@ export function GitSourceDrawer({
           }
         />
       </Stack>
+
+      {addRepoOpen && (
+        <CreateGitSourceModal
+          products={products}
+          attachTo={{
+            connectionId: row.connectionId,
+            provider: row.provider,
+            displayName: row.displayName
+          }}
+          onClose={() => setAddRepoOpen(false)}
+          onCreated={() => {
+            setAddRepoOpen(false)
+            setNotice('Repo added to this connection — find it in the list.')
+            onChanged()
+          }}
+        />
+      )}
     </Drawer>
   )
 }

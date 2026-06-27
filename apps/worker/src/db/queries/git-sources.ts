@@ -653,6 +653,7 @@ export async function gitAdminRowFor(
     id: row.id,
     slug: row.slug,
     displayName: row.display_name,
+    connectionId: row.connection_id,
     provider: row.provider,
     baseUrl: row.base_url,
     owner: row.owner,

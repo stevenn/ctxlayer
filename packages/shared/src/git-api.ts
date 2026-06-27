@@ -58,6 +58,8 @@ export const AdminGitSourceRow = z.object({
   id: z.string(),
   slug: GitSourceSlug,
   displayName: z.string(),
+  // The connection this repo's auth hangs under (add a sibling repo by reusing it).
+  connectionId: z.string(),
   provider: GitProvider,
   baseUrl: z.string().nullable(),
   owner: z.string(),
@@ -97,6 +99,9 @@ export const CreateGitSourceRequest = z.object({
   displayName: z.string().min(1).max(120),
   provider: GitProvider,
   baseUrl: GitBaseUrl.optional(),
+  // Attach to an existing connection (share its auth) instead of making a new
+  // one. Provider must match the connection's; baseUrl is inherited from it.
+  connectionId: z.string().optional(),
   owner: z.string().max(200).optional(),
   project: z.string().max(200).optional(),
   repo: z.string().min(1).max(200),
