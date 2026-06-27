@@ -240,7 +240,7 @@ export function DocsList() {
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: '220px minmax(0, 1fr)',
+              gridTemplateColumns: '300px minmax(0, 1fr)',
               gap: 24,
               alignItems: 'start'
             }}

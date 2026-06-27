@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { type MouseEvent, useCallback, useMemo, useState } from 'react'
 import { Button, Group, Menu, Text } from '@mantine/core'
 import type { DocSummary, FolderTreeNode } from '@ctxlayer/shared'
 import { clickableRow } from '../../lib/a11y'
@@ -9,6 +9,45 @@ import {
   groupCodeDocsByRepo,
   type TreeNode
 } from './helpers'
+
+// Per-node collapse state, persisted so a tamed tree stays tamed across
+// reloads + navigation. Keys are `${group}:${sourceId}:${path}` (see nodeKey).
+function useCollapsed(storageKey: string) {
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(storageKey)
+      return new Set(raw ? (JSON.parse(raw) as string[]) : [])
+    } catch {
+      return new Set()
+    }
+  })
+  const toggle = useCallback(
+    (key: string) => {
+      setCollapsed((prev) => {
+        const next = new Set(prev)
+        if (next.has(key)) next.delete(key)
+        else next.add(key)
+        try {
+          localStorage.setItem(storageKey, JSON.stringify([...next]))
+        } catch {
+          /* private mode / quota — collapse just won't persist */
+        }
+        return next
+      })
+    },
+    [storageKey]
+  )
+  return { collapsed, toggle }
+}
+
+function nodeKey(group: FolderGroup, sourceId: string | null | undefined, path: string | null) {
+  return `${group}:${sourceId ?? ''}:${path ?? '/'}`
+}
+
+interface CollapseCtl {
+  collapsed: Set<string>
+  toggle: (key: string) => void
+}
 
 // ----- Folder tree sidebar -----------------------------------------------
 
@@ -37,6 +76,7 @@ export function FolderTree({
     () => buildTree(folders, rootDocCount, rootLabel),
     [folders, rootDocCount, rootLabel]
   )
+  const collapse = useCollapsed('ctxlayer.docTree.collapsed.home')
 
   return (
     <aside
@@ -53,6 +93,7 @@ export function FolderTree({
         group={group}
         selected={selected}
         onSelect={onSelect}
+        collapse={collapse}
         manageable={manageable}
         onRename={onRename}
         onDelete={onDelete}
@@ -73,6 +114,9 @@ export function CodeDocsTree({
   onSelect: (sel: FolderSelection) => void
 }) {
   const repos = useMemo(() => groupCodeDocsByRepo(codeDocs), [codeDocs])
+  // Code docs collapse per repo — each repo is a depth-0 node, so toggling it
+  // hides its whole subtree. Shared state across all repos.
+  const collapse = useCollapsed('ctxlayer.docTree.collapsed.code')
 
   return (
     <aside
@@ -101,6 +145,7 @@ export function CodeDocsTree({
           sourceId={r.sourceId}
           selected={selected}
           onSelect={onSelect}
+          collapse={collapse}
           manageable={false}
         />
       ))}
@@ -115,6 +160,7 @@ function FolderNodeRow({
   sourceId,
   selected,
   onSelect,
+  collapse,
   manageable,
   onRename,
   onDelete
@@ -126,6 +172,7 @@ function FolderNodeRow({
   sourceId?: string | null
   selected: FolderSelection
   onSelect: (sel: FolderSelection) => void
+  collapse: CollapseCtl
   manageable: boolean
   onRename?: (path: string) => void
   onDelete?: (path: string, descendantDocCount: number) => void
@@ -135,6 +182,14 @@ function FolderNodeRow({
     (selected.sourceId ?? null) === (sourceId ?? null) &&
     (node.path ?? null) === (selected.path ?? null)
   const isRoot = node.path === null
+  const hasChildren = node.children.length > 0
+  const key = nodeKey(group, sourceId, node.path)
+  const isCollapsed = hasChildren && collapse.collapsed.has(key)
+
+  const toggle = (e: MouseEvent) => {
+    e.stopPropagation()
+    collapse.toggle(key)
+  }
 
   return (
     <>
@@ -150,7 +205,39 @@ function FolderNodeRow({
         }}
         {...clickableRow(() => onSelect({ group, path: node.path, sourceId }))}
       >
-        <Text fz="sm" style={{ flex: 1, minWidth: 0, fontWeight: isActive || isRoot ? 600 : 400 }}>
+        {hasChildren ? (
+          <button
+            type="button"
+            aria-label={isCollapsed ? 'Expand folder' : 'Collapse folder'}
+            onClick={toggle}
+            style={{
+              width: 14,
+              flex: '0 0 auto',
+              display: 'inline-flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 0,
+              border: 'none',
+              background: 'transparent',
+              cursor: 'pointer',
+              color: 'var(--text-dim)',
+              fontSize: 9,
+              userSelect: 'none',
+              transform: isCollapsed ? 'rotate(-90deg)' : undefined,
+              transition: 'transform 120ms ease'
+            }}
+          >
+            ▼
+          </button>
+        ) : (
+          <span style={{ width: 14, flex: '0 0 auto' }} />
+        )}
+        <Text
+          fz="sm"
+          truncate
+          title={node.label}
+          style={{ flex: 1, minWidth: 0, fontWeight: isActive || isRoot ? 600 : 400 }}
+        >
           {node.label}
           <Text component="span" fz="xs" c="dimmed" ml={6}>
             {node.docCount}
@@ -180,20 +267,22 @@ function FolderNodeRow({
           </Menu>
         )}
       </Group>
-      {node.children.map((child) => (
-        <FolderNodeRow
-          key={child.path ?? '/'}
-          node={child}
-          depth={depth + 1}
-          group={group}
-          sourceId={sourceId}
-          selected={selected}
-          onSelect={onSelect}
-          manageable={manageable}
-          onRename={onRename}
-          onDelete={onDelete}
-        />
-      ))}
+      {!isCollapsed &&
+        node.children.map((child) => (
+          <FolderNodeRow
+            key={child.path ?? '/'}
+            node={child}
+            depth={depth + 1}
+            group={group}
+            sourceId={sourceId}
+            selected={selected}
+            onSelect={onSelect}
+            collapse={collapse}
+            manageable={manageable}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
+        ))}
     </>
   )
 }
