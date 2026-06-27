@@ -17,7 +17,7 @@
   },
   "scripts": {
     "dev": "bun run src/cli.ts",
-    "build": "tsup src/cli.ts --format cjs --target node20 --clean --shims",
+    "build": "tsup",
     "typecheck": "tsc --noEmit",
     "lint": "echo 'no lint configured for cli'",
     "test": "vitest run"
