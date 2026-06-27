@@ -100,7 +100,8 @@ export const CreateGitSourceRequest = z.object({
   owner: z.string().max(200).optional(),
   project: z.string().max(200).optional(),
   repo: z.string().min(1).max(200),
-  branch: z.string().min(1).max(200),
+  // Blank/omitted ⇒ auto-detect the repo's default branch on first sync.
+  branch: z.string().max(200).optional(),
   pathPrefix: z.string().max(200).optional(),
   productId: z.string().nullable().optional(),
   readStrategy: GitCredStrategy.optional(),
@@ -117,7 +118,8 @@ export const UpdateGitSourceRequest = z.object({
   owner: z.string().max(200).optional(),
   project: z.string().max(200).optional(),
   repo: z.string().min(1).max(200).optional(),
-  branch: z.string().min(1).max(200).optional(),
+  // Blank ⇒ reset to auto-detect the repo's default branch on next sync.
+  branch: z.string().max(200).optional(),
   pathPrefix: z.string().max(200).optional(),
   productId: z.string().nullable().optional(),
   readStrategy: GitCredStrategy.optional(),

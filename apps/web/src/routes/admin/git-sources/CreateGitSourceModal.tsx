@@ -22,7 +22,9 @@ export function CreateGitSourceModal({
   // are editable in the drawer afterwards.
   const [url, setUrl] = useState('')
   const [parsed, setParsed] = useState<ParsedGitUrl | null>(null)
-  const [branch, setBranch] = useState('main')
+  // Blank = auto-detect the repo's default branch on first sync (don't assume
+  // 'main' — ADO repos commonly default to 'master').
+  const [branch, setBranch] = useState('')
   const [folder, setFolder] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [slug, setSlug] = useState('')
@@ -42,11 +44,14 @@ export function CreateGitSourceModal({
     if (!p) return
     if (!nameTouched) setDisplayName(p.owner ? `${p.owner}/${p.repo}` : p.repo)
     if (!slugTouched) setSlug(p.slugSuggestion)
-    if (!branchTouched) setBranch(p.branch ?? 'main')
+    // Only adopt a branch the URL actually carried (/tree/<branch>); otherwise
+    // leave it blank for auto-detect.
+    if (!branchTouched) setBranch(p.branch ?? '')
     if (!folderTouched) setFolder(p.pathPrefix)
   }
 
-  const canSubmit = !!parsed && !!slug.trim() && !!displayName.trim() && !!branch.trim()
+  // Branch is optional now (blank = auto-detect), so it's not a submit gate.
+  const canSubmit = !!parsed && !!slug.trim() && !!displayName.trim()
 
   async function submit() {
     if (!parsed || !canSubmit) return
@@ -61,7 +66,7 @@ export function CreateGitSourceModal({
         owner: parsed.owner || undefined,
         project: parsed.project || undefined,
         repo: parsed.repo,
-        branch: branch.trim(),
+        branch: branch.trim() || undefined,
         pathPrefix: folder.trim() || undefined,
         productId,
         enabled: true
@@ -97,8 +102,9 @@ export function CreateGitSourceModal({
 
         <Group grow>
           <TextInput
-            label="Branch"
-            placeholder="main"
+            label="Branch (optional)"
+            placeholder="auto-detect"
+            description="Blank = use the repo's default branch (e.g. main / master). Case-sensitive."
             value={branch}
             onChange={(e) => {
               setBranchTouched(true)

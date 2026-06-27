@@ -77,6 +77,8 @@ export function DetailsSection({
         <Group grow>
           <TextInput
             label="Branch"
+            placeholder="auto-detect"
+            description="Blank = repo default (e.g. main / master). Case-sensitive."
             value={branch}
             onChange={(e) => setBranch(e.currentTarget.value)}
           />

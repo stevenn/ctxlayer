@@ -63,6 +63,14 @@ export class AzureDevOpsProvider implements GitProviderClient {
     return sha
   }
 
+  async getDefaultBranch(): Promise<string | null> {
+    // GET the repository object itself (this.api already points at it).
+    // ADO returns defaultBranch as a full ref ('refs/heads/master').
+    const r = await this.call('GET', '')
+    const b = asObj(r.json).defaultBranch
+    return typeof b === 'string' && b ? b.replace(/^refs\/heads\//, '') : null
+  }
+
   async listMarkdownTree(ref: string, pathPrefix: string): Promise<GitTreeEntry[]> {
     const r = await this.call(
       'GET',

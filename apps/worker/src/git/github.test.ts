@@ -92,6 +92,26 @@ describe('GitHubProvider read path', () => {
     expect(await gh.resolveRef('main')).toBe('deadbeef')
   })
 
+  it('reports the default branch from the repo object', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        // The bare repo object (no /commits, /git/trees, … suffix).
+        expect(url).toMatch(/\/repos\/acme\/docs$/)
+        return jsonResponse({ name: 'docs', default_branch: 'main' })
+      })
+    )
+    expect(await new GitHubProvider(config, 't').getDefaultBranch()).toBe('main')
+  })
+
+  it('returns null when the repo reports no default branch (empty repo)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => jsonResponse({ name: 'docs' }))
+    )
+    expect(await new GitHubProvider(config, 't').getDefaultBranch()).toBeNull()
+  })
+
   it('throws a generic error on api failure without leaking the body', async () => {
     const errSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     vi.stubGlobal(

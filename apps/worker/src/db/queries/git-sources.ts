@@ -96,7 +96,8 @@ export interface CreateGitSourceInput {
   owner?: string
   project?: string
   repo: string
-  branch: string
+  /** Blank ⇒ auto-detect the repo's default branch on first sync. */
+  branch?: string
   pathPrefix?: string
   productId?: string | null
   readStrategy?: GitCredStrategy
@@ -129,7 +130,7 @@ export async function createGitSource(
       input.owner ?? '',
       input.project ?? '',
       input.repo,
-      input.branch,
+      input.branch ?? '',
       input.pathPrefix ?? '',
       input.readStrategy ?? 'shared_bearer',
       input.writeStrategy ?? 'user_bearer',

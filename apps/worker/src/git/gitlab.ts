@@ -61,6 +61,12 @@ export class GitLabProvider implements GitProviderClient {
     return sha
   }
 
+  async getDefaultBranch(): Promise<string | null> {
+    const r = await this.call('GET', this.projectPath)
+    const b = asObj(r.json).default_branch
+    return typeof b === 'string' && b ? b : null
+  }
+
   async listMarkdownTree(ref: string, pathPrefix: string): Promise<GitTreeEntry[]> {
     const prefix = normalizePrefix(pathPrefix)
     const out: GitTreeEntry[] = []

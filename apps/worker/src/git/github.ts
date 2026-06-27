@@ -60,6 +60,12 @@ export class GitHubProvider implements GitProviderClient {
     return sha
   }
 
+  async getDefaultBranch(): Promise<string | null> {
+    const r = await this.call('GET', this.repoPath)
+    const b = asObj(r.json).default_branch
+    return typeof b === 'string' && b ? b : null
+  }
+
   async listMarkdownTree(ref: string, pathPrefix: string): Promise<GitTreeEntry[]> {
     const r = await this.call('GET', `${this.repoPath}/git/trees/${enc(ref)}?recursive=1`)
     const body = asObj(r.json)

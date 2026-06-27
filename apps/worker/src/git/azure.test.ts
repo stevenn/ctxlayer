@@ -59,6 +59,19 @@ describe('AzureDevOpsProvider read path', () => {
     expect(file.blobSha).toBe('b')
   })
 
+  it('reports the default branch as a bare name (strips refs/heads/)', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        // The repository object itself — no /refs, /items, etc. suffix.
+        expect(url).toContain('/_apis/git/repositories/docs?api-version=')
+        return jsonResponse({ id: 'r1', name: 'docs', defaultBranch: 'refs/heads/master' })
+      })
+    )
+    const az = new AzureDevOpsProvider(config, 'pat')
+    expect(await az.getDefaultBranch()).toBe('master')
+  })
+
   it('resolves a ref via the refs filter', async () => {
     vi.stubGlobal(
       'fetch',

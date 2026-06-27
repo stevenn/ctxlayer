@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Button, Group, PasswordInput, Stack, Text } from '@mantine/core'
 import type { AdminGitSourceRow } from '@ctxlayer/shared'
+import { gitSyncErrorMessage } from '../../../lib/git-sync-error'
 import { Section } from './helpers'
 
 export function SyncSection({
@@ -18,6 +19,7 @@ export function SyncSection({
 }) {
   const [token, setToken] = useState('')
   const lastSynced = row.lastSyncedAt ? new Date(row.lastSyncedAt * 1000).toLocaleString() : 'never'
+  const friendlyError = row.lastSyncError ? gitSyncErrorMessage(row.lastSyncError) : ''
 
   return (
     <Section title="Read token & sync">
@@ -49,9 +51,16 @@ export function SyncSection({
               {row.lastSyncStatus ? ` · ${row.lastSyncStatus}` : ''}
             </Text>
             {row.lastSyncError && (
-              <Text fz="xs" c="red">
-                {row.lastSyncError}
-              </Text>
+              <>
+                <Text fz="xs" c="red">
+                  {friendlyError}
+                </Text>
+                {friendlyError !== row.lastSyncError && (
+                  <Text fz="xs" c="dimmed" ff="monospace">
+                    {row.lastSyncError}
+                  </Text>
+                )}
+              </>
             )}
           </div>
           <Group gap="xs">

@@ -20,6 +20,7 @@ import {
   getGitSourceById,
   listGitDocPaths,
   markDocGitOrigin,
+  patchGitSource,
   recordSyncResult,
   setDocGitSyncState,
   type GitSourceRow
@@ -63,6 +64,11 @@ export function isGitSyncDue(
 
 const ZERO = { created: 0, updated: 0, deleted: 0, skipped: 0, conflicts: 0 }
 
+/** A provider "branch not found" signal — `<provider>_ref_unresolved`. */
+function isRefUnresolved(err: unknown): boolean {
+  return err instanceof Error && /_ref_unresolved$/.test(err.message)
+}
+
 export async function runGitSync(
   env: Env,
   sourceId: string,
@@ -82,8 +88,32 @@ export async function runGitSync(
   const counts = { ...ZERO }
 
   try {
-    const headSha = await provider.resolveRef(source.branch)
-    const entries = await provider.listMarkdownTree(source.branch, source.path_prefix)
+    // Blank branch ⇒ auto-detect the repo's default and persist it (so the
+    // drawer reflects it + future syncs are stable). Avoids the old silent
+    // 'main' default that broke ADO repos defaulting to 'master'.
+    let branch = source.branch.trim()
+    if (!branch) {
+      const def = await provider.getDefaultBranch()
+      if (!def) throw new Error('repo_no_default_branch')
+      branch = def
+      await patchGitSource(env, sourceId, { branch })
+    }
+
+    // A configured-but-missing branch becomes a friendly, default-naming
+    // error (branch_not_found:<typed>:<default>) instead of the opaque
+    // <provider>_ref_unresolved.
+    let headSha: string
+    try {
+      headSha = await provider.resolveRef(branch)
+    } catch (err) {
+      if (isRefUnresolved(err)) {
+        const def = await provider.getDefaultBranch().catch(() => null)
+        throw new Error(`branch_not_found:${branch}:${def ?? ''}`)
+      }
+      throw err
+    }
+
+    const entries = await provider.listMarkdownTree(branch, source.path_prefix)
     const existing = await listGitDocPaths(env, sourceId)
     // One read up front instead of a per-path lookup per tree entry —
     // a no-op sync over a large repo used to cost one D1 round trip
@@ -106,7 +136,7 @@ export async function runGitSync(
         continue
       }
 
-      const file = await provider.readFile(entry.path, source.branch)
+      const file = await provider.readFile(entry.path, branch)
       // Parse OKF frontmatter once: title falls back to the body's H1, the
       // well-known fields land on the doc, the rest is preserved verbatim.
       const fm = parseFrontmatter(file.text)

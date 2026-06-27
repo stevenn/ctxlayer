@@ -59,6 +59,13 @@ export interface NewPrUrlInput {
 export interface GitProviderClient {
   /** Resolve a ref (branch name) to the commit sha it points at. */
   resolveRef(ref: string): Promise<string>
+  /**
+   * The repo's default branch as a BARE name (e.g. `main` / `master`), or
+   * null when the provider can't report one (empty repo / no commits). Used
+   * to auto-detect when a source's branch is left blank, and to name the
+   * real default in a "branch not found" error.
+   */
+  getDefaultBranch(): Promise<string | null>
   /** List *.md blobs on `ref`, optionally restricted to `pathPrefix`. */
   listMarkdownTree(ref: string, pathPrefix: string): Promise<GitTreeEntry[]>
   /** Read one file's decoded content + blob sha at `ref`. */
