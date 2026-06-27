@@ -184,8 +184,14 @@ export const GitDocStatus = z.object({
   syncState: GitSyncState.nullable(),
   syncedAt: z.number().int().nullable(),
   canWrite: z.boolean(),
-  // True iff the source has static-OAuth configured — drives the GitPanel
-  // "Connect via OAuth" button vs the paste-a-PAT field.
+  // The connection's write strategy + whether THIS user has connected their
+  // own token. Together they drive the rail's "smart connect": a per-user
+  // strategy (user_oauth/user_bearer) with currentUserConnected=false is the
+  // only case that should surface Connect; shared-token sources never do.
+  writeStrategy: GitCredStrategy.default('user_bearer'),
+  currentUserConnected: z.boolean().default(false),
+  // True iff the connection has static-OAuth configured — Connect-via-OAuth
+  // vs the paste-a-PAT field.
   oauthConfigured: z.boolean().default(false),
   pr: GitPrRef.nullable()
 })

@@ -56,9 +56,13 @@ export function parseGitAuthConfig(json: string | null): UpstreamAuthConfig {
   }
 }
 
-/** The source's static-OAuth config, or null when OAuth isn't configured. */
-export function gitStaticOAuth(source: GitSourceRow): StaticOAuth | null {
-  return staticOAuth(parseGitAuthConfig(source.auth_config))
+/**
+ * The static-OAuth config from a connection's `auth_config` JSON, or null when
+ * OAuth isn't configured. (OAuth client config lives on the CONNECTION now, so
+ * every repo under it shares one app — pass `connection.auth_config`.)
+ */
+export function gitStaticOAuth(authConfigJson: string | null): StaticOAuth | null {
+  return staticOAuth(parseGitAuthConfig(authConfigJson))
 }
 
 export class GitOAuthFlowProvider implements StaticFlowProvider {

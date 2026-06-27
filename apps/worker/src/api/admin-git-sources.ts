@@ -30,9 +30,9 @@ import {
   listGitSources,
   patchGitSource,
   replaceGitSourceVisibility,
-  setGitSourceAuthConfig,
   upsertGitSharedCredential
 } from '../db/queries/git-sources'
+import { getGitConnectionForSource, setGitConnectionAuthConfig } from '../db/queries/git-connections'
 import { parseGitAuthConfig } from '../git/git-oauth'
 import { setDocProductTag } from '../db/queries/doc-tags'
 import { seal, sealedToString } from '../crypto/aead'
@@ -223,7 +223,10 @@ adminGitSourcesRoute.put('/:id/oauth', async (c) => {
     return c.json({ error: 'self_loop', message: 'URL must not point at this ctxlayer instance' }, 400)
   }
 
-  const current = parseGitAuthConfig(row.auth_config)
+  // OAuth client config lives on the CONNECTION (shared by all its repos).
+  const connection = await getGitConnectionForSource(c.env, id)
+  if (!connection) return notFound(c)
+  const current = parseGitAuthConfig(connection.auth_config)
   let clientSecretCiphertext = current.oauth?.clientSecretCiphertext
   if (input.clientSecret) {
     clientSecretCiphertext = sealedToString(await seal(input.clientSecret, c.env.ENCRYPTION_KEY))
@@ -238,7 +241,7 @@ adminGitSourcesRoute.put('/:id/oauth', async (c) => {
       ...(clientSecretCiphertext ? { clientSecretCiphertext } : {})
     }
   }
-  await setGitSourceAuthConfig(c.env, id, JSON.stringify(authConfig))
+  await setGitConnectionAuthConfig(c.env, connection.id, JSON.stringify(authConfig))
   await audit(c.env, {
     actorId: c.get('user').userId,
     action: 'git_source.oauth_config',
@@ -252,7 +255,7 @@ adminGitSourcesRoute.delete('/:id/oauth', async (c) => {
   const id = c.req.param('id')
   const row = await getGitSourceById(c.env, id)
   if (!row) return notFound(c)
-  await setGitSourceAuthConfig(c.env, id, null)
+  await setGitConnectionAuthConfig(c.env, row.connection_id, null)
   await audit(c.env, {
     actorId: c.get('user').userId,
     action: 'git_source.oauth_clear',

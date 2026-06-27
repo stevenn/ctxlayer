@@ -5,10 +5,12 @@ import {
   createGitSource,
   getGitSharedCredential,
   getGitSourceById,
+  gitAdminRowFor,
   isGitSourceVisibleToUser,
   replaceGitSourceVisibility,
   upsertGitSharedCredential
 } from '../../src/db/queries/git-sources'
+import { setGitConnectionAuthConfig } from '../../src/db/queries/git-connections'
 
 /**
  * Phase-1 payoff of the connection/repo split (migration 0030): auth lives on
@@ -105,5 +107,41 @@ describe('git connection sharing (0030)', () => {
     expect(await isGitSourceVisibleToUser(testEnv, b.id, 'u-1')).toBe(true)
     // sanity: the row round-trips with its connection
     expect((await getGitSourceById(testEnv, b.id))?.connection_id).toBe(a.connection_id)
+  })
+
+  it('OAuth client config set on the connection surfaces on a sibling repo', async () => {
+    const a = await createGitSource(testEnv, {
+      slug: 'repo-a',
+      displayName: 'A',
+      provider: 'github',
+      owner: 'acme',
+      repo: 'a',
+      branch: 'main',
+      createdBy: 'u-1'
+    })
+    const b = await createGitSource(testEnv, {
+      slug: 'repo-b',
+      displayName: 'B',
+      provider: 'github',
+      owner: 'acme',
+      repo: 'b',
+      branch: 'main',
+      connectionId: a.connection_id,
+      createdBy: 'u-1'
+    })
+    await setGitConnectionAuthConfig(
+      testEnv,
+      a.connection_id,
+      JSON.stringify({
+        oauth: {
+          clientId: 'cid',
+          authorizeUrl: 'https://idp/authorize',
+          tokenUrl: 'https://idp/token',
+          scopes: ['repo']
+        }
+      })
+    )
+    const rowB = await gitAdminRowFor(testEnv, b.id, 'u-1')
+    expect(rowB?.oauth?.clientId).toBe('cid')
   })
 })

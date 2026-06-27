@@ -17,6 +17,7 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { getGitSourceById, isGitSourceVisibleToUser } from '../db/queries/git-sources'
+import { getGitConnectionForSource } from '../db/queries/git-connections'
 import {
   GitOAuthFlowProvider,
   deleteGitVerifierState,
@@ -50,7 +51,8 @@ gitOauthStartRoute.get('/:id/oauth/start', async (c) => {
   const allowed =
     actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, source.id, userId))
   if (!allowed) return c.json({ error: 'forbidden' }, 403)
-  const oauth = gitStaticOAuth(source)
+  const connection = await getGitConnectionForSource(c.env, source.id)
+  const oauth = gitStaticOAuth(connection?.auth_config ?? null)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)
 
   const ret: GitOAuthReturn = {
@@ -101,7 +103,8 @@ gitOauthCallbackRoute.get('/callback', async (c) => {
     await deleteGitVerifierState(c.env, state)
     return c.json({ error: 'forbidden' }, 403)
   }
-  const oauth = gitStaticOAuth(source)
+  const connection = await getGitConnectionForSource(c.env, source.id)
+  const oauth = gitStaticOAuth(connection?.auth_config ?? null)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)
 
   const provider = new GitOAuthFlowProvider(c.env, source, userId, state)

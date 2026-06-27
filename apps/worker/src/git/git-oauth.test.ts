@@ -1,11 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import { gitStaticOAuth, parseGitAuthConfig } from './git-oauth'
-import type { GitSourceRow } from '../db/queries/git-sources'
-
-// gitStaticOAuth only reads `auth_config`; a partial cast keeps the test lean.
-function source(authConfig: string | null): GitSourceRow {
-  return { auth_config: authConfig } as unknown as GitSourceRow
-}
 
 const fullOauth = JSON.stringify({
   oauth: {
@@ -19,15 +13,15 @@ const fullOauth = JSON.stringify({
 
 describe('gitStaticOAuth', () => {
   it('returns null when no usable oauth config is present', () => {
-    expect(gitStaticOAuth(source(null))).toBeNull()
-    expect(gitStaticOAuth(source('{}'))).toBeNull()
-    expect(gitStaticOAuth(source('not json'))).toBeNull()
+    expect(gitStaticOAuth(null)).toBeNull()
+    expect(gitStaticOAuth('{}')).toBeNull()
+    expect(gitStaticOAuth('not json')).toBeNull()
     // missing tokenUrl + authorizeUrl
-    expect(gitStaticOAuth(source(JSON.stringify({ oauth: { clientId: 'x' } })))).toBeNull()
+    expect(gitStaticOAuth(JSON.stringify({ oauth: { clientId: 'x' } }))).toBeNull()
   })
 
   it('returns the config once clientId + authorize + token URLs are all set', () => {
-    const cfg = gitStaticOAuth(source(fullOauth))
+    const cfg = gitStaticOAuth(fullOauth)
     expect(cfg).not.toBeNull()
     expect(cfg?.clientId).toBe('cid')
     expect(cfg?.tokenUrl).toBe('https://gitlab.com/oauth/token')

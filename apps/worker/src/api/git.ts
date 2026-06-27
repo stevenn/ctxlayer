@@ -24,6 +24,7 @@ import {
   deleteGitUserCredential,
   getDocGitOrigin,
   getGitSourceById,
+  getGitUserCredential,
   getLatestPrForDoc,
   isGitSourceVisibleToUser,
   setDocGitSyncState,
@@ -31,6 +32,7 @@ import {
   upsertGitUserCredential,
   type GitSourceRow
 } from '../db/queries/git-sources'
+import { getGitConnectionForSource } from '../db/queries/git-connections'
 import { createGitProvider } from '../git/provider'
 import type { GitRepoConfig } from '../git/provider-types'
 import { resolveGitReadToken } from '../git/credentials'
@@ -97,6 +99,11 @@ gitDocsRoute.get('/:id/git', async (c) => {
     }
   }
 
+  // Auth (OAuth client config + write strategy) lives on the connection now;
+  // currentUserConnected = the caller has their own sealed token on it. These
+  // drive the editor rail's "smart connect" (show Connect only when needed).
+  const connection = await getGitConnectionForSource(c.env, source.id)
+  const userCred = await getGitUserCredential(c.env, userId, source.id)
   const body: GitDocStatus = {
     gitSourceId: source.id,
     sourceSlug: source.slug,
@@ -107,7 +114,9 @@ gitDocsRoute.get('/:id/git', async (c) => {
     syncState,
     syncedAt: origin.git_synced_at,
     canWrite,
-    oauthConfigured: gitStaticOAuth(source) !== null,
+    writeStrategy: connection?.write_strategy ?? source.write_strategy,
+    currentUserConnected: userCred !== null,
+    oauthConfigured: gitStaticOAuth(connection?.auth_config ?? null) !== null,
     pr
   }
   return c.json(body)

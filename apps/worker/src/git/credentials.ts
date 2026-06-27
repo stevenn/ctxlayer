@@ -15,6 +15,7 @@ import {
   getGitUserCredential,
   type GitSourceRow
 } from '../db/queries/git-sources'
+import { getGitConnectionForSource } from '../db/queries/git-connections'
 import { GitOAuthFlowProvider, gitStaticOAuth } from './git-oauth'
 import { refreshStatic } from '../upstream/oauth-static'
 
@@ -54,7 +55,8 @@ async function resolveGitUserToken(
   const c = await getGitUserCredential(env, userId, source.id)
   if (!c) return null
   if (c.kind === 'oauth') {
-    const oauth = gitStaticOAuth(source)
+    const connection = await getGitConnectionForSource(env, source.id)
+    const oauth = gitStaticOAuth(connection?.auth_config ?? null)
     if (oauth) {
       // Refresh near expiry + persist the rotated token.
       return refreshStatic(env, new GitOAuthFlowProvider(env, source, userId), oauth)

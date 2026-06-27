@@ -23,6 +23,7 @@ import type {
   VisibilityRulePayload
 } from '@ctxlayer/shared'
 import { buildPatchUpdate } from './util'
+import { getGitConnectionForSource } from './git-connections'
 
 // ----- git_sources -------------------------------------------------------
 
@@ -77,18 +78,6 @@ export async function getGitSourceById(env: Env, id: string): Promise<GitSourceR
     .bind(id)
     .first<GitSourceRow>()
   return row ?? null
-}
-
-/** Set (or clear, with null) the static-OAuth client config JSON on a source. */
-export async function setGitSourceAuthConfig(
-  env: Env,
-  id: string,
-  json: string | null
-): Promise<void> {
-  const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(`UPDATE git_sources SET auth_config = ?2, updated_at = ?3 WHERE id = ?1`)
-    .bind(id, json, now)
-    .run()
 }
 
 export interface CreateGitSourceInput {
@@ -651,12 +640,15 @@ export async function gitAdminRowFor(
 ): Promise<AdminGitSourceRow | null> {
   const row = await getGitSourceById(env, gitSourceId)
   if (!row) return null
-  const [visibility, docCount, sharedConfigured, userConnected] = await Promise.all([
+  const [visibility, docCount, sharedConfigured, userConnected, connection] = await Promise.all([
     listVisibilityForGitSource(env, gitSourceId),
     countGitDocsForSource(env, gitSourceId),
     hasGitSharedCredential(env, gitSourceId),
-    hasGitUserCredential(env, callerUserId, gitSourceId)
+    hasGitUserCredential(env, callerUserId, gitSourceId),
+    getGitConnectionForSource(env, gitSourceId)
   ])
+  // OAuth client config lives on the connection (shared across its repos).
+  const authConfig = connection?.auth_config ?? null
   return {
     id: row.id,
     slug: row.slug,
@@ -680,8 +672,8 @@ export async function gitAdminRowFor(
     lastSyncError: row.last_sync_error,
     docCount,
     sharedCredentialConfigured: sharedConfigured,
-    oauth: oauthPublic(row.auth_config),
-    clientSecretConfigured: oauthSecretIsSet(row.auth_config),
+    oauth: oauthPublic(authConfig),
+    clientSecretConfigured: oauthSecretIsSet(authConfig),
     currentUserConnected: userConnected,
     createdAt: row.created_at,
     updatedAt: row.updated_at
