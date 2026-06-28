@@ -122,7 +122,9 @@ export function VerticalSplit({
           : `${listPx}px ${HANDLE_PX}px minmax(0, 1fr)`
       }}
     >
-      <div ref={topRef} style={{ minHeight: 0, overflow: 'auto' }}>
+      {/* Stretch the top pane to the (capped) track; it owns its own scroll
+          so a framed card keeps its header pinned while the body scrolls. */}
+      <div ref={topRef} style={{ minHeight: 0, display: 'grid', overflow: 'hidden' }}>
         {top}
       </div>
       {/* <hr> carries the implicit ARIA `separator` role; focusable + value

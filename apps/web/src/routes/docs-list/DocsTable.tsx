@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { Badge, Button, Group, Menu, Stack, Text, Tooltip } from '@mantine/core'
+import { Badge, Button, Group, Menu, Text, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
 import { clickableRow } from '../../lib/a11y'
 import { filterDocs, type FolderGroup, formatRelative, isGitDoc, personLabel } from './helpers'
@@ -54,95 +54,118 @@ export function DocsTable({
         })()
       : null
   const where = folder ?? repoLabel ?? (group === 'code' ? 'Code Docs' : 'Home')
-  if (filtered.length === 0) {
-    return (
-      <Text c="dimmed">
-        {query ? `No docs match "${query}" across the library.` : `No docs in ${where} yet.`}
-      </Text>
-    )
-  }
+  const caption =
+    filtered.length === 0
+      ? query
+        ? `No docs match "${query}"`
+        : `No docs in ${where} yet`
+      : query
+        ? `${filtered.length} of ${docs.length} matching "${query}" · whole library`
+        : `${filtered.length} in ${where}`
   return (
-    <Stack gap={6}>
-      <Text c="dimmed" fz="xs">
-        {query
-          ? `Showing ${filtered.length} of ${docs.length} matching "${query}" (whole library)`
-          : `Showing ${filtered.length} in ${where}`}
-      </Text>
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Title</th>
-            <th>Folder</th>
-            <th>Created by</th>
-            <th>Last edited by</th>
-            <th style={{ textAlign: 'right' }}>Updated</th>
-            <th style={{ width: 32 }} aria-label="Actions" />
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map((d) => (
-            <tr
-              key={d.id}
-              {...clickableRow(() => onOpen(d.id))}
-              aria-current={d.id === selectedId ? 'true' : undefined}
-              style={d.id === selectedId ? { background: 'var(--bg-elevated)' } : undefined}
-            >
-              <td>
-                <Group gap={6} wrap="nowrap">
-                  <span style={{ fontWeight: 500 }}>{d.title}</span>
-                  {isGitDoc(d) && (
-                    <Tooltip label="Synced from a git repo">
-                      <Badge
-                        color="grape"
-                        variant="light"
-                        size="xs"
-                        leftSection={<span aria-hidden>⎇</span>}
-                      >
-                        git
-                      </Badge>
-                    </Tooltip>
-                  )}
-                  {d.lockedAt !== null && (
-                    <Tooltip label={`Locked${d.lockedBy ? ` by ${personLabel(d.lockedBy)}` : ''}`}>
-                      <Badge color="yellow" variant="light" size="xs">
-                        locked
-                      </Badge>
-                    </Tooltip>
-                  )}
-                </Group>
-                <div className="text-dim" style={{ fontSize: 12, marginTop: 2 }}>
-                  {d.slug}
-                </div>
-              </td>
-              <td className="text-muted">
-                {d.folder ? <code style={{ fontSize: 12 }}>{d.folder}</code> : '—'}
-              </td>
-              <td className="text-muted">{personLabel(d.createdBy)}</td>
-              <td className="text-muted">{personLabel(d.updatedBy ?? d.createdBy)}</td>
-              <td className="text-muted" style={{ textAlign: 'right' }}>
-                {formatRelative(d.updatedAt)}
-              </td>
-              {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation guard, not an interactive control — keeps a click on the actions menu from triggering the row's open-doc handler */}
-              <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
-                {/* Git docs are foldered by their repo path (sync-owned),
+    // Framed to match the preview pane: surface card + border + radius, with a
+    // header strip (count / context) over a scrollable, borderless table body.
+    <section
+      style={{
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        border: '1px solid var(--border)',
+        borderRadius: 'var(--radius)',
+        background: 'var(--bg-surface)',
+        overflow: 'hidden'
+      }}
+    >
+      <div style={{ padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
+        <Text c="dimmed" fz="xs" fw={500} truncate title={caption}>
+          {caption}
+        </Text>
+      </div>
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        {filtered.length === 0 ? (
+          <Text c="dimmed" fz="sm" style={{ padding: 16 }}>
+            {query ? `No docs match "${query}" across the library.` : `No docs in ${where} yet.`}
+          </Text>
+        ) : (
+          <table className="data-table" style={{ border: 'none', borderRadius: 0 }}>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Folder</th>
+                <th>Created by</th>
+                <th>Last edited by</th>
+                <th style={{ textAlign: 'right' }}>Updated</th>
+                <th style={{ width: 32 }} aria-label="Actions" />
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((d) => (
+                <tr
+                  key={d.id}
+                  {...clickableRow(() => onOpen(d.id))}
+                  aria-current={d.id === selectedId ? 'true' : undefined}
+                  style={d.id === selectedId ? { background: 'var(--bg-elevated)' } : undefined}
+                >
+                  <td>
+                    <Group gap={6} wrap="nowrap">
+                      <span style={{ fontWeight: 500 }}>{d.title}</span>
+                      {isGitDoc(d) && (
+                        <Tooltip label="Synced from a git repo">
+                          <Badge
+                            color="grape"
+                            variant="light"
+                            size="xs"
+                            leftSection={<span aria-hidden>⎇</span>}
+                          >
+                            git
+                          </Badge>
+                        </Tooltip>
+                      )}
+                      {d.lockedAt !== null && (
+                        <Tooltip
+                          label={`Locked${d.lockedBy ? ` by ${personLabel(d.lockedBy)}` : ''}`}
+                        >
+                          <Badge color="yellow" variant="light" size="xs">
+                            locked
+                          </Badge>
+                        </Tooltip>
+                      )}
+                    </Group>
+                    <div className="text-dim" style={{ fontSize: 12, marginTop: 2 }}>
+                      {d.slug}
+                    </div>
+                  </td>
+                  <td className="text-muted">
+                    {d.folder ? <code style={{ fontSize: 12 }}>{d.folder}</code> : '—'}
+                  </td>
+                  <td className="text-muted">{personLabel(d.createdBy)}</td>
+                  <td className="text-muted">{personLabel(d.updatedBy ?? d.createdBy)}</td>
+                  <td className="text-muted" style={{ textAlign: 'right' }}>
+                    {formatRelative(d.updatedAt)}
+                  </td>
+                  {/* biome-ignore lint/a11y/useKeyWithClickEvents: stopPropagation guard, not an interactive control — keeps a click on the actions menu from triggering the row's open-doc handler */}
+                  <td onClick={(e) => e.stopPropagation()} style={{ textAlign: 'right' }}>
+                    {/* Git docs are foldered by their repo path (sync-owned),
                     so "Move to folder" only applies to authored docs. */}
-                {!isGitDoc(d) && (
-                  <Menu shadow="md" position="bottom-end" withinPortal>
-                    <Menu.Target>
-                      <Button size="compact-xs" variant="subtle" px={6}>
-                        ⋯
-                      </Button>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Item onClick={() => onMove(d)}>Move to folder…</Menu.Item>
-                    </Menu.Dropdown>
-                  </Menu>
-                )}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </Stack>
+                    {!isGitDoc(d) && (
+                      <Menu shadow="md" position="bottom-end" withinPortal>
+                        <Menu.Target>
+                          <Button size="compact-xs" variant="subtle" px={6}>
+                            ⋯
+                          </Button>
+                        </Menu.Target>
+                        <Menu.Dropdown>
+                          <Menu.Item onClick={() => onMove(d)}>Move to folder…</Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </section>
   )
 }
