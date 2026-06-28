@@ -107,7 +107,11 @@ a:hover {
 .shell {
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
-  min-height: 100%;
+  /* Lock the shell to the viewport (was min-height:100%, which let the shell
+     grow with content so the whole page scrolled). With a fixed height the
+     header + sidebar stay put and `.main-content` (overflow:auto) is the
+     scroll container — required for the docs workspace's independent panes. */
+  height: 100%;
 }
 
 .sidebar {
@@ -117,6 +121,10 @@ a:hover {
   flex-direction: column;
   padding: 16px 12px;
   gap: 4px;
+  /* The shell is viewport-locked, so a tall nav scrolls within the sidebar
+     rather than pushing the shell past the viewport. */
+  min-height: 0;
+  overflow: auto;
 }
 
 .sidebar-brand {
@@ -219,6 +227,9 @@ a:hover {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  /* Allow `.main-content` (flex:1, overflow:auto) to bound + scroll instead of
+     stretching the shell past the viewport. */
+  min-height: 0;
 }
 
 .main-header {
