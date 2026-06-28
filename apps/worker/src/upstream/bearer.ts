@@ -30,11 +30,12 @@ import {
 import {
   getSharedCredential,
   getUserCredential,
+  getUserCredentialStatus,
   markReauthRequired
 } from '../db/queries/upstream-credentials'
 import { UpstreamOAuthProvider } from './oauth-provider'
 import { singleFlightRefresh } from './oauth-refresh'
-import { refreshStatic, staticOAuth } from './oauth-static'
+import { refreshStaticDetailed, staticOAuth } from './oauth-static'
 
 // Refresh a user_oauth access token only when it's within this many
 // seconds of expiry. Going through the SDK's auth() on EVERY bearer
@@ -82,17 +83,11 @@ export async function resolveUserUpstreamBearer(
     // concurrent sessions/devices can't both spend a rotating refresh_token.
     const existing = await provider.tokens()
     if (isFreshAccessToken(existing)) return existing?.access_token ?? null
+    const hadCreds = !!(existing?.access_token || existing?.refresh_token)
 
-    const token = await singleFlightRefresh(env, userId, row.id, {
-      refresh: () =>
-        staticCfg ? refreshStatic(env, provider, staticCfg) : refreshViaSdk(provider, conn),
-      readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
-      isFresh: async () => isFreshAccessToken(await provider.tokens())
-    })
-    // Had a stored credential but couldn't produce a usable token → the
-    // refresh is dead. Flag for re-auth so list_upstreams tells the agent to
-    // reconnect, and audit the clear→set transition (once) for the operator.
-    if (token === null && (existing?.access_token || existing?.refresh_token)) {
+    // Flag the credential for interactive reconnect (once) so list_upstreams
+    // tells the agent to reconnect; audit the clear→set transition.
+    const flagReauth = async () => {
       if (await markReauthRequired(env, userId, row.id)) {
         await audit(env, {
           actorId: userId,
@@ -102,6 +97,44 @@ export async function resolveUserUpstreamBearer(
         })
       }
     }
+
+    if (staticCfg) {
+      // Once a static credential is flagged for reauth (a prior refresh got
+      // invalid_grant), its refresh token is dead until the user reconnects —
+      // skip the refresh entirely. That avoids re-POSTing to the token endpoint
+      // on every stale resolution and silences the repeat "[oauth-static] token
+      // refresh failed" error log. The flag is cleared on reconnect
+      // (exchangeCode → saveTokens → clearReauthRequired), after which refreshes
+      // resume normally.
+      if (hadCreds && (await getUserCredentialStatus(env, userId, row.id)).needsReauth) {
+        return null
+      }
+      // Only the lease winner runs the refresh; capture whether it failed
+      // PERMANENTLY (invalid_grant) so we flag reauth only then — a transient
+      // network / 5xx failure must keep retrying, not lock the user out.
+      let permanent = false
+      const token = await singleFlightRefresh(env, userId, row.id, {
+        refresh: async () => {
+          const r = await refreshStaticDetailed(env, provider, staticCfg)
+          permanent = r.reauth
+          return r.token
+        },
+        readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
+        isFresh: async () => isFreshAccessToken(await provider.tokens())
+      })
+      if (permanent && hadCreds) await flagReauth()
+      return token
+    }
+
+    // DCR (SDK auth()) path. The SDK exposes no permanent/transient signal, so
+    // keep the prior behaviour: any failed refresh with creds present flags for
+    // reauth (and retries on the next resolution).
+    const token = await singleFlightRefresh(env, userId, row.id, {
+      refresh: () => refreshViaSdk(provider, conn),
+      readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
+      isFresh: async () => isFreshAccessToken(await provider.tokens())
+    })
+    if (token === null && hadCreds) await flagReauth()
     return token
   }
   // user_bearer

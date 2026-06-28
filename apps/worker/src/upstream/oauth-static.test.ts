@@ -5,6 +5,7 @@ import {
   buildAuthorizeRedirect,
   exchangeCode,
   refreshStatic,
+  refreshStaticDetailed,
   staticOAuth,
   type StaticFlowProvider,
   type StaticOAuth
@@ -160,6 +161,73 @@ describe('refreshStatic', () => {
       new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
     )
     expect(await refreshStatic(env, p, ENTRA)).toBeNull()
+  })
+})
+
+// The reauth classification is the trust-critical bit: ONLY a permanent
+// `invalid_grant` may flag a credential for reconnect (which then short-circuits
+// future refreshes). Every transient failure must keep `reauth:false` so a
+// network/5xx blip never converts into a permanent lockout.
+describe('refreshStaticDetailed (reauth classification)', () => {
+  const staleCreds: OAuthTokens = {
+    access_token: 'stale',
+    token_type: 'Bearer',
+    refresh_token: 'RT',
+    expires_in: 10
+  }
+
+  it('success ⇒ new token, reauth:false', async () => {
+    const p = fakeProvider(staleCreds)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ access_token: 'AT2', expires_in: 3600 }), { status: 200 })
+    )
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: 'AT2', reauth: false })
+    expect(p.saved?.access_token).toBe('AT2')
+  })
+
+  it('invalid_grant (400) ⇒ PERMANENT: reauth:true', async () => {
+    const p = fakeProvider(staleCreds)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
+    )
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: true })
+    expect(p.saved).toBeUndefined()
+  })
+
+  it('5xx ⇒ TRANSIENT: reauth:false (keeps retrying)', async () => {
+    const p = fakeProvider(staleCreds)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response('upstream down', { status: 503 })
+    )
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: false })
+  })
+
+  it('a 400 with a non-invalid_grant code ⇒ TRANSIENT: reauth:false', async () => {
+    const p = fakeProvider(staleCreds)
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ error: 'temporarily_unavailable' }), { status: 400 })
+    )
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: false })
+  })
+
+  it('a network error ⇒ TRANSIENT: reauth:false', async () => {
+    const p = fakeProvider(staleCreds)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new TypeError('network'))
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: false })
+  })
+
+  it('no stored credentials ⇒ reauth:false (nothing was attempted)', async () => {
+    expect(await refreshStaticDetailed(env, fakeProvider(undefined), ENTRA)).toEqual({
+      token: null,
+      reauth: false
+    })
+  })
+
+  it('a still-fresh token ⇒ token reused, no network, reauth:false', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const p = fakeProvider({ ...staleCreds, access_token: 'fresh', expires_in: 3600 })
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: 'fresh', reauth: false })
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 })
 

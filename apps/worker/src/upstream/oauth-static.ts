@@ -23,6 +23,27 @@ import { assertSafeFetchUrl } from '../util/safe-fetch'
 export type StaticOAuth = NonNullable<UpstreamAuthConfig['oauth']>
 
 /**
+ * Thrown on a non-2xx token-endpoint response. `permanent` is true ONLY for an
+ * `invalid_grant` rejection (RFC 6749 §5.2): the authorization-code or, more
+ * commonly, the refresh token is dead, and only an interactive reconnect
+ * recovers it. Everything else — 5xx, 429, network failures, other 4xx codes —
+ * is transient (`permanent: false`) so callers keep retrying instead of forcing
+ * a needless reconnect / locking the user out.
+ */
+export class OAuthStaticError extends Error {
+  readonly permanent: boolean
+  constructor(
+    readonly phase: 'exchange' | 'refresh',
+    readonly status: number,
+    readonly code: string | null
+  ) {
+    super(`oauth_static_${phase}_failed`)
+    this.name = 'OAuthStaticError'
+    this.permanent = (status === 400 || status === 401) && code === 'invalid_grant'
+  }
+}
+
+/**
  * Narrow an auth_config to its static-OAuth sub-config, or null when the
  * upstream is in DCR mode. Lets callers branch without a non-null assertion.
  */
@@ -95,31 +116,44 @@ export async function exchangeCode(
   await provider.saveTokens(toOAuthTokens(json))
 }
 
+export interface StaticRefresh {
+  /** Usable access token, or null when none could be produced. */
+  token: string | null
+  /**
+   * True ONLY on a permanent refresh rejection (`invalid_grant`) — the caller
+   * should flag the credential for interactive reconnect. Transient failures
+   * (5xx / 429 / network / other 4xx codes) leave this false so retries
+   * continue rather than locking the user out.
+   */
+  reauth: boolean
+}
+
 /**
- * Return a usable access token for the proxy, refreshing via the
- * refresh_token grant when the stored one is near expiry. Returns null when
- * there's nothing usable (no creds, or the refresh was rejected) — the
- * caller then forces an interactive re-auth.
+ * Refresh a static-OAuth access token, returning both the token and whether the
+ * failure (if any) was a permanent `invalid_grant` that warrants reconnect.
+ * Refreshes via the refresh_token grant only when the stored access token is
+ * near expiry; a still-fresh token is returned as-is (no refresh-token rotation).
  */
-export async function refreshStatic(
+export async function refreshStaticDetailed(
   env: Env,
   provider: StaticFlowProvider,
   oauth: StaticOAuth
-): Promise<string | null> {
+): Promise<StaticRefresh> {
   const current = await provider.tokens()
-  if (!current?.access_token && !current?.refresh_token) return null
+  if (!current?.access_token && !current?.refresh_token) return { token: null, reauth: false }
   // Still-fresh access token: use as-is, don't rotate the refresh token.
   if (
     current?.access_token &&
     current.expires_in !== undefined &&
     current.expires_in > REFRESH_BUFFER_S
   ) {
-    return current.access_token
+    return { token: current.access_token, reauth: false }
   }
   if (!current?.refresh_token) {
     // Near/at expiry with no way to refresh — fall back to whatever access
-    // token we have (may still work briefly) or signal re-auth.
-    return current?.access_token ?? null
+    // token we have (may still work briefly). Not a reauth signal: we never
+    // attempted (and failed) a grant.
+    return { token: current?.access_token ?? null, reauth: false }
   }
   const body = new URLSearchParams({
     grant_type: 'refresh_token',
@@ -128,10 +162,28 @@ export async function refreshStatic(
   })
   const scope = scopeString(oauth)
   if (scope) body.set('scope', scope)
-  const json = await postToken(env, oauth, body, 'refresh').catch(() => null)
-  if (!json) return null
+  let json: TokenResponse
+  try {
+    json = await postToken(env, oauth, body, 'refresh')
+  } catch (err) {
+    // Permanent (invalid_grant) ⇒ signal reauth; any other failure is transient.
+    return { token: null, reauth: err instanceof OAuthStaticError && err.permanent }
+  }
   await provider.saveTokens(toOAuthTokens(json))
-  return typeof json.access_token === 'string' ? json.access_token : null
+  return { token: typeof json.access_token === 'string' ? json.access_token : null, reauth: false }
+}
+
+/**
+ * Token-only refresh for callers that don't manage the reauth flag (git creds,
+ * the OAuth connect/status endpoints). Returns null when there's nothing usable
+ * — the caller then forces an interactive re-auth.
+ */
+export async function refreshStatic(
+  env: Env,
+  provider: StaticFlowProvider,
+  oauth: StaticOAuth
+): Promise<string | null> {
+  return (await refreshStaticDetailed(env, provider, oauth)).token
 }
 
 // ----- internals ------------------------------------------------------
@@ -168,7 +220,7 @@ async function postToken(
     // Body can contain tokens or sensitive IdP error meta — log a code only.
     const code = await safeErrorCode(res)
     console.error(`[oauth-static] token ${phase} failed: HTTP ${res.status}${code ? ` (${code})` : ''}`)
-    throw new Error(`oauth_static_${phase}_failed`)
+    throw new OAuthStaticError(phase, res.status, code)
   }
   return (await res.json()) as TokenResponse
 }
