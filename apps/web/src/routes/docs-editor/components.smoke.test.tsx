@@ -71,6 +71,7 @@ const gitStatus: GitDocStatus = {
   writeStrategy: 'user_bearer',
   currentUserConnected: false,
   oauthConfigured: false,
+  htmlRoundtripUnsafe: false,
   pr: null
 }
 

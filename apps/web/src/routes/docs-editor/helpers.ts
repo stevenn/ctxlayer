@@ -15,6 +15,8 @@ export function formatAbsolute(ts: number): string {
 
 export function explain(err: unknown): string {
   return explainBase(err, {
-    403: 'You do not have permission for this action.'
+    403: 'You do not have permission for this action.',
+    // Write-back's only 422 is the HTML-round-trip guard.
+    422: "This doc uses HTML the editor can't preserve, so write-back is disabled — edit it directly in git."
   })
 }

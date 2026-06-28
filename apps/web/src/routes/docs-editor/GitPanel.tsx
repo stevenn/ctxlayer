@@ -70,10 +70,13 @@ export function GitPanel({
           ? 'yellow'
           : 'green'
 
+  // Write-back is disabled when the source carries HTML the editor can't
+  // round-trip — proposing would silently drop it, so the doc is edit-in-git.
+  const canPropose = canEdit && !status.htmlRoundtripUnsafe
   // Per-user write auth: needed only for user_* write strategies.
   const needsPersonalAuth =
     status.writeStrategy === 'user_oauth' || status.writeStrategy === 'user_bearer'
-  const showAuth = canEdit && needsPersonalAuth
+  const showAuth = canPropose && needsPersonalAuth
 
   async function propose() {
     setBusy(true)
@@ -191,12 +194,21 @@ export function GitPanel({
           </Alert>
         )}
 
-        {canEdit && (
+        {canEdit && status.htmlRoundtripUnsafe && (
+          <Alert color="yellow" variant="light" radius="sm" p={6}>
+            <Text fz="xs">
+              This doc uses HTML the editor can&apos;t round-trip (comments, anchors,{' '}
+              <code>&lt;details&gt;</code>…). Editing here would drop it, so proposing a change is
+              disabled — edit it directly in {status.provider} via the link above.
+            </Text>
+          </Alert>
+        )}
+        {canPropose && (
           <Button size="xs" variant="default" onClick={propose} loading={busy}>
             Propose change (open PR)
           </Button>
         )}
-        {canEdit && (
+        {canPropose && (
           <Button size="compact-xs" variant="subtle" onClick={reviewInBrowser} loading={busy}>
             Review &amp; create in {status.provider}…
           </Button>

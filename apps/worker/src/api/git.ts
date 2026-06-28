@@ -37,6 +37,7 @@ import { createGitProvider } from '../git/provider'
 import type { GitRepoConfig } from '../git/provider-types'
 import { resolveGitReadToken } from '../git/credentials'
 import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
+import { htmlRoundtripUnsafe } from '../git/html-guard'
 import { gitStaticOAuth } from '../git/git-oauth'
 import { seal } from '../crypto/aead'
 import { notFound, parseJsonBody } from './respond'
@@ -104,6 +105,10 @@ gitDocsRoute.get('/:id/git', async (c) => {
   // drive the editor rail's "smart connect" (show Connect only when needed).
   const connection = await getGitConnectionForSource(c.env, source.id)
   const userCred = await getGitUserCredential(c.env, userId, source.id)
+  // Block write-back when the source carries HTML the editor can't round-trip
+  // (it's dropped on parse, so a PR would commit it away). Read source.md only
+  // when the user could otherwise write — viewers don't need the flag.
+  const htmlUnsafe = canWrite ? htmlRoundtripUnsafe((await readSourceMarkdown(c.env, id)) ?? '') : false
   const body: GitDocStatus = {
     gitSourceId: source.id,
     sourceSlug: source.slug,
@@ -117,6 +122,7 @@ gitDocsRoute.get('/:id/git', async (c) => {
     writeStrategy: connection?.write_strategy ?? source.write_strategy,
     currentUserConnected: userCred !== null,
     oauthConfigured: gitStaticOAuth(connection?.auth_config ?? null) !== null,
+    htmlRoundtripUnsafe: htmlUnsafe,
     pr
   }
   return c.json(body)
@@ -144,7 +150,7 @@ gitDocsRoute.post('/:id/git/pull-request', async (c) => {
     actorId: userId,
     markdown: parsed.data.markdown
   })
-  if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 502)
+  if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 422 | 502)
   return c.json(outcome.result)
 })
 
@@ -160,7 +166,7 @@ gitDocsRoute.post('/:id/git/review-url', async (c) => {
     actorId: userId,
     markdown: parsed.data.markdown
   })
-  if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 502)
+  if (!outcome.ok) return c.json({ error: outcome.error }, outcome.status as 400 | 404 | 422 | 502)
   return c.json(outcome.result)
 })
 

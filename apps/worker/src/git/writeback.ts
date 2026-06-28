@@ -34,6 +34,7 @@ import { createGitProvider } from './provider'
 import type { GitProviderClient, GitRepoConfig } from './provider-types'
 import { resolveGitWriteToken } from './credentials'
 import { normalizeMarkdown } from './markdown-normalize'
+import { htmlRoundtripUnsafe } from './html-guard'
 
 export type WriteBackOutcome =
   | { ok: true; result: CreatePullRequestResult }
@@ -83,9 +84,18 @@ async function setupWriteBack(
   // stays a no-op. The editor body never includes frontmatter.
   const editedFull = await okfReattachForWriteBack(env, docId, input.markdown)
   const normalized = normalizeMarkdown(editedFull)
-  const baseline = normalizeMarkdown((await readSourceMarkdown(env, docId)) ?? '')
+  const baselineRaw = (await readSourceMarkdown(env, docId)) ?? ''
+  const baseline = normalizeMarkdown(baselineRaw)
   const openPr = await getOpenPrForDoc(env, docId)
   if (normalized === baseline) return { kind: 'noop', openPr }
+
+  // The source carries HTML the BlockNote round-trip drops (it's already gone
+  // from the editor body), so committing this edit would silently delete it.
+  // Refuse — the doc is edit-in-git-only. (No-ops above never reach here, so an
+  // unchanged HTML doc isn't blocked.)
+  if (htmlRoundtripUnsafe(baselineRaw)) {
+    return { kind: 'error', status: 422, error: 'html_unsafe' }
+  }
 
   const write = await resolveGitWriteToken(env, source, input.actorId)
   if (!write) return { kind: 'error', status: 400, error: 'no_write_token' }

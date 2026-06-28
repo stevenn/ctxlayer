@@ -198,6 +198,11 @@ export const GitDocStatus = z.object({
   // True iff the connection has static-OAuth configured — Connect-via-OAuth
   // vs the paste-a-PAT field.
   oauthConfigured: z.boolean().default(false),
+  // True iff source.md carries HTML the BlockNote round-trip can't preserve
+  // (comments, anchors, <details>, styling tags). The editor disables
+  // write-back for these — editing would silently drop that HTML — so the user
+  // is steered to edit in git directly.
+  htmlRoundtripUnsafe: z.boolean().default(false),
   pr: GitPrRef.nullable()
 })
 export type GitDocStatus = z.infer<typeof GitDocStatus>
