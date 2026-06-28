@@ -37,7 +37,8 @@ export function BlankDocModal({
         slug: slugField.slug.trim() || undefined
       })
       onClose()
-      nav(`/app/docs/${id}`)
+      // A brand-new doc should land in the editor, not the read-only preview.
+      nav(`/app/docs/${id}/edit`)
     } catch (err) {
       setError(explain(err))
     } finally {

@@ -13,7 +13,8 @@ export function DocsTable({
   sourceId,
   query,
   onOpen,
-  onMove
+  onMove,
+  selectedId
 }: {
   docs: DocSummary[]
   group: FolderGroup
@@ -22,6 +23,8 @@ export function DocsTable({
   query: string
   onOpen: (id: string) => void
   onMove: (doc: DocSummary) => void
+  // The doc currently shown in the preview pane — highlighted in the list.
+  selectedId?: string
 }) {
   // A non-empty query is a global "find a doc anywhere" — it searches the
   // whole library (both groups) and bypasses the folder filter. An empty
@@ -78,7 +81,12 @@ export function DocsTable({
         </thead>
         <tbody>
           {filtered.map((d) => (
-            <tr key={d.id} {...clickableRow(() => onOpen(d.id))}>
+            <tr
+              key={d.id}
+              {...clickableRow(() => onOpen(d.id))}
+              aria-current={d.id === selectedId ? 'true' : undefined}
+              style={d.id === selectedId ? { background: 'var(--bg-elevated)' } : undefined}
+            >
               <td>
                 <Group gap={6} wrap="nowrap">
                   <span style={{ fontWeight: 500 }}>{d.title}</span>

@@ -71,7 +71,8 @@ export function ImportDocModal({ onClose }: { onClose: () => void }) {
         )
       }
       onClose()
-      nav(`/app/docs/${id}`)
+      // Open the freshly-imported doc in the editor (not the preview).
+      nav(`/app/docs/${id}/edit`)
     } catch (err) {
       setError(explain(err))
     } finally {

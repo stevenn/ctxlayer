@@ -51,10 +51,10 @@ vi.mock('../../lib/api', () => ({
   patchDoc: vi.fn().mockResolvedValue(undefined)
 }))
 
-import { DocsList } from './index'
+import { DocsWorkspace } from './index'
 
 function renderScreen() {
-  const router = createMemoryRouter([{ path: '/', element: <DocsList /> }])
+  const router = createMemoryRouter([{ path: '/', element: <DocsWorkspace /> }])
   return render(
     <MantineProvider>
       <DialogProvider>
@@ -64,7 +64,7 @@ function renderScreen() {
   )
 }
 
-describe('DocsList (render smoke)', () => {
+describe('DocsWorkspace (render smoke)', () => {
   beforeEach(() => vi.clearAllMocks())
 
   it('mounts and renders the library heading after the docs fetch resolves', async () => {

@@ -579,7 +579,7 @@ export function DocsEditor() {
           <Button
             variant="subtle"
             size="xs"
-            onClick={() => nav('/app/docs')}
+            onClick={() => nav(`/app/docs/${doc.id}`)}
             style={{ paddingLeft: 6, paddingRight: 6 }}
           >
             ← Docs

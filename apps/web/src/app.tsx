@@ -4,7 +4,7 @@ import { Navigate, Route } from 'react-router-dom'
 import { SignIn } from './routes/sign-in'
 import { SearchHome } from './routes/search-home'
 import { DocPathRedirect } from './routes/doc-path-redirect'
-import { DocsList } from './routes/docs-list'
+import { DocsWorkspace } from './routes/docs-list'
 import { Upstreams } from './routes/upstreams'
 import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
@@ -68,9 +68,13 @@ export function appRoutes() {
         <Route errorElement={<RouteError inShell />}>
           <Route index element={<Navigate to="/app/search" replace />} />
           <Route path="search" element={<SearchHome />} />
-          <Route path="docs" element={<DocsList />} />
+          {/* Browse workspace: tree + list + read-only preview. The :id
+              variant previews that doc in place (deep-linkable). Editing is
+              the explicit, separate /edit route below. */}
+          <Route path="docs" element={<DocsWorkspace />} />
+          <Route path="docs/:id" element={<DocsWorkspace />} />
           <Route
-            path="docs/:id"
+            path="docs/:id/edit"
             element={
               <Lazily>
                 <DocsEditor />
