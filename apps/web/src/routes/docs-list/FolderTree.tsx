@@ -60,7 +60,8 @@ export function FolderTree({
   rootDocCount,
   manageable,
   onRename,
-  onDelete
+  onDelete,
+  forceExpanded
 }: {
   group: FolderGroup
   rootLabel: string
@@ -71,6 +72,9 @@ export function FolderTree({
   manageable: boolean
   onRename?: (path: string) => void
   onDelete?: (path: string, descendantDocCount: number) => void
+  // Override the persisted collapse state to show every node — used while the
+  // quick filter is active so collapsed parents still reveal their matches.
+  forceExpanded?: boolean
 }) {
   const tree = useMemo(
     () => buildTree(folders, rootDocCount, rootLabel),
@@ -94,6 +98,7 @@ export function FolderTree({
         selected={selected}
         onSelect={onSelect}
         collapse={collapse}
+        forceExpanded={forceExpanded}
         manageable={manageable}
         onRename={onRename}
         onDelete={onDelete}
@@ -107,11 +112,13 @@ export function FolderTree({
 export function CodeDocsTree({
   codeDocs,
   selected,
-  onSelect
+  onSelect,
+  forceExpanded
 }: {
   codeDocs: DocSummary[]
   selected: FolderSelection
   onSelect: (sel: FolderSelection) => void
+  forceExpanded?: boolean
 }) {
   const repos = useMemo(() => groupCodeDocsByRepo(codeDocs), [codeDocs])
   // Code docs collapse per repo — each repo is a depth-0 node, so toggling it
@@ -146,6 +153,7 @@ export function CodeDocsTree({
           selected={selected}
           onSelect={onSelect}
           collapse={collapse}
+          forceExpanded={forceExpanded}
           manageable={false}
         />
       ))}
@@ -161,6 +169,7 @@ function FolderNodeRow({
   selected,
   onSelect,
   collapse,
+  forceExpanded,
   manageable,
   onRename,
   onDelete
@@ -173,6 +182,7 @@ function FolderNodeRow({
   selected: FolderSelection
   onSelect: (sel: FolderSelection) => void
   collapse: CollapseCtl
+  forceExpanded?: boolean
   manageable: boolean
   onRename?: (path: string) => void
   onDelete?: (path: string, descendantDocCount: number) => void
@@ -184,7 +194,7 @@ function FolderNodeRow({
   const isRoot = node.path === null
   const hasChildren = node.children.length > 0
   const key = nodeKey(group, sourceId, node.path)
-  const isCollapsed = hasChildren && collapse.collapsed.has(key)
+  const isCollapsed = !forceExpanded && hasChildren && collapse.collapsed.has(key)
 
   const toggle = (e: MouseEvent) => {
     e.stopPropagation()
@@ -278,6 +288,7 @@ function FolderNodeRow({
             selected={selected}
             onSelect={onSelect}
             collapse={collapse}
+            forceExpanded={forceExpanded}
             manageable={manageable}
             onRename={onRename}
             onDelete={onDelete}

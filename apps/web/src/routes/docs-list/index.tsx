@@ -27,7 +27,14 @@ import { CodeDocsTree, FolderTree } from './FolderTree'
 import { DocsTable } from './DocsTable'
 import { DocPreview } from './DocPreview'
 import { VerticalSplit } from './VerticalSplit'
-import { computeFolderNodes, EMPTY_DOCS, explain, type FolderSelection, isGitDoc } from './helpers'
+import {
+  computeFolderNodes,
+  EMPTY_DOCS,
+  explain,
+  filterDocs,
+  type FolderSelection,
+  isGitDoc
+} from './helpers'
 
 export { personLabel } from './helpers'
 
@@ -123,7 +130,12 @@ export function DocsWorkspace() {
   const docs = status.kind === 'ready' ? status.docs : EMPTY_DOCS
   const homeDocs = useMemo(() => docs.filter((d) => !isGitDoc(d)), [docs])
   const codeDocs = useMemo(() => docs.filter(isGitDoc), [docs])
-  const homeFolders = useMemo(() => computeFolderNodes(homeDocs), [homeDocs])
+  // The quick filter also narrows the TREES: when active, only folders/repos
+  // that contain a matching doc are shown (same match as the doc list). With an
+  // empty query filterDocs returns everything, so the full tree shows.
+  const treeHomeDocs = useMemo(() => filterDocs(homeDocs, query), [homeDocs, query])
+  const treeCodeDocs = useMemo(() => filterDocs(codeDocs, query), [codeDocs, query])
+  const homeFolders = useMemo(() => computeFolderNodes(treeHomeDocs), [treeHomeDocs])
 
   // Centre the tree + list on the previewed doc's folder — once per id, so a
   // deep-link (or a row click from the global filter) reveals + highlights the
@@ -271,6 +283,10 @@ export function DocsWorkspace() {
             minHeight: 0,
             display: 'grid',
             gridTemplateColumns: '300px minmax(0, 1fr)',
+            // Pin the single row to the available height so each column scrolls
+            // inside its own box — without this an `auto` row grows to the
+            // tallest column (a long tree) and the whole page scrolls instead.
+            gridTemplateRows: 'minmax(0, 1fr)',
             gap: 16
           }}
         >
@@ -302,15 +318,15 @@ export function DocsWorkspace() {
                   group="home"
                   rootLabel="Home"
                   folders={homeFolders}
-                  rootDocCount={homeDocs.filter((d) => !d.folder).length}
+                  rootDocCount={treeHomeDocs.filter((d) => !d.folder).length}
                   selected={selected}
                   onSelect={setSelected}
                   manageable
                   onRename={onRenameFolder}
                   onDelete={onDeleteFolder}
                 />
-                {codeDocs.length > 0 && (
-                  <CodeDocsTree codeDocs={codeDocs} selected={selected} onSelect={setSelected} />
+                {treeCodeDocs.length > 0 && (
+                  <CodeDocsTree codeDocs={treeCodeDocs} selected={selected} onSelect={setSelected} />
                 )}
               </Stack>
             </div>
