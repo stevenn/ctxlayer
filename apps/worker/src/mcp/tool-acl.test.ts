@@ -6,6 +6,8 @@ import {
   type UserPrincipals
 } from '@ctxlayer/shared'
 import { indexToolAccess, accessKey, type ToolAccessRow } from '../db/queries/tool-access'
+import { visibleTools } from './tools-proxy'
+import type { UpstreamToolRow } from '../db/queries/upstream-tools'
 
 // The per-tool ACL evaluation core. This is the security boundary that
 // decides which proxied tools register (list-time hide) + what the
@@ -89,5 +91,42 @@ describe('indexToolAccess', () => {
     const rules = idx.get(accessKey('u1', 'delete'))
     expect(isToolAllowed(rules, principals({ roles: new Set(['r_eng']) }))).toBe(true)
     expect(isToolAllowed(rules, principals({ roles: new Set(['r_qa']) }))).toBe(false)
+  })
+})
+
+// `visibleTools` is the `describe_upstream` catalogue's ACL gate: it must drop
+// exactly the tools `init()` would hide from registration, so the catalogue
+// never leaks the name/summary of a tool the caller can't call.
+describe('visibleTools', () => {
+  const tool = (tool_name: string): UpstreamToolRow =>
+    ({
+      upstream_id: 'u1',
+      tool_name,
+      description: null,
+      input_schema: '{}',
+      cached_at: 0,
+      input_schema_hash: null,
+      last_schema_change_at: null,
+      last_diff_summary: null
+    }) as UpstreamToolRow
+
+  // `get` is open (no rules); `delete` is locked to role r_eng.
+  const acl = indexToolAccess([
+    { upstream_id: 'u1', tool_name: 'delete', principal_kind: 'role', principal_id: 'r_eng' }
+  ])
+
+  it('drops a locked tool the caller does not match, keeps the open one', () => {
+    const out = visibleTools('u1', [tool('get'), tool('delete')], acl, principals())
+    expect(out.map((t) => t.tool_name)).toEqual(['get'])
+  })
+
+  it('keeps the locked tool once the caller has the principal', () => {
+    const out = visibleTools(
+      'u1',
+      [tool('get'), tool('delete')],
+      acl,
+      principals({ roles: new Set(['r_eng']) })
+    )
+    expect(out.map((t) => t.tool_name)).toEqual(['get', 'delete'])
   })
 })

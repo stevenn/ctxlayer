@@ -20,7 +20,8 @@
 /app/docs/new
 /app/docs/:id               -> BlockNote editor + Yjs
 /app/docs/:id/revisions
-/app/upstreams              -> connect wizard cards
+/app/upstreams              -> connect wizard cards (auth/connections only)
+/app/tools                  -> tools directory (built-in + upstream tools, by family)
 /app/mcp-setup              -> setup instructions + token generator
 /app/usage                  -> personal stats
 /app/profile                -> name/email, signout
@@ -85,6 +86,20 @@ Connect your tools
 │ [ ghp_____________________ ] [Save]   │  └─────────────────────────────────┘
 └────────────────────────────────────────┘
 ```
+
+**`/app/tools`** — the tools directory. `/app/upstreams` owns **connections**;
+this page owns **capabilities**. One `GET /api/tools` feeds it: the org's
+built-in tools (`whoami`, `list_upstreams`, `describe_upstream`, …) plus every
+visible upstream's cached tools, **grouped by native family prefix** (`wit_*`,
+`repo_*`, …) by the same `toolFamily` rule the agent's `describe_upstream` uses.
+A search box filters across name + summary. Each upstream card shows connection
+state (deep-linking back to `/app/upstreams` to connect/reauth). ACL-locked
+tools are **shown with a "Restricted — requires &lt;role/team/product&gt;" badge**
+(display names, not hidden) — the human directory advises where the agent path
+hides. Cache-only (no upstream dial). Builder: `apps/worker/src/api/tools-directory.ts`.
+Each tool row has a lazy **+ details** expander that fetches the upstream's full
+catalogue (`GET /api/upstreams/:id/tools`, once per card) to show the input-schema
+parameter list + per-tool skill/doc attachment chips.
 
 **`/app/mcp-setup`**
 ```
@@ -158,6 +173,11 @@ POST   /api/upstreams/:id/credentials       -> { kind:'bearer', token }   -> 204
 DELETE /api/upstreams/:id/credentials       -> 204
 GET    /api/upstreams/:id/oauth/start?return_to=  -> 302
 GET    /api/upstreams/:id/oauth/callback    -> 302 to return_to
+GET    /api/upstreams/:id/tools             -> { tools:[{toolName,description,inputSchema,…}] }  (raw catalogue; admin + deferred detail view)
+
+GET    /api/tools                           -> { builtins:[{name,title,description}],
+                                                 upstreams:[{ …list_upstreams header…, groups:[{family,tools:[{name,call,summary,restricted,requires?}]}] }] }
+                                               (tools directory feed for /app/tools; cache-only, per-tool ACL → restricted+requires-as-names)
 
 GET    /api/usage/me?from=&to=&group=       -> [{ key, calls, reqBytes, respBytes, reqTokens, respTokens, errors }]
 

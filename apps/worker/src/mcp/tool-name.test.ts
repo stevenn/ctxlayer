@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { collapseSlugPrefix, mangleToolName, unmangleToolName } from './tool-name'
+import { collapseSlugPrefix, mangleToolName, toolFamily, unmangleToolName } from './tool-name'
 
 describe('mangleToolName', () => {
   it('joins slug and tool name with __', () => {
@@ -77,5 +77,28 @@ describe('collapseSlugPrefix', () => {
 
   it('leaves alone when tool name equals slug', () => {
     expect(collapseSlugPrefix('notion', 'notion')).toBe('notion')
+  })
+})
+
+describe('toolFamily', () => {
+  it('is the first-underscore prefix of the tool name', () => {
+    expect(toolFamily('up-ado', 'wit_work_item')).toBe('wit')
+    expect(toolFamily('up-ado', 'search_code')).toBe('search')
+    expect(toolFamily('up-ado', 'repo_pull_request')).toBe('repo')
+  })
+
+  it('returns "" when the name has no underscore (self-describing)', () => {
+    expect(toolFamily('up-ado', 'search')).toBe('')
+  })
+
+  it('derives the family from the SLUG-COLLAPSED name', () => {
+    // notion-search under slug "notion" collapses to "search" → no family.
+    expect(toolFamily('notion', 'notion-search')).toBe('')
+    // github_create_issue under slug "github" collapses to "create_issue" → "create".
+    expect(toolFamily('github', 'github_create_issue')).toBe('create')
+  })
+
+  it('returns "" for a leading underscore (no prefix)', () => {
+    expect(toolFamily('up-x', '_internal')).toBe('')
   })
 })

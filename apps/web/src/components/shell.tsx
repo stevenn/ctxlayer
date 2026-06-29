@@ -26,6 +26,7 @@ const PRIMARY_NAV: NavSpec[] = [
     matches: (p) => p === '/app' || p.startsWith('/app/search')
   },
   { to: '/app/docs', label: 'Context', matches: (p) => p.startsWith('/app/docs') },
+  { to: '/app/tools', label: 'Tools' },
   { to: '/app/upstreams', label: 'Upstreams' },
   { to: '/app/mcp-setup', label: 'MCP setup' },
   { to: '/app/usage', label: 'Usage' }
@@ -49,6 +50,7 @@ const ADMIN_NAV: NavSpec[] = [
 const TITLES: Record<string, string> = {
   '/app/search': 'Search',
   '/app/docs': 'Context Library',
+  '/app/tools': 'Tools',
   '/app/upstreams': 'Upstreams',
   '/app/mcp-setup': 'MCP setup',
   '/app/usage': 'Usage',

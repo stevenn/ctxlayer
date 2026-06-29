@@ -61,3 +61,18 @@ export function collapseSlugPrefix(slug: string, toolName: string): string {
   }
   return toolName
 }
+
+/**
+ * The "family" of a proxied tool: the first-underscore prefix of its
+ * slug-collapsed name (e.g. `wit_work_item` → `wit`, `repo_branch` → `repo`).
+ * Tools with no underscore (or a leading underscore) have no family and
+ * return `''` — their name is self-describing. Computed from the COLLAPSED
+ * name so it matches what the agent sees. Shared by the agent-facing
+ * `describe_upstream` grouping and the `/api/tools` directory so the two can
+ * never drift.
+ */
+export function toolFamily(slug: string, toolName: string): string {
+  const collapsed = collapseSlugPrefix(slug, toolName)
+  const u = collapsed.indexOf('_')
+  return u > 0 ? collapsed.slice(0, u) : ''
+}

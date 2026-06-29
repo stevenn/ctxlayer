@@ -14,7 +14,7 @@ import { z } from 'zod'
 import type { Env } from '../env'
 import { listPublishedSkills } from '../db/queries/skills'
 import { listAttachmentsForSkills } from '../db/queries/skill-attachments'
-import { type McpSkillSummary, McpListSkillsResult } from '@ctxlayer/shared'
+import { type McpSkillSummary, McpListSkillsResult, builtinToolMeta } from '@ctxlayer/shared'
 import { loadPublishedSkillMarkdown } from './skill-render'
 import { registerSkillSep2640 } from './skill-sep2640'
 
@@ -25,12 +25,13 @@ export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
 ) => Promise<T>
 
 export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): void {
+  // list_skills + get_skill title/description are sourced from BUILTIN_TOOLS
+  // in `packages/shared/src/builtin-tools.ts` via builtinToolMeta (single
+  // source for /api/tools + the agent surface). Schemas + handlers stay here.
   server.registerTool(
     'list_skills',
     {
-      title: 'List skills',
-      description:
-        'Lists org-curated skills (procedural playbooks the agent can load on demand). Each entry carries the SKILL.md `name`, a one-line `description` (when to invoke), and the upstream tools it is attached to. Only published skills surface.',
+      ...builtinToolMeta('list_skills'),
       // structuredContent must be an object, so the summary array is wrapped
       // under `skills`; the text `content` keeps the bare array for back-compat.
       outputSchema: { skills: McpListSkillsResult }
@@ -64,11 +65,7 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
 
   server.registerTool(
     'get_skill',
-    {
-      title: 'Get skill',
-      description: 'Fetches a skill body by slug. Returns SKILL.md frontmatter + body in markdown.',
-      inputSchema: { slug: z.string().min(1) }
-    },
+    { ...builtinToolMeta('get_skill'), inputSchema: { slug: z.string().min(1) } },
     (args) =>
       rec('get_skill', args, async () => {
         const md = await loadPublishedSkillMarkdown(env, args.slug)

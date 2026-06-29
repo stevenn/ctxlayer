@@ -226,7 +226,8 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 ### Built-in tools
 - `whoami()` — `{userId, email, role}`.
 - `list_my_context()` — `{teams, products, accessibleUpstreams, defaultScope}`.
-- `list_upstreams()` — `[{slug, displayName, connected}]`, already scoped by `upstream_visibility`.
+- `list_upstreams()` — `[{slug, displayName, connected, toolsCount, attached_skills, attached_docs}]`, already scoped by `upstream_visibility`.
+- `describe_upstream({ slug, family?, query? })` — one upstream's tools by their **native** names, grouped by family prefix, each with its callable `<slug>__<tool>` name + a one-line summary. Lazy drill-in past `list_upstreams`'s count; cache-only, per-tool-ACL filtered. See [C9](plan/C-upstream-proxy.md).
 - `get_doc({ id })` — rendered markdown.
 - `search_docs({ query, k?, scope? })` — Vectorize query; `scope` defaults to caller's teams/products, pass `'all'` to disable. See [F](plan/F-org-ia.md) for scope semantics.
 - `list_skills()` / `get_skill({ slug })` — org-curated procedural playbooks (skills surface), with attachment metadata on upstreams.
@@ -288,7 +289,8 @@ resilience (long calls + oversized responses) in [docs/plan/I-upstream-resilienc
 - `/sign-in` — GitHub (Google supported but disabled in this deploy).
 - `/app/docs` — tree/list + BlockNote editor with Yjs realtime collab, explicit Save/Discard + unsaved-changes nav guard.
 - `/app/admin/teams`, `/app/admin/products`, `/app/admin/upstreams`.
-- `/upstreams` — cards per enabled upstream: `user_bearer` shows password-input + Connect/Replace/Disconnect; `user_oauth` shows Connect-with-OAuth button (DCR + PKCE round-trip happens here, before the agent session); `none`/`shared_bearer` show an info notice. `?oauth_connected=<slug>` / `?oauth_error=<...>` flash banner on return from the callback.
+- `/upstreams` — **connections only**: cards per enabled upstream: `user_bearer` shows password-input + Connect/Replace/Disconnect; `user_oauth` shows Connect-with-OAuth button (DCR + PKCE round-trip happens here, before the agent session); `none`/`shared_bearer` show an info notice. `?oauth_connected=<slug>` / `?oauth_error=<...>` flash banner on return from the callback. A "Browse N tools →" link points at `/tools`.
+- `/tools` — **tools directory** (capabilities, split out of `/upstreams`): built-in tools + every visible upstream's cached tools grouped by native family prefix (`GET /api/tools`, builder `apps/worker/src/api/tools-directory.ts`), searchable; ACL-locked tools shown with a "Restricted — requires X" badge (display names; the human directory advises where the agent's `describe_upstream` hides). See [D — UI + REST](plan/D-ui-and-rest.md).
 - `/mcp-setup` — live `${publicBaseUrl}/mcp` snippet + per-client config blocks for Claude (web + Desktop + Code), Cursor/Windsurf/Zed/VS Code, all with one-click copy.
 - `/usage` — personal stats: own daily totals + top tools + top upstreams. Range select (7/30/90 days).
 
@@ -311,7 +313,7 @@ Topic-specific deep-dives live under [`docs/plan/`](plan/):
 
 - [A — Auth flows (inbound + outbound)](plan/A-auth-flows.md) — DCR, paste-bearer fallback, SPA session, allowlist enforcement, `user_bearer` / `user_oauth` / `shared_bearer` outbound, token & secret matrix.
 - [B — Stdio via external HTTP bridge](plan/B-stdio-bridge.md) — bring-your-own-bridge model: operator runs a stdio↔HTTP bridge (e.g. supergateway), exposes Streamable HTTP, registers it as a normal `streamable_http` upstream; per-user creds via the existing strategies; no ctxlayer-managed sandbox lifecycle.
-- [C — Upstream proxy mechanics](plan/C-upstream-proxy.md) — `tools/list` aggregation, namespacing edge cases, lazy connect cost analysis, error taxonomy, streaming, subrequest accounting, concurrent calls, `list_upstreams()` shape.
+- [C — Upstream proxy mechanics](plan/C-upstream-proxy.md) — `tools/list` aggregation, namespacing edge cases, lazy connect cost analysis, error taxonomy, streaming, subrequest accounting, concurrent calls, `list_upstreams()` shape, `describe_upstream()` native-name discovery.
 - [D — UI surface + REST endpoints](plan/D-ui-and-rest.md) — sitemap, user screens, admin screens, role gating, full REST catalogue.
 - [E — Dev environment](plan/E-dev-environment.md) — session bootstrap, local dev DX, test harness, module conventions, observability, env vars, onboarding checklist.
 - [F — Org information architecture](plan/F-org-ia.md) — teams, products, upstream visibility, doc tags; data model additions in `0004_org_ia.sql`; access resolution; default search scope; `list_my_context`; admin UI + REST additions; UX guardrails.

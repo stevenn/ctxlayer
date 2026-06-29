@@ -6,6 +6,7 @@ import { SearchHome } from './routes/search-home'
 import { DocPathRedirect } from './routes/doc-path-redirect'
 import { DocsWorkspace } from './routes/docs-list'
 import { Upstreams } from './routes/upstreams'
+import { Tools } from './routes/tools'
 import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
 import {
@@ -82,6 +83,7 @@ export function appRoutes() {
             }
           />
           <Route path="upstreams" element={<Upstreams />} />
+          <Route path="tools" element={<Tools />} />
           <Route path="mcp-setup" element={<McpSetup />} />
           <Route path="usage" element={<Usage />} />
           <Route path="admin/upstreams" element={<AdminUpstreams />} />

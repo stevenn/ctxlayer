@@ -42,6 +42,7 @@ import { listUserRoleIds } from '../db/queries/roles'
 import {
   accessKey,
   indexToolAccess,
+  listToolAccessForUpstream,
   listToolAccessForUpstreams
 } from '../db/queries/tool-access'
 import { createUpstreamClient } from '../upstream/create-client'
@@ -51,11 +52,13 @@ import {
   requiresFromRules,
   type McpRestrictedTool,
   type McpUpstreamEntry,
+  type McpUpstreamToolGroup,
+  type McpUpstreamTools,
   type SupportedTransport,
   type UserPrincipals
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
-import { mangleToolName, unmangleToolName } from './tool-name'
+import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
 import {
@@ -271,6 +274,38 @@ export class UpstreamProxyRegistry {
       }
     }
     return out
+  }
+
+  /**
+   * Catalogue for the `describe_upstream(slug)` built-in: one upstream's
+   * tools by their NATIVE upstream names, grouped by the upstream's own
+   * first-underscore family prefix, each with its callable mangled name +
+   * a one-line summary. Cache-only (no dial). ACL-filtered to what the
+   * caller can actually call — so it never leaks a tool `init()` would
+   * hide. Returns null when the slug isn't visible to the caller (or
+   * doesn't exist) so the handler can emit a single "not found".
+   */
+  static async describeUpstreamForUser(
+    env: Env,
+    userId: string,
+    slug: string,
+    opts?: { family?: string; query?: string }
+  ): Promise<McpUpstreamTools | null> {
+    const row = (await listUpstreamsVisibleToUser(env, userId)).find((r) => r.slug === slug)
+    if (!row) return null
+    const [principals, aclRows, cached] = await Promise.all([
+      resolveUserPrincipals(env, userId),
+      listToolAccessForUpstream(env, row.id),
+      listCachedTools(env, row.id)
+    ])
+    const acl = indexToolAccess(aclRows)
+    const visible = visibleTools(row.id, cached, acl, principals)
+    return {
+      slug: row.slug,
+      displayName: row.display_name,
+      toolsCount: visible.length,
+      groups: groupToolsByFamily(row.slug, visible, opts)
+    }
   }
 
   /**
@@ -563,6 +598,87 @@ async function resolveUserPrincipals(env: Env, userId: string): Promise<UserPrin
 
 export function truncateDescription(s: string, max = 1024): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
+}
+
+/**
+ * Condense a raw upstream tool description into a single-line summary for
+ * the `describe_upstream` catalogue. Strips control characters (untrusted
+ * model input — same rule as `registerTool`), collapses the newlines
+ * `sanitizeUntrustedText` deliberately keeps into single spaces, and caps
+ * the length. Returns '' for a null/empty description. We deliberately do
+ * NOT try to extract a "first sentence" — upstream blurbs are riddled with
+ * abbreviations ("e.g.", "i.e.", "System.Title") whose trailing dot is
+ * followed by a space, so any period-boundary heuristic cuts early on them.
+ * A clean flatten + cap is both robust and more informative. Operates on
+ * the RAW `row.description` (no `[DisplayName]` prefix — that's added only
+ * at registration), so summaries stay clean.
+ */
+export function summariseToolDescription(desc: string | null, max = 200): string {
+  const flat = sanitizeUntrustedText(desc ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return truncateDescription(flat, max)
+}
+
+/**
+ * Group an upstream's cached tools by their NATIVE name's first-underscore
+ * family prefix, computed from the slug-collapsed name so it matches what
+ * the agent sees. Each entry carries the verbatim upstream `name`, the
+ * callable mangled `call` (via the same `mangleToolName` rule registration
+ * uses — drift-proof), and a one-line `summary`. Optional `family` /
+ * `query` filters narrow the result. Families sort alphabetically with the
+ * ungrouped ('') bucket last; tools sort by name within a group. Pure.
+ */
+export function groupToolsByFamily(
+  slug: string,
+  tools: UpstreamToolRow[],
+  opts?: { family?: string; query?: string }
+): McpUpstreamToolGroup[] {
+  const familyFilter = opts?.family?.toLowerCase()
+  const queryFilter = opts?.query?.toLowerCase()
+  const byFamily = new Map<string, McpUpstreamToolGroup['tools']>()
+  for (const t of tools) {
+    const family = toolFamily(slug, t.tool_name)
+    if (familyFilter !== undefined && family.toLowerCase() !== familyFilter) continue
+    const summary = summariseToolDescription(t.description)
+    if (
+      queryFilter !== undefined &&
+      !t.tool_name.toLowerCase().includes(queryFilter) &&
+      !summary.toLowerCase().includes(queryFilter)
+    ) {
+      continue
+    }
+    const entry = { name: t.tool_name, call: mangleToolName(slug, t.tool_name), summary }
+    const arr = byFamily.get(family)
+    if (arr) arr.push(entry)
+    else byFamily.set(family, [entry])
+  }
+  return [...byFamily.entries()]
+    .sort(([a], [b]) => {
+      // Ungrouped ('') always last; otherwise alphabetical.
+      if (a === '') return 1
+      if (b === '') return -1
+      return a < b ? -1 : a > b ? 1 : 0
+    })
+    .map(([family, entries]) => ({
+      family,
+      tools: entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+    }))
+}
+
+/**
+ * Filter cached tools down to the ones the caller may actually call, using
+ * the exact same per-tool ACL predicate `init()` applies before
+ * registration. Load-bearing for `describe_upstream`: without it the
+ * catalogue would leak names/summaries of tools hidden by ACL. Pure.
+ */
+export function visibleTools(
+  upstreamId: string,
+  tools: UpstreamToolRow[],
+  acl: ReturnType<typeof indexToolAccess>,
+  principals: UserPrincipals
+): UpstreamToolRow[] {
+  return tools.filter((t) => isToolAllowed(acl.get(accessKey(upstreamId, t.tool_name)), principals))
 }
 
 /**

@@ -39,7 +39,9 @@ import {
   SearchScope,
   McpMyContext,
   McpSearchResult,
-  McpListUpstreamsResult
+  McpListUpstreamsResult,
+  McpUpstreamTools,
+  builtinToolMeta
 } from '@ctxlayer/shared'
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
@@ -61,13 +63,14 @@ const SERVER_INSTRUCTIONS = `ctxlayer is your org's curated context layer. Along
 
 - \`list_my_context\` — your team / product scopes + the upstreams visible to you.
 - \`list_upstreams\` — visible upstreams with their cached tool counts AND any \`attached_skills\` / \`attached_docs\` (procedural playbooks + reference docs the org has curated for that upstream).
+- \`describe_upstream(slug)\` — that upstream's tools by their NATIVE upstream names, grouped by family prefix, each with its callable \`<slug>__<tool>\` name + a one-line summary. Use when an upstream's mangled tool names are opaque and you need to know what it can do before calling.
 - \`list_skills\` — every published skill, each carrying \`attached_to: [{ upstream_slug, tool_name }]\`.
 - \`get_skill\` / resource \`mcp://ctxlayer/skills/{slug}\` — the skill body (markdown playbook).
 - \`get_doc\` / \`search_docs\` / resource \`mcp://ctxlayer/docs/{id}\` — the doc library with semantic search.
 
 **When the user's request touches an upstream tool, follow this discovery order before calling:**
 
-1. Call \`list_upstreams\` once per session to see the inventory. Note the \`attached_skills\` on the relevant upstream — those are your org's "how we do X with this service" playbooks.
+1. Call \`list_upstreams\` once per session to see the inventory. Note the \`attached_skills\` on the relevant upstream — those are your org's "how we do X with this service" playbooks. When an upstream's tool names are opaque, call \`describe_upstream(slug)\` for its native-named tool catalogue.
 2. If an attached skill looks relevant, read it via \`get_skill\` BEFORE calling the upstream tool. Skills typically encode team IDs, label conventions, status-name choices, and prefer-this-tool-over-that-one guidance the schema alone doesn't show.
 3. Per-tool attachments (visible in skill.attached_to with a non-null \`tool_name\`) are narrower; consult those when about to call that specific tool.
 
@@ -186,12 +189,13 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       )
     }
 
+    // The built-in tools' title + description are the single source in
+    // `packages/shared/src/builtin-tools.ts` (BUILTIN_TOOLS), pulled in via
+    // `builtinToolMeta` so what the agent sees and what `/api/tools` lists
+    // can't drift. Schemas + handlers stay here.
     this.server.registerTool(
       'whoami',
-      {
-        title: 'Who am I?',
-        description: 'Returns the user props attached to this MCP session by ctxlayer.'
-      },
+      { ...builtinToolMeta('whoami') },
       () =>
         rec('whoami', undefined, async () => ({
           content: [{ type: 'text', text: JSON.stringify(this.props ?? null, null, 2) }]
@@ -200,12 +204,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
     this.server.registerTool(
       'list_my_context',
-      {
-        title: 'List my context',
-        description:
-          'Returns the teams + products the caller belongs to (transitively via team membership), the accessible upstream MCP servers, and the reachable team/product scope (used to NARROW search; `search_docs` itself defaults to open-read across all docs).',
-        outputSchema: McpMyContext.shape
-      },
+      { ...builtinToolMeta('list_my_context'), outputSchema: McpMyContext.shape },
       () =>
         rec('list_my_context', undefined, async () => {
           const userId = this.props?.userId
@@ -243,9 +242,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     this.server.registerTool(
       'list_upstreams',
       {
-        title: 'List upstreams',
-        description:
-          'Lists the upstream MCP servers visible to the caller, with connected state, transport, and cached tool count. Disconnected upstreams point the user at /upstreams to paste a token.',
+        ...builtinToolMeta('list_upstreams'),
         // structuredContent must be an object, so the entry array is wrapped
         // under `upstreams`. The text `content` keeps the bare array for
         // back-compat with clients that read the rendered JSON.
@@ -264,12 +261,37 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     )
 
     this.server.registerTool(
-      'get_doc',
+      'describe_upstream',
       {
-        title: 'Get document',
-        description: 'Returns the markdown for a doc by id or slug.',
-        inputSchema: { id: z.string().min(1) }
+        ...builtinToolMeta('describe_upstream'),
+        inputSchema: {
+          slug: z.string().min(1),
+          family: z.string().optional(),
+          query: z.string().optional()
+        },
+        outputSchema: McpUpstreamTools.shape
       },
+      (args) =>
+        rec('describe_upstream', args, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const body = await UpstreamProxyRegistry.describeUpstreamForUser(
+            this.env,
+            userId,
+            args.slug,
+            { family: args.family, query: args.query }
+          )
+          if (!body) return errText(`upstream not found: ${args.slug}`)
+          return {
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
+            structuredContent: body
+          }
+        })
+    )
+
+    this.server.registerTool(
+      'get_doc',
+      { ...builtinToolMeta('get_doc'), inputSchema: { id: z.string().min(1) } },
       (args) =>
         rec('get_doc', args, async () => {
           const { id } = args
@@ -291,9 +313,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     this.server.registerTool(
       'search_docs',
       {
-        title: 'Search docs',
-        description:
-          'Semantic search over the org-curated doc library. Open-read: searches ALL docs by default (docs are readable org-wide; tags narrow, they do not hide). Pass `scope: { teams: [...], products: [...] }` to narrow to docs carrying those team/product tags (intersected with the caller\'s reachable set, no escalation). `scope: "all"` is the explicit form of the default.',
+        ...builtinToolMeta('search_docs'),
         inputSchema: {
           query: z.string().min(1),
           k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),

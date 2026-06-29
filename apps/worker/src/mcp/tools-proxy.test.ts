@@ -4,11 +4,15 @@ import {
   truncationNotice,
   perToolPointers,
   wholeUpstreamPointers,
+  summariseToolDescription,
+  groupToolsByFamily,
   isTimeoutError,
   callWithHeartbeat
 } from './tools-proxy'
+import { mangleToolName } from './tool-name'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import type { DocForUpstreamRow } from '../db/queries/doc-attachments'
+import type { UpstreamToolRow } from '../db/queries/upstream-tools'
 
 describe('truncateDescription', () => {
   it('leaves short strings untouched', () => {
@@ -74,6 +78,103 @@ describe('wholeUpstreamPointers', () => {
   it('ignores per-tool rows (non-empty tool_name)', () => {
     const refs = wholeUpstreamPointers([skill('search', 'how-to-search')], [doc('search', 'sdoc')])
     expect(refs).toEqual([])
+  })
+})
+
+describe('summariseToolDescription', () => {
+  it('returns empty string for null/empty', () => {
+    expect(summariseToolDescription(null)).toBe('')
+    expect(summariseToolDescription('')).toBe('')
+    expect(summariseToolDescription('   ')).toBe('')
+  })
+
+  it('strips control characters and collapses whitespace/newlines to one line', () => {
+    const out = summariseToolDescription('Read\x00 work\titems.\n\nUse  action.')
+    expect(out).toBe('Read work items. Use action.')
+  })
+
+  it('keeps abbreviations intact (no first-sentence heuristic to mis-cut on "e.g.")', () => {
+    const out = summariseToolDescription("Set a field, e.g. 'System.Title'. Then save.")
+    expect(out).toBe("Set a field, e.g. 'System.Title'. Then save.")
+  })
+
+  it('caps over-long descriptions with an ellipsis at the limit', () => {
+    const out = summariseToolDescription('x'.repeat(500), 200)
+    expect(out).toHaveLength(200)
+    expect(out.endsWith('…')).toBe(true)
+  })
+})
+
+describe('groupToolsByFamily', () => {
+  const tool = (tool_name: string, description: string | null = null): UpstreamToolRow =>
+    ({
+      upstream_id: 'u1',
+      tool_name,
+      description,
+      input_schema: '{}',
+      cached_at: 0,
+      input_schema_hash: null,
+      last_schema_change_at: null,
+      last_diff_summary: null
+    }) as UpstreamToolRow
+
+  it('groups by first-underscore family prefix, ungrouped ("") sorts last', () => {
+    const groups = groupToolsByFamily('up-ado', [
+      tool('wit_work_item'),
+      tool('wit_query'),
+      tool('repo_branch'),
+      tool('search') // no underscore → ungrouped
+    ])
+    expect(groups.map((g) => g.family)).toEqual(['repo', 'wit', ''])
+    // tools sort by name within a group
+    expect(groups.find((g) => g.family === 'wit')?.tools.map((t) => t.name)).toEqual([
+      'wit_query',
+      'wit_work_item'
+    ])
+  })
+
+  it('the callable name equals mangleToolName (drift guard)', () => {
+    const groups = groupToolsByFamily('up-ado', [tool('wit_work_item')])
+    expect(groups[0]?.tools[0]?.call).toBe(mangleToolName('up-ado', 'wit_work_item'))
+    expect(groups[0]?.tools[0]?.call).toBe('up-ado__wit_work_item')
+    expect(groups[0]?.tools[0]?.name).toBe('wit_work_item')
+  })
+
+  it('collapses a redundant slug prefix before deriving the family', () => {
+    // notion-search under slug "notion" collapses to "search" → ungrouped.
+    const groups = groupToolsByFamily('notion', [tool('notion-search')])
+    expect(groups).toHaveLength(1)
+    expect(groups[0]?.family).toBe('')
+    expect(groups[0]?.tools[0]).toMatchObject({ name: 'notion-search', call: 'notion__search' })
+  })
+
+  it('handles the __ escape in tool names', () => {
+    const groups = groupToolsByFamily('up-x', [tool('foo__bar')])
+    expect(groups[0]?.family).toBe('foo')
+    expect(groups[0]?.tools[0]?.call).toBe('up-x__foo_~_bar')
+  })
+
+  it('family filter narrows to one family (case-insensitive)', () => {
+    const groups = groupToolsByFamily(
+      'up-ado',
+      [tool('wit_work_item'), tool('repo_branch')],
+      { family: 'WIT' }
+    )
+    expect(groups.map((g) => g.family)).toEqual(['wit'])
+  })
+
+  it('query filter matches name OR summary (case-insensitive)', () => {
+    const groups = groupToolsByFamily(
+      'up-ado',
+      [
+        tool('wit_work_item', 'Read work items'),
+        tool('repo_branch', 'List branches'),
+        tool('pipelines_build', 'Trigger a pipeline run')
+      ],
+      { query: 'branch' }
+    )
+    // matches repo_branch by name; the others by neither name nor summary
+    expect(groups.flatMap((g) => g.tools.map((t) => t.name))).toEqual(['repo_branch'])
   })
 })
 

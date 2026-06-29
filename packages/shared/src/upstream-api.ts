@@ -16,6 +16,7 @@ import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
 import { prefixedSlug } from './slug'
 import { isHttpsOrLoopback } from './url-trust'
+import { BUILTIN_TOOL_SLUGS } from './builtin-tools'
 
 // Remote HTTP transports are the only dialable kinds; admin POST/PATCH
 // validate against this set.
@@ -35,13 +36,10 @@ export const UpstreamSlug = z
   .max(24)
   .regex(/^[a-z][a-z0-9_-]*$/, 'lowercase letter, then letters/digits/dashes/underscores (≤24)')
 
-const ReservedSlugs = new Set([
-  'list_upstreams',
-  'search_docs',
-  'get_doc',
-  'whoami',
-  'list_my_context'
-])
+// An upstream slug must not collide with a built-in tool name. Sourced from
+// the single `BUILTIN_TOOLS` catalogue so this can't drift (the old hand-rolled
+// set was missing describe_upstream / list_skills / get_skill).
+const ReservedSlugs = new Set<string>(BUILTIN_TOOL_SLUGS)
 
 /**
  * Outbound upstream URLs must be https in production (http allowed only

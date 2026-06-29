@@ -43,6 +43,7 @@ import { skillsDraftContextRoute } from './api/skills-draft-context'
 import { docAttachmentsRoute } from './api/doc-attachments'
 import { usageRoute } from './api/usage'
 import { upstreamsRoute } from './api/upstreams'
+import { toolsRoute } from './api/tools'
 import { upstreamOauthCallbackRoute, upstreamOauthStartRoute } from './api/upstream-oauth'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
@@ -108,6 +109,8 @@ app.route('/api/usage', usageRoute)
 // User-facing upstream connections (paste-bearer, list visible). Lives
 // at /api/upstreams to mirror the SPA route at /upstreams.
 app.route('/api/upstreams', upstreamsRoute)
+// Tools directory (built-in + visible upstreams' tools, grouped by family).
+app.route('/api/tools', toolsRoute)
 // Outbound OAuth — `/start` is per-upstream, `/callback` is shared.
 // The callback URL must match what we register at DCR time, so the
 // path is global to avoid registering a separate client per upstream.

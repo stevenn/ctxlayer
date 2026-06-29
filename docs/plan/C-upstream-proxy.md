@@ -105,5 +105,53 @@ Cache freshness is a property of the row (`cached_at`); a session-start refresh 
 
 Agents call this proactively to know which proxied tools they can rely on. Disconnected ones include a deep link the agent can give the user.
 
+### C9. `describe_upstream(slug)` — native-name capability discovery
+
+`list_upstreams` reports a tool **count**, not the tools. To learn what an
+upstream can do, an agent otherwise relies on its MCP client's own tool-search
+over the flat list of mangled `<slug>__<tool>` names — which reads as opaque
+jargon for upstreams whose native names are family-prefixed (Azure DevOps:
+`wit_*` work items, `repo_*` git, `pipelines_*` CI). `describe_upstream(slug)`
+is the lazy drill-in that closes that gap **without renaming anything**: it
+surfaces one upstream's tools by their **native upstream names**, grouped by the
+upstream's own first-underscore family prefix, each with its callable mangled
+name + a one-line summary.
+
+```jsonc
+// describe_upstream({ slug: "up-ado", family?: "wit", query?: "branch" })
+{ "slug": "up-ado", "displayName": "ADO",
+  "toolsCount": 36,                       // VISIBLE TO CALLER (post per-tool ACL)
+  "groups": [
+    { "family": "wit", "tools": [
+      { "name": "wit_work_item", "call": "up-ado__wit_work_item",
+        "summary": "Read operations on Azure DevOps work items. Use action to choose…" } ] },
+    { "family": "repo", "tools": [ /* … */ ] },
+    { "family": "",     "tools": [ /* tools with no prefix; names self-describe */ ] }
+  ] }
+```
+
+Properties (see `apps/worker/src/mcp/tools-proxy.ts`):
+
+- **Cache-only** — reads the `upstream_tools` catalogue; never dials the upstream.
+- **ACL-filtered** — reuses the exact `isToolAllowed` predicate `init()` applies
+  before registration (`visibleTools`), so the catalogue never leaks a tool the
+  caller can't call. `toolsCount` is therefore the *visible* count and may be
+  smaller than `list_upstreams.toolsCount` (raw cached count).
+- **Visibility-gated** — a slug not visible to the caller (or non-existent)
+  returns `upstream not found` with no existence leak.
+- **Family is mechanical** — the first-underscore prefix of the *slug-collapsed*
+  name (`groupToolsByFamily`); the ungrouped (`""`) bucket sorts last. No curated
+  family→label map (would go stale). Hyphen-namespaced upstreams (e.g. Notion's
+  `notion-search` under slug `up-notion`) land in `""` — their names self-describe.
+- **`call` is `mangleToolName(slug, tool_name)`** — the same rule registration
+  uses, so the catalogue's callable name can never drift from the registered one.
+- **Summaries** flatten the raw description to one line (control-stripped via the
+  same `sanitizeUntrustedText` rule, whitespace-collapsed) and cap at 200 chars.
+- Optional `family` (exact, case-insensitive) and `query` (substring over
+  name + summary) filters narrow the result.
+
+The server `instructions` point agents here as step 1's fallback: *when an
+upstream's tool names are opaque, call `describe_upstream(slug)`.*
+
 ---
 
