@@ -19,18 +19,39 @@ import { SEARCH_K_MAX } from '../rag/search'
 // SDK can infer the handler's `args`; the `Record` check still guards the form.
 export const BUILTIN_INPUT_SHAPES = {
   describe_upstream: {
-    slug: z.string().min(1),
-    family: z.string().optional(),
-    query: z.string().optional()
+    slug: z
+      .string()
+      .min(1)
+      .describe('Upstream slug to describe, as shown by list_upstreams (e.g. "up-ado").'),
+    family: z
+      .string()
+      .optional()
+      .describe('Narrow to one family prefix (e.g. "wit", "repo"). Omit for all families.'),
+    query: z
+      .string()
+      .optional()
+      .describe('Narrow to tools whose native name or summary matches this text.')
   },
-  get_doc: { id: z.string().min(1) },
+  get_doc: {
+    id: z.string().min(1).describe('Document id or slug to fetch.')
+  },
   search_docs: {
-    query: z.string().min(1),
-    k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),
+    query: z.string().min(1).describe('Natural-language search query.'),
+    k: z
+      .number()
+      .int()
+      .min(1)
+      .max(SEARCH_K_MAX)
+      .optional()
+      .describe(`Number of results to return (1–${SEARCH_K_MAX}, default 8).`),
     // Same `SearchScope` the REST /api/search contract uses.
-    scope: SearchScope.optional()
+    scope: SearchScope.optional().describe(
+      'Optional { teams, products } to narrow to docs carrying those tags (intersected with your reachable set). Omit (or "all") for open-read across all docs.'
+    )
   },
-  get_skill: { slug: z.string().min(1) }
+  get_skill: {
+    slug: z.string().min(1).describe('Skill slug to fetch, as listed by list_skills.')
+  }
 } satisfies Record<string, z.ZodRawShape>
 
 /**
