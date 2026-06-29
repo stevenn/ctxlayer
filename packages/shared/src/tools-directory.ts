@@ -59,8 +59,20 @@ export const ToolsDirectoryUpstream = McpUpstreamEntry.extend({
 })
 export type ToolsDirectoryUpstream = z.infer<typeof ToolsDirectoryUpstream>
 
+/**
+ * A built-in tool for the feed: the catalogue entry plus the JSON Schema for
+ * its input (omitted when the tool takes no arguments). The schema is derived
+ * worker-side from the same zod shape the MCP server registers (see
+ * `mcp/builtin-schemas.ts`), so the SPA renders the same schema the agent is
+ * validated against.
+ */
+export const ToolsDirectoryBuiltin = BuiltinTool.extend({
+  inputSchema: z.unknown().optional()
+})
+export type ToolsDirectoryBuiltin = z.infer<typeof ToolsDirectoryBuiltin>
+
 export const ToolsDirectory = z.object({
-  builtins: z.array(BuiltinTool),
+  builtins: z.array(ToolsDirectoryBuiltin),
   upstreams: z.array(ToolsDirectoryUpstream)
 })
 export type ToolsDirectory = z.infer<typeof ToolsDirectory>

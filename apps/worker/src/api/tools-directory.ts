@@ -33,6 +33,7 @@ import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
 import { mangleToolName, toolFamily } from '../mcp/tool-name'
 import { summariseToolDescription, UpstreamProxyRegistry } from '../mcp/tools-proxy'
+import { builtinInputJsonSchema } from '../mcp/builtin-schemas'
 
 /** Principal id → display name, per kind, for resolving the "requires" badge. */
 export interface NameMaps {
@@ -152,5 +153,11 @@ export async function buildToolsDirectory(env: Env, userId: string): Promise<Too
   if (totalRows > 2000) {
     console.warn(`[tools-directory] ${totalRows} cached tool rows for ${userId} — consider pagination`)
   }
-  return { builtins: BUILTIN_TOOLS, upstreams }
+  // Attach each built-in's input JSON Schema (derived from the same zod shape
+  // the MCP server registers) so the SPA can render it like an upstream tool's.
+  const builtins = BUILTIN_TOOLS.map((t) => {
+    const inputSchema = builtinInputJsonSchema(t.name)
+    return inputSchema ? { ...t, inputSchema } : { ...t }
+  })
+  return { builtins, upstreams }
 }

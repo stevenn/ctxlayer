@@ -92,6 +92,10 @@ describe('buildToolsDirectory (real D1)', () => {
     const dir = await buildToolsDirectory(testEnv, 'u-1')
 
     expect(dir.builtins).toHaveLength(8)
+    // Built-ins carry their input JSON Schema (for the SPA's schema viewer)
+    // only when they take arguments — derived from the registered zod shape.
+    expect(dir.builtins.find((b) => b.name === 'describe_upstream')?.inputSchema).toBeDefined()
+    expect(dir.builtins.find((b) => b.name === 'whoami')?.inputSchema).toBeUndefined()
 
     const ado = dir.upstreams.find((u) => u.slug === 'up-ado')
     expect(ado).toBeTruthy()

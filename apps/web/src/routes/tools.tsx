@@ -14,7 +14,7 @@ import {
 } from '@mantine/core'
 import { Link } from 'react-router-dom'
 import type {
-  BuiltinTool,
+  ToolsDirectoryBuiltin,
   ToolsDirectoryTool,
   ToolsDirectoryUpstream,
   UpstreamToolSummary
@@ -80,12 +80,7 @@ export function Tools() {
             </div>
             <div>
               {builtins.map((b, i) => (
-                <div key={b.name} style={bandStyle(i % 2 === 1)}>
-                  <code style={{ fontSize: 12 }}>{b.name}</code>
-                  <Text fz="xs" c="dimmed">
-                    {b.description}
-                  </Text>
-                </div>
+                <BuiltinRow key={b.name} tool={b} shaded={i % 2 === 1} />
               ))}
             </div>
           </Stack>
@@ -336,7 +331,6 @@ function ToolDetails({
       </Text>
     )
   }
-  const params = schemaParams(summary.inputSchema)
   return (
     <Stack gap={6} mt={6} pl="sm">
       {summary.attachedSkills.length + summary.attachedDocs.length > 0 && (
@@ -353,43 +347,89 @@ function ToolDetails({
           ))}
         </Group>
       )}
-      {params.length === 0 ? (
-        <Text fz="xs" c="dimmed">
-          No input parameters.
-        </Text>
-      ) : (
-        <Stack
-          gap={6}
-          style={{
-            background: 'var(--bg-elevated)',
-            border: '1px solid var(--border)',
-            borderRadius: 6,
-            padding: '10px 12px',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'
-          }}
+      <SchemaParamsBox schema={summary.inputSchema} />
+    </Stack>
+  )
+}
+
+// The INPUT SCHEMA code-box: a JSON-schema object's top-level params rendered
+// as a nested, monospace, code-like block. Shared by the upstream tool detail
+// view and the built-in rows so both schemas read identically.
+function SchemaParamsBox({ schema }: { schema: unknown }) {
+  const params = schemaParams(schema)
+  if (params.length === 0) {
+    return (
+      <Text fz="xs" c="dimmed">
+        No input parameters.
+      </Text>
+    )
+  }
+  return (
+    <Stack
+      gap={6}
+      style={{
+        background: 'var(--bg-elevated)',
+        border: '1px solid var(--border)',
+        borderRadius: 6,
+        padding: '10px 12px',
+        fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'
+      }}
+    >
+      <Text fz={10} fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.05em' }}>
+        Input schema
+      </Text>
+      {params.map((p) => (
+        <div key={p.name}>
+          <Group gap={6} wrap="nowrap" align="baseline">
+            <code style={{ fontSize: 12, color: 'var(--accent)' }}>{p.name}</code>
+            <Text span c="dimmed" fz={11}>
+              {p.type}
+              {p.required ? ' · required' : ''}
+            </Text>
+          </Group>
+          {p.description && (
+            <Text c="dimmed" fz={11} mt={1}>
+              {p.description}
+            </Text>
+          )}
+        </div>
+      ))}
+    </Stack>
+  )
+}
+
+// A built-in tool row: native name + description + a "schema" disclosure that
+// reveals its input schema (carried in the feed, so no fetch). Mirrors the
+// upstream ToolRow's zebra band + accent caret so the two lists read as one
+// table. Built-ins with no arguments show "No input parameters."
+function BuiltinRow({ tool, shaded }: { tool: ToolsDirectoryBuiltin; shaded: boolean }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={bandStyle(shaded)}>
+      <Group gap="xs" wrap="nowrap" align="center">
+        <code style={{ fontSize: 12 }}>{tool.name}</code>
+        <UnstyledButton
+          onClick={() => setOpen((o) => !o)}
+          aria-expanded={open}
+          aria-label={open ? `Hide schema for ${tool.name}` : `Show schema for ${tool.name}`}
         >
-          <Text fz={10} fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.05em' }}>
-            Input schema
-          </Text>
-          {params.map((p) => (
-            <div key={p.name}>
-              <Group gap={6} wrap="nowrap" align="baseline">
-                <code style={{ fontSize: 12, color: 'var(--accent)' }}>{p.name}</code>
-                <Text span c="dimmed" fz={11}>
-                  {p.type}
-                  {p.required ? ' · required' : ''}
-                </Text>
-              </Group>
-              {p.description && (
-                <Text c="dimmed" fz={11} mt={1}>
-                  {p.description}
-                </Text>
-              )}
-            </div>
-          ))}
+          <Group gap={3} wrap="nowrap" align="center">
+            <Caret open={open} />
+            <Text fz="xs" fw={600} style={{ color: 'var(--accent)' }}>
+              schema
+            </Text>
+          </Group>
+        </UnstyledButton>
+      </Group>
+      <Text fz="xs" c="dimmed">
+        {tool.description}
+      </Text>
+      {open && (
+        <Stack gap={6} mt={6} pl="sm">
+          <SchemaParamsBox schema={tool.inputSchema} />
         </Stack>
       )}
-    </Stack>
+    </div>
   )
 }
 
@@ -446,7 +486,7 @@ function ConnectionBadge({ upstream }: { upstream: ToolsDirectoryUpstream }) {
   )
 }
 
-function matchBuiltin(b: BuiltinTool, query: string): boolean {
+function matchBuiltin(b: ToolsDirectoryBuiltin, query: string): boolean {
   if (!query) return true
   return (
     b.name.toLowerCase().includes(query) ||

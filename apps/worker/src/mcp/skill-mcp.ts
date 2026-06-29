@@ -10,11 +10,11 @@
 
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod'
 import type { Env } from '../env'
 import { listPublishedSkills } from '../db/queries/skills'
 import { listAttachmentsForSkills } from '../db/queries/skill-attachments'
 import { type McpSkillSummary, McpListSkillsResult, builtinToolMeta } from '@ctxlayer/shared'
+import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { loadPublishedSkillMarkdown } from './skill-render'
 import { registerSkillSep2640 } from './skill-sep2640'
 
@@ -65,7 +65,7 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
 
   server.registerTool(
     'get_skill',
-    { ...builtinToolMeta('get_skill'), inputSchema: { slug: z.string().min(1) } },
+    { ...builtinToolMeta('get_skill'), inputSchema: BUILTIN_INPUT_SHAPES.get_skill },
     (args) =>
       rec('get_skill', args, async () => {
         const md = await loadPublishedSkillMarkdown(env, args.slug)

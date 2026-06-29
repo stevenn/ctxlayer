@@ -14,21 +14,15 @@
 
 import { McpAgent } from 'agents/mcp'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { z } from 'zod'
 import type { Env, McpProps } from '../env'
 import { findById } from '../db/queries/users'
 import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
-import {
-  searchDocs,
-  effectiveScope,
-  availableScopeFor,
-  SEARCH_K_DEFAULT,
-  SEARCH_K_MAX
-} from '../rag/search'
+import { searchDocs, effectiveScope, availableScopeFor, SEARCH_K_DEFAULT } from '../rag/search'
 import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
+import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { listUserRoleIds } from '../db/queries/roles'
 import { registerSkillMcp } from './skill-mcp'
@@ -36,7 +30,6 @@ import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
 import {
-  SearchScope,
   McpMyContext,
   McpSearchResult,
   McpListUpstreamsResult,
@@ -264,11 +257,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       'describe_upstream',
       {
         ...builtinToolMeta('describe_upstream'),
-        inputSchema: {
-          slug: z.string().min(1),
-          family: z.string().optional(),
-          query: z.string().optional()
-        },
+        inputSchema: BUILTIN_INPUT_SHAPES.describe_upstream,
         outputSchema: McpUpstreamTools.shape
       },
       (args) =>
@@ -291,7 +280,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
     this.server.registerTool(
       'get_doc',
-      { ...builtinToolMeta('get_doc'), inputSchema: { id: z.string().min(1) } },
+      { ...builtinToolMeta('get_doc'), inputSchema: BUILTIN_INPUT_SHAPES.get_doc },
       (args) =>
         rec('get_doc', args, async () => {
           const { id } = args
@@ -314,12 +303,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       'search_docs',
       {
         ...builtinToolMeta('search_docs'),
-        inputSchema: {
-          query: z.string().min(1),
-          k: z.number().int().min(1).max(SEARCH_K_MAX).optional(),
-          // Same `SearchScope` the REST /api/search contract uses.
-          scope: SearchScope.optional()
-        },
+        inputSchema: BUILTIN_INPUT_SHAPES.search_docs,
         outputSchema: McpSearchResult.shape
       },
       (args) =>
