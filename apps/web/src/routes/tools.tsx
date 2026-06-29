@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { type CSSProperties, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -70,20 +70,24 @@ export function Tools() {
       {data && (builtins.length > 0 || !query) && (
         <Card withBorder radius="sm" padding="md">
           <Stack gap="xs">
-            <Text fw={600} fz="md">
-              Built-in tools
-            </Text>
-            <Text fz="xs" c="dimmed">
-              ctxlayer&apos;s own tools — always available, no connection needed.
-            </Text>
-            {builtins.map((b) => (
-              <div key={b.name}>
-                <code style={{ fontSize: 12 }}>{b.name}</code>
-                <Text fz="xs" c="dimmed">
-                  {b.description}
-                </Text>
-              </div>
-            ))}
+            <div>
+              <Text fw={600} fz="md">
+                Built-in tools
+              </Text>
+              <Text fz="xs" c="dimmed">
+                ctxlayer&apos;s own tools — always available, no connection needed.
+              </Text>
+            </div>
+            <div>
+              {builtins.map((b, i) => (
+                <div key={b.name} style={bandStyle(i % 2 === 1)}>
+                  <code style={{ fontSize: 12 }}>{b.name}</code>
+                  <Text fz="xs" c="dimmed">
+                    {b.description}
+                  </Text>
+                </div>
+              ))}
+            </div>
           </Stack>
         </Card>
       )}
@@ -196,6 +200,16 @@ function UpstreamToolsCard({
   )
 }
 
+// Shared zebra band for every tool list row (built-in + upstream) so the two
+// lists read as one table. Subtle, theme-adaptive tint (same color-mix
+// technique as index.css); contiguous rows (no gap) make the bands continuous.
+function bandStyle(shaded: boolean): CSSProperties {
+  return {
+    backgroundColor: shaded ? 'color-mix(in srgb, var(--text-muted) 8%, transparent)' : 'transparent',
+    padding: '5px 8px'
+  }
+}
+
 function ToolRow({
   tool,
   details,
@@ -218,14 +232,7 @@ function ToolRow({
   const summary = details?.kind === 'ready' ? details.byName.get(tool.name) : undefined
 
   return (
-    <div
-      style={{
-        // Alternating zebra band so adjacent tool rows read apart. Subtle,
-        // theme-adaptive tint (same color-mix technique as index.css).
-        backgroundColor: shaded ? 'color-mix(in srgb, var(--text-muted) 8%, transparent)' : 'transparent',
-        padding: '5px 8px'
-      }}
-    >
+    <div style={bandStyle(shaded)}>
       <Group gap="xs" wrap="nowrap" align="center">
         <code style={{ fontSize: 12 }}>{tool.name}</code>
         <CopyButton value={tool.call}>
