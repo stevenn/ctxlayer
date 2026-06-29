@@ -163,14 +163,31 @@ function UpstreamToolsCard({
         ) : (
           groups.map((g) => (
             <div key={g.family || '_general'}>
-              <Text fz="xs" fw={600} c="dimmed" tt="uppercase" mt={4}>
-                {g.family || 'General'}
-              </Text>
-              <Stack gap={4} mt={4}>
-                {g.tools.map((t) => (
-                  <ToolRow key={t.name} tool={t} details={details} onExpand={ensureDetails} />
+              <Group
+                justify="space-between"
+                align="center"
+                mt={8}
+                mb={2}
+                style={{ borderBottom: '1px solid var(--border)', paddingBottom: 3 }}
+              >
+                <Text fz="xs" fw={700} tt="uppercase" style={{ letterSpacing: '0.07em', color: 'var(--text-dim)' }}>
+                  {g.family || 'General'}
+                </Text>
+                <Text fz={10} c="dimmed">
+                  {g.tools.length}
+                </Text>
+              </Group>
+              <div>
+                {g.tools.map((t, i) => (
+                  <ToolRow
+                    key={t.name}
+                    tool={t}
+                    details={details}
+                    onExpand={ensureDetails}
+                    shaded={i % 2 === 1}
+                  />
                 ))}
-              </Stack>
+              </div>
             </div>
           ))
         )}
@@ -182,11 +199,13 @@ function UpstreamToolsCard({
 function ToolRow({
   tool,
   details,
-  onExpand
+  onExpand,
+  shaded
 }: {
   tool: ToolsDirectoryTool
   details: DetailsState
   onExpand: () => void
+  shaded: boolean
 }) {
   const [open, setOpen] = useState(false)
   function toggle() {
@@ -199,7 +218,14 @@ function ToolRow({
   const summary = details?.kind === 'ready' ? details.byName.get(tool.name) : undefined
 
   return (
-    <div>
+    <div
+      style={{
+        // Alternating zebra band so adjacent tool rows read apart. Subtle,
+        // theme-adaptive tint (same color-mix technique as index.css).
+        backgroundColor: shaded ? 'color-mix(in srgb, var(--text-muted) 8%, transparent)' : 'transparent',
+        padding: '5px 8px'
+      }}
+    >
       <Group gap="xs" wrap="nowrap" align="center">
         <code style={{ fontSize: 12 }}>{tool.name}</code>
         <CopyButton value={tool.call}>
@@ -225,11 +251,14 @@ function ToolRow({
         <UnstyledButton
           onClick={toggle}
           aria-expanded={open}
-          aria-label={open ? `Hide details for ${tool.name}` : `Show details for ${tool.name}`}
+          aria-label={open ? `Hide schema for ${tool.name}` : `Show schema for ${tool.name}`}
         >
-          <Text fz="xs" c="dimmed">
-            {open ? '− details' : '+ details'}
-          </Text>
+          <Group gap={3} wrap="nowrap" align="center">
+            <Caret open={open} />
+            <Text fz="xs" fw={600} style={{ color: 'var(--accent)' }}>
+              schema
+            </Text>
+          </Group>
         </UnstyledButton>
       </Group>
       {tool.summary && (
@@ -239,6 +268,36 @@ function ToolRow({
       )}
       {open && <ToolDetails details={details} summary={summary} />}
     </div>
+  )
+}
+
+// Colored disclosure caret for the "schema" toggle. Points right when closed,
+// rotates to a downward "v" when open. SVG keeps it crisp at any zoom (same
+// idea as the admin ExpandChevron, but tinted with the accent color).
+function Caret({ open }: { open: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 16 16"
+      width={11}
+      height={11}
+      style={{
+        display: 'inline-block',
+        verticalAlign: 'middle',
+        transform: open ? 'rotate(90deg)' : 'rotate(0deg)',
+        transition: 'transform 120ms ease',
+        color: 'var(--accent)'
+      }}
+      aria-hidden="true"
+    >
+      <path
+        d="M6 3.5 L10.5 8 L6 12.5"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   )
 }
 
@@ -272,7 +331,7 @@ function ToolDetails({
   }
   const params = schemaParams(summary.inputSchema)
   return (
-    <Stack gap={6} mt={6} pl="sm" style={{ borderLeft: '2px solid var(--bg-elevated)' }}>
+    <Stack gap={6} mt={6} pl="sm">
       {summary.attachedSkills.length + summary.attachedDocs.length > 0 && (
         <Group gap={6}>
           {summary.attachedSkills.map((s) => (
@@ -292,22 +351,34 @@ function ToolDetails({
           No input parameters.
         </Text>
       ) : (
-        <Stack gap={2}>
+        <Stack
+          gap={6}
+          style={{
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border)',
+            borderRadius: 6,
+            padding: '10px 12px',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace'
+          }}
+        >
+          <Text fz={10} fw={700} c="dimmed" tt="uppercase" style={{ letterSpacing: '0.05em' }}>
+            Input schema
+          </Text>
           {params.map((p) => (
-            <Text key={p.name} fz="xs">
-              <code style={{ fontSize: 11 }}>{p.name}</code>
-              <Text span c="dimmed" fz="xs">
-                {' '}
-                {p.type}
-                {p.required ? ' · required' : ''}
-              </Text>
+            <div key={p.name}>
+              <Group gap={6} wrap="nowrap" align="baseline">
+                <code style={{ fontSize: 12, color: 'var(--accent)' }}>{p.name}</code>
+                <Text span c="dimmed" fz={11}>
+                  {p.type}
+                  {p.required ? ' · required' : ''}
+                </Text>
+              </Group>
               {p.description && (
-                <Text span c="dimmed" fz="xs">
-                  {' '}
-                  — {p.description}
+                <Text c="dimmed" fz={11} mt={1}>
+                  {p.description}
                 </Text>
               )}
-            </Text>
+            </div>
           ))}
         </Stack>
       )}
