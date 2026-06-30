@@ -54,25 +54,40 @@ program
     await logoutCommand()
   })
 
+// Collector for repeatable options (commander invokes it once per flag).
+const collectFlag = (value: string, previous: string[]): string[] => previous.concat([value])
+
 program
   .command('draft-skill')
   .description(
     'Draft a new skill via your local Claude Code CLI. ' +
-      'Fetches the org context for the upstream from ctxlayer, ' +
+      'Fetches the org context for the upstream(s) from ctxlayer, ' +
       'shells `claude -p`, and posts the result as a status=draft skill.'
   )
-  .argument('<upstream>', 'Upstream slug (e.g. linear, datadog, github)')
-  .option('--tool <name>', 'Focus on a specific tool on that upstream')
+  .argument('<upstream>', 'Anchor upstream slug (e.g. linear, datadog, github)')
+  .option(
+    '--with <slug>',
+    'Additional upstream to combine into one cross-upstream skill (repeatable)',
+    collectFlag,
+    []
+  )
+  .option('--tool <name>', 'Focus on a specific tool (matched across the chosen upstreams)')
   .option('--prompt <text>', 'Freeform operator request for the drafter')
   .option('--no-save', 'Render the draft locally without posting to ctxlayer')
-  .action(async (upstream: string, opts: { tool?: string; prompt?: string; noSave?: boolean }) => {
-    await draftSkillCommand({
-      upstream,
-      tool: opts.tool,
-      prompt: opts.prompt,
-      noSave: opts.noSave
-    })
-  })
+  .action(
+    async (
+      upstream: string,
+      opts: { with: string[]; tool?: string; prompt?: string; noSave?: boolean }
+    ) => {
+      await draftSkillCommand({
+        upstream,
+        withUpstreams: opts.with,
+        tool: opts.tool,
+        prompt: opts.prompt,
+        noSave: opts.noSave
+      })
+    }
+  )
 
 async function main() {
   try {

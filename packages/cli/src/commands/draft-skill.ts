@@ -10,6 +10,8 @@ import { markdownToBlocks } from '../drafter/markdown-to-blocks'
 
 interface DraftSkillOpts {
   upstream: string
+  // Additional upstreams to combine into one cross-upstream skill.
+  withUpstreams?: string[]
   tool?: string
   prompt?: string
   noSave?: boolean
@@ -46,19 +48,23 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
     )
   }
 
+  // Anchor + any --with upstreams, deduped; sent as a comma list.
+  const upstreams = [...new Set([opts.upstream, ...(opts.withUpstreams ?? [])])]
   console.log('Fetching draft-context bundle …')
   const bundle = await authedRequest<DraftContextBundle>('/cli/skills/draft-context', {
     method: 'GET',
     query: {
-      upstream: opts.upstream,
+      upstreams: upstreams.join(','),
       tool: opts.tool,
       prompt: opts.prompt
     }
   })
 
+  const slugList = bundle.upstreams.map((u) => u.slug).join(' + ')
+  const focusName = bundle.upstreams.map((u) => u.focusTool?.name).find(Boolean)
   console.log(
-    `Drafting with Claude (focus: ${pc.cyan(bundle.upstream.slug)}` +
-      (bundle.focusTool ? `, tool: ${pc.cyan(bundle.focusTool.name)}` : '') +
+    `Drafting with Claude (upstreams: ${pc.cyan(slugList)}` +
+      (focusName ? `, tool: ${pc.cyan(focusName)}` : '') +
       ') …'
   )
   const userPrompt = buildUserPrompt(bundle)
@@ -167,10 +173,11 @@ function buildDrafterMeta(
 ): Record<string, unknown> {
   const modelKey = envelope.modelUsage ? Object.keys(envelope.modelUsage)[0] : undefined
   const contextInputs: string[] = []
-  if (bundle.focusTool) contextInputs.push('focusTool')
-  if (bundle.allTools.length > 0) contextInputs.push('allTools')
+  if (bundle.upstreams.length > 1) contextInputs.push('multiUpstream')
+  if (bundle.upstreams.some((u) => u.focusTool)) contextInputs.push('focusTool')
+  if (bundle.upstreams.some((u) => u.allTools.length > 0)) contextInputs.push('allTools')
   if (bundle.relatedDocs.length > 0) contextInputs.push('rag')
-  if (bundle.usageAggregates) contextInputs.push('usage')
+  if (bundle.upstreams.some((u) => u.usageAggregates)) contextInputs.push('usage')
   if (bundle.styleSkills.length > 0) contextInputs.push('style')
   if (operatorPromptProvided) contextInputs.push('operatorPrompt')
   return {

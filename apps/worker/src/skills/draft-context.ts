@@ -13,7 +13,8 @@ import {
   collapseSlugPrefix,
   mangleToolName,
   unmangleToolName,
-  type DraftContextBundle
+  type DraftContextBundle,
+  type SupportedTransport
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { getUpstreamBySlug } from '../db/queries/upstreams'
@@ -35,81 +36,134 @@ export type DraftContextResult =
       status: 400 | 404
     }
 
+/**
+ * Parse the upstream selection from request params. Accepts a
+ * comma-separated `upstreams` list (multi-upstream draft) and falls back
+ * to a single `upstream` slug (back-compat / the SPA). Trims + drops
+ * blanks; the caller dedups + treats the first as the anchor.
+ */
+export function parseUpstreamSlugs(
+  upstreams: string | null | undefined,
+  single: string | null | undefined
+): string[] {
+  const raw = upstreams ? upstreams.split(',') : single ? [single] : []
+  return raw.map((s) => s.trim()).filter(Boolean)
+}
+
 export async function buildDraftContext(
   env: Env,
   args: {
-    upstreamSlug: string
+    upstreamSlugs: string[]
     toolName: string | undefined
     operatorPrompt: string | null
     userId: string
   }
 ): Promise<DraftContextResult> {
-  const { upstreamSlug, toolName, operatorPrompt, userId } = args
-  const upstream = await getUpstreamBySlug(env, upstreamSlug)
-  if (!upstream) return { ok: false, error: 'upstream_not_found', status: 404 }
-  if (!isDialableTransport(upstream.transport)) {
-    return { ok: false, error: 'unsupported_transport', status: 400 }
+  const { toolName, operatorPrompt, userId } = args
+  // Dedup, preserve order; the first is the "anchor" upstream.
+  const slugs = [...new Set(args.upstreamSlugs.filter(Boolean))]
+  if (slugs.length === 0) return { ok: false, error: 'upstream_not_found', status: 404 }
+
+  // Resolve identity + transport for every requested upstream first, so a
+  // bad/undialable slug fails fast before the heavier enrichment work.
+  const resolved: Array<{
+    upstream: NonNullable<Awaited<ReturnType<typeof getUpstreamBySlug>>>
+    // Captured here (post-guard) where isDialableTransport has narrowed it;
+    // the narrowing wouldn't survive into the section-building loop below.
+    transport: SupportedTransport
+    cachedTools: Awaited<ReturnType<typeof listCachedTools>>
+  }> = []
+  for (const slug of slugs) {
+    const upstream = await getUpstreamBySlug(env, slug)
+    if (!upstream) return { ok: false, error: 'upstream_not_found', status: 404 }
+    if (!isDialableTransport(upstream.transport)) {
+      return { ok: false, error: 'unsupported_transport', status: 400 }
+    }
+    resolved.push({
+      upstream,
+      transport: upstream.transport,
+      cachedTools: await listCachedTools(env, upstream.id)
+    })
   }
 
-  const cachedTools = await listCachedTools(env, upstream.id)
-  // Accept the tool reference in any of the three forms the operator
-  // might know about: raw upstream name (`notion-search`), collapsed
-  // form (`search`), or fully mangled (`notion__search`). All three
-  // resolve to the same cached row.
-  const focus =
-    toolName !== undefined ? resolveCachedTool(cachedTools, upstream.slug, toolName) : null
-  if (toolName !== undefined && !focus) {
+  // House-style references — once for the whole bundle.
+  const styleRows = (await listPublishedSkills(env)).slice(0, STYLE_SKILL_COUNT)
+  const styleSkills = await Promise.all(
+    styleRows.map(async (row) => {
+      const content = await readSnapshot(env, row.id)
+      const bodyMd = content ? renderBlocksToMarkdown(content.blocks) : ''
+      return { slug: row.slug, title: row.title, bodyMd }
+    })
+  )
+
+  // Per-upstream sections (focus + usage) + a relatedDocs set unioned and
+  // deduped by slug across the chosen upstreams.
+  const upstreams: DraftContextBundle['upstreams'] = []
+  const relatedSeen = new Set<string>()
+  const relatedDocs: DraftContextBundle['relatedDocs'] = []
+  let anyFocusMatched = false
+
+  for (const { upstream, transport, cachedTools } of resolved) {
+    // Accept the focus tool in any form the operator knows (raw
+    // `notion-search`, collapsed `search`, or mangled `notion__search`).
+    // A single --tool is matched against EACH upstream; whichever owns it
+    // gets the focus, the rest get null.
+    const focus =
+      toolName !== undefined ? resolveCachedTool(cachedTools, upstream.slug, toolName) : null
+    if (focus) anyFocusMatched = true
+
+    const [related, usageAggregates] = await Promise.all([
+      findRelatedDocs(env, { upstreamSlug: upstream.slug, toolName: focus?.tool_name }),
+      buildUsageAggregates(env, {
+        userId,
+        upstreamId: upstream.id,
+        upstreamSlug: upstream.slug,
+        toolName: focus?.tool_name
+      })
+    ])
+    for (const d of related) {
+      if (relatedSeen.has(d.slug)) continue
+      relatedSeen.add(d.slug)
+      relatedDocs.push(d)
+    }
+
+    upstreams.push({
+      slug: upstream.slug,
+      displayName: upstream.display_name,
+      transport,
+      focusTool: focus
+        ? {
+            name: focus.tool_name,
+            mangledName: mangleToolName(upstream.slug, focus.tool_name),
+            description: focus.description,
+            inputSchema: safeJsonParse(focus.input_schema),
+            lastSchemaChangeAt: focus.last_schema_change_at
+          }
+        : null,
+      allTools: cachedTools.map((t) => ({
+        name: t.tool_name,
+        mangledName: mangleToolName(upstream.slug, t.tool_name),
+        description: t.description
+      })),
+      usageAggregates
+    })
+  }
+
+  // A focus tool was requested but matched none of the chosen upstreams.
+  if (toolName !== undefined && !anyFocusMatched) {
     return { ok: false, error: 'tool_not_found', status: 404 }
   }
 
-  const styleRows = (await listPublishedSkills(env)).slice(0, STYLE_SKILL_COUNT)
-  const [styleSkills, relatedDocs, usageAggregates] = await Promise.all([
-    Promise.all(
-      styleRows.map(async (row) => {
-        const content = await readSnapshot(env, row.id)
-        const bodyMd = content ? renderBlocksToMarkdown(content.blocks) : ''
-        return { slug: row.slug, title: row.title, bodyMd }
-      })
-    ),
-    findRelatedDocs(env, {
-      upstreamSlug: upstream.slug,
-      toolName: focus?.tool_name
-    }),
-    buildUsageAggregates(env, {
-      userId,
-      upstreamId: upstream.id,
-      upstreamSlug: upstream.slug,
-      toolName: focus?.tool_name
-    })
-  ])
-
-  const bundle: DraftContextBundle = {
-    upstream: {
-      slug: upstream.slug,
-      displayName: upstream.display_name,
-      transport: upstream.transport
-    },
-    focusTool: focus
-      ? {
-          name: focus.tool_name,
-          mangledName: mangleToolName(upstream.slug, focus.tool_name),
-          description: focus.description,
-          inputSchema: safeJsonParse(focus.input_schema),
-          lastSchemaChangeAt: focus.last_schema_change_at
-        }
-      : null,
-    allTools: cachedTools.map((t) => ({
-      name: t.tool_name,
-      mangledName: mangleToolName(upstream.slug, t.tool_name),
-      description: t.description
-    })),
-    relatedDocs,
-    usageAggregates,
-    styleSkills,
-    operatorPrompt,
-    generatedAt: Math.floor(Date.now() / 1000)
+  return {
+    ok: true,
+    bundle: {
+      upstreams,
+      relatedDocs,
+      styleSkills,
+      operatorPrompt,
+      generatedAt: Math.floor(Date.now() / 1000)
+    }
   }
-  return { ok: true, bundle }
 }
 
 function safeJsonParse(s: string): unknown {

@@ -6,7 +6,7 @@
  */
 
 import type { Env } from '../env'
-import type { DraftContextBundle } from '@ctxlayer/shared'
+import type { DraftContextBundle, DraftContextUsage } from '@ctxlayer/shared'
 import { mangleToolName } from '@ctxlayer/shared'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
@@ -70,7 +70,7 @@ export async function findRelatedDocs(
 export async function buildUsageAggregates(
   env: Env,
   args: { userId: string; upstreamId: string; upstreamSlug: string; toolName?: string }
-): Promise<DraftContextBundle['usageAggregates']> {
+): Promise<DraftContextUsage | null> {
   try {
     const now = Math.floor(Date.now() / 1000)
     const earliestDay =

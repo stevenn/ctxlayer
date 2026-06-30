@@ -23,7 +23,7 @@ import { createSkill, recordSkillRevision } from '../db/queries/skills'
 import { writeRevisionAndSnapshot as writeSkillRevisionAndSnapshot } from '../storage/skills-r2'
 import { lintSkillBody, type LintFinding } from './schema-linter'
 import { buildSkillExport } from './export'
-import { buildDraftContext } from './draft-context'
+import { buildDraftContext, parseUpstreamSlugs } from './draft-context'
 import { audit } from '../audit/log'
 
 interface CliExportContext {
@@ -71,10 +71,13 @@ async function handleExport(env: Env): Promise<Response> {
 }
 
 async function handleDraftContext(env: Env, url: URL, userId: string): Promise<Response> {
-  const upstreamSlug = url.searchParams.get('upstream')
-  if (!upstreamSlug) return jsonError('missing_upstream', 400)
+  const upstreamSlugs = parseUpstreamSlugs(
+    url.searchParams.get('upstreams'),
+    url.searchParams.get('upstream')
+  )
+  if (upstreamSlugs.length === 0) return jsonError('missing_upstream', 400)
   const result = await buildDraftContext(env, {
-    upstreamSlug,
+    upstreamSlugs,
     toolName: url.searchParams.get('tool') ?? undefined,
     operatorPrompt: url.searchParams.get('prompt'),
     userId
