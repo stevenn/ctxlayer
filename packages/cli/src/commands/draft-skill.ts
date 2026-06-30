@@ -118,18 +118,25 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
 
   if (res.lintFindings && res.lintFindings.length > 0) {
     console.log()
-    console.log(
-      pc.yellow("⚠  Schema linter found references that don't exist on attached upstreams:")
-    )
+    console.log(pc.yellow('⚠  Schema linter findings (warning only — the draft saved):'))
     for (const f of res.lintFindings) {
-      const where = f.upstreamSlug
-        ? `${f.upstreamSlug}${f.toolName ? `.${f.toolName}` : ''}`
-        : f.reference
-      console.log(`    - ${pc.cyan(f.reference)} (${f.kind}: ${where})`)
+      if (f.kind === 'mangled_reference') {
+        // Valid call, but the body hardcodes the install slug. toolName
+        // carries the native name to switch to (portable across installs).
+        console.log(
+          `    - ${pc.cyan(f.reference)} hardcodes the upstream slug — use the native name ` +
+            `${pc.cyan(f.toolName ?? '?')} and name the upstream in prose`
+        )
+      } else {
+        const where = f.upstreamSlug
+          ? `${f.upstreamSlug}${f.toolName ? `.${f.toolName}` : ''}`
+          : f.reference
+        console.log(
+          `    - ${pc.cyan(f.reference)} (${f.kind}: ${where}) — not found on attached upstream`
+        )
+      }
     }
-    console.log(
-      pc.gray('  (Warning only — the draft saved successfully. Review in the SPA editor.)')
-    )
+    console.log(pc.gray('  Review / fix in the SPA editor.'))
   }
 }
 

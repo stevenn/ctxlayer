@@ -7,7 +7,7 @@
  * which guidance is missing. Versioned alongside the CLI release;
  * historical drafts carry the prompt version via drafterMeta.
  */
-export const DRAFTER_PROMPT_VERSION = 'v2'
+export const DRAFTER_PROMPT_VERSION = 'v3'
 
 export const DRAFTER_SYSTEM_PROMPT = `You are drafting a "skill" for ctxlayer — an org-aware operating
 manual the agent loads on demand when working with a specific MCP
@@ -41,12 +41,15 @@ Body guidance:
 - Lead with a short paragraph naming the scenario and the outcome.
 - Then a numbered list of concrete steps (call tool X with these
   args, then tool Y with these args).
-- Reference attached tools by their **\`mangledName\` field from the
-  bundle** — use it verbatim, in backticks (e.g. \`notion__search\`,
-  not \`notion-search\` and not \`notion__notion-search\`). Do not
-  reconstruct the mangled name yourself from \`name\` — ctxlayer
-  applies a slug-prefix collapse rule and only \`mangledName\` is
-  the actually-callable form.
+- Reference attached tools by their **\`name\` field from the bundle**
+  (the native upstream tool name) in backticks — e.g. \`wit_work_item\`,
+  \`repo_file\` — and name the owning upstream once in prose (e.g. "via
+  the ADO upstream"). Do NOT use the \`mangledName\` / \`<slug>__tool\`
+  form: it hardcodes this install's upstream slug into the body, which
+  breaks the skill if the upstream is re-registered under a different
+  slug or reused on another install. The agent resolves the native name
+  to the callable form from its own tool list (and \`describe_upstream\`)
+  at run time, so the slug never belongs in the prose.
 - Include org-specific conventions you can derive from the styleSkills
   or operatorPrompt (team IDs, labels, status names).
 - Keep total body under 500 lines. Brevity > completeness.
