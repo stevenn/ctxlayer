@@ -459,13 +459,18 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
           <FormattingToolbarController
             formattingToolbar={() => (
               <FormattingToolbar>
-                {/* Hide BlockNote's built-in URL-only link button: our unified
-                    "Link" tool (DocLinkToolbarButton) handles docs + URLs. */}
-                {getFormattingToolbarItems().filter((item) => item.key !== 'createLinkButton')}
-                {/* Inline-code mark: in the default schema (toggles via Mod+E)
-                    but absent from the default toolbar item set — surface it so
-                    tool/param names can be marked as code in docs + skills. */}
-                <BasicTextStyleButton key="code" basicTextStyle="code" />
+                {/* Default items, minus BlockNote's URL-only link button (our
+                    unified "Link" tool handles docs + URLs). The inline-code
+                    mark is in the schema (toggles via Mod+E) but absent from the
+                    default toolbar set, so splice a code button in right after
+                    strikethrough — keeping it grouped with the basic text styles. */}
+                {getFormattingToolbarItems()
+                  .filter((item) => item.key !== 'createLinkButton')
+                  .flatMap((item) =>
+                    item.key === 'strikeStyleButton'
+                      ? [item, <BasicTextStyleButton key="code" basicTextStyle="code" />]
+                      : [item]
+                  )}
                 {resolveDocLinkRef.current && (
                   <DocLinkToolbarButton resolveRef={resolveDocLinkRef} />
                 )}
