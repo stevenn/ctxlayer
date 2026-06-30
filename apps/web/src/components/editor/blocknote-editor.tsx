@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, forwardRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
+  BasicTextStyleButton,
   FormattingToolbar,
   FormattingToolbarController,
   SuggestionMenuController,
@@ -38,7 +39,9 @@ type LinkMenuState = {
 type LinkEditing = {
   editLink(url: string, text: string, pos?: number): void
   deleteLink(pos?: number): void
-  getLinkMarkAtPos(pos: number): { href: string; from: number; to: number; text: string } | undefined
+  getLinkMarkAtPos(
+    pos: number
+  ): { href: string; from: number; to: number; text: string } | undefined
   prosemirrorView?: { posAtDOM(node: Node, offset: number): number }
 }
 
@@ -459,6 +462,10 @@ export const BlockNoteEditor = forwardRef<BlockNoteEditorHandle, BlockNoteEditor
                 {/* Hide BlockNote's built-in URL-only link button: our unified
                     "Link" tool (DocLinkToolbarButton) handles docs + URLs. */}
                 {getFormattingToolbarItems().filter((item) => item.key !== 'createLinkButton')}
+                {/* Inline-code mark: in the default schema (toggles via Mod+E)
+                    but absent from the default toolbar item set — surface it so
+                    tool/param names can be marked as code in docs + skills. */}
+                <BasicTextStyleButton key="code" basicTextStyle="code" />
                 {resolveDocLinkRef.current && (
                   <DocLinkToolbarButton resolveRef={resolveDocLinkRef} />
                 )}
