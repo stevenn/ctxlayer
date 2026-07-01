@@ -46,6 +46,12 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
       "Lists one upstream's tools by their native upstream names, grouped by family prefix, each with its callable <slug>__<tool> name and a one-line summary. Read-only, from the cached catalogue. Use when an upstream's mangled tool names are opaque and you need to see what it can do before calling. Optional `family` / `query` narrow the result."
   },
   {
+    name: 'reload_upstreams',
+    title: 'Reload upstreams',
+    description:
+      'Re-scans your upstream MCP servers and registers the tools of any upstream connected AFTER this session started (ctxlayer binds upstream tools at session init, so a mid-session connect is otherwise invisible). Emits tools/list_changed so a client that honors it surfaces the new tools without reconnecting. Call this after connecting a new upstream in /app/upstreams if its tools list but are not yet callable.'
+  },
+  {
     name: 'get_doc',
     title: 'Get document',
     description: 'Returns the markdown for a doc by id or slug.'

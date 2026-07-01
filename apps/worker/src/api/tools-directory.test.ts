@@ -105,6 +105,7 @@ describe('BUILTIN_TOOL_SLUGS', () => {
       'list_my_context',
       'list_upstreams',
       'describe_upstream',
+      'reload_upstreams',
       'get_doc',
       'search_docs',
       'list_skills',

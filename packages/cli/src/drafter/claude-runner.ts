@@ -42,6 +42,13 @@ export interface ClaudeRunOptions {
   userPrompt: string
   budgetUsd?: number
   /**
+   * Model for the drafting run (e.g. `sonnet`, `opus`, or a full model id).
+   * Omit to inherit the operator's Claude Code default — which can be an
+   * expensive 1M-context Opus, so a big multi-upstream draft may clip the
+   * budget cap. Pass `sonnet` for a much cheaper run.
+   */
+  model?: string
+  /**
    * Override the binary path (e.g. for testing). Defaults to `claude`.
    */
   binary?: string
@@ -70,6 +77,10 @@ export async function runClaudeDraft(opts: ClaudeRunOptions): Promise<ClaudeRunR
     '--max-budget-usd',
     String(opts.budgetUsd ?? 0.5)
   ]
+  // Only pin a model when asked; otherwise inherit the operator's default.
+  if (opts.model) {
+    args.push('--model', opts.model)
+  }
   const bin = opts.binary ?? 'claude'
   if (isDebug()) {
     console.error(
@@ -85,6 +96,19 @@ export async function runClaudeDraft(opts: ClaudeRunOptions): Promise<ClaudeRunR
       console.error('[ctxlayer debug] claude exit code:', run.code)
       console.error('[ctxlayer debug] claude stdout (first 4KB):\n', run.stdout.slice(0, 4096))
       console.error('[ctxlayer debug] claude stderr (first 4KB):\n', run.stderr.slice(0, 4096))
+    }
+    // Budget tripwire: the drafter passes `--max-budget-usd` so one run can't
+    // run away. This is OUR self-imposed per-run cap, NOT the operator's
+    // account balance — make that legible and point at the levers.
+    if (/error_max_budget_usd|maximum budget/i.test(run.stdout)) {
+      const spent = run.stdout.match(/"total_cost_usd":\s*([\d.]+)/)?.[1]
+      throw new CtxlayerError(
+        `claude stopped at its per-run spend cap${spent ? ` (≈$${spent} used)` : ''}. ` +
+          'That cap is ctxlayer\'s drafting guardrail (--max-budget-usd), not your ' +
+          'account balance. Re-run with a higher cap (e.g. `--budget 2`) or a cheaper ' +
+          'model (`--model sonnet`).',
+        'claude_budget_exceeded'
+      )
     }
     const tail = run.stderr.trim().split(/\r?\n/).slice(-3).join(' | ')
     const stdoutTail = run.stdout.trim().split(/\r?\n/).slice(-2).join(' | ')

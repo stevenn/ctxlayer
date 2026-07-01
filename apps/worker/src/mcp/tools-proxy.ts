@@ -139,7 +139,59 @@ export class UpstreamProxyRegistry {
   async init(server: McpServer, ctx?: UpstreamUserContext): Promise<void> {
     const { rows, skillsByUpstream, docsByUpstream } =
       ctx ?? (await UpstreamProxyRegistry.loadUserContext(this.env, this.userId))
-    if (rows.length === 0) return
+    await this.registerUpstreams(server, rows, skillsByUpstream, docsByUpstream)
+  }
+
+  /**
+   * Re-scan the caller's upstreams and register the tools of any upstream
+   * connected AFTER this session's `init` — ctxlayer binds upstream tools
+   * at session init, so a mid-session connect (e.g. the user pastes a token
+   * / completes OAuth in `/app/upstreams`) is otherwise invisible until the
+   * MCP client reconnects. Idempotent: upstreams already loaded this session
+   * are skipped, so no tool is double-registered (registering a duplicate
+   * name would throw). Emits `tools/list_changed` on the live server when
+   * something new registers — a client that honors it surfaces the tools
+   * without a reconnect. Returns a summary of what was added.
+   */
+  async refresh(
+    server: McpServer
+  ): Promise<{ added: { slug: string; tools: number }[]; loaded: number }> {
+    const { rows, skillsByUpstream, docsByUpstream } = await UpstreamProxyRegistry.loadUserContext(
+      this.env,
+      this.userId
+    )
+    const fresh = rows.filter((r) => !this.clients.has(r.id))
+    const added = (
+      await this.registerUpstreams(server, fresh, skillsByUpstream, docsByUpstream)
+    ).filter((a) => a.tools > 0)
+    if (added.length > 0) {
+      // The live session's tool set grew — tell the client to re-read.
+      // Belt-and-suspenders: the SDK also emits on `registerTool` when the
+      // server is connected, but an explicit send is harmless (an
+      // idempotent re-fetch) and covers SDK versions that don't auto-notify.
+      try {
+        server.server.sendToolListChanged()
+      } catch (err) {
+        console.error('[upstream-proxy] sendToolListChanged failed:', err)
+      }
+    }
+    return { added, loaded: this.clients.size }
+  }
+
+  /**
+   * Prepare + register one MCP tool per allowed cached tool for the given
+   * upstream rows. Shared by `init` (all visible upstreams) and `refresh`
+   * (only the newly-connected ones). Returns per-upstream registered-tool
+   * counts in `rows` order — registration is sequential so `tools/list`
+   * stays deterministic.
+   */
+  private async registerUpstreams(
+    server: McpServer,
+    rows: UpstreamServerRow[],
+    skillsByUpstream: Map<string, SkillForUpstreamRow[]>,
+    docsByUpstream: Map<string, DocForUpstreamRow[]>
+  ): Promise<{ slug: string; tools: number }[]> {
+    if (rows.length === 0) return []
     // Resolve the caller's principals + the per-tool ACL + the cached
     // catalogues for every visible upstream once, up front. A tool with
     // no ACL rows inherits the upstream's visibility; a locked tool the
@@ -170,6 +222,7 @@ export class UpstreamProxyRegistry {
         })
       )
     )
+    const added: { slug: string; tools: number }[] = []
     for (const prep of prepped) {
       if (!prep) continue
       const { conn, client, tools } = prep
@@ -186,6 +239,7 @@ export class UpstreamProxyRegistry {
       // the reliable surface.
       const wholeUpstream = wholeUpstreamPointers(skills, docs)
       const perTool = perToolPointers(skills, docs)
+      let count = 0
       for (const t of tools) {
         const key = accessKey(conn.id, t.tool_name)
         if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
@@ -195,8 +249,11 @@ export class UpstreamProxyRegistry {
         // is both scopes isn't named twice.
         const pointers = [...new Set([...wholeUpstream, ...(perTool.get(t.tool_name) ?? [])])]
         this.registerTool(server, conn, t, pointers)
+        count++
       }
+      added.push({ slug: conn.slug, tools: count })
     }
+    return added
   }
 
   /**

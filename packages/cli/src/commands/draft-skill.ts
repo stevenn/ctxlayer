@@ -15,7 +15,14 @@ interface DraftSkillOpts {
   tool?: string
   prompt?: string
   noSave?: boolean
+  // Self-imposed spend ceiling for the `claude -p` run (NOT your account
+  // balance — a guardrail so one draft can't run away). Default 1.0.
+  budgetUsd?: number
+  // Model for the drafting run; omit to inherit your Claude Code default.
+  model?: string
 }
+
+const DEFAULT_DRAFT_BUDGET_USD = 1.0
 
 /**
  * Flow:
@@ -48,6 +55,11 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
     )
   }
 
+  if (opts.budgetUsd !== undefined && (!Number.isFinite(opts.budgetUsd) || opts.budgetUsd <= 0)) {
+    throw new CtxlayerError('--budget must be a positive number (USD).', 'bad_budget')
+  }
+  const budgetUsd = opts.budgetUsd ?? DEFAULT_DRAFT_BUDGET_USD
+
   // Anchor + any --with upstreams, deduped; sent as a comma list.
   const upstreams = [...new Set([opts.upstream, ...(opts.withUpstreams ?? [])])]
   console.log('Fetching draft-context bundle …')
@@ -65,6 +77,8 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
   console.log(
     `Drafting with Claude (upstreams: ${pc.cyan(slugList)}` +
       (focusName ? `, tool: ${pc.cyan(focusName)}` : '') +
+      `, model: ${pc.cyan(opts.model ?? 'default')}` +
+      `, budget: ${pc.cyan(`$${budgetUsd}`)}` +
       ') …'
   )
   const userPrompt = buildUserPrompt(bundle)
@@ -72,7 +86,8 @@ export async function draftSkillCommand(opts: DraftSkillOpts): Promise<void> {
     systemPrompt: DRAFTER_SYSTEM_PROMPT,
     userPrompt,
     binary: claudeBin,
-    budgetUsd: 0.5
+    budgetUsd,
+    model: opts.model
   })
 
   // Skill slugs are enforced to the `sk-` prefix at the create boundary.

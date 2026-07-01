@@ -278,6 +278,35 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         })
     )
 
+    this.server.registerTool('reload_upstreams', { ...builtinToolMeta('reload_upstreams') }, () =>
+      rec('reload_upstreams', undefined, async () => {
+        const userId = this.props?.userId
+        if (!userId) return errText('not_signed_in')
+        // Re-hydrate on the LIVE server so an upstream connected after this
+        // session's init becomes callable without a client reconnect. If the
+        // proxy registry failed to build at init (or there were no upstreams
+        // then), build one now so a first-ever upstream still surfaces.
+        if (!this.upstreamProxy) {
+          this.upstreamProxy = new UpstreamProxyRegistry(
+            this.env,
+            userId,
+            (args) => this.stageUsage(args),
+            this.getSessionId()
+          )
+        }
+        const { added, loaded } = await this.upstreamProxy.refresh(this.server)
+        const body = {
+          added,
+          loadedUpstreams: loaded,
+          note:
+            added.length > 0
+              ? 'Registered new upstream tools + emitted tools/list_changed. If your client honors it the tools appear now; if not, reconnect the connector.'
+              : 'No upstream connected since this session started. If you just connected one and it still is not callable, your client did not pick up the change — reconnect the connector.'
+        }
+        return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] }
+      })
+    )
+
     this.server.registerTool(
       'get_doc',
       { ...builtinToolMeta('get_doc'), inputSchema: BUILTIN_INPUT_SHAPES.get_doc },

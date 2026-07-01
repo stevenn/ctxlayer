@@ -74,17 +74,37 @@ program
   .option('--tool <name>', 'Focus on a specific tool (matched across the chosen upstreams)')
   .option('--prompt <text>', 'Freeform operator request for the drafter')
   .option('--no-save', 'Render the draft locally without posting to ctxlayer')
+  .option(
+    '--model <name>',
+    'Model for the drafting run (e.g. sonnet, opus). Default: your Claude Code ' +
+      'default — which may be an expensive 1M Opus. `sonnet` is much cheaper.'
+  )
+  .option(
+    '--budget <usd>',
+    'Per-run spend cap in USD for the drafting call (a guardrail, not your ' +
+      'account balance). Default 1.0.',
+    parseFloat
+  )
   .action(
     async (
       upstream: string,
-      opts: { with: string[]; tool?: string; prompt?: string; noSave?: boolean }
+      opts: {
+        with: string[]
+        tool?: string
+        prompt?: string
+        noSave?: boolean
+        model?: string
+        budget?: number
+      }
     ) => {
       await draftSkillCommand({
         upstream,
         withUpstreams: opts.with,
         tool: opts.tool,
         prompt: opts.prompt,
-        noSave: opts.noSave
+        noSave: opts.noSave,
+        model: opts.model,
+        budgetUsd: opts.budget
       })
     }
   )
