@@ -51,6 +51,15 @@ export const BUILTIN_INPUT_SHAPES = {
   },
   get_skill: {
     slug: z.string().min(1).describe('Skill slug to fetch, as listed by list_skills.')
+  },
+  active_users: {
+    window: z
+      .string()
+      .regex(/^\d+[hd]$/)
+      .optional()
+      .describe(
+        'Look-back window as `<n>h` or `<n>d` (e.g. "24h", "7d"). Default "24h"; clamped to [1h, 30d] (raw usage-event retention).'
+      )
   }
 } satisfies Record<string, z.ZodRawShape>
 

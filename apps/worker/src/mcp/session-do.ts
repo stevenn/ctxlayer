@@ -25,6 +25,7 @@ import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { listUserRoleIds } from '../db/queries/roles'
+import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
 import { registerSkillMcp } from './skill-mcp'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
@@ -34,6 +35,7 @@ import {
   McpSearchResult,
   McpListUpstreamsResult,
   McpUpstreamTools,
+  McpActiveUsers,
   builtinToolMeta
 } from '@ctxlayer/shared'
 
@@ -355,6 +357,34 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
           // Typed against the shared MCP contract (see `McpSearchResult`).
           const body: McpSearchResult = { matches }
+          return {
+            content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
+            structuredContent: body
+          }
+        })
+    )
+
+    this.server.registerTool(
+      'active_users',
+      {
+        ...builtinToolMeta('active_users'),
+        inputSchema: BUILTIN_INPUT_SHAPES.active_users,
+        outputSchema: McpActiveUsers.shape
+      },
+      (args) =>
+        rec('active_users', args, async () => {
+          // Reads org-wide activity incl. colleagues' emails — admin-gated
+          // (mirrors the admin-only `topUsers` usage query). The tool still
+          // lists in /app/tools for everyone; only admins get data.
+          if (this.props?.role !== 'admin') return errText('admin_only')
+          const windowSeconds = parseActiveUsersWindow(args.window)
+          const { since, count, users } = await activeUsers(this.env, windowSeconds)
+          const body: McpActiveUsers = {
+            windowSeconds,
+            since,
+            activeUserCount: count,
+            users
+          }
           return {
             content: [{ type: 'text', text: JSON.stringify(body, null, 2) }],
             structuredContent: body

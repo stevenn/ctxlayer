@@ -119,6 +119,37 @@ export const McpRestrictedTool = z.object({
 export type McpRestrictedTool = z.infer<typeof McpRestrictedTool>
 
 /**
+ * One active user in `active_users`: a signed-in user who made at least one
+ * MCP tool call within the look-back window. `lastSeen` is the epoch-seconds
+ * timestamp of their most recent call in the window; `calls` counts their
+ * tool calls over it. `email`/`name` are null for a usage row whose user was
+ * since hard-deleted (the LEFT JOIN misses).
+ */
+export const McpActiveUser = z.object({
+  userId: z.string(),
+  email: z.string().nullable(),
+  name: z.string().nullable(),
+  calls: z.number(),
+  lastSeen: z.number()
+})
+export type McpActiveUser = z.infer<typeof McpActiveUser>
+
+/**
+ * `active_users` result (admin-only). `activeUserCount` is the number of
+ * DISTINCT users active in the window; `users` lists them most-active-first.
+ * `since` is the inclusive epoch-seconds lower bound the window resolved to;
+ * `windowSeconds` is its length after clamping to [1h, 30d] (the raw
+ * usage-event retention floor).
+ */
+export const McpActiveUsers = z.object({
+  windowSeconds: z.number(),
+  since: z.number(),
+  activeUserCount: z.number(),
+  users: z.array(McpActiveUser)
+})
+export type McpActiveUsers = z.infer<typeof McpActiveUsers>
+
+/**
  * `list_my_context` result. Every array holds ids/slugs (not objects):
  * `teams`/`products`/`defaultScope.*` are ids; `accessibleUpstreams` are
  * slugs. Mirrors `resolveUserScope` + `accessibleSlugs` in the worker.

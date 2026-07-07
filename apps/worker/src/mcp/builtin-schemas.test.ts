@@ -39,6 +39,15 @@ describe('builtin-schemas', () => {
     expect(s.properties.scope).toBeDefined()
   })
 
+  it('active_users: optional window only, no required key', () => {
+    const s = builtinInputJsonSchema('active_users') as {
+      properties: Record<string, unknown>
+      required?: string[]
+    }
+    expect(Object.keys(s.properties)).toEqual(['window'])
+    expect(s.required).toBeUndefined()
+  })
+
   it('parameterless built-ins yield no schema', () => {
     for (const name of ['whoami', 'list_my_context', 'list_upstreams', 'list_skills']) {
       expect(builtinInputJsonSchema(name)).toBeUndefined()

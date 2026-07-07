@@ -72,6 +72,12 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
     name: 'get_skill',
     title: 'Get skill',
     description: 'Fetches a skill body by slug. Returns SKILL.md frontmatter + body in markdown.'
+  },
+  {
+    name: 'active_users',
+    title: 'Active users',
+    description:
+      'Admin-only. Counts the DISTINCT users who made an MCP tool call within a look-back window and lists them (email, name, call count, last-seen time), most active first. `window` is `<n>h`/`<n>d` (default "24h", clamped to [1h, 30d] — the raw usage-event retention). Non-admin callers get `admin_only`.'
   }
 ]
 

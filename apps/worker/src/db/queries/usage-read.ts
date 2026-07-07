@@ -72,6 +72,14 @@ export interface RecentErrorRow {
   message: string | null
 }
 
+export interface ActiveUserRow {
+  userId: string
+  email: string | null
+  name: string | null
+  calls: number
+  lastSeen: number // epoch seconds of the user's most recent call in the window
+}
+
 // Raw `usage_events` retains 30 days (the nightly prune). The drill-down
 // can't reach further back than that even when the range dropdown asks
 // for more, so we clamp the lower bound to the retention floor.
@@ -348,6 +356,67 @@ export async function recentErrors(
       message: r.error_message ?? null
     }
   })
+}
+
+const SECONDS_PER_HOUR = 3600
+const ACTIVE_USERS_DEFAULT_SECONDS = 24 * SECONDS_PER_HOUR
+const ACTIVE_USERS_MIN_SECONDS = SECONDS_PER_HOUR
+// Raw `usage_events` retains 30 days; a longer window can't see further back.
+const ACTIVE_USERS_MAX_SECONDS = RAW_RETENTION_DAYS * SECONDS_PER_DAY
+
+/**
+ * Parse an `active_users` look-back window (`<n>h` / `<n>d`) into seconds,
+ * clamped to [1h, 30d]. `undefined` or an unparseable value (the zod regex
+ * should have already rejected the latter) falls back to 24h.
+ */
+export function parseActiveUsersWindow(window: string | undefined): number {
+  const m = window ? /^(\d+)([hd])$/.exec(window) : null
+  if (!m) return ACTIVE_USERS_DEFAULT_SECONDS
+  const secs = Number(m[1]) * (m[2] === 'd' ? SECONDS_PER_DAY : SECONDS_PER_HOUR)
+  return Math.min(Math.max(secs, ACTIVE_USERS_MIN_SECONDS), ACTIVE_USERS_MAX_SECONDS)
+}
+
+/**
+ * Distinct users active in the last `windowSeconds`, read from the raw
+ * `usage_events` log (indexed on `ts`). One row per user with their call
+ * count + most-recent-call time, most active first; `email`/`name` come from
+ * a LEFT JOIN so a hard-deleted user still counts (as nulls). The distinct
+ * active-user COUNT is the row count. Admin-only at the call site.
+ */
+export async function activeUsers(
+  env: Env,
+  windowSeconds: number
+): Promise<{ since: number; count: number; users: ActiveUserRow[] }> {
+  const since = Math.floor(Date.now() / 1000) - windowSeconds
+  const sql = `
+    SELECT e.user_id,
+           u.email   AS email,
+           u.name    AS name,
+           COUNT(*)  AS calls,
+           MAX(e.ts) AS last_seen
+    FROM usage_events e
+    LEFT JOIN users u ON u.id = e.user_id
+    WHERE e.ts >= ?1
+    GROUP BY e.user_id, u.email, u.name
+    ORDER BY calls DESC, last_seen DESC
+  `
+  const { results } = await env.DB.prepare(sql)
+    .bind(since)
+    .all<{
+      user_id: string
+      email: string | null
+      name: string | null
+      calls: number
+      last_seen: number
+    }>()
+  const users: ActiveUserRow[] = (results ?? []).map((r) => ({
+    userId: r.user_id,
+    email: r.email ?? null,
+    name: r.name ?? null,
+    calls: r.calls ?? 0,
+    lastSeen: r.last_seen ?? 0
+  }))
+  return { since, count: users.length, users }
 }
 
 /**
