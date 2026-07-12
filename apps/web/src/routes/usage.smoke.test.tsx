@@ -19,7 +19,17 @@ vi.mock('../lib/api', () => ({
     topTools: [],
     topUpstreams: [],
     topUsers: [],
-    recentErrors: []
+    recentErrors: [],
+    asyncSummary: {
+      total: 0,
+      done: 0,
+      running: 0,
+      error: 0,
+      timedOut: 0,
+      avgDurationMs: null,
+      maxDurationMs: null
+    },
+    asyncJobs: []
   }),
   searchUsers: vi.fn().mockResolvedValue([])
 }))

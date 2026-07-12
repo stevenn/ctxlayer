@@ -38,6 +38,19 @@ function secToMs(v: number | ''): number | undefined {
 function kbToBytes(v: number | ''): number | undefined {
   return v === '' || v <= 0 ? undefined : Math.round(v * 1024)
 }
+// Async tools (WI-6): the drawer edits a comma-separated list of native tool
+// names; the wire format is `authConfig.asyncTools: string[]`. Empty ⇒ undefined
+// ⇒ nothing runs async for this upstream.
+function asyncToolsToText(list?: string[]): string {
+  return (list ?? []).join(', ')
+}
+function textToAsyncTools(s: string): string[] | undefined {
+  const list = s
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean)
+  return list.length > 0 ? list : undefined
+}
 
 export function DetailsSection({
   row,
@@ -79,6 +92,7 @@ export function DetailsSection({
   const [maxRespKb, setMaxRespKb] = useState<number | ''>(
     bytesToKb(row.authConfig.maxResponseBytes)
   )
+  const [asyncToolsText, setAsyncToolsText] = useState(asyncToolsToText(row.authConfig.asyncTools))
 
   // Reset when the row changes (e.g. after save → reload).
   useEffect(() => {
@@ -93,6 +107,7 @@ export function DetailsSection({
     setMaxCallSec(msToSec(t?.maxCallMs))
     setListSec(msToSec(t?.listMs))
     setMaxRespKb(bytesToKb(row.authConfig.maxResponseBytes))
+    setAsyncToolsText(asyncToolsToText(row.authConfig.asyncTools))
   }, [row])
 
   function buildAuthConfig(): UpstreamAuthConfig {
@@ -108,7 +123,8 @@ export function DetailsSection({
     const cfg: UpstreamAuthConfig = {
       ...row.authConfig,
       timeouts: hasTimeout ? timeouts : undefined,
-      maxResponseBytes: kbToBytes(maxRespKb)
+      maxResponseBytes: kbToBytes(maxRespKb),
+      asyncTools: textToAsyncTools(asyncToolsText)
     }
     if (authStrategy === OAUTH_STATIC) {
       // Pre-registered client: emit the static block from the form. The server
@@ -223,6 +239,13 @@ export function DetailsSection({
               onChange={(v) => setMaxRespKb(typeof v === 'number' ? v : '')}
             />
           </Group>
+          <TextInput
+            label="Async tools (submit→poll)"
+            placeholder="gather_task_context, get_code_map"
+            value={asyncToolsText}
+            onChange={(e) => setAsyncToolsText(e.currentTarget.value)}
+            description="Comma-separated NATIVE tool names that run out-of-band: the call returns a job token immediately and a background worker runs it, so a multi-minute tool survives an interactive client's request cap (e.g. Claude Desktop ~180s). The agent fetches the result with poll_task. Leave blank to run every tool inline. Takes effect on the next MCP session (reconnect the connector)."
+          />
         </Stack>
         <Group justify="flex-end" gap="xs">
           <Button variant="default" color="red" onClick={onDelete} disabled={busy}>

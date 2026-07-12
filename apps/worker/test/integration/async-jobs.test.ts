@@ -2,6 +2,7 @@ import { env } from 'cloudflare:test'
 import { describe, expect, it } from 'vitest'
 import type { Env } from '../../src/env'
 import {
+  clearAsyncJobResults,
   completeJobDone,
   completeJobError,
   findJobById,
@@ -11,6 +12,7 @@ import {
   pruneAsyncJobs,
   supersedeRunningJob
 } from '../../src/db/queries/async-jobs'
+import { asyncJobStats } from '../../src/db/queries/usage-read'
 
 /**
  * Real-D1 cover for the async_jobs query layer (migration 0032). Pins the
@@ -80,5 +82,72 @@ describe('async-jobs queries', () => {
     expect(removed).toBeGreaterThanOrEqual(1)
     const survivors = await listJobsForUser(testEnv, 'uX', 10)
     expect(survivors.map((j) => j.id)).toEqual(['d2'])
+  })
+})
+
+describe('asyncJobStats (admin usage panel)', () => {
+  const j = (over: Partial<Parameters<typeof insertRunningJob>[1]>) => ({
+    id: 'j',
+    userId: 'u1',
+    sessionId: '',
+    upstreamId: 'ups',
+    tool: 't',
+    jobKey: 'k',
+    createdAt: 0,
+    ...over
+  })
+
+  it('summarises by status with completed-job durations, newest-first', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    await insertRunningJob(testEnv, j({ id: 's-done', jobKey: 'sk1', tool: 'gather_task_context', createdAt: now - 200 }))
+    await completeJobDone(testEnv, 's-done', '[{"type":"text","text":"ok"}]', now - 80) // 120s run
+    await insertRunningJob(testEnv, j({ id: 's-to', jobKey: 'sk2', createdAt: now - 300 }))
+    await completeJobError(testEnv, 's-to', 'timeout', 'upstream_timeout: x (ref=1)', now - 150)
+    await insertRunningJob(testEnv, j({ id: 's-err', jobKey: 'sk3', createdAt: now - 50 }))
+    await completeJobError(testEnv, 's-err', 'upstream_5xx', 'boom', now - 40)
+    await insertRunningJob(testEnv, j({ id: 's-run', jobKey: 'sk4', createdAt: now - 10 }))
+
+    const { summary, jobs } = await asyncJobStats(testEnv, { sinceDay: null })
+    expect(summary).toMatchObject({
+      total: 4,
+      done: 1,
+      running: 1,
+      error: 2,
+      timedOut: 1,
+      avgDurationMs: 120000,
+      maxDurationMs: 120000
+    })
+    expect(jobs.length).toBe(4)
+    expect(jobs[0]?.id).toBe('s-run') // newest first
+    expect(jobs[0]?.durationMs).toBeNull() // still running
+    expect(jobs.find((x) => x.id === 's-done')?.durationMs).toBe(120000)
+  })
+
+  it('scopes by user and upstream', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    await insertRunningJob(testEnv, j({ id: 'x-a', userId: 'uA', upstreamId: 'up1', jobKey: 'xk1', createdAt: now - 5 }))
+    await insertRunningJob(testEnv, j({ id: 'x-b', userId: 'uB', upstreamId: 'up1', jobKey: 'xk2', createdAt: now - 5 }))
+    await insertRunningJob(testEnv, j({ id: 'x-c', userId: 'uA', upstreamId: 'up2', jobKey: 'xk3', createdAt: now - 5 }))
+
+    expect((await asyncJobStats(testEnv, { sinceDay: null, userId: 'uA' })).summary.total).toBe(2)
+    const scoped = await asyncJobStats(testEnv, { sinceDay: null, userId: 'uA', upstreamId: 'up1' })
+    expect(scoped.summary.total).toBe(1)
+    expect(scoped.jobs[0]?.id).toBe('x-a')
+  })
+
+  it('clearAsyncJobResults nulls old done blobs but keeps the metadata row', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    const threeDays = 3 * 24 * 60 * 60
+    await insertRunningJob(testEnv, j({ id: 'c-old', jobKey: 'ck1', createdAt: now - threeDays }))
+    await completeJobDone(testEnv, 'c-old', '[{"type":"text","text":"big"}]', now - threeDays + 60)
+    await insertRunningJob(testEnv, j({ id: 'c-new', jobKey: 'ck2', createdAt: now - 60 }))
+    await completeJobDone(testEnv, 'c-new', '[{"type":"text","text":"fresh"}]', now - 10)
+
+    const cleared = await clearAsyncJobResults(testEnv, 24 * 60 * 60) // older than 1 day
+    expect(cleared).toBeGreaterThanOrEqual(1)
+    const old = await findJobById(testEnv, 'c-old')
+    expect(old?.result_json).toBeNull() // blob dropped
+    expect(old?.status).toBe('done') // row kept for the 30-day metrics window
+    expect((await findJobById(testEnv, 'c-new'))?.result_json).toContain('fresh') // recent kept
   })
 })

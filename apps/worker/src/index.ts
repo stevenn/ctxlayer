@@ -8,7 +8,7 @@ import { reindexConsumer } from './queues/reindex-consumer'
 import { gitSyncConsumer } from './queues/git-sync-consumer'
 import { jobsConsumer } from './queues/jobs-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
-import { pruneAsyncJobs } from './db/queries/async-jobs'
+import { clearAsyncJobResults, pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { listEnabledGitSources } from './db/queries/git-sources'
 import { isGitSyncDue } from './git/sync'
@@ -125,13 +125,18 @@ const worker: ExportedHandler<Env> = {
       })()
     )
 
-    // 1b. Prune async_jobs older than 3 days (results are ephemeral — the
-    // retry-warm cache is 15 min; rows only linger for post-hoc list_tasks).
+    // 1b. async_jobs two-tier retention: drop the heavy result_json blob after
+    // 1 day (retry-warm is 15 min; polling is a live action), but keep the
+    // lightweight row for 30 days so the admin async-usage panel matches the
+    // usage_events retention window, then delete.
     ctx.waitUntil(
       (async () => {
         try {
-          const removed = await pruneAsyncJobs(env, 3 * 24 * 60 * 60)
-          console.log(`[cron] pruned ${removed} async_jobs rows older than 3d`)
+          const cleared = await clearAsyncJobResults(env, 24 * 60 * 60)
+          const removed = await pruneAsyncJobs(env, 30 * 24 * 60 * 60)
+          console.log(
+            `[cron] async_jobs: cleared ${cleared} result blobs (>1d), pruned ${removed} rows (>30d)`
+          )
         } catch (err) {
           const m = err instanceof Error ? err.message : String(err)
           console.error(`[cron] async_jobs prune failed: ${m}`)

@@ -130,6 +130,25 @@ export async function listJobsForUser(env: Env, userId: string, limit = 20): Pro
   return res.results ?? []
 }
 
+/**
+ * Null the (potentially large) `result_json` blob on done jobs older than the
+ * cutoff. The retry-warm cache is 15 min and polling is a live-workflow action,
+ * so the body is dead weight after a day — but the lightweight row (status,
+ * tool, timings, error_code) is kept for the 30-day usage-metrics window.
+ * Returns rows cleared.
+ */
+export async function clearAsyncJobResults(env: Env, olderThanSeconds: number): Promise<number> {
+  const cutoff = Math.floor(Date.now() / 1000) - olderThanSeconds
+  const res = await env.DB.prepare(
+    `UPDATE async_jobs SET result_json = NULL
+     WHERE status = 'done' AND result_json IS NOT NULL
+       AND completed_at IS NOT NULL AND completed_at < ?1`
+  )
+    .bind(cutoff)
+    .run()
+  return res.meta.changes ?? 0
+}
+
 /** Nightly prune — drop jobs older than the retention window. Returns rows removed. */
 export async function pruneAsyncJobs(env: Env, olderThanSeconds: number): Promise<number> {
   const cutoff = Math.floor(Date.now() / 1000) - olderThanSeconds

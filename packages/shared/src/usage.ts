@@ -145,7 +145,50 @@ export const UsageResponse = z.object({
 })
 export type UsageResponse = z.infer<typeof UsageResponse>
 
+// Async submit→poll analytics (WI-6). Sourced from the `async_jobs` table,
+// whose rows are retained 30 days (matching usage_events; only the heavy
+// result_json blob is cleared after 1 day). `durationMs` is the background run
+// time of a completed job (completed_at − created_at); null while still
+// running. `timedOut` is the subset of `error` whose class is 'timeout'.
+// Durations are null when no job has completed yet.
+export const UsageAsyncSummary = z.object({
+  total: z.number().int().min(0),
+  done: z.number().int().min(0),
+  running: z.number().int().min(0),
+  error: z.number().int().min(0),
+  timedOut: z.number().int().min(0),
+  avgDurationMs: z.number().int().min(0).nullable(),
+  maxDurationMs: z.number().int().min(0).nullable()
+})
+export type UsageAsyncSummary = z.infer<typeof UsageAsyncSummary>
+
+export const UsageAsyncJobRow = z.object({
+  id: z.string(),
+  tool: z.string(), // native upstream tool name
+  upstreamId: z.string(),
+  upstreamSlug: z.string().nullable(),
+  status: z.string(), // running | done | error (loose so a new value can't fail parse)
+  createdAt: z.number().int(), // unix seconds
+  completedAt: z.number().int().nullable(),
+  durationMs: z.number().int().min(0).nullable(),
+  errorCode: z.string().nullable()
+})
+export type UsageAsyncJobRow = z.infer<typeof UsageAsyncJobRow>
+
+const EMPTY_ASYNC_SUMMARY: UsageAsyncSummary = {
+  total: 0,
+  done: 0,
+  running: 0,
+  error: 0,
+  timedOut: 0,
+  avgDurationMs: null,
+  maxDurationMs: null
+}
+
 export const AdminUsageResponse = UsageResponse.extend({
-  topUsers: z.array(UsageTopUser)
+  topUsers: z.array(UsageTopUser),
+  // Defaulted so a response from a worker predating WI-6 still parses.
+  asyncSummary: UsageAsyncSummary.default(EMPTY_ASYNC_SUMMARY),
+  asyncJobs: z.array(UsageAsyncJobRow).default([])
 })
 export type AdminUsageResponse = z.infer<typeof AdminUsageResponse>

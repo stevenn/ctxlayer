@@ -1,5 +1,11 @@
 import type { Env } from '../../env'
-import { USAGE_RANGE_DAYS, localDayIndex, type UsageRange } from '@ctxlayer/shared'
+import {
+  USAGE_RANGE_DAYS,
+  localDayIndex,
+  type UsageAsyncJobRow,
+  type UsageAsyncSummary,
+  type UsageRange
+} from '@ctxlayer/shared'
 
 /**
  * Read helpers for the usage dashboards. All reads hit
@@ -452,4 +458,110 @@ export async function getUpstreamUsageRollup(
     .bind(args.userId, args.upstreamId, args.sinceDay, args.mangledTool)
     .all<{ day: number; calls: number }>()
   return { totalCalls, byDay: dayRows.results ?? [] }
+}
+
+// `async_jobs` rows are kept 30 days (the nightly prune matches usage_events);
+// only the heavy result_json blob is cleared earlier (after 1 day). So the
+// metrics window here can look back the full 30 days like the other panels.
+const ASYNC_RETENTION_DAYS = 30
+const ASYNC_JOBS_LIMIT = 100
+
+/**
+ * Async submit→poll analytics for the admin usage dashboard (WI-6). Reads the
+ * `async_jobs` table (NOT usage_events): a summary aggregate + the most-recent
+ * jobs, both honouring the same user/upstream/time scope as the other panels
+ * (clamped to the 30-day retention floor). `durationMs` is a completed job's
+ * background run time. Metrics read only lightweight columns, so the 1-day
+ * result_json clear doesn't affect them.
+ */
+export async function asyncJobStats(
+  env: Env,
+  scope: UsageScope,
+  limit = ASYNC_JOBS_LIMIT
+): Promise<{ summary: UsageAsyncSummary; jobs: UsageAsyncJobRow[] }> {
+  const retentionFloor = Math.floor(Date.now() / 1000) - ASYNC_RETENTION_DAYS * SECONDS_PER_DAY
+  const since = scope.sinceDay == null ? retentionFloor : Math.max(scope.sinceDay, retentionFloor)
+  const where: string[] = ['a.created_at >= ?']
+  const binds: unknown[] = [since]
+  if (scope.userId) {
+    where.push('a.user_id = ?')
+    binds.push(scope.userId)
+  }
+  if (scope.upstreamId != null) {
+    where.push('a.upstream_id = ?')
+    binds.push(scope.upstreamId)
+  }
+  const whereSql = where.join(' AND ')
+
+  // Aggregate summary. SQLite treats boolean predicates as 0/1, so SUM(pred)
+  // counts matches; AVG/MAX ignore the NULLs from non-done rows.
+  const agg = await env.DB.prepare(
+    `SELECT
+       COUNT(*) AS total,
+       SUM(a.status = 'done')    AS done,
+       SUM(a.status = 'running') AS running,
+       SUM(a.status = 'error')   AS error,
+       SUM(a.status = 'error' AND a.error_code = 'timeout') AS timed_out,
+       AVG(CASE WHEN a.status = 'done' AND a.completed_at IS NOT NULL
+                THEN a.completed_at - a.created_at END) AS avg_dur_s,
+       MAX(CASE WHEN a.status = 'done' AND a.completed_at IS NOT NULL
+                THEN a.completed_at - a.created_at END) AS max_dur_s
+     FROM async_jobs a
+     WHERE ${whereSql}`
+  )
+    .bind(...binds)
+    .first<{
+      total: number
+      done: number | null
+      running: number | null
+      error: number | null
+      timed_out: number | null
+      avg_dur_s: number | null
+      max_dur_s: number | null
+    }>()
+
+  const summary: UsageAsyncSummary = {
+    total: agg?.total ?? 0,
+    done: agg?.done ?? 0,
+    running: agg?.running ?? 0,
+    error: agg?.error ?? 0,
+    timedOut: agg?.timed_out ?? 0,
+    avgDurationMs: agg?.avg_dur_s == null ? null : Math.round(agg.avg_dur_s * 1000),
+    maxDurationMs: agg?.max_dur_s == null ? null : Math.round(agg.max_dur_s * 1000)
+  }
+
+  const { results } = await env.DB.prepare(
+    `SELECT a.id, a.tool, a.upstream_id, us.slug AS upstream_slug,
+            a.status, a.created_at, a.completed_at, a.error_code
+     FROM async_jobs a
+     LEFT JOIN upstream_servers us ON us.id = a.upstream_id
+     WHERE ${whereSql}
+     ORDER BY a.created_at DESC
+     LIMIT ?`
+  )
+    .bind(...binds, limit)
+    .all<{
+      id: string
+      tool: string
+      upstream_id: string
+      upstream_slug: string | null
+      status: string
+      created_at: number
+      completed_at: number | null
+      error_code: string | null
+    }>()
+
+  const jobs: UsageAsyncJobRow[] = (results ?? []).map((r) => ({
+    id: r.id,
+    tool: r.tool,
+    upstreamId: r.upstream_id,
+    upstreamSlug: r.upstream_slug ?? null,
+    status: r.status,
+    createdAt: r.created_at,
+    completedAt: r.completed_at ?? null,
+    durationMs: r.completed_at == null ? null : (r.completed_at - r.created_at) * 1000,
+    errorCode: r.error_code ?? null
+  }))
+
+  return { summary, jobs }
 }

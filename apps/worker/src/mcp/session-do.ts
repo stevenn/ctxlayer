@@ -435,10 +435,22 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
               content: [{ type: 'text', text: job.error_detail ?? job.error_code ?? 'upstream_error' }]
             }
           }
-          // done — replay the stored upstream content array verbatim.
+          // done — replay the stored upstream content array verbatim. The
+          // result blob is cleared ~1 day after completion (retry-warm is 15
+          // min), so a very-late poll finds it gone.
+          if (job.result_json == null) {
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `result_expired: job ${job.id} completed but its result is no longer cached (results are retained ~1 day). Re-run the tool to recompute.`
+                }
+              ]
+            }
+          }
           let parsed: unknown
           try {
-            parsed = JSON.parse(job.result_json ?? '[]')
+            parsed = JSON.parse(job.result_json)
           } catch {
             parsed = null
           }
