@@ -91,9 +91,11 @@ describe('buildToolsDirectory (real D1)', () => {
   it('lists built-ins + visible upstreams, SHOWS the locked tool with a requires-name', async () => {
     const dir = await buildToolsDirectory(testEnv, 'u-1')
 
-    expect(dir.builtins).toHaveLength(12)
+    expect(dir.builtins).toHaveLength(14)
     // Built-ins carry their input JSON Schema (for the SPA's schema viewer)
     // only when they take arguments — derived from the registered zod shape.
+    expect(dir.builtins.find((b) => b.name === 'poll_task')?.inputSchema).toBeDefined()
+    expect(dir.builtins.find((b) => b.name === 'list_tasks')?.inputSchema).toBeUndefined()
     expect(dir.builtins.find((b) => b.name === 'describe_upstream')?.inputSchema).toBeDefined()
     expect(dir.builtins.find((b) => b.name === 'active_users')?.inputSchema).toBeDefined()
     expect(dir.builtins.find((b) => b.name === 'draft_skill')?.inputSchema).toBeDefined()

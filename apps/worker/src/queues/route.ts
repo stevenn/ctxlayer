@@ -12,11 +12,12 @@
  * The suffixes don't overlap, and the type word is always the last `-`-segment
  * (it's appended after the worker name), so suffix matching can't misroute.
  */
-export type QueueKind = 'usage' | 'reindex' | 'git-sync'
+export type QueueKind = 'usage' | 'reindex' | 'git-sync' | 'jobs'
 
 export function queueKind(name: string): QueueKind | null {
   if (name.endsWith('-usage')) return 'usage'
   if (name.endsWith('-reindex')) return 'reindex'
   if (name.endsWith('-git-sync')) return 'git-sync'
+  if (name.endsWith('-jobs')) return 'jobs'
   return null
 }

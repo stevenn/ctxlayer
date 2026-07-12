@@ -61,6 +61,12 @@ export const BUILTIN_INPUT_SHAPES = {
         'Look-back window as `<n>h` or `<n>d` (e.g. "24h", "7d"). Default "24h"; clamped to [1h, 30d] (raw usage-event retention).'
       )
   },
+  poll_task: {
+    job_id: z
+      .string()
+      .min(1)
+      .describe('The job id returned by an async tool submit (or by list_tasks).')
+  },
   draft_skill: {
     upstreams: z
       .array(z.string())

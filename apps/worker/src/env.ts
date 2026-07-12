@@ -60,6 +60,7 @@ export interface Env {
   USAGE_QUEUE: Queue
   DOC_REINDEX_QUEUE: Queue
   GIT_SYNC_QUEUE: Queue
+  JOBS_QUEUE: Queue
   MCP_SESSION_DO: DurableObjectNamespace
   DOC_ROOM_DO: DurableObjectNamespace
   ASSETS: Fetcher

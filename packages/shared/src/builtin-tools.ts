@@ -74,6 +74,18 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
     description: 'Fetches a skill body by slug. Returns SKILL.md frontmatter + body in markdown.'
   },
   {
+    name: 'poll_task',
+    title: 'Poll async task',
+    description:
+      'Fetches the result of an async upstream tool call started earlier (some slow tools return a job token instead of running inline, because they exceed interactive client timeouts). Pass the `job_id` from that submit response. Returns the tool result when done, `still_running` while it computes (poll again in ~30s), or the error if it failed. Only the caller who started the job can poll it.'
+  },
+  {
+    name: 'list_tasks',
+    title: 'List async tasks',
+    description:
+      'Lists your recent async upstream tool jobs (job_id, tool, status, timestamps), newest first. Use to recover a job_id for `poll_task` if you lost the submit response.'
+  },
+  {
     name: 'active_users',
     title: 'Active users',
     description:

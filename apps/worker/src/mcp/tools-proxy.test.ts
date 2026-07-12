@@ -7,12 +7,17 @@ import {
   summariseToolDescription,
   groupToolsByFamily,
   isTimeoutError,
-  callWithHeartbeat
+  callWithHeartbeat,
+  runUpstreamCall,
+  isAsyncTool,
+  parseJobContent,
+  hashJobKey
 } from './tools-proxy'
 import { mangleToolName } from './tool-name'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import type { DocForUpstreamRow } from '../db/queries/doc-attachments'
 import type { UpstreamToolRow } from '../db/queries/upstream-tools'
+import type { UpstreamConnection } from '../db/queries/upstreams'
 
 describe('truncateDescription', () => {
   it('leaves short strings untouched', () => {
@@ -253,5 +258,104 @@ describe('callWithHeartbeat', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('runUpstreamCall', () => {
+  it('normalises a successful call to ok content', async () => {
+    const out = await runUpstreamCall({
+      slug: 'driver',
+      toolName: 'x',
+      run: async () => ({ content: [{ type: 'text', text: 'hi' }] })
+    })
+    expect(out.status).toBe('ok')
+    expect(out.surface.isError).toBe(false)
+    expect(out.surface.content[0]?.text).toBe('hi')
+    expect(out.truncated).toBe(false)
+  })
+
+  it('classifies an isError result as error', async () => {
+    const out = await runUpstreamCall({
+      slug: 'driver',
+      toolName: 'x',
+      run: async () => ({ content: [{ type: 'text', text: 'boom' }], isError: true })
+    })
+    expect(out.status).toBe('error')
+    expect(out.surface.isError).toBe(true)
+    expect(out.errorCode).toBeDefined()
+  })
+
+  it('replaces an oversized response with a truncation notice', async () => {
+    const out = await runUpstreamCall({
+      slug: 'driver',
+      toolName: 'get_code_map',
+      maxResponseBytes: 100,
+      run: async () => ({ content: [{ type: 'text', text: 'x'.repeat(500) }] })
+    })
+    expect(out.truncated).toBe(true)
+    expect(out.status).toBe('ok')
+    expect(out.surface.content[0]?.text).toContain('relay cap')
+  })
+
+  it('maps a thrown timeout to status timeout', async () => {
+    const out = await runUpstreamCall({
+      slug: 'driver',
+      toolName: 'gather_task_context',
+      run: async () => {
+        throw new Error('Request timed out')
+      }
+    })
+    expect(out.status).toBe('timeout')
+    expect(out.surface.isError).toBe(true)
+    expect(out.surface.content[0]?.text).toContain('upstream_timeout')
+  })
+
+  it('sanitises a thrown error (no credential leak) and tags a ref', async () => {
+    const out = await runUpstreamCall({
+      slug: 'driver',
+      toolName: 'x',
+      run: async () => {
+        throw new Error('failed Authorization: Bearer sk-secret-123')
+      }
+    })
+    expect(out.status).toBe('error')
+    expect(out.surface.content[0]?.text).not.toContain('sk-secret-123')
+    expect(out.surface.content[0]?.text).toMatch(/ref=/)
+  })
+})
+
+describe('isAsyncTool', () => {
+  const conn = (asyncTools?: string[]) =>
+    ({ authConfig: { asyncTools } }) as unknown as UpstreamConnection
+
+  it('is true only for a native tool on the asyncTools list', () => {
+    expect(isAsyncTool(conn(['gather_task_context']), 'gather_task_context')).toBe(true)
+    expect(isAsyncTool(conn(['gather_task_context']), 'get_code_map')).toBe(false)
+    expect(isAsyncTool(conn(undefined), 'gather_task_context')).toBe(false)
+    expect(isAsyncTool(conn([]), 'gather_task_context')).toBe(false)
+  })
+})
+
+describe('parseJobContent', () => {
+  it('parses a stored content array back verbatim', () => {
+    expect(parseJobContent('[{"type":"text","text":"hi"}]')).toEqual([{ type: 'text', text: 'hi' }])
+  })
+
+  it('wraps a non-array / unparseable value as a text item', () => {
+    expect(parseJobContent('not json')).toEqual([{ type: 'text', text: 'not json' }])
+    expect(parseJobContent('"a string"')).toEqual([{ type: 'text', text: '"a string"' }])
+  })
+})
+
+describe('hashJobKey', () => {
+  it('is stable for identical inputs and differs on any change', async () => {
+    const a = await hashJobKey('u1', 'ups', 'tool', '{"x":1}')
+    const b = await hashJobKey('u1', 'ups', 'tool', '{"x":1}')
+    const c = await hashJobKey('u1', 'ups', 'tool', '{"x":2}')
+    const d = await hashJobKey('u2', 'ups', 'tool', '{"x":1}')
+    expect(a).toBe(b)
+    expect(a).not.toBe(c)
+    expect(a).not.toBe(d)
+    expect(a).toMatch(/^[0-9a-f]{64}$/)
   })
 })

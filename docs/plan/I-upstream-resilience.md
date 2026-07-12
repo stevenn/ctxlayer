@@ -1,9 +1,11 @@
 # Upstream resilience: long-running calls + oversized responses — deep dive
 
-> **Status (2026-05-30): WI-1, WI-4, WI-5 and I7 landed.** WI-2 (Driver-side
-> progress emission) is an ask to Driver, not ctxlayer code; WI-3 (raising the
-> global ceilings) and the async submit→poll pattern remain open and are gated
-> on the §I9 Durable Object wall-clock verification. Implemented: per-upstream
+> **Status (2026-05-30): WI-1, WI-4, WI-5 and I7 landed. WI-6 (async
+> submit→poll) landed 2026-07-12 — see §I9.** WI-2 (Driver-side progress
+> emission) is an ask to Driver, not ctxlayer code; WI-3 (raising the global
+> ceilings) remains open. The async pattern shipped by moving the slow call to a
+> queue consumer, which sidesteps the Durable Object wall-clock question rather
+> than answering it. Implemented: per-upstream
 > timeout overrides (`authConfig.timeouts`, clamped at the admin REST boundary
 > and re-clamped in `http-client.ts`), a response-size guardrail
 > (`UPSTREAM_MAX_RESPONSE_BYTES` 256 KB default + `authConfig.maxResponseBytes`
@@ -291,6 +293,34 @@ gracefully instead of nuking the agent's context (and wasting tokeniser cost):
 - **Default response cap** — 256 KB a reasonable global default, or per-upstream
   only? (Driver `get_code_map` legitimately returns large maps when scoped
   intentionally.)
-- **Async/job pattern** for genuinely multi-minute tools — out of scope here,
-  but if Driver tools regularly exceed even 300s, a submit→poll shape is the
-  real answer and belongs in its own milestone. Flag, don't build yet.
+- **Async/job pattern** for genuinely multi-minute tools — **SHIPPED
+  (2026-07-12)** as WI-6 below. The trigger turned out not to be "Driver
+  exceeds 300s" but "an *interactive client* caps the request below the tool's
+  runtime": Claude Desktop hard-caps `tools/call` at ~180s and does not reset
+  on progress, so no server-side keepalive (transport SSE comments, the
+  `notifications/progress` heartbeat) can extend it. A synchronous 2-3 min tool
+  simply cannot fit. See WI-6.
+
+### WI-6: Async submit→poll for slow tools (shipped 2026-07-12)
+
+A native tool listed in an upstream's `authConfig.asyncTools` (config-only, no
+migration — same JSON channel as WI-1 `timeouts`) is no longer run inline. The
+proxy (`mcp/tools-proxy.ts submitAsyncJob`) enqueues a `ctxlayer-jobs` message
+and returns a job token immediately; the queue consumer
+(`queues/jobs-consumer.ts`) re-dials the upstream with the caller's creds and
+runs the full `tools/call`, storing the result on an `async_jobs` row
+(migration `0032`). The `poll_task` / `list_tasks` built-ins read it back.
+
+- **Why a queue, not a longer DO request:** this sidesteps the I5.2 / I9
+  *DO wall-clock* question entirely — a background queue-consumer invocation has
+  ~15 min wall-clock, and the submit/poll DO requests each return in <2s, well
+  under any client cap. The serial-DO blast radius (I5.1) also disappears: the
+  long call no longer runs in the session's DO.
+- **Retry-warm:** the job is keyed by `sha256(user, upstream, tool, args)`, so a
+  natural re-run of the same call returns the cached result (TTL 15 min) with
+  zero polling — the whole `runUpstreamCall` (size guard + error sanitise) is
+  shared with the inline path so the two can't drift.
+- **Trigger is uniform** (async-eligible tool → always async, every client). A
+  client-aware sync fast-path for reset-on-progress clients (Claude Code,
+  claude.ai) is the noted easy follow-up.
+- **Config:** set `driver` → `authConfig.asyncTools = ["gather_task_context"]`.

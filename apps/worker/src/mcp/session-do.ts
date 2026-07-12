@@ -25,6 +25,7 @@ import { searchDocs, effectiveScope, availableScopeFor, SEARCH_K_DEFAULT } from 
 import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
+import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
 import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
 import { registerSkillMcp } from './skill-mcp'
@@ -399,6 +400,69 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             structuredContent: body
           }
         })
+    )
+
+    // ----- async submit→poll built-ins -----
+    // Slow upstream tools (per authConfig.asyncTools) run in the ctxlayer-jobs
+    // consumer and return a job token; poll_task fetches the result once ready
+    // (list_tasks recovers a lost job id). See tools-proxy.ts submitAsyncJob +
+    // docs/plan/I-upstream-resilience.md §I9.
+    this.server.registerTool(
+      'poll_task',
+      { ...builtinToolMeta('poll_task'), inputSchema: BUILTIN_INPUT_SHAPES.poll_task },
+      (args) =>
+        rec('poll_task', args, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const job = await findJobById(this.env, args.job_id)
+          // Same not_found for missing OR not-owned — don't leak that a job id
+          // exists for another user.
+          if (!job || job.user_id !== userId) return errText('not_found: no such job')
+          if (job.status === 'running') {
+            const elapsed = Math.floor(Date.now() / 1000) - job.created_at
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: `still_running: job ${job.id} has run ${elapsed}s. Call poll_task again in ~30s.`
+                }
+              ]
+            }
+          }
+          if (job.status === 'error') {
+            return {
+              isError: true,
+              content: [{ type: 'text', text: job.error_detail ?? job.error_code ?? 'upstream_error' }]
+            }
+          }
+          // done — replay the stored upstream content array verbatim.
+          let parsed: unknown
+          try {
+            parsed = JSON.parse(job.result_json ?? '[]')
+          } catch {
+            parsed = null
+          }
+          const content = (
+            Array.isArray(parsed) ? parsed : [{ type: 'text', text: job.result_json ?? '' }]
+          ) as Array<{ type: 'text'; text: string }>
+          return { content }
+        })
+    )
+
+    this.server.registerTool('list_tasks', { ...builtinToolMeta('list_tasks') }, () =>
+      rec('list_tasks', undefined, async () => {
+        const userId = this.props?.userId
+        if (!userId) return errText('not_signed_in')
+        const jobs = await listJobsForUser(this.env, userId, 20)
+        const body = jobs.map((j) => ({
+          job_id: j.id,
+          tool: j.tool,
+          status: j.status,
+          created_at: j.created_at,
+          completed_at: j.completed_at
+        }))
+        return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] }
+      })
     )
 
     // ----- skill MCP surface (M7a) -----

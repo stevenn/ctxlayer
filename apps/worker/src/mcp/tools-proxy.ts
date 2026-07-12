@@ -35,6 +35,11 @@ import {
   type UpstreamToolRow
 } from '../db/queries/upstream-tools'
 import { getUserCredentialStatuses } from '../db/queries/upstream-credentials'
+import {
+  findLatestJobByKey,
+  insertRunningJob,
+  supersedeRunningJob
+} from '../db/queries/async-jobs'
 import { listSkillsForUpstreams, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import { listDocsForUpstreams, type DocForUpstreamRow } from '../db/queries/doc-attachments'
 import { resolveUserScope } from '../db/queries/doc-tags'
@@ -531,60 +536,30 @@ export class UpstreamProxyRegistry {
       let errorCode: string | undefined
       let errorDetail: string | undefined
       try {
-        const result = await callWithHeartbeat(extra, () =>
-          client.callTool(upstreamToolName, args)
-        )
-        respJson = safeJson(result.content ?? null)
-        if (result.isError) {
-          status = 'error'
-          errorDetail = errorTextFromContent(result.content)
-          errorCode = classifyUpstreamError('error', errorDetail)
+        // Async-eligible tools (per `authConfig.asyncTools`) can run far
+        // longer than an interactive client's request timeout — Claude
+        // Desktop hard-caps at ~180s and does not reset on progress, so no
+        // server-side keepalive helps. Run them out-of-band: enqueue a job,
+        // return a token immediately, and let the ctxlayer-jobs consumer run
+        // the full call (poll_task fetches the result). A retried identical
+        // call returns the cached result. See docs/plan/I-upstream-resilience §I9.
+        if (isAsyncTool(conn, upstreamToolName)) {
+          const sub = await this.submitAsyncJob(conn, upstreamToolName, args)
+          respJson = sub.respJson
+          return sub.surface
         }
-        // Response-size guardrail (WI-4). An oversized upstream payload
-        // (e.g. Driver's whole-repo get_code_map ≈ 1.4 MB) would nuke the
-        // agent's context and waste the usage tokeniser. Replace it with a
-        // structured truncation notice. Applied on the assembled result —
-        // the SDK materialises `content` in memory today; if true streaming
-        // passthrough lands, move this to a byte-counter in the stream.
-        const respBytes = byteLength(respJson)
-        const cap = conn.authConfig.maxResponseBytes ?? UPSTREAM_MAX_RESPONSE_BYTES
-        if (!result.isError && respBytes > cap) {
-          truncated = true
-          const notice = truncationNotice(conn.slug, upstreamToolName, respBytes, cap)
-          // Record the short notice (not the megabyte blob) for usage.
-          respJson = notice
-          return { isError: false, content: [{ type: 'text' as const, text: notice }] }
-        }
-        return {
-          isError: !!result.isError,
-          content: Array.isArray(result.content)
-            ? (result.content as { type: string }[])
-            : [{ type: 'text', text: JSON.stringify(result.content ?? null, null, 2) }],
-          structuredContent: result.structuredContent as Record<string, unknown> | undefined
-        }
-      } catch (err) {
-        status = isTimeoutError(err) ? 'timeout' : 'error'
-        const msg = stringifyError(err)
-        respJson = msg
-        errorCode = classifyUpstreamError(status, msg)
-        errorDetail = msg
-        // Don't echo the raw upstream error verbatim — it can carry
-        // API keys, internal hostnames, or stack frames. Sanitise via
-        // `formatUpstreamError` (URL/Bearer/IP/stack-frame strip +
-        // 200-char cap) and tag with a correlation id so admins can
-        // grep the full server-side log when an operator asks.
-        const refId = newCorrelationId()
-        console.error(
-          `[upstream-proxy] [ref=${refId}] ${conn.slug}.${upstreamToolName} ${status}: ${msg}`
-        )
-        const { userMessage } = formatUpstreamError({
+        const outcome = await runUpstreamCall({
           slug: conn.slug,
           toolName: upstreamToolName,
-          status,
-          rawMessage: msg,
-          refId
+          maxResponseBytes: conn.authConfig.maxResponseBytes,
+          run: () => callWithHeartbeat(extra, () => client.callTool(upstreamToolName, args))
         })
-        return errText(userMessage)
+        respJson = outcome.respJson
+        status = outcome.status
+        truncated = outcome.truncated
+        errorCode = outcome.errorCode
+        errorDetail = outcome.errorDetail
+        return outcome.surface
       } finally {
         await this.stageUsage({
           userId: this.userId,
@@ -623,6 +598,134 @@ export class UpstreamProxyRegistry {
       handler
     )
   }
+
+  /**
+   * Async submit for a tool on the upstream's `authConfig.asyncTools`. Dedups
+   * against `async_jobs` so a retried identical call attaches to (or reads the
+   * cached result of) an in-flight/completed job instead of spawning a
+   * duplicate, then enqueues a ctxlayer-jobs message for the background run.
+   * Returns the agent-facing surface + the string recorded for usage.
+   */
+  private async submitAsyncJob(
+    conn: UpstreamConnection,
+    upstreamToolName: string,
+    args: unknown
+  ): Promise<{ surface: AsyncSubmitSurface; respJson: string }> {
+    const argsJson = safeJson(args)
+    const jobKey = await hashJobKey(this.userId, conn.id, upstreamToolName, argsJson)
+    const now = Math.floor(Date.now() / 1000)
+    const existing = await findLatestJobByKey(this.env, jobKey)
+
+    if (existing && existing.status === 'running') {
+      const age = now - existing.created_at
+      if (age <= STALE_RUNNING_S) {
+        return asyncSurface(
+          `Task already running (job ${existing.id}, ${age}s elapsed). Call poll_task with job_id "${existing.id}" to fetch the result once ready.`
+        )
+      }
+      // The running row's consumer invocation never completed it (age past the
+      // hard call ceiling + buffer) — supersede it so a resubmit can take the
+      // partial-UNIQUE running slot.
+      await supersedeRunningJob(this.env, existing.id, now)
+    } else if (
+      existing &&
+      existing.status === 'done' &&
+      existing.result_json &&
+      existing.completed_at != null &&
+      now - existing.completed_at <= ASYNC_DONE_TTL_S
+    ) {
+      // Retry-warm: an identical call was computed recently → return it, no
+      // re-run and no polling.
+      return { surface: { isError: false, content: parseJobContent(existing.result_json) }, respJson: existing.result_json }
+    }
+
+    const jobId = crypto.randomUUID()
+    try {
+      await insertRunningJob(this.env, {
+        id: jobId,
+        userId: this.userId,
+        sessionId: this.sessionId,
+        upstreamId: conn.id,
+        tool: upstreamToolName,
+        jobKey,
+        createdAt: now
+      })
+    } catch (err) {
+      // Lost the race to a concurrent submit that took the running slot.
+      if (/UNIQUE constraint/i.test(stringifyError(err))) {
+        const running = await findLatestJobByKey(this.env, jobKey)
+        if (running && running.status === 'running') {
+          return asyncSurface(
+            `Task already running (job ${running.id}). Call poll_task with job_id "${running.id}".`
+          )
+        }
+      }
+      throw err
+    }
+    await this.env.JOBS_QUEUE.send({
+      jobId,
+      userId: this.userId,
+      upstreamId: conn.id,
+      tool: upstreamToolName,
+      argsJson,
+      sessionId: this.sessionId
+    })
+    return asyncSurface(
+      `Task started (job ${jobId}). This tool runs in the background (~2-3 min) because it exceeds interactive client request timeouts. Call poll_task with job_id "${jobId}" to fetch the result, or just re-run this exact call — it returns the cached result once ready.`
+    )
+  }
+}
+
+/**
+ * TTL for the retry-warm cache: a `done` job younger than this returned
+ * directly on an identical re-submit (no re-run). Older → recompute.
+ */
+const ASYNC_DONE_TTL_S = 15 * 60
+
+/**
+ * A `running` job older than this is treated as abandoned (its consumer
+ * invocation died) so a resubmit can proceed. Must exceed the hard call
+ * ceiling (`UPSTREAM_MAX_CALL_TIMEOUT_MS`, 300s) plus slack.
+ */
+const STALE_RUNNING_S = 10 * 60
+
+/** Agent-facing surface for an async submit (never an error at submit time). */
+type AsyncSubmitSurface = { isError: boolean; content: Array<{ type: string; text?: string }> }
+
+export function isAsyncTool(conn: UpstreamConnection, toolName: string): boolean {
+  return conn.authConfig.asyncTools?.includes(toolName) ?? false
+}
+
+function asyncSurface(text: string): { surface: AsyncSubmitSurface; respJson: string } {
+  return { surface: { isError: false, content: [{ type: 'text', text }] }, respJson: text }
+}
+
+/** Parse a stored `result_json` content array back into MCP tool content. */
+export function parseJobContent(resultJson: string): Array<{ type: string; text?: string }> {
+  try {
+    const parsed = JSON.parse(resultJson)
+    if (Array.isArray(parsed)) return parsed as Array<{ type: string; text?: string }>
+  } catch {
+    // fall through
+  }
+  return [{ type: 'text', text: resultJson }]
+}
+
+/**
+ * Stable dedup key for an async job: same user + upstream + tool + args →
+ * same key, so a retried identical call attaches to the in-flight job (or its
+ * cached result). SHA-256 hex; `argsJson` is the caller's own serialisation,
+ * which is stable across a client's retries of the same call.
+ */
+export async function hashJobKey(
+  userId: string,
+  upstreamId: string,
+  toolName: string,
+  argsJson: string
+): Promise<string> {
+  const data = new TextEncoder().encode(`${userId} ${upstreamId} ${toolName} ${argsJson}`)
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
@@ -801,6 +904,101 @@ export function isTimeoutError(err: unknown): boolean {
   // Both the upstream/http-client 60s wall cap and the MCP SDK's
   // own RequestTimeoutError surface as messages mentioning timeout.
   return /timeout|timed out|deadline/i.test(msg)
+}
+
+/** Normalised result of a single upstream `tools/call` — surface + usage meta. */
+export interface UpstreamCallOutcome {
+  /** The agent-facing tool result (or, in the consumer, the value to persist). */
+  surface: {
+    isError: boolean
+    content: Array<{ type: string; text?: string }>
+    structuredContent?: Record<string, unknown>
+  }
+  /** Response string recorded for usage (the truncation notice when capped). */
+  respJson: string
+  status: 'ok' | 'error' | 'timeout'
+  truncated: boolean
+  errorCode?: string
+  errorDetail?: string
+}
+
+/**
+ * Run one upstream `tools/call` and normalise the result: apply the
+ * response-size guardrail (WI-4), classify errors, and sanitise any raw
+ * error message before it reaches the agent (never echo upstream errors
+ * verbatim — they can carry API keys / hostnames / stack frames). Total —
+ * never throws; a failed call surfaces as an `errText`-style `isError` result
+ * with `status: 'error' | 'timeout'`.
+ *
+ * Shared by the inline proxy handler (`registerTool`) and the async
+ * background runner (`queues/jobs-consumer.ts`) so the two paths can't drift.
+ * The caller supplies `run` so the inline path can wrap it in the progress
+ * heartbeat while the consumer calls the client directly.
+ */
+export async function runUpstreamCall(opts: {
+  slug: string
+  toolName: string
+  maxResponseBytes?: number
+  run: () => Promise<{ content: unknown; isError?: boolean; structuredContent?: unknown }>
+}): Promise<UpstreamCallOutcome> {
+  try {
+    const result = await opts.run()
+    let respJson = safeJson(result.content ?? null)
+    let status: 'ok' | 'error' | 'timeout' = 'ok'
+    let errorCode: string | undefined
+    let errorDetail: string | undefined
+    if (result.isError) {
+      status = 'error'
+      errorDetail = errorTextFromContent(result.content)
+      errorCode = classifyUpstreamError('error', errorDetail)
+    }
+    const respBytes = byteLength(respJson)
+    const cap = opts.maxResponseBytes ?? UPSTREAM_MAX_RESPONSE_BYTES
+    if (!result.isError && respBytes > cap) {
+      const notice = truncationNotice(opts.slug, opts.toolName, respBytes, cap)
+      respJson = notice
+      return {
+        surface: { isError: false, content: [{ type: 'text', text: notice }] },
+        respJson,
+        status,
+        truncated: true
+      }
+    }
+    return {
+      surface: {
+        isError: !!result.isError,
+        content: Array.isArray(result.content)
+          ? (result.content as Array<{ type: string; text?: string }>)
+          : [{ type: 'text', text: JSON.stringify(result.content ?? null, null, 2) }],
+        structuredContent: result.structuredContent as Record<string, unknown> | undefined
+      },
+      respJson,
+      status,
+      truncated: false,
+      errorCode,
+      errorDetail
+    }
+  } catch (err) {
+    const status: 'error' | 'timeout' = isTimeoutError(err) ? 'timeout' : 'error'
+    const msg = stringifyError(err)
+    const refId = newCorrelationId()
+    console.error(`[upstream-proxy] [ref=${refId}] ${opts.slug}.${opts.toolName} ${status}: ${msg}`)
+    const { userMessage } = formatUpstreamError({
+      slug: opts.slug,
+      toolName: opts.toolName,
+      status,
+      rawMessage: msg,
+      refId
+    })
+    return {
+      surface: { isError: true, content: [{ type: 'text', text: userMessage }] },
+      respJson: msg,
+      status,
+      truncated: false,
+      errorCode: classifyUpstreamError(status, msg),
+      errorDetail: msg
+    }
+  }
 }
 
 /** Emit a heartbeat progress ping roughly this often during a long call. */

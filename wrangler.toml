@@ -124,6 +124,10 @@ queue = "ctxlayer-reindex"
 binding = "GIT_SYNC_QUEUE"
 queue = "ctxlayer-git-sync"
 
+[[queues.producers]]
+binding = "JOBS_QUEUE"
+queue = "ctxlayer-jobs"
+
 # max_retries bounds the redelivery budget so a poison message (incl. the
 # unknown-queue branch in index.ts) can't retry forever. Consumers alert on the
 # final attempt rather than letting the platform silently drop (ops/alert.ts).
@@ -147,6 +151,16 @@ queue = "ctxlayer-git-sync"
 max_batch_size = 5
 max_batch_timeout = 30
 max_retries = 5
+
+# Async upstream tool calls (submit→poll). One job per invocation
+# (max_batch_size = 1) so a 2-3 min call gets the whole consumer wall-clock to
+# itself. Low retries: runJob makes tool failures TERMINAL (acked), so a retry
+# only happens on an unexpected infra throw.
+[[queues.consumers]]
+queue = "ctxlayer-jobs"
+max_batch_size = 1
+max_batch_timeout = 5
+max_retries = 3
 
 [triggers]
 # Nightly (03:00): prune usage_events + orphan oauth clients.

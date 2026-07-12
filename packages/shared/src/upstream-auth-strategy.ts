@@ -66,7 +66,13 @@ export const UpstreamAuthConfig = z.object({
   // Per-upstream response-size cap in bytes (overrides the global
   // default). Oversized tools/call results degrade to a truncation
   // notice rather than nuking the agent's context.
-  maxResponseBytes: z.number().int().positive().optional()
+  maxResponseBytes: z.number().int().positive().optional(),
+  // Native tool names that must run async (submit→poll) instead of inline.
+  // A 2-3 min tool (e.g. Driver's `gather_task_context`) exceeds interactive
+  // client request caps (Claude Desktop ~180s); listing it here makes the
+  // proxy enqueue a job + return a token, and the ctxlayer-jobs consumer runs
+  // the real call. See docs/plan/I-upstream-resilience.md §I9.
+  asyncTools: z.array(z.string()).optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>
 

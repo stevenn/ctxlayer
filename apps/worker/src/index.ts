@@ -6,7 +6,9 @@ import { oauthProviderOptions } from './oauth/provider-config'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 import { gitSyncConsumer } from './queues/git-sync-consumer'
+import { jobsConsumer } from './queues/jobs-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
+import { pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { listEnabledGitSources } from './db/queries/git-sources'
 import { isGitSyncDue } from './git/sync'
@@ -58,6 +60,8 @@ const worker: ExportedHandler<Env> = {
         return reindexConsumer(batch, env, ctx)
       case 'git-sync':
         return gitSyncConsumer(batch, env, ctx)
+      case 'jobs':
+        return jobsConsumer(batch, env, ctx)
     }
     // A configured consumer with no code branch = deploy/config skew. Retry
     // (bounded by max_retries in wrangler.toml) rather than silently drop, and
@@ -117,6 +121,21 @@ const worker: ExportedHandler<Env> = {
           const m = err instanceof Error ? err.message : String(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.usage_prune_failed', detail: m })
+        }
+      })()
+    )
+
+    // 1b. Prune async_jobs older than 3 days (results are ephemeral — the
+    // retry-warm cache is 15 min; rows only linger for post-hoc list_tasks).
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const removed = await pruneAsyncJobs(env, 3 * 24 * 60 * 60)
+          console.log(`[cron] pruned ${removed} async_jobs rows older than 3d`)
+        } catch (err) {
+          const m = err instanceof Error ? err.message : String(err)
+          console.error(`[cron] async_jobs prune failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.async_jobs_prune_failed', detail: m })
         }
       })()
     )

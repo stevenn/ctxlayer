@@ -6,12 +6,14 @@ describe('queueKind', () => {
     expect(queueKind('ctxlayer-usage')).toBe('usage')
     expect(queueKind('ctxlayer-reindex')).toBe('reindex')
     expect(queueKind('ctxlayer-git-sync')).toBe('git-sync')
+    expect(queueKind('ctxlayer-jobs')).toBe('jobs')
   })
 
   it('routes tenant-prefixed queue names (the bug this fixes)', () => {
     expect(queueKind('ctxlayer-yukitools-usage')).toBe('usage')
     expect(queueKind('ctxlayer-yukitools-reindex')).toBe('reindex')
     expect(queueKind('ctxlayer-yukitools-git-sync')).toBe('git-sync')
+    expect(queueKind('ctxlayer-yukitools-jobs')).toBe('jobs')
     expect(queueKind('ctxlayer-dev-usage')).toBe('usage')
   })
 
