@@ -80,10 +80,16 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
       'Admin-only. Counts the DISTINCT users who made an MCP tool call within a look-back window and lists them (email, name, call count, last-seen time), most active first. `window` is `<n>h`/`<n>d` (default "24h", clamped to [1h, 30d] — the raw usage-event retention). Non-admin callers get `admin_only`.'
   },
   {
+    name: 'draft_skill',
+    title: 'Draft a skill',
+    description:
+      'Returns this org\'s context for one or more upstreams (their tool catalogues, related docs, house-style skills) plus drafting guidance, so you can write a SKILL.md playbook and then persist it with `save_draft_skill` as your private draft. The client-agnostic entry point for in-app skill authoring — use when the user asks you to capture a workflow or "make a skill" for how this org uses a service. (Also available as the `/draft-skill` prompt on clients that render MCP prompts.)'
+  },
+  {
     name: 'save_draft_skill',
     title: 'Save draft skill',
     description:
-      'Saves a drafted skill (markdown `body` + `title`/`description`) as YOUR private draft, owned by you. Pair with the `/draft-skill` prompt: it hands you this org\'s context, you draft the playbook, then call this to persist it. Returns the new skill id + slug + any schema-linter warnings. Refine and share it from /app/skills.'
+      'Saves a drafted skill (markdown `body` + `title`/`description`) as YOUR private draft, owned by you. Pair with `draft_skill` (or the `/draft-skill` prompt): it hands you this org\'s context, you draft the playbook, then call this to persist it. Returns the new skill id + slug + any schema-linter warnings. Refine and share it from /app/skills.'
   }
 ]
 

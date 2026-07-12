@@ -111,6 +111,7 @@ describe('BUILTIN_TOOL_SLUGS', () => {
       'list_skills',
       'get_skill',
       'active_users',
+      'draft_skill',
       'save_draft_skill'
     ])
   })

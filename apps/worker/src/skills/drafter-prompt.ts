@@ -59,12 +59,15 @@ export function draftPromptNotice(text: string): DraftPromptResult {
 }
 
 /**
- * Build the MCP `/draft-skill` prompt output: one user message carrying the
- * drafter guidance, the inlined context bundle, and the operator request.
- * Returned to the connected agent, which drafts + calls `save_draft_skill`.
+ * The drafter guidance + inlined context bundle + operator request as a single
+ * text block. Shared by BOTH entry points so they stay identical: the
+ * `/draft-skill` MCP prompt (wraps it in a user message) and the `draft_skill`
+ * TOOL (returns it as tool content — the client-agnostic entry, since not every
+ * MCP client renders prompts). Either way the agent reads it, drafts, and calls
+ * `save_draft_skill`.
  */
-export function buildDraftSkillMessages(bundle: DraftContextBundle): DraftPromptResult {
-  const text = [
+export function buildDraftSkillText(bundle: DraftContextBundle): string {
+  return [
     DRAFTER_GUIDANCE,
     '',
     'Context bundle (JSON):',
@@ -76,9 +79,16 @@ export function buildDraftSkillMessages(bundle: DraftContextBundle): DraftPrompt
       ? `Operator request: ${bundle.operatorPrompt}`
       : 'Operator request: (none — propose a useful skill from the context above)'
   ].join('\n')
+}
 
+/**
+ * Build the MCP `/draft-skill` prompt output: one user message carrying the
+ * shared drafter text. Returned to the connected agent, which drafts + calls
+ * `save_draft_skill`.
+ */
+export function buildDraftSkillMessages(bundle: DraftContextBundle): DraftPromptResult {
   return {
     description: `Draft a ctxlayer skill for ${bundle.upstreams.map((u) => u.slug).join(' + ')}`,
-    messages: [{ role: 'user', content: { type: 'text', text } }]
+    messages: [{ role: 'user', content: { type: 'text', text: buildDraftSkillText(bundle) } }]
   }
 }

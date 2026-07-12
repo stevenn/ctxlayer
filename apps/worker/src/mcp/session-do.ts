@@ -29,7 +29,11 @@ import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
 import { registerSkillMcp } from './skill-mcp'
 import { buildDraftContext } from '../skills/draft-context'
-import { buildDraftSkillMessages, draftPromptNotice } from '../skills/drafter-prompt'
+import {
+  buildDraftSkillMessages,
+  buildDraftSkillText,
+  draftPromptNotice
+} from '../skills/drafter-prompt'
 import { saveDraftSkill } from '../skills/save-draft-skill'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
@@ -66,7 +70,7 @@ const SERVER_INSTRUCTIONS = `ctxlayer is your org's curated context layer. Along
 - \`list_skills\` — every published skill, each carrying \`attached_to: [{ upstream_slug, tool_name }]\`.
 - \`get_skill\` / resource \`mcp://ctxlayer/skills/{slug}\` — the skill body (markdown playbook).
 - \`get_doc\` / \`search_docs\` / resource \`mcp://ctxlayer/docs/{id}\` — the doc library with semantic search.
-- \`/draft-skill\` (prompt) + \`save_draft_skill\` (tool) — draft a new skill from this org's context for one or more upstreams and save it as the caller's PRIVATE draft; they then refine + share it from /app/skills. Any signed-in user can author — no admin needed. Use \`/draft-skill\` when the user asks you to capture a workflow or "make a skill" for how this org uses a service.
+- \`draft_skill\` + \`save_draft_skill\` (tools) — draft a new skill from this org's context for one or more upstreams and save it as the caller's PRIVATE draft; they then refine + share it from /app/skills. Call \`draft_skill(upstreams)\` to get the org context + drafting guidance, write the SKILL.md, then \`save_draft_skill\` to persist it. Any signed-in user can author — no admin needed. Use when the user asks you to capture a workflow or "make a skill" for how this org uses a service. (Also exposed as the \`/draft-skill\` prompt on clients that render MCP prompts.)
 
 **When the user's request touches an upstream tool, follow this discovery order before calling:**
 
@@ -448,6 +452,32 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         }
         return buildDraftSkillMessages(result.bundle)
       }
+    )
+
+    // Tool twin of the /draft-skill prompt: returns the same context bundle +
+    // guidance as tool content, so the flow works on clients that don't render
+    // MCP prompts (e.g. Claude Desktop). Owner-scoped; the agent drafts then
+    // calls save_draft_skill.
+    this.server.registerTool(
+      'draft_skill',
+      { ...builtinToolMeta('draft_skill'), inputSchema: BUILTIN_INPUT_SHAPES.draft_skill },
+      (args) =>
+        rec('draft_skill', args, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          const result = await buildDraftContext(this.env, {
+            upstreamSlugs: args.upstreams,
+            toolName: args.tool || undefined,
+            operatorPrompt: args.intent || null,
+            userId
+          })
+          if (!result.ok) {
+            return errText(
+              `context_build_failed: ${result.error}. Check the upstream slug(s) with list_upstreams.`
+            )
+          }
+          return { content: [{ type: 'text', text: buildDraftSkillText(result.bundle) }] }
+        })
     )
 
     this.server.registerTool(

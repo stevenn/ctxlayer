@@ -61,6 +61,20 @@ export const BUILTIN_INPUT_SHAPES = {
         'Look-back window as `<n>h` or `<n>d` (e.g. "24h", "7d"). Default "24h"; clamped to [1h, 30d] (raw usage-event retention).'
       )
   },
+  draft_skill: {
+    upstreams: z
+      .array(z.string())
+      .min(1)
+      .describe('Upstream slugs to draft against (e.g. ["up-ado","up-driver"]), from list_upstreams.'),
+    intent: z
+      .string()
+      .optional()
+      .describe('What the skill should help with. Omit to let the model propose one.'),
+    tool: z
+      .string()
+      .optional()
+      .describe('Optional native tool name to focus the skill on.')
+  },
   save_draft_skill: {
     title: z.string().min(1).max(200).describe('Human display label for the skill (40-100 chars).'),
     description: z.string().min(1).max(500).describe('One-line "when to use" trigger.'),
@@ -78,7 +92,7 @@ export const BUILTIN_INPUT_SHAPES = {
       .array(z.string())
       .optional()
       .describe(
-        'The upstream slugs this skill was drafted against (e.g. ["up-ado","up-driver"]), from the /draft-skill prompt. Recorded so a reader can be warned when they cannot reach one.'
+        'The upstream slugs this skill was drafted against (e.g. ["up-ado","up-driver"]), from the `draft_skill` tool / `/draft-skill` prompt. Recorded so a reader can be warned when they cannot reach one.'
       )
   }
 } satisfies Record<string, z.ZodRawShape>
