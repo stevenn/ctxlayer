@@ -79,10 +79,18 @@ export const BUILTIN_INPUT_SHAPES = {
     title: z.string().min(1).max(200).describe('Human display label for the skill (40-100 chars).'),
     description: z.string().min(1).max(500).describe('One-line "when to use" trigger.'),
     body: z.string().min(1).describe('The skill body as markdown.'),
+    skillId: z
+      .string()
+      .optional()
+      .describe(
+        'To REVISE an existing skill of yours instead of creating a new one, pass its id (from an earlier save_draft_skill result) — it writes a new version of that skill. Also happens automatically when `slug` matches one of your own skills. Editing a PUBLISHED skill this way is live to the org.'
+      ),
     slug: z
       .string()
       .optional()
-      .describe('Optional sk-<lowercase-hyphen> slug; derived from the title if omitted.'),
+      .describe(
+        'Optional sk-<lowercase-hyphen> slug; derived from the title if omitted. If it matches one of your own skills, this UPDATES that skill (new version) rather than creating a duplicate.'
+      ),
     triggerText: z
       .string()
       .max(500)

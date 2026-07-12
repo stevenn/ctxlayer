@@ -89,7 +89,7 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
     name: 'save_draft_skill',
     title: 'Save draft skill',
     description:
-      'Saves a drafted skill (markdown `body` + `title`/`description`) as YOUR private draft, owned by you. Pair with `draft_skill` (or the `/draft-skill` prompt): it hands you this org\'s context, you draft the playbook, then call this to persist it. Returns the new skill id + slug + any schema-linter warnings. Refine and share it from /app/skills.'
+      'Saves a drafted skill (markdown `body` + `title`/`description`) owned by you, as a new PRIVATE draft — or, when you pass a `skillId` (or a `slug` that matches one of your own skills), UPDATES that skill in place as a new version (its revision history is preserved; editing a published skill goes live to the org). Pair with `draft_skill` (or the `/draft-skill` prompt): it hands you this org\'s context, you draft the playbook, then call this to persist or revise it. Returns the skill id + slug + version + any schema-linter warnings. Refine and share from /app/skills.'
   }
 ]
 

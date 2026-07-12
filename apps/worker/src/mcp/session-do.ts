@@ -34,7 +34,7 @@ import {
   buildDraftSkillText,
   draftPromptNotice
 } from '../skills/drafter-prompt'
-import { saveDraftSkill } from '../skills/save-draft-skill'
+import { saveDraftSkill, SaveDraftSkillError } from '../skills/save-draft-skill'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
@@ -495,24 +495,33 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
               body: args.body,
               slug: args.slug,
               triggerText: args.triggerText,
-              upstreams: args.upstreams
+              upstreams: args.upstreams,
+              skillId: args.skillId
             })
             const warnings =
               res.lintFindings.length > 0
                 ? '\n\nSchema-linter warnings (non-blocking):\n' +
                   res.lintFindings.map((f) => `- ${f.reference} (${f.kind})`).join('\n')
                 : ''
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text:
-                    `Saved "${args.title}" as your private draft (slug: ${res.slug}). ` +
-                    `Refine and share it at /app/skills/${res.id}/edit.${warnings}`
-                }
-              ]
+            // Create vs update-in-place; when updating a PUBLISHED skill the
+            // change is live to the org, so say so.
+            let text: string
+            if (res.created) {
+              text =
+                `Saved "${args.title}" as your private draft (slug: ${res.slug}). ` +
+                `Refine and share it at /app/skills/${res.id}/edit.`
+            } else if (res.status === 'published') {
+              text =
+                `Updated your PUBLISHED skill "${args.title}" (slug: ${res.slug}, now version ${res.version}). ` +
+                `This change is LIVE to the org. Edit or roll back at /app/skills/${res.id}/edit.`
+            } else {
+              text =
+                `Updated your ${res.status} skill "${args.title}" (slug: ${res.slug}, now version ${res.version}). ` +
+                `Refine and share it at /app/skills/${res.id}/edit.`
             }
+            return { content: [{ type: 'text', text: text + warnings }] }
           } catch (err) {
+            if (err instanceof SaveDraftSkillError) return errText(err.code)
             const msg = err instanceof Error ? err.message : String(err)
             if (/UNIQUE constraint failed/i.test(msg)) return errText('slug_taken')
             console.error('save_draft_skill failed:', msg)
