@@ -64,6 +64,16 @@ export function fetchSkillContent(id: string, signal?: AbortSignal): Promise<Doc
   })
 }
 
+/** Download URL for one skill's SKILL.md (GET, cookie-auth — use in a link/anchor). */
+export function skillExportUrl(id: string): string {
+  return `/api/skills/${encodeURIComponent(id)}/export`
+}
+
+/** Download URL for the whole published library as a zip of `<slug>/SKILL.md`. */
+export function skillsBundleUrl(): string {
+  return '/api/skills/export.zip'
+}
+
 // See putDocContent: `explicit: false` opts a background autosave into
 // coalescing (`?mode=autosave`); the default cuts a distinct revision.
 export function putSkillContent(

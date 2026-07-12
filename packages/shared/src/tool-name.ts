@@ -76,3 +76,38 @@ export function toolFamily(slug: string, toolName: string): string {
   const u = collapsed.indexOf('_')
   return u > 0 ? collapsed.slice(0, u) : ''
 }
+
+export interface MangledRef {
+  slug: string
+  toolName: string
+}
+
+/**
+ * Extract every `<slug>__<tool>` mangled tool reference from a block of
+ * text (a skill body, a doc, …), de-duplicated in first-seen order. The
+ * single source of the reference regex — the skill schema-linter (which
+ * flags bad/mangled refs) and the skill upstream-dependency calculator
+ * both import this, so the pattern can't drift between them.
+ *
+ * The slug group is kebab-aware (`up-ado`, `up-yuki-ia-nl`); the tool
+ * group keeps `~`/`-`/`_` because BlockNote inline code preserves them.
+ * Returns the RAW captured `toolName` (still carrying any `_~_` escape);
+ * callers comparing against native names un-escape with
+ * `.replaceAll('_~_', '__')`. The match is intentionally loose (e.g.
+ * `process__id` matches) — callers narrow by checking `slug` against a
+ * known set of upstream slugs.
+ */
+export function extractMangledRefs(text: string): MangledRef[] {
+  const out: MangledRef[] = []
+  const seen = new Set<string>()
+  for (const match of text.matchAll(/\b([a-z][a-z0-9_-]*)__([a-zA-Z0-9_~-]+)\b/g)) {
+    const slug = match[1]
+    const toolName = match[2]
+    if (!slug || !toolName) continue
+    const ref = `${slug}__${toolName}`
+    if (seen.has(ref)) continue
+    seen.add(ref)
+    out.push({ slug, toolName })
+  }
+  return out
+}

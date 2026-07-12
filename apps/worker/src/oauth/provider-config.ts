@@ -16,7 +16,6 @@
 import type { ExportedHandler } from '@cloudflare/workers-types'
 import type { OAuthProviderOptions } from '@cloudflare/workers-oauth-provider'
 import { McpSessionDO } from '../mcp/session-do'
-import { cliSkillsExportHandler } from '../skills/cli-export-handler'
 import type { Env } from '../env'
 
 const NOOP_HANDLER: ExportedHandler<Env> = {
@@ -29,13 +28,9 @@ export function oauthProviderOptions(
   // apiHandlers requires ExportedHandlerWithFetch (Required fetch);
   // our handlers carry `fetch` at the value level but their declared
   // types don't line up exactly, so the whole map is cast once.
-  // `/cli/skills` is the bearer-gated skill export for the
-  // @ctxlayer/cli `pull` command — the OAuth provider validates the
-  // Bearer + attaches user props to ctx.props before it runs.
   const apiHandlers = {
     '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }),
-    '/sse': McpSessionDO.serveSSE('/sse', { binding: 'MCP_SESSION_DO' }),
-    '/cli/skills': cliSkillsExportHandler
+    '/sse': McpSessionDO.serveSSE('/sse', { binding: 'MCP_SESSION_DO' })
   } as OAuthProviderOptions<Env>['apiHandlers']
   return {
     apiHandlers,

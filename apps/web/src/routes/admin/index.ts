@@ -12,7 +12,8 @@ export { AdminAudit } from './audit'
 export { AdminOAuthClients } from './oauth-clients'
 export { AdminUsage } from './usage'
 export { AdminSkills } from './skills'
-// NOTE: AdminSkillEditor is intentionally NOT re-exported here. It pulls
-// in the whole BlockNote/ProseMirror editor stack; app.tsx lazy-imports
-// it straight from './skill-editor' so this barrel (and everything that
-// statically imports it) stays out of the editor chunk.
+// NOTE: the skill body editor (SkillEditor) is intentionally NOT
+// re-exported here. It pulls in the whole BlockNote/ProseMirror editor
+// stack; App.tsx lazy-imports it straight from '../skills/skill-editor'
+// (now shared by /app/skills and /app/admin/skills) so this barrel — and
+// everything that statically imports it — stays out of the editor chunk.

@@ -15,7 +15,6 @@ describe('isMcpPathOnWrongHost', () => {
     const e = env({ MCP_PUBLIC_URL: 'https://mcp.example' })
     expect(isMcpPathOnWrongHost(req('https://mcp.example/mcp'), e)).toBe(false)
     expect(isMcpPathOnWrongHost(req('https://mcp.example/sse'), e)).toBe(false)
-    expect(isMcpPathOnWrongHost(req('https://mcp.example/cli/skills'), e)).toBe(false)
   })
 
   it('blocks MCP paths on a DIFFERENT host (the browser host)', () => {
@@ -23,7 +22,6 @@ describe('isMcpPathOnWrongHost', () => {
     expect(isMcpPathOnWrongHost(req('https://ctxlayer.example/mcp'), e)).toBe(true)
     expect(isMcpPathOnWrongHost(req('https://ctxlayer.example/mcp/messages'), e)).toBe(true)
     expect(isMcpPathOnWrongHost(req('https://ctxlayer.example/sse'), e)).toBe(true)
-    expect(isMcpPathOnWrongHost(req('https://ctxlayer.example/cli/skills'), e)).toBe(true)
   })
 
   it('does NOT block non-MCP paths on the browser host', () => {

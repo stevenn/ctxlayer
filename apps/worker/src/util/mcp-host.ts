@@ -30,9 +30,7 @@ function isMcpSurfacePath(pathname: string): boolean {
     pathname === '/mcp' ||
     pathname.startsWith('/mcp/') ||
     pathname === '/sse' ||
-    pathname.startsWith('/sse/') ||
-    pathname === '/cli' ||
-    pathname.startsWith('/cli/')
+    pathname.startsWith('/sse/')
   )
 }
 

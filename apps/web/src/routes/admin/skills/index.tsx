@@ -5,9 +5,10 @@ import { clickableRow } from '../../../lib/a11y'
 import { fetchSkills } from '../../../lib/api'
 import { relativeTime } from '../../../lib/time'
 import { useLoad } from '../../../lib/use-load'
-import { explain } from './helpers'
-import { CreateSkillModal } from './CreateSkillModal'
-import { SkillDrawer } from './SkillDrawer'
+import { personLabel } from '../../docs-list'
+import { explain } from '../../skills/helpers'
+import { CreateSkillModal } from '../../skills/CreateSkillModal'
+import { SkillDrawer } from '../../skills/SkillDrawer'
 
 type StatusFilter = 'all' | 'draft' | 'published' | 'archived'
 
@@ -98,6 +99,7 @@ export function AdminSkills() {
               <th>Slug</th>
               <th>Status</th>
               <th>Description</th>
+              <th>Author</th>
               <th>Updated</th>
             </tr>
           </thead>
@@ -129,6 +131,9 @@ export function AdminSkills() {
                     {s.description}
                   </Text>
                 </td>
+                <td className="text-muted" title={s.createdBy?.email || undefined}>
+                  {personLabel(s.createdBy)}
+                </td>
                 <td className="text-muted">{relativeTime(s.updatedAt)}</td>
               </tr>
             ))}
@@ -139,6 +144,7 @@ export function AdminSkills() {
       {editingId && (
         <SkillDrawer
           skillId={editingId}
+          isAdmin
           onClose={() => setEditingId(null)}
           onChanged={() => reload()}
           onOpenEditor={(id) => {

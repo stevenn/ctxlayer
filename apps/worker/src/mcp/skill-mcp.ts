@@ -17,6 +17,13 @@ import { type McpSkillSummary, McpListSkillsResult, builtinToolMeta } from '@ctx
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { loadPublishedSkillMarkdown } from './skill-render'
 import { registerSkillSep2640 } from './skill-sep2640'
+import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
+import {
+  draftedForUpstreams,
+  missingUpstreams,
+  requiredUpstreamSlugs,
+  skillAccessAdvisory
+} from '../skills/skill-requires'
 
 export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
   tool: string,
@@ -24,7 +31,12 @@ export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
   exec: () => Promise<T>
 ) => Promise<T>
 
-export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): void {
+export function registerSkillMcp(
+  server: McpServer,
+  env: Env,
+  rec: RecWrap,
+  getUserId: () => string | undefined
+): void {
   // list_skills + get_skill title/description are sourced from BUILTIN_TOOLS
   // in `packages/shared/src/builtin-tools.ts` via builtinToolMeta (single
   // source for /api/tools + the agent surface). Schemas + handlers stay here.
@@ -45,17 +57,32 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
           env,
           rows.map((r) => r.id)
         )
+        // The caller's reachable upstreams, fetched once, to flag per-skill
+        // which required upstreams they can't currently reach.
+        const userId = getUserId()
+        const visible = userId
+          ? new Set((await listUpstreamsVisibleToUser(env, userId)).map((u) => u.slug))
+          : new Set<string>()
         // Typed against the shared MCP contract (`McpSkillSummary`).
-        const summaries: McpSkillSummary[] = rows.map((row) => ({
-          slug: row.slug,
-          name: row.slug,
-          title: row.title,
-          description: row.description,
-          attached_to: (attachmentsBySkill.get(row.id) ?? []).map((a) => ({
-            upstream_slug: a.upstream_slug,
-            tool_name: a.tool_name || null
-          }))
-        }))
+        const summaries: McpSkillSummary[] = rows.map((row) => {
+          const atts = attachmentsBySkill.get(row.id) ?? []
+          const requires = requiredUpstreamSlugs(
+            atts.map((a) => a.upstream_slug),
+            draftedForUpstreams(row.drafter_meta)
+          )
+          return {
+            slug: row.slug,
+            name: row.slug,
+            title: row.title,
+            description: row.description,
+            attached_to: atts.map((a) => ({
+              upstream_slug: a.upstream_slug,
+              tool_name: a.tool_name || null
+            })),
+            requires_upstreams: requires,
+            missing_upstreams: missingUpstreams(requires, visible)
+          }
+        })
         return {
           content: [{ type: 'text', text: JSON.stringify(summaries, null, 2) }],
           structuredContent: { skills: summaries }
@@ -70,7 +97,10 @@ export function registerSkillMcp(server: McpServer, env: Env, rec: RecWrap): voi
       rec('get_skill', args, async () => {
         const md = await loadPublishedSkillMarkdown(env, args.slug)
         if (md == null) return errText(`skill not found: ${args.slug}`)
-        return { content: [{ type: 'text', text: md }] }
+        // Append an access advisory when the caller can't reach an upstream
+        // this skill depends on, so the agent tells the user to connect it.
+        const advisory = await skillAccessAdvisory(env, getUserId(), args.slug)
+        return { content: [{ type: 'text', text: md + advisory }] }
       })
   )
 

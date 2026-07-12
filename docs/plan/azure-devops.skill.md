@@ -2,8 +2,9 @@
 DRAFT ctxlayer skill — Azure DevOps.
 
 This is a skill BODY (a markdown playbook), not repo source. Publish it via
-admin → Skills (or `ctxlayer draft-skill`), then ATTACH it to the Azure DevOps
-upstream so agents see it on `list_upstreams` and load it with `get_skill`.
+/app/skills (or draft it in-app with the `/draft-skill` MCP prompt), then
+ATTACH it to the Azure DevOps upstream so agents see it on `list_upstreams`
+and load it with `get_skill`.
 
   - Suggested slug:  sk-azure-devops
   - Suggested title: Azure DevOps — how we use it

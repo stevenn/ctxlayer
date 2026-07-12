@@ -65,7 +65,7 @@ milestone-driven plan is retired — see `CLAUDE.md`).
 | **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done | AES-GCM creds, MCP SDK Client for Streamable HTTP / SSE, namespaced tool aggregation, JSON-Schema → Zod schema preservation, full admin UI for upstreams, user `/upstreams` page with paste-bearer + OAuth. **Validated end-to-end against Notion MCP via Claude Desktop** — search, fetch, create-page. |
 | **M5** — Admin polish | ✅ done | Admin Users (promote/demote + revoke creds), `shared_bearer` storage, admin Audit log viewer (`/app/admin/audit`), admin OAuth-clients viewer (`/app/admin/oauth-clients`), real `/app/mcp-setup` with per-client snippets. Bundled side features: folder organisation for docs, per-doc lock, modal-dialog system, doc-move UI |
 | **M6** — Usage pipeline + dashboards | ✅ done | Per-user/upstream call + token charts, tiktoken consumer, daily rollups, admin + user usage pages |
-| **Skills** — curated playbooks | ✅ done | Published skills surface over MCP (`list_skills` / `get_skill` + `mcp://ctxlayer/skills/{slug}`), per-upstream/per-tool attachments, admin skill editor, CLI `draft-skill` |
+| **Skills** — curated playbooks | ✅ done | Published skills surface over MCP (`list_skills` / `get_skill` + `mcp://ctxlayer/skills/{slug}`), per-upstream/per-tool attachments, non-admin skill authoring with private drafts + org sharing, in-app AI drafting (the `/draft-skill` MCP prompt), SKILL.md download |
 | **Git sync** — code docs from repos | ✅ done | Register a GitHub repo (PAT or OAuth), mirror Markdown into the doc store, product-link auto-tagging, scheduled cron sync |
 | **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
 | **OKF interop** — Open Knowledge Format | ✅ done | Import/export/git-write-back of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) docs; the editor rail *is* the YAML frontmatter editor; unknown keys preserved for round-trip. Deep-dive: [`docs/plan/M-okf.md`](docs/plan/M-okf.md) |
@@ -542,7 +542,6 @@ apps/worker/      Cloudflare Worker — Hono routes, MCP server, OAuth provider,
                   DOs (McpSessionDO + DocRoomDO), upstream proxy, queue consumers
 apps/web/         React SPA — Vite, BlockNote editor, admin pages, /upstreams
 packages/shared/  Zod schemas + types shared between worker and SPA (the wire contract)
-packages/cli/     The `ctxlayer` CLI — login, pull org skills into Claude Code, draft-skill
 docs/             PLAN.md + topic deep-dives under docs/plan/
 scripts/          Bootstrap, dev-TLS, smoke, seed, deploy
 ```

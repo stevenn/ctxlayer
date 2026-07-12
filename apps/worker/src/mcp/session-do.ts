@@ -12,6 +12,7 @@
  * IdP callback) arrive on `this.props` — see `Env.McpProps`.
  */
 
+import { z } from 'zod'
 import { McpAgent } from 'agents/mcp'
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env, McpProps } from '../env'
@@ -27,6 +28,9 @@ import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
 import { registerSkillMcp } from './skill-mcp'
+import { buildDraftContext } from '../skills/draft-context'
+import { buildDraftSkillMessages, draftPromptNotice } from '../skills/drafter-prompt'
+import { saveDraftSkill } from '../skills/save-draft-skill'
 import { buildUsageMsg, type RecordUsageArgs } from '../usage/record'
 import { errorTextFromContent, scrubErrorForStorage } from '../usage/error-detail'
 import { ensureOutboxTable, stageUsageRow, drainOutbox } from '../usage/outbox'
@@ -62,6 +66,7 @@ const SERVER_INSTRUCTIONS = `ctxlayer is your org's curated context layer. Along
 - \`list_skills\` — every published skill, each carrying \`attached_to: [{ upstream_slug, tool_name }]\`.
 - \`get_skill\` / resource \`mcp://ctxlayer/skills/{slug}\` — the skill body (markdown playbook).
 - \`get_doc\` / \`search_docs\` / resource \`mcp://ctxlayer/docs/{id}\` — the doc library with semantic search.
+- \`/draft-skill\` (prompt) + \`save_draft_skill\` (tool) — draft a new skill from this org's context for one or more upstreams and save it as the caller's PRIVATE draft; they then refine + share it from /app/skills. Any signed-in user can author — no admin needed. Use \`/draft-skill\` when the user asks you to capture a workflow or "make a skill" for how this org uses a service.
 
 **When the user's request touches an upstream tool, follow this discovery order before calling:**
 
@@ -396,7 +401,95 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // list_skills + get_skill tools + mcp://ctxlayer/skills/{slug}
     // resource template. Extracted to mcp/skill-mcp.ts to keep this
     // file focused on session lifecycle.
-    registerSkillMcp(this.server, this.env, rec)
+    registerSkillMcp(this.server, this.env, rec, () => this.props?.userId)
+
+    // ----- skill drafting: /draft-skill prompt + save_draft_skill tool -----
+    // In-app AI drafting with NO server-side LLM: the /draft-skill PROMPT
+    // hands the connected agent this org's context bundle (buildDraftContext)
+    // + the drafter guidance; the agent persists its draft through the
+    // save_draft_skill TOOL. The user's own agent does the generation — the
+    // MCP-native replacement for the CLI's `claude -p` drafting path.
+    this.server.registerPrompt(
+      'draft-skill',
+      {
+        title: 'Draft a skill',
+        description:
+          "Draft a ctxlayer skill for one or more upstreams using this org's context, then save it as your private draft. `upstreams` is a comma-separated list of slugs from list_upstreams; `intent` and `tool` are optional.",
+        argsSchema: {
+          upstreams: z
+            .string()
+            .describe('Comma-separated upstream slugs to draft against (e.g. "up-ado,up-driver").'),
+          intent: z
+            .string()
+            .optional()
+            .describe('What the skill should help with. Omit to let the model propose one.'),
+          tool: z.string().optional().describe('Optional native tool name to focus the skill on.')
+        }
+      },
+      async (args) => {
+        const userId = this.props?.userId
+        if (!userId) {
+          return draftPromptNotice('You are not signed in to ctxlayer, so a skill cannot be drafted.')
+        }
+        const slugs = (args.upstreams ?? '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+        const result = await buildDraftContext(this.env, {
+          upstreamSlugs: slugs,
+          toolName: args.tool || undefined,
+          operatorPrompt: args.intent || null,
+          userId
+        })
+        if (!result.ok) {
+          return draftPromptNotice(
+            `Could not build the draft context (${result.error}). Check the upstream slug(s) with list_upstreams and try again.`
+          )
+        }
+        return buildDraftSkillMessages(result.bundle)
+      }
+    )
+
+    this.server.registerTool(
+      'save_draft_skill',
+      { ...builtinToolMeta('save_draft_skill'), inputSchema: BUILTIN_INPUT_SHAPES.save_draft_skill },
+      (args) =>
+        rec('save_draft_skill', args, async () => {
+          const userId = this.props?.userId
+          if (!userId) return errText('not_signed_in')
+          try {
+            const res = await saveDraftSkill(this.env, {
+              userId,
+              title: args.title,
+              description: args.description,
+              body: args.body,
+              slug: args.slug,
+              triggerText: args.triggerText,
+              upstreams: args.upstreams
+            })
+            const warnings =
+              res.lintFindings.length > 0
+                ? '\n\nSchema-linter warnings (non-blocking):\n' +
+                  res.lintFindings.map((f) => `- ${f.reference} (${f.kind})`).join('\n')
+                : ''
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text:
+                    `Saved "${args.title}" as your private draft (slug: ${res.slug}). ` +
+                    `Refine and share it at /app/skills/${res.id}/edit.${warnings}`
+                }
+              ]
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            if (/UNIQUE constraint failed/i.test(msg)) return errText('slug_taken')
+            console.error('save_draft_skill failed:', msg)
+            return errText('save_failed')
+          }
+        })
+    )
 
     // ----- doc resources: mcp://ctxlayer/docs/{id} -----
     // The MCP `ResourceTemplate` lets the SDK expand `{id}` into the

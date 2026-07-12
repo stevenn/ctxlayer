@@ -7,6 +7,7 @@ import { DocPathRedirect } from './routes/doc-path-redirect'
 import { DocsWorkspace } from './routes/docs-list'
 import { Upstreams } from './routes/upstreams'
 import { Tools } from './routes/tools'
+import { SkillsHome } from './routes/skills'
 import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
 import {
@@ -34,8 +35,8 @@ import { RouteError } from './components/route-error'
 const DocsEditor = lazy(() =>
   import('./routes/docs-editor').then((m) => ({ default: m.DocsEditor }))
 )
-const AdminSkillEditor = lazy(() =>
-  import('./routes/admin/skill-editor').then((m) => ({ default: m.AdminSkillEditor }))
+const SkillEditor = lazy(() =>
+  import('./routes/skills/skill-editor').then((m) => ({ default: m.SkillEditor }))
 )
 
 function RouteLoading() {
@@ -84,6 +85,15 @@ export function appRoutes() {
           />
           <Route path="upstreams" element={<Upstreams />} />
           <Route path="tools" element={<Tools />} />
+          <Route path="skills" element={<SkillsHome />} />
+          <Route
+            path="skills/:id/edit"
+            element={
+              <Lazily>
+                <SkillEditor basePath="/app/skills" homeLabel="Skills" />
+              </Lazily>
+            }
+          />
           <Route path="mcp-setup" element={<McpSetup />} />
           <Route path="usage" element={<Usage />} />
           <Route path="admin/upstreams" element={<AdminUpstreams />} />
@@ -102,7 +112,7 @@ export function appRoutes() {
             path="admin/skills/:id/edit"
             element={
               <Lazily>
-                <AdminSkillEditor />
+                <SkillEditor basePath="/app/admin/skills" homeLabel="Admin · Skills" />
               </Lazily>
             }
           />

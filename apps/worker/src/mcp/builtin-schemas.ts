@@ -60,6 +60,26 @@ export const BUILTIN_INPUT_SHAPES = {
       .describe(
         'Look-back window as `<n>h` or `<n>d` (e.g. "24h", "7d"). Default "24h"; clamped to [1h, 30d] (raw usage-event retention).'
       )
+  },
+  save_draft_skill: {
+    title: z.string().min(1).max(200).describe('Human display label for the skill (40-100 chars).'),
+    description: z.string().min(1).max(500).describe('One-line "when to use" trigger.'),
+    body: z.string().min(1).describe('The skill body as markdown.'),
+    slug: z
+      .string()
+      .optional()
+      .describe('Optional sk-<lowercase-hyphen> slug; derived from the title if omitted.'),
+    triggerText: z
+      .string()
+      .max(500)
+      .optional()
+      .describe('Optional extra "when X" hints, appended before the body.'),
+    upstreams: z
+      .array(z.string())
+      .optional()
+      .describe(
+        'The upstream slugs this skill was drafted against (e.g. ["up-ado","up-driver"]), from the /draft-skill prompt. Recorded so a reader can be warned when they cannot reach one.'
+      )
   }
 } satisfies Record<string, z.ZodRawShape>
 

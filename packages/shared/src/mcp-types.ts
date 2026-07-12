@@ -92,7 +92,12 @@ export const McpSkillSummary = z.object({
   name: z.string(),
   title: z.string(),
   description: z.string(),
-  attached_to: z.array(McpSkillAttachment)
+  attached_to: z.array(McpSkillAttachment),
+  // Upstream slugs this skill depends on (its attachments + the upstreams it
+  // was drafted against). `missing_upstreams` is the subset the CALLER can't
+  // currently reach — connect them before following the skill.
+  requires_upstreams: z.array(z.string()),
+  missing_upstreams: z.array(z.string())
 })
 export type McpSkillSummary = z.infer<typeof McpSkillSummary>
 

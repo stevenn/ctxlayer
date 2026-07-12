@@ -110,7 +110,8 @@ describe('BUILTIN_TOOL_SLUGS', () => {
       'search_docs',
       'list_skills',
       'get_skill',
-      'active_users'
+      'active_users',
+      'save_draft_skill'
     ])
   })
 })

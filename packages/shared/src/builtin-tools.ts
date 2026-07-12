@@ -78,6 +78,12 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
     title: 'Active users',
     description:
       'Admin-only. Counts the DISTINCT users who made an MCP tool call within a look-back window and lists them (email, name, call count, last-seen time), most active first. `window` is `<n>h`/`<n>d` (default "24h", clamped to [1h, 30d] — the raw usage-event retention). Non-admin callers get `admin_only`.'
+  },
+  {
+    name: 'save_draft_skill',
+    title: 'Save draft skill',
+    description:
+      'Saves a drafted skill (markdown `body` + `title`/`description`) as YOUR private draft, owned by you. Pair with the `/draft-skill` prompt: it hands you this org\'s context, you draft the playbook, then call this to persist it. Returns the new skill id + slug + any schema-linter warnings. Refine and share it from /app/skills.'
   }
 ]
 

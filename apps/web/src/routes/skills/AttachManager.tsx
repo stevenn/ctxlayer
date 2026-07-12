@@ -1,19 +1,25 @@
 import { useMemo, useState } from 'react'
 import { Alert, Button, Group, Select, Stack, Text } from '@mantine/core'
 import type { SkillAttachmentRef } from '@ctxlayer/shared'
-import { attachSkill, detachSkill, fetchAdminUpstreamTools, fetchUpstreams } from '../../../lib/api'
-import { useLoad } from '../../../lib/use-load'
-import type { ConfirmOpts } from '../../../lib/dialogs'
+import { attachSkill, detachSkill, fetchAdminUpstreamTools, fetchUpstreams } from '../../lib/api'
+import { useLoad } from '../../lib/use-load'
+import type { ConfirmOpts } from '../../lib/dialogs'
 import { explain } from './helpers'
 
 export function AttachManager({
   skillId,
   attachments,
+  declaredUpstreams = [],
   onChanged,
   confirm
 }: {
   skillId: string
   attachments: SkillAttachmentRef[]
+  // Upstream slugs the skill declares it uses (its attachments ∪ the
+  // upstreams it was AI-drafted against). The ones not yet attached become
+  // one-click "attach" suggestions — closing the non-admin author → admin
+  // approve loop without a separate request workflow.
+  declaredUpstreams?: string[]
   onChanged: () => Promise<void>
   // The parent SkillDrawer's hiding confirm — slides the drawer away while the
   // detach dialog is up (a plain confirm here would be painted over by it).
@@ -55,6 +61,36 @@ export function AttachManager({
       })),
     [upstreams]
   )
+
+  // Declared-but-not-yet-attached upstreams that exist in the visible set,
+  // deduped — rendered as one-click whole-upstream attach suggestions.
+  const suggestions = useMemo(() => {
+    const attached = new Set(attachments.map((a) => a.upstreamSlug))
+    const bySlug = new Map((upstreams ?? []).map((u) => [u.slug, u]))
+    const seen = new Set<string>()
+    const out: { slug: string; id: string }[] = []
+    for (const slug of declaredUpstreams) {
+      if (attached.has(slug) || seen.has(slug)) continue
+      const u = bySlug.get(slug)
+      if (!u) continue
+      seen.add(slug)
+      out.push({ slug, id: u.id })
+    }
+    return out
+  }, [attachments, upstreams, declaredUpstreams])
+
+  async function attachWholeUpstream(upstreamId: string) {
+    setBusy(true)
+    setError(null)
+    try {
+      await attachSkill({ skillId, upstreamId, toolName: undefined })
+      await onChanged()
+    } catch (err) {
+      setError(explain(err))
+    } finally {
+      setBusy(false)
+    }
+  }
 
   async function add() {
     if (!selectedUpstreamId) return
@@ -148,6 +184,26 @@ export function AttachManager({
               </Button>
             </Group>
           ))}
+        </Stack>
+      )}
+      {suggestions.length > 0 && (
+        <Stack gap={4}>
+          <Text fz="xs" c="dimmed">
+            Drafted for these upstreams — attach so agents see it on <code>list_upstreams</code>:
+          </Text>
+          <Group gap="xs">
+            {suggestions.map((s) => (
+              <Button
+                key={s.id}
+                size="xs"
+                variant="light"
+                onClick={() => attachWholeUpstream(s.id)}
+                disabled={busy}
+              >
+                + {s.slug}
+              </Button>
+            ))}
+          </Group>
         </Stack>
       )}
       <Group gap="xs" align="flex-end">

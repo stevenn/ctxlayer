@@ -9,7 +9,8 @@ import {
   fetchSkillRevisions,
   patchSkill,
   putSkillContent,
-  restoreSkillRevision
+  restoreSkillRevision,
+  skillExportUrl
 } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import {
@@ -29,14 +30,22 @@ import { RevisionHistoryButton } from '../../components/editor/revision-history'
 const SAVE_TIMEOUT_MS = 15_000
 
 /**
- * Per-skill body editor. Simpler than docs-editor.tsx:
- *   - admin-only, no per-skill ACL
- *   - single-writer, no Yjs / WS collab (just REST PUT on debounce)
- *   - no folder / lock / sharing
- *   - metadata (title, description, status, attachments) lives in the
- *     SkillDrawer on /app/admin/skills; this page is body-focused
+ * Per-skill body editor. Shared by the user area (/app/skills) and the
+ * admin list (/app/admin/skills) — the caller passes `basePath`/`homeLabel`
+ * for the breadcrumb + back link. Simpler than docs-editor.tsx:
+ *   - owner-or-admin write (backend-authorized); no Yjs / WS collab, just a
+ *     single-writer REST PUT on debounce
+ *   - no folder / lock
+ *   - metadata (title, description, status, sharing, attachments) lives in
+ *     the SkillDrawer; this page is body-focused
  */
-export function AdminSkillEditor() {
+export function SkillEditor({
+  basePath = '/app/skills',
+  homeLabel = 'Skills'
+}: {
+  basePath?: string
+  homeLabel?: string
+} = {}) {
   const { id } = useParams<{ id: string }>()
   const skillId = id ?? ''
   const editorRef = useRef<BlockNoteEditorHandle>(null)
@@ -175,8 +184,8 @@ export function AdminSkillEditor() {
       <Group justify="space-between" align="center">
         <div>
           <Text fz="xs" c="dimmed">
-            <Link to="/app/admin/skills" style={{ color: 'inherit' }}>
-              Admin · Skills
+            <Link to={basePath} style={{ color: 'inherit' }}>
+              {homeLabel}
             </Link>
             {' / '}
             <code style={{ fontSize: 11 }}>{detail.slug}</code>
@@ -197,6 +206,14 @@ export function AdminSkillEditor() {
             restore={(revId) => restoreSkillRevision(skillId, { revisionId: revId })}
             onRestored={restoreFromHistory}
           />
+          <ShareButton
+            skillId={skillId}
+            visibility={detail.visibility}
+            onChanged={async () => {
+              const fresh = await fetchSkill(skillId).catch(() => null)
+              if (fresh) setDetail(fresh)
+            }}
+          />
           <StatusButton
             skillId={skillId}
             current={detail.status}
@@ -205,7 +222,16 @@ export function AdminSkillEditor() {
               if (fresh) setDetail(fresh)
             }}
           />
-          <Button size="xs" variant="default" component={Link} to="/app/admin/skills">
+          <Button
+            size="xs"
+            variant="default"
+            component="a"
+            href={skillExportUrl(skillId)}
+            download={`${detail.slug}.SKILL.md`}
+          >
+            Download
+          </Button>
+          <Button size="xs" variant="default" component={Link} to={basePath}>
             Back to list
           </Button>
         </Group>
@@ -252,6 +278,51 @@ export function AdminSkillEditor() {
   )
 }
 
+// ----- inline sharing toggle ---------------------------------------------
+
+// Mirrors the drawer's Sharing control: "Share with org" flips visibility to
+// org AND publishes in one move (so a freshly-shared skill actually surfaces);
+// "Make private" only narrows the audience, leaving status untouched.
+function ShareButton({
+  skillId,
+  visibility,
+  onChanged
+}: {
+  skillId: string
+  visibility: 'private' | 'org'
+  onChanged: () => Promise<void>
+}) {
+  const [busy, setBusy] = useState(false)
+  const shared = visibility === 'org'
+  return (
+    <Button
+      size="xs"
+      variant={shared ? 'default' : 'filled'}
+      color={shared ? 'gray' : 'blue'}
+      loading={busy}
+      title={
+        shared
+          ? 'Shared with the org. Click to make this skill private again.'
+          : 'Private to you. Click to share it org-wide (also publishes it).'
+      }
+      onClick={async () => {
+        setBusy(true)
+        try {
+          await patchSkill(
+            skillId,
+            shared ? { visibility: 'private' } : { visibility: 'org', status: 'published' }
+          )
+          await onChanged()
+        } finally {
+          setBusy(false)
+        }
+      }}
+    >
+      {shared ? 'Make private' : 'Share with org'}
+    </Button>
+  )
+}
+
 // ----- inline status toggle ----------------------------------------------
 
 function StatusButton({
@@ -291,7 +362,7 @@ function StatusButton({
 
 function explain(err: unknown): string {
   return explainBase(err, {
-    403: 'Admin permission required.',
+    403: "You don't have permission to edit this skill.",
     404: 'Skill not found.',
     413: 'Body too large.',
     400: 'Server rejected the body.'

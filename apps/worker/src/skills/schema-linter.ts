@@ -1,7 +1,7 @@
 /**
  * Cheap, warning-only linter for skill bodies. Runs server-side on
- * POST /api/skills + POST /cli/skills + PUT /api/skills/:id/content +
- * the rendered markdown of the saved snapshot.
+ * skill create/save (REST + the MCP `save_draft_skill` path) over the
+ * rendered markdown of the saved snapshot.
  *
  * Goal: catch obvious "this skill references a tool that doesn't
  * exist on its attached upstream" mistakes. Not a contract — findings
@@ -27,7 +27,7 @@
  */
 
 import type { Env } from '../env'
-import { collapseSlugPrefix } from '@ctxlayer/shared'
+import { collapseSlugPrefix, extractMangledRefs } from '@ctxlayer/shared'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { listCachedTools } from '../db/queries/upstream-tools'
 import { renderBlocksToMarkdown } from '../rag/markdown'
@@ -79,18 +79,11 @@ export async function lintSkillBody(
   )
 
   const out: LintFinding[] = []
-  const seen = new Set<string>()
-  // Match `<slug>__<tool>` with conservative tool characters
-  // (BlockNote inline code keeps `~` and `-` legal). The slug group
-  // allows hyphens — ctxlayer slugs are kebab-case (`up-ado`,
-  // `up-yuki-ia-nl`), so an underscore-only class silently missed them.
-  for (const match of text.matchAll(/\b([a-z][a-z0-9_-]*)__([a-zA-Z0-9_~-]+)\b/g)) {
-    const slug = match[1]
-    const toolName = match[2]
-    if (!slug || !toolName) continue
+  // `extractMangledRefs` owns the `<slug>__<tool>` regex + first-seen
+  // dedup, shared with the upstream-dependency calculator so the pattern
+  // can't drift. It's intentionally loose; we narrow to attached slugs.
+  for (const { slug, toolName } of extractMangledRefs(text)) {
     const ref = `${slug}__${toolName}`
-    if (seen.has(ref)) continue
-    seen.add(ref)
     // Only flag references whose slug matches an attached upstream
     // — otherwise the regex is too loose.
     if (!attachedByUpstreamSlug.has(slug)) continue

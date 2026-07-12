@@ -14,11 +14,27 @@ export const SkillSlug = z
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, 'lowercase, digits and dashes only')
 export type SkillSlug = z.infer<typeof SkillSlug>
 
-// draft   — admin-only; invisible to list_skills / MCP / CLI export
-// published — open-read to any signed-in user; surfaces via MCP + CLI
-// archived — hidden from list_skills but kept for audit + un-archive
+// Lifecycle axis (independent of the `visibility` audience axis below).
+//   draft     — work in progress; not surfaced org-wide even when shared.
+//   published — finalized; surfaced to the org when visibility='org'.
+//   archived  — retired; hidden from list_skills, kept for audit/un-archive.
+// Who may READ combines status with visibility + ownership — see
+// SkillVisibility and apps/worker/src/skills/skill-access.ts.
 export const SkillStatus = z.enum(['draft', 'published', 'archived'])
 export type SkillStatus = z.infer<typeof SkillStatus>
+
+// Audience axis, orthogonal to `status`.
+//   private — readable only by the owner (created_by) + admins. The
+//     owner's own MCP session still sees it, so a skill can be drafted
+//     and tested privately before sharing.
+//   org     — readable by any signed-in user WHEN status='published'
+//     (the existing org-wide open-read stance).
+// Read gate = admin OR created_by=caller OR (visibility='org' AND
+// status='published'). New user-authored skills default to private+draft;
+// "Share" flips to org+published. Existing skills grandfather to 'org'
+// (migration 0031 DEFAULT), preserving today's behavior.
+export const SkillVisibility = z.enum(['private', 'org'])
+export type SkillVisibility = z.infer<typeof SkillVisibility>
 
 // One upstream-tool reference attached to a skill. tool_name empty
 // string means the attachment is to the whole upstream (shows on
@@ -45,6 +61,7 @@ export const SkillSummary = z.object({
   title: z.string(),
   description: z.string(),
   status: SkillStatus,
+  visibility: SkillVisibility,
   createdAt: z.number(),
   updatedAt: z.number(),
   createdBy: UserSummary.nullish(),
@@ -77,6 +94,9 @@ export const CreateSkillRequest = z.object({
   description: z.string().min(1).max(500),
   triggerText: z.string().max(500).optional(),
   status: SkillStatus.optional(),
+  // Defaults server-side to 'private' for owner-authored skills (admin
+  // create keeps 'org' for parity with the pre-visibility behavior).
+  visibility: SkillVisibility.optional(),
   // M8: opaque drafter metadata bag set by the CLI's draft-skill
   // command. Unparsed at the API boundary so additive fields don't
   // require schema bumps; the SPA validates shape on read.
@@ -96,7 +116,9 @@ export const UpdateSkillRequest = z.object({
   title: z.string().min(1).max(200).optional(),
   description: z.string().min(1).max(500).optional(),
   triggerText: z.string().max(500).optional(),
-  status: SkillStatus.optional()
+  status: SkillStatus.optional(),
+  // Owner toggles private↔org to share/unshare their skill.
+  visibility: SkillVisibility.optional()
 })
 export type UpdateSkillRequest = z.infer<typeof UpdateSkillRequest>
 

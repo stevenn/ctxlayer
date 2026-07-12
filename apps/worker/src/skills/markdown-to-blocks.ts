@@ -1,23 +1,24 @@
 /**
- * Tiny markdown → BlockNote-blocks converter, used to turn the
- * `body` field returned by `claude -p` into something the SPA editor
- * + MCP rendering pipeline can round-trip.
+ * Tiny markdown → BlockNote-blocks converter. Turns the markdown body an
+ * agent hands to the `save_draft_skill` tool into the block tree the skill
+ * store + SPA editor round-trip. Ported (verbatim) from the CLI's
+ * `drafter/markdown-to-blocks.ts` so the CLI drafting path can be retired;
+ * dependency-free by design.
  *
  * Handles at block level: paragraphs, ATX headings (#…######), bullet
  * lists (`-` / `*`), numbered lists (`1.`), fenced code blocks
  * (```...```). Inline within a block: backtick-code, **bold**, *italic*,
  * _italic_, [text](url).
  *
- * Goal is **round-trip fidelity** with the worker's renderBlocksToMarkdown
- * (apps/worker/src/rag/markdown.ts): the markdown we emit from blocks
- * we built should equal (or near-equal) the source markdown the model
- * produced. So we mirror the inline styles + link shapes that renderer
- * already knows how to serialise — `styles.{bold,italic,code}` and a
- * `link` leaf shape — and avoid any inline construct it can't emit.
+ * Round-trip target is the worker's renderBlocksToMarkdown
+ * (apps/worker/src/rag/markdown.ts): the markdown we emit from the blocks
+ * we build should equal (or near-equal) the source markdown. So we mirror
+ * the inline styles + link shapes that renderer already serialises —
+ * `styles.{bold,italic,code}` and a `link` leaf — and avoid constructs it
+ * can't emit.
  *
- * Out of scope: blockquotes, tables, images, HTML, nested lists,
- * setext headings, hard breaks, escapes. The operator can polish in
- * the SPA editor before publishing.
+ * Out of scope: blockquotes, tables, images, HTML, nested lists, setext
+ * headings, hard breaks, escapes. The author can polish in the SPA editor.
  */
 
 interface TextLeaf {
@@ -144,9 +145,9 @@ export function markdownToBlocks(md: string): Block[] {
 
 /**
  * Tokenise a single line of inline markdown into the leaf shape the
- * BlockNote renderer in apps/worker/src/rag/markdown.ts knows how to
- * emit back: `{type:'text', text, styles:{...}}` and `{type:'link',
- * href, content:[...]}`.
+ * BlockNote renderer in apps/worker/src/rag/markdown.ts knows how to emit
+ * back: `{type:'text', text, styles:{...}}` and `{type:'link', href,
+ * content:[...]}`.
  *
  * Construct precedence (left-to-right, longest-match-first per offset):
  *   1. Inline code  `code`
@@ -156,7 +157,7 @@ export function markdownToBlocks(md: string): Block[] {
  *   5. Plain text   anything else
  *
  * No nesting. The pre-styled segments stay flat — sufficient for
- * round-tripping the formats most operator-authored skills use.
+ * round-tripping the formats most authored skills use.
  */
 function parseInline(text: string): Inline[] {
   const out: Inline[] = []
@@ -265,10 +266,9 @@ function parseInline(text: string): Inline[] {
 
 /**
  * Find the matching closing delimiter for italic (`*` or `_`). Required
- * because the opening test already enforced word-boundary semantics on
- * the LEADING side; we want the closer to satisfy the symmetric rule:
- * the char right after the close must not be a word char (so we don't
- * partially-match inside an identifier).
+ * because the opening test already enforced word-boundary semantics on the
+ * LEADING side; the closer must satisfy the symmetric rule so we don't
+ * partially-match inside an identifier.
  */
 function findInlineEnd(text: string, from: number, delim: string): number {
   let pos = from

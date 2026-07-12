@@ -23,6 +23,7 @@ export interface SkillRow {
   description: string
   trigger_text: string
   status: 'draft' | 'published' | 'archived'
+  visibility: 'private' | 'org'
   current_rev_id: string | null
   r2_snapshot: string | null
   drafter_meta: string | null
@@ -46,7 +47,7 @@ export interface SkillWithUsersRow extends SkillRow {
 
 const SELECT_SKILL_WITH_USERS = `
   SELECT s.id, s.slug, s.title, s.description, s.trigger_text, s.status,
-         s.current_rev_id, s.r2_snapshot, s.drafter_meta, s.created_by,
+         s.visibility, s.current_rev_id, s.r2_snapshot, s.drafter_meta, s.created_by,
          s.created_at, s.updated_at, s.deleted_at,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
@@ -81,15 +82,39 @@ export interface SkillRevisionRow {
 }
 
 /**
- * Reader-facing list: published only, ordered by updated_at DESC.
- * Backs MCP `list_skills` and the CLI `pull` export.
+ * Reader-facing list: org-shared published skills only, ordered by
+ * updated_at DESC. Backs MCP `list_skills` and the CLI `pull` export.
+ * A private skill (visibility='private') is never surfaced here even
+ * when published — it stays scoped to its owner (see
+ * `listSkillsVisibleToUser`).
  */
 export async function listPublishedSkills(env: Env): Promise<SkillWithUsersRow[]> {
   const res = await env.DB.prepare(
     `${SELECT_SKILL_WITH_USERS}
-     WHERE s.deleted_at IS NULL AND s.status = 'published'
+     WHERE s.deleted_at IS NULL AND s.status = 'published' AND s.visibility = 'org'
      ORDER BY s.updated_at DESC`
   ).all<SkillWithUsersRow>()
+  return res.results ?? []
+}
+
+/**
+ * Caller-scoped list for the non-admin SPA `/app/skills`: every
+ * org-shared published skill PLUS all of the caller's own skills (any
+ * status/visibility), so an owner sees their private drafts alongside
+ * the shared library. Admins use `listSkillsForAdmin` (sees everything).
+ */
+export async function listSkillsVisibleToUser(
+  env: Env,
+  userId: string
+): Promise<SkillWithUsersRow[]> {
+  const res = await env.DB.prepare(
+    `${SELECT_SKILL_WITH_USERS}
+     WHERE s.deleted_at IS NULL
+       AND ( (s.status = 'published' AND s.visibility = 'org') OR s.created_by = ?1 )
+     ORDER BY s.updated_at DESC`
+  )
+    .bind(userId)
+    .all<SkillWithUsersRow>()
   return res.results ?? []
 }
 
@@ -141,6 +166,9 @@ export interface CreateSkillInput {
   description: string
   triggerText?: string
   status?: 'draft' | 'published' | 'archived'
+  // Defaults to 'org' when omitted (preserves pre-visibility behavior for
+  // admin/CLI create paths). The non-admin REST create passes 'private'.
+  visibility?: 'private' | 'org'
   drafterMeta?: unknown
   createdBy: string
 }
@@ -159,6 +187,7 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
   const now = Math.floor(Date.now() / 1000)
   const baseSlug = input.slug ?? suggestSlug('skill', input.title)
   const status = input.status ?? 'draft'
+  const visibility = input.visibility ?? 'org'
   const triggerText = input.triggerText ?? ''
   const drafterMetaJson =
     input.drafterMeta !== undefined && input.drafterMeta !== null
@@ -170,9 +199,9 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
     try {
       await env.DB.prepare(
         `INSERT INTO skills
-           (id, slug, title, description, trigger_text, status, drafter_meta,
+           (id, slug, title, description, trigger_text, status, visibility, drafter_meta,
             created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)`
       )
         .bind(
           id,
@@ -181,13 +210,14 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
           input.description,
           triggerText,
           status,
+          visibility,
           drafterMetaJson,
           input.createdBy,
           now
         )
         .run()
       const row = await env.DB.prepare(
-        `SELECT id, slug, title, description, trigger_text, status,
+        `SELECT id, slug, title, description, trigger_text, status, visibility,
                 current_rev_id, r2_snapshot, drafter_meta, created_by,
                 created_at, updated_at, deleted_at
          FROM skills WHERE id = ?1`
@@ -211,6 +241,7 @@ export interface PatchSkillInput {
   description?: string
   triggerText?: string
   status?: 'draft' | 'published' | 'archived'
+  visibility?: 'private' | 'org'
 }
 
 export async function patchSkill(env: Env, id: string, patch: PatchSkillInput): Promise<void> {
@@ -220,7 +251,8 @@ export async function patchSkill(env: Env, id: string, patch: PatchSkillInput): 
       title: patch.title,
       description: patch.description,
       trigger_text: patch.triggerText,
-      status: patch.status
+      status: patch.status,
+      visibility: patch.visibility
     },
     id,
     { andWhere: 'deleted_at IS NULL' }

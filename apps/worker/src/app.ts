@@ -39,7 +39,6 @@ import { adminJoinCodesRoute } from './api/admin-join-codes'
 import { adminUsageRoute } from './api/admin-usage'
 import { skillsRoute } from './api/skills'
 import { skillAttachmentsRoute } from './api/skill-attachments'
-import { skillsDraftContextRoute } from './api/skills-draft-context'
 import { docAttachmentsRoute } from './api/doc-attachments'
 import { usageRoute } from './api/usage'
 import { upstreamsRoute } from './api/upstreams'
@@ -79,11 +78,10 @@ app.route('/api/bundles', bundlesRoute)
 // Semantic search over the doc library (RAG). Shares its core with the
 // MCP `search_docs` tool via rag/search.ts.
 app.route('/api/search', searchRoute)
-// Skills + attachments (M7a). Reads are open to any signed-in user;
-// writes are admin-only (per-route requireAdmin inside the routers).
-// Mount /draft-context FIRST so it doesn't get captured by /:id
-// matching in skillsRoute.
-app.route('/api/skills/draft-context', skillsDraftContextRoute)
+// Skills + attachments (M7a). Reads follow the two-axis visibility model
+// (owner-or-org-published); writes are owner-or-admin (gated inside the
+// router). Skill DRAFTING is an in-app MCP flow (`/draft-skill` prompt),
+// not a REST endpoint.
 app.route('/api/skills', skillsRoute)
 app.route('/api/skill-attachments', skillAttachmentsRoute)
 app.route('/api/doc-attachments', docAttachmentsRoute)

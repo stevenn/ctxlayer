@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Alert, Button, Group, Modal, Stack, TextInput, Textarea } from '@mantine/core'
 import type { CreateSkillRequest } from '@ctxlayer/shared'
-import { createSkill } from '../../../lib/api'
-import { useSlugSuggest } from '../../../lib/use-slug-suggest'
+import { createSkill } from '../../lib/api'
+import { useSlugSuggest } from '../../lib/use-slug-suggest'
 import { explain } from './helpers'
 
 export function CreateSkillModal({

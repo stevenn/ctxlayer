@@ -53,9 +53,13 @@ export async function listSkillsForUpstream(
   upstreamId: string,
   opts: { includeDrafts?: boolean } = {}
 ): Promise<SkillForUpstreamRow[]> {
+  // Non-admin / MCP callers (includeDrafts=false) only ever see
+  // org-shared published skills, so a private skill never leaks onto an
+  // upstream's attached_skills row. The admin SPA path sees drafts (any
+  // visibility) for management.
   const whereStatus = opts.includeDrafts
     ? `(s.status = 'draft' OR s.status = 'published')`
-    : `s.status = 'published'`
+    : `s.status = 'published' AND s.visibility = 'org'`
   const res = await env.DB.prepare(
     `SELECT sa.skill_id, s.slug, s.title, sa.tool_name, s.status
      FROM skill_attachments sa
@@ -121,6 +125,7 @@ export async function listSkillsForUpstreams(
      WHERE sa.upstream_id IN (${placeholders})
        AND s.deleted_at IS NULL
        AND s.status = 'published'
+       AND s.visibility = 'org'
      ORDER BY sa.tool_name, s.title`
   )
     .bind(...upstreamIds)

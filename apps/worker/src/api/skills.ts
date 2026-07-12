@@ -1,13 +1,12 @@
 /**
- * Skills REST surface. Reads are open to any signed-in user (filtered
- * to `status='published'` for non-admins); writes are admin-only.
- *
- * Status gating happens here, not in the query layer: callers ask for
- * what they want and the route decides whether to filter. Keeps the
- * predicate co-located with the auth context.
+ * Skills REST surface. Reads follow the skill read gate (admin, owner,
+ * or org-shared+published — see skills/skill-access.ts); writes are
+ * owner-or-admin. Attaching a skill to an upstream stays admin-only
+ * (api/skill-attachments.ts) — that surface fans the skill onto every
+ * tool description, so it's the one authoring action non-owners can't do.
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import {
   CreateSkillRequest,
   DocContent,
@@ -19,17 +18,18 @@ import {
   type SkillSummary
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { requireAdmin, requireUser, type AuthedVariables } from '../auth/middleware'
+import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { canReadSkill, canWriteSkill } from '../skills/skill-access'
 import {
   amendSkillRevision,
   createSkill,
   getHeadSkillRevision,
   getSkillById,
   getSkillRevision,
-  listPublishedSkills,
   listSkillRevisions,
   listSkillsForAdmin,
+  listSkillsVisibleToUser,
   patchSkill,
   pruneAutosaveSkillRevisions,
   recordSkillRevision,
@@ -51,6 +51,9 @@ import {
 } from '../storage/skills-r2'
 import { audit } from '../audit/log'
 import { lintSkillBody } from '../skills/schema-linter'
+import { buildSkillExport, buildSkillExportEntry } from '../skills/export'
+import { renderSkillMd } from '../skills/skill-md'
+import { packArchive } from '../bundle/archive'
 import { notFound, parseJsonBody } from './respond'
 import { isUniqueViolation } from '../db/queries/util'
 
@@ -61,23 +64,30 @@ skillsRoute.use('*', requireUser)
 skillsRoute.use('*', requireCsrf)
 
 skillsRoute.get('/', async (c) => {
-  const role = c.get('user').role
+  const { userId, role } = c.get('user')
   const status = c.req.query('status') as 'draft' | 'published' | 'archived' | 'all' | undefined
+  // Admin sees everything (status-filterable); a non-admin sees the
+  // org-shared library PLUS all of their own skills (private drafts
+  // included), so authoring and testing happen in the same list.
   const rows =
     role === 'admin'
       ? await listSkillsForAdmin(c.env, { status })
-      : await listPublishedSkills(c.env)
+      : await listSkillsVisibleToUser(c.env, userId)
   const body: SkillSummary[] = rows.map(toSummary)
   return c.json(body)
 })
 
-skillsRoute.post('/', requireAdmin, async (c) => {
+skillsRoute.post('/', async (c) => {
   const parsed = await parseJsonBody(c, CreateSkillRequest)
   if (!parsed.ok) return parsed.res
-  const { userId } = c.get('user')
+  const { userId, role } = c.get('user')
   try {
     const { content, ...meta } = parsed.data
-    const row = await createSkill(c.env, { ...meta, createdBy: userId })
+    // New skills default to private so authors can draft and test before
+    // sharing; admins keep 'org' for parity with pre-visibility behavior.
+    // An explicit `visibility` in the request always wins.
+    const visibility = meta.visibility ?? (role === 'admin' ? 'org' : 'private')
+    const row = await createSkill(c.env, { ...meta, visibility, createdBy: userId })
     // If the caller supplied an initial body (CLI draft-skill does),
     // persist a first revision now so the skill isn't empty on first
     // read.
@@ -106,11 +116,31 @@ skillsRoute.post('/', requireAdmin, async (c) => {
   }
 })
 
+// Bulk export: the whole published library as a zip of `<slug>/SKILL.md`
+// files — the web replacement for `ctxlayer pull` (unzip into
+// ~/.claude/skills/). Open-read like the library itself. Registered
+// before `/:id` so the literal path isn't captured as an id.
+skillsRoute.get('/export.zip', async (c) => {
+  const { skills } = await buildSkillExport(c.env)
+  const enc = new TextEncoder()
+  const files = skills.map((entry) => ({
+    path: `${entry.slug}/SKILL.md`,
+    bytes: enc.encode(renderSkillMd(entry, { provenance: true, forceLf: true }))
+  }))
+  return new Response(packArchive(files, 'zip'), {
+    status: 200,
+    headers: {
+      'content-type': 'application/zip',
+      'content-disposition': 'attachment; filename="ctxlayer-skills.zip"'
+    }
+  })
+})
+
 skillsRoute.get('/:id', async (c) => {
   const id = c.req.param('id')
+  const { userId, role } = c.get('user')
   const row = await getSkillById(c.env, id)
-  if (!row) return notFound(c)
-  if (!isVisibleToCaller(row, c.get('user').role)) return notFound(c)
+  if (!row || !canReadSkill(row, userId, role)) return notFound(c)
   const [attachments, tags] = await Promise.all([
     listAttachmentsForSkill(c.env, id),
     listTagsForSkill(c.env, id)
@@ -126,9 +156,10 @@ skillsRoute.get('/:id', async (c) => {
   return c.json(body)
 })
 
-skillsRoute.patch('/:id', requireAdmin, async (c) => {
+skillsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   const parsed = await parseJsonBody(c, UpdateSkillRequest)
   if (!parsed.ok) return parsed.res
   try {
@@ -141,9 +172,10 @@ skillsRoute.patch('/:id', requireAdmin, async (c) => {
   }
 })
 
-skillsRoute.delete('/:id', requireAdmin, async (c) => {
+skillsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   await softDeleteSkill(c.env, id)
   await audit(c.env, { actorId: c.get('user').userId, action: 'skill.delete', target: id })
   return new Response(null, { status: 204 })
@@ -151,17 +183,39 @@ skillsRoute.delete('/:id', requireAdmin, async (c) => {
 
 skillsRoute.get('/:id/content', async (c) => {
   const id = c.req.param('id')
+  const { userId, role } = c.get('user')
   const row = await getSkillById(c.env, id)
-  if (!row) return notFound(c)
-  if (!isVisibleToCaller(row, c.get('user').role)) return notFound(c)
+  if (!row || !canReadSkill(row, userId, role)) return notFound(c)
   const content = (await readSnapshot(c.env, id)) ?? { blocks: [] }
   return c.json(content)
 })
 
-skillsRoute.put('/:id/content', requireAdmin, async (c) => {
+// Per-skill SKILL.md download. Read-gated (canReadSkill), so an author can
+// export their own private draft to test it in Claude Code before sharing.
+skillsRoute.get('/:id/export', async (c) => {
+  const id = c.req.param('id')
+  const { userId, role } = c.get('user')
+  const row = await getSkillById(c.env, id)
+  if (!row || !canReadSkill(row, userId, role)) return notFound(c)
+  const md = renderSkillMd(await buildSkillExportEntry(c.env, row), {
+    provenance: true,
+    forceLf: true
+  })
+  return new Response(md, {
+    status: 200,
+    headers: {
+      'content-type': 'text/markdown; charset=utf-8',
+      // row.slug is a validated slug (safe header value).
+      'content-disposition': `attachment; filename="${row.slug}.SKILL.md"`
+    }
+  })
+})
+
+skillsRoute.put('/:id/content', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   const raw = await c.req.arrayBuffer()
   if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
   const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
@@ -233,17 +287,20 @@ skillsRoute.put('/:id/content', requireAdmin, async (c) => {
   })
 })
 
-skillsRoute.get('/:id/revisions', requireAdmin, async (c) => {
+skillsRoute.get('/:id/revisions', async (c) => {
   const id = c.req.param('id')
-  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   const rows = await listSkillRevisions(c.env, id)
   const body: SkillRevisionSummary[] = rows.map(toRevisionSummary)
   return c.json(body)
 })
 
-skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
+skillsRoute.get('/:id/revisions/:rev/content', async (c) => {
   const id = c.req.param('id')
   const rev = c.req.param('rev')
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   if (!(await getSkillRevision(c.env, id, rev))) return notFound(c)
   const content = await readRevision(c.env, id, rev)
   if (!content) return notFound(c)
@@ -254,10 +311,11 @@ skillsRoute.get('/:id/revisions/:rev/content', requireAdmin, async (c) => {
 // bytes to a fresh revision id + refresh the snapshot. No reindex enqueue
 // (skill save lints instead of reindexing; the lint is skipped on restore
 // since the body is just a verbatim copy of an already-saved revision).
-skillsRoute.post('/:id/restore', requireAdmin, async (c) => {
+skillsRoute.post('/:id/restore', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  if (!(await getSkillById(c.env, id))) return notFound(c)
+  const gate = await loadForWrite(c, id)
+  if (gate instanceof Response) return gate
   const parsed = await parseJsonBody(c, RestoreRequest)
   if (!parsed.ok) return parsed.res
   const sourceRev = await getSkillRevision(c.env, id, parsed.data.revisionId)
@@ -279,9 +337,22 @@ skillsRoute.post('/:id/restore', requireAdmin, async (c) => {
 
 // ----- helpers ------------------------------------------------------------
 
-function isVisibleToCaller(row: SkillWithUsersRow, role: string): boolean {
-  if (role === 'admin') return true
-  return row.status === 'published'
+type SkillCtx = Context<{ Bindings: Env; Variables: AuthedVariables }>
+
+/**
+ * Load a skill for a write/authoring op and enforce the gate. Returns
+ * the row when the caller may write it, otherwise the Response to send:
+ * 404 when the skill is missing OR not even readable (so a private
+ * skill's existence never leaks to a non-owner), 403 when it's readable
+ * but the caller isn't the owner or an admin. Use as:
+ *   `const gate = await loadForWrite(c, id); if (gate instanceof Response) return gate`.
+ */
+async function loadForWrite(c: SkillCtx, id: string): Promise<SkillWithUsersRow | Response> {
+  const { userId, role } = c.get('user')
+  const row = await getSkillById(c.env, id)
+  if (!row || !canReadSkill(row, userId, role)) return notFound(c)
+  if (!canWriteSkill(row, userId, role)) return c.json({ error: 'forbidden' }, 403)
+  return row
 }
 
 function toSummary(row: SkillWithUsersRow): SkillSummary {
@@ -291,6 +362,7 @@ function toSummary(row: SkillWithUsersRow): SkillSummary {
     title: row.title,
     description: row.description,
     status: row.status,
+    visibility: row.visibility,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     isStale: row.is_stale === 1,

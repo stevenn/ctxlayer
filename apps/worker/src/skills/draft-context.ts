@@ -1,12 +1,10 @@
 /**
- * Assembles the `DraftContextBundle` the `ctxlayer draft-skill` CLI
- * command inlines into its `claude -p` prompt. Shared by the bearer-
- * gated CLI handler (`cli-export-handler.ts`) and the SPA route
- * (`api/skills-draft-context.ts`) — both must serve the exact same
- * shape, so the assembly lives here once. Admin-gating and the
- * missing-`upstream`-param check stay at the surfaces; everything
- * downstream of a present slug (lookup, transport check, tool
- * resolution, bundle build) is this module's job.
+ * Assembles the `DraftContextBundle` the in-app `/draft-skill` MCP prompt
+ * (mcp/session-do.ts) hands the connected agent so it can draft a skill
+ * from this org's context — the MCP-native replacement for the retired
+ * `ctxlayer draft-skill` CLI command. The caller supplies an already-split
+ * `upstreamSlugs` array; everything downstream of a present slug (lookup,
+ * transport check, tool resolution, bundle build) is this module's job.
  */
 
 import {
@@ -35,20 +33,6 @@ export type DraftContextResult =
       error: 'upstream_not_found' | 'unsupported_transport' | 'tool_not_found'
       status: 400 | 404
     }
-
-/**
- * Parse the upstream selection from request params. Accepts a
- * comma-separated `upstreams` list (multi-upstream draft) and falls back
- * to a single `upstream` slug (back-compat / the SPA). Trims + drops
- * blanks; the caller dedups + treats the first as the anchor.
- */
-export function parseUpstreamSlugs(
-  upstreams: string | null | undefined,
-  single: string | null | undefined
-): string[] {
-  const raw = upstreams ? upstreams.split(',') : single ? [single] : []
-  return raw.map((s) => s.trim()).filter(Boolean)
-}
 
 export async function buildDraftContext(
   env: Env,

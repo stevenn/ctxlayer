@@ -26,7 +26,9 @@ export function DrafterMetaCard({ meta }: { meta: unknown }) {
       ? 'Claude Code CLI'
       : m.from === 'cli+claude-code+agentic'
         ? 'Claude Code CLI (agentic)'
-        : m.from
+        : m.from === 'mcp+agent'
+          ? 'AI draft (in-app agent)'
+          : m.from
   return (
     <Alert color="violet" variant="light" radius="sm" title="AI-drafted skill">
       <Stack gap={4}>
