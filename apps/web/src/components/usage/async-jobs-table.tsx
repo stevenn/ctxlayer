@@ -1,5 +1,6 @@
 import { Badge, Group, Text } from '@mantine/core'
 import type { UsageAsyncJobRow, UsageAsyncSummary } from '@ctxlayer/shared'
+import { UserCell } from './user-cell'
 
 /**
  * Async submit→poll analytics (WI-6) for the admin usage dashboard. A summary
@@ -34,10 +35,14 @@ function fmtDuration(ms: number | null): string {
 
 export function AsyncJobsTable({
   summary,
-  jobs = []
+  jobs = [],
+  showUser = false
 }: {
   summary: UsageAsyncSummary
   jobs?: UsageAsyncJobRow[]
+  // Admin dashboard sets this to attribute each job to its caller; the
+  // personal view leaves it off (every row is the viewer).
+  showUser?: boolean
 }) {
   return (
     <>
@@ -81,6 +86,7 @@ export function AsyncJobsTable({
           <thead>
             <tr>
               <th>Submitted</th>
+              {showUser && <th>User</th>}
               <th>Tool</th>
               <th>Upstream</th>
               <th>Status</th>
@@ -96,6 +102,11 @@ export function AsyncJobsTable({
                     {fmtTime(j.createdAt)}
                   </Text>
                 </td>
+                {showUser && (
+                  <td>
+                    <UserCell userId={j.userId} email={j.userEmail} />
+                  </td>
+                )}
                 <td>
                   <code style={{ fontSize: 12 }}>{j.tool}</code>
                 </td>

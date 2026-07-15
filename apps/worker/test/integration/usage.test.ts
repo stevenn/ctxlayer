@@ -160,6 +160,20 @@ describe('recentErrors', () => {
     expect(alice).toHaveLength(1)
   })
 
+  it('attributes each failure to its caller (joined email; null for a deleted user)', async () => {
+    await testEnv.DB.prepare(
+      `INSERT INTO users (id, email, idp, idp_sub, created_at)
+       VALUES ('u-alice', 'alice@example.test', 'github', 'gh-a', 0)`
+    ).run()
+    await writeUsageEvent(testEnv, event({ ts: dayAgo, status: 'error', userId: 'u-alice' }))
+    await writeUsageEvent(testEnv, event({ ts: dayAgo - 1, status: 'error', userId: 'u-ghost' }))
+
+    // Org-wide (no userId scope) → the admin drill-down surfaces both callers.
+    const rows = await recentErrors(testEnv, { sinceDay: null })
+    expect(rows.find((r) => r.userId === 'u-alice')?.userEmail).toBe('alice@example.test')
+    expect(rows.find((r) => r.userId === 'u-ghost')?.userEmail).toBeNull()
+  })
+
   it('clamps the lower bound to the 30-day raw-retention floor', async () => {
     const old = Math.floor(Date.now() / 1000) - 40 * SECONDS_PER_DAY
     await writeUsageEvent(testEnv, event({ ts: old, status: 'error' }))

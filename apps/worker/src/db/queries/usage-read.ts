@@ -76,6 +76,8 @@ export interface RecentErrorRow {
   upstreamSlug: string | null
   code: string
   message: string | null
+  userId: string
+  userEmail: string | null // null for a hard-deleted user
 }
 
 export interface ActiveUserRow {
@@ -332,9 +334,10 @@ export async function recentErrors(
   }
   const sql = `
     SELECT e.ts, e.tool, e.upstream_id, us.slug AS upstream_slug,
-           e.error_code, e.error_message
+           e.error_code, e.error_message, e.user_id, u.email AS user_email
     FROM usage_events e
     LEFT JOIN upstream_servers us ON us.id = e.upstream_id
+    LEFT JOIN users u ON u.id = e.user_id
     WHERE ${where.join(' AND ')}
     ORDER BY e.ts DESC
     LIMIT ?
@@ -348,6 +351,8 @@ export async function recentErrors(
       upstream_slug: string | null
       error_code: string | null
       error_message: string | null
+      user_id: string
+      user_email: string | null
     }>()
   return (results ?? []).map((r) => {
     const upstreamId = r.upstream_id ?? ''
@@ -359,7 +364,9 @@ export async function recentErrors(
       // Fallback for pre-0029 error rows: no stored class, so infer
       // local vs remote from whether an upstream was involved.
       code: r.error_code ?? (upstreamId ? 'upstream_error' : 'local_error'),
-      message: r.error_message ?? null
+      message: r.error_message ?? null,
+      userId: r.user_id,
+      userEmail: r.user_email ?? null
     }
   })
 }
@@ -532,9 +539,11 @@ export async function asyncJobStats(
 
   const { results } = await env.DB.prepare(
     `SELECT a.id, a.tool, a.upstream_id, us.slug AS upstream_slug,
-            a.status, a.created_at, a.completed_at, a.error_code
+            a.status, a.created_at, a.completed_at, a.error_code,
+            a.user_id, u.email AS user_email
      FROM async_jobs a
      LEFT JOIN upstream_servers us ON us.id = a.upstream_id
+     LEFT JOIN users u ON u.id = a.user_id
      WHERE ${whereSql}
      ORDER BY a.created_at DESC
      LIMIT ?`
@@ -549,6 +558,8 @@ export async function asyncJobStats(
       created_at: number
       completed_at: number | null
       error_code: string | null
+      user_id: string
+      user_email: string | null
     }>()
 
   const jobs: UsageAsyncJobRow[] = (results ?? []).map((r) => ({
@@ -560,7 +571,9 @@ export async function asyncJobStats(
     createdAt: r.created_at,
     completedAt: r.completed_at ?? null,
     durationMs: r.completed_at == null ? null : (r.completed_at - r.created_at) * 1000,
-    errorCode: r.error_code ?? null
+    errorCode: r.error_code ?? null,
+    userId: r.user_id,
+    userEmail: r.user_email ?? null
   }))
 
   return { summary, jobs }

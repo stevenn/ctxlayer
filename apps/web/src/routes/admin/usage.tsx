@@ -245,13 +245,13 @@ function AdminUsageBody({
         title="Errors"
         subtitle="Individual failed tool calls — credential-scrubbed root detail (host/IP/URL kept)."
       >
-        <ErrorsTable rows={data.recentErrors} range={range} />
+        <ErrorsTable rows={data.recentErrors} range={range} showUser />
       </Panel>
       <Panel
         title="Async jobs"
         subtitle="Submit→poll runs for tools that exceed interactive client request timeouts (e.g. Driver's gather_task_context). Background run time = the real upstream call."
       >
-        <AsyncJobsTable summary={data.asyncSummary} jobs={data.asyncJobs} />
+        <AsyncJobsTable summary={data.asyncSummary} jobs={data.asyncJobs} showUser />
       </Panel>
       <Panel title="Top users">
         <UserTable rows={data.topUsers} />

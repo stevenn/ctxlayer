@@ -13,6 +13,7 @@ import {
 } from '../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../components/usage/tables'
 import { ErrorsTable } from '../components/usage/errors-table'
+import { AsyncJobsTable } from '../components/usage/async-jobs-table'
 import { useUsageRange } from '../lib/use-usage-range'
 
 /**
@@ -112,6 +113,14 @@ function UsageBody({ data, range }: { data: UsageResponse; range: UsageRange }) 
       >
         <ErrorsTable rows={data.recentErrors} range={range} />
       </Panel>
+      {data.asyncSummary.total > 0 && (
+        <Panel
+          title="Async jobs"
+          subtitle="Your submit→poll runs for slow tools (e.g. Driver's gather_task_context). Background run time = the real upstream call. Poll with list_tasks / poll_task."
+        >
+          <AsyncJobsTable summary={data.asyncSummary} jobs={data.asyncJobs} />
+        </Panel>
+      )}
       <Panel title="Top tools">
         <ToolTable rows={data.topTools} />
       </Panel>

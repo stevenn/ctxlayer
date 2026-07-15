@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Badge, Group, Select, Text } from '@mantine/core'
 import type { UsageErrorRow, UsageRange } from '@ctxlayer/shared'
+import { UserCell } from './user-cell'
 
 /**
  * Per-error drill-down for the usage dashboards. Renders the raw
@@ -59,10 +60,14 @@ const EXCEEDS_RETENTION = new Set<UsageRange>(['90d', 'all'])
 
 export function ErrorsTable({
   rows = [],
-  range
+  range,
+  showUser = false
 }: {
   rows?: UsageErrorRow[]
   range: UsageRange
+  // Admin dashboards set this to attribute each failure to its caller; the
+  // personal view leaves it off (every row is the viewer).
+  showUser?: boolean
 }) {
   const [code, setCode] = useState<string>('all')
   const [locus, setLocus] = useState<string>('all')
@@ -126,6 +131,7 @@ export function ErrorsTable({
           <thead>
             <tr>
               <th>Time</th>
+              {showUser && <th>User</th>}
               <th>Tool</th>
               <th>Origin</th>
               <th>Type</th>
@@ -140,6 +146,11 @@ export function ErrorsTable({
                     {fmtTime(r.ts)}
                   </Text>
                 </td>
+                {showUser && (
+                  <td>
+                    <UserCell userId={r.userId} email={r.userEmail} />
+                  </td>
+                )}
                 <td>
                   <code style={{ fontSize: 12 }}>{r.tool}</code>
                   {r.upstreamId === '' && (

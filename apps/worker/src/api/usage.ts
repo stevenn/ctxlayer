@@ -17,6 +17,7 @@ import {
   topTools,
   topUpstreams,
   recentErrors,
+  asyncJobStats,
   rangeCutoff
 } from '../db/queries/usage-read'
 
@@ -30,11 +31,12 @@ usageRoute.get('/', async (c) => {
   const user = c.get('user')
 
   const scope = { sinceDay: rangeCutoff(range, offsetSec), userId: user.userId }
-  const [daily, tools, upstreams, errors] = await Promise.all([
+  const [daily, tools, upstreams, errors, asyncStats] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
     topUpstreams(c.env, scope, 10),
-    recentErrors(c.env, scope)
+    recentErrors(c.env, scope),
+    asyncJobStats(c.env, scope)
   ])
 
   const body: UsageResponse = {
@@ -42,7 +44,9 @@ usageRoute.get('/', async (c) => {
     dailyTotals: daily,
     topTools: tools,
     topUpstreams: upstreams,
-    recentErrors: errors
+    recentErrors: errors,
+    asyncSummary: asyncStats.summary,
+    asyncJobs: asyncStats.jobs
   }
   return c.json(body)
 })

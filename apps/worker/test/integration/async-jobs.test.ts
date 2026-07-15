@@ -135,6 +135,24 @@ describe('asyncJobStats (admin usage panel)', () => {
     expect(scoped.jobs[0]?.id).toBe('x-a')
   })
 
+  it('attributes each job to its caller (joined email; null for a deleted user)', async () => {
+    const now = Math.floor(Date.now() / 1000)
+    await testEnv.DB.prepare(
+      `INSERT INTO users (id, email, idp, idp_sub, created_at)
+       VALUES ('uMail', 'jobber@example.test', 'github', 'gh-j', 0)`
+    ).run()
+    await insertRunningJob(testEnv, j({ id: 'e-known', userId: 'uMail', jobKey: 'ek1', createdAt: now - 5 }))
+    await insertRunningJob(testEnv, j({ id: 'e-ghost', userId: 'uGone', jobKey: 'ek2', createdAt: now - 5 }))
+
+    const { jobs } = await asyncJobStats(testEnv, { sinceDay: null })
+    expect(jobs.find((x) => x.id === 'e-known')).toMatchObject({
+      userId: 'uMail',
+      userEmail: 'jobber@example.test'
+    })
+    // No users row to join → email null, id still surfaced.
+    expect(jobs.find((x) => x.id === 'e-ghost')).toMatchObject({ userId: 'uGone', userEmail: null })
+  })
+
   it('clearAsyncJobResults nulls old done blobs but keeps the metadata row', async () => {
     const now = Math.floor(Date.now() / 1000)
     const threeDays = 3 * 24 * 60 * 60

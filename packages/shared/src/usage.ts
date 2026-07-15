@@ -123,27 +123,23 @@ export type UsageErrorCode = (typeof USAGE_ERROR_CODES)[number]
 // SPA's response parse — the UI maps known codes and shows the rest
 // verbatim. `message` is credential-scrubbed server-side (host/IP/URL
 // kept); null when an error predates this column.
+// `userId` / `userEmail` identify who made the call. `userId` is always
+// present server-side (both source tables have a NOT NULL user_id); `userEmail`
+// is null for a hard-deleted user. Both default so an older worker response
+// (predating these columns) still parses on a newer SPA. Only the admin
+// dashboards render them — the personal views are inherently single-user, so
+// they carry the caller's own id/email and simply don't show the column.
 export const UsageErrorRow = z.object({
   ts: z.number().int(), // unix seconds
   tool: z.string(),
   upstreamId: z.string(), // '' = built-in / local
   upstreamSlug: z.string().nullable(),
   code: z.string(),
-  message: z.string().nullable()
+  message: z.string().nullable(),
+  userId: z.string().nullable().default(null),
+  userEmail: z.string().nullable().default(null)
 })
 export type UsageErrorRow = z.infer<typeof UsageErrorRow>
-
-export const UsageResponse = z.object({
-  range: UsageRange,
-  dailyTotals: z.array(UsageDailyTotal),
-  topTools: z.array(UsageTopTool),
-  topUpstreams: z.array(UsageTopUpstream),
-  // Recent individual failures within the window (most-recent first,
-  // capped). Default [] so a response from a worker predating this field
-  // still parses on a newer SPA.
-  recentErrors: z.array(UsageErrorRow).default([])
-})
-export type UsageResponse = z.infer<typeof UsageResponse>
 
 // Async submit→poll analytics (WI-6). Sourced from the `async_jobs` table,
 // whose rows are retained 30 days (matching usage_events; only the heavy
@@ -171,7 +167,10 @@ export const UsageAsyncJobRow = z.object({
   createdAt: z.number().int(), // unix seconds
   completedAt: z.number().int().nullable(),
   durationMs: z.number().int().min(0).nullable(),
-  errorCode: z.string().nullable()
+  errorCode: z.string().nullable(),
+  // See the UsageErrorRow note above — same admin-only user attribution.
+  userId: z.string().nullable().default(null),
+  userEmail: z.string().nullable().default(null)
 })
 export type UsageAsyncJobRow = z.infer<typeof UsageAsyncJobRow>
 
@@ -185,10 +184,25 @@ const EMPTY_ASYNC_SUMMARY: UsageAsyncSummary = {
   maxDurationMs: null
 }
 
-export const AdminUsageResponse = UsageResponse.extend({
-  topUsers: z.array(UsageTopUser),
-  // Defaulted so a response from a worker predating WI-6 still parses.
+// `asyncSummary` / `asyncJobs` live on the base response: both the personal
+// (`/api/usage`, self-scoped) and admin (`/api/admin/usage`, org-wide)
+// dashboards render the async-jobs panel. Defaulted so a response from a
+// worker predating WI-6 still parses on a newer SPA.
+export const UsageResponse = z.object({
+  range: UsageRange,
+  dailyTotals: z.array(UsageDailyTotal),
+  topTools: z.array(UsageTopTool),
+  topUpstreams: z.array(UsageTopUpstream),
+  // Recent individual failures within the window (most-recent first,
+  // capped). Default [] so a response from a worker predating this field
+  // still parses on a newer SPA.
+  recentErrors: z.array(UsageErrorRow).default([]),
   asyncSummary: UsageAsyncSummary.default(EMPTY_ASYNC_SUMMARY),
   asyncJobs: z.array(UsageAsyncJobRow).default([])
+})
+export type UsageResponse = z.infer<typeof UsageResponse>
+
+export const AdminUsageResponse = UsageResponse.extend({
+  topUsers: z.array(UsageTopUser)
 })
 export type AdminUsageResponse = z.infer<typeof AdminUsageResponse>
