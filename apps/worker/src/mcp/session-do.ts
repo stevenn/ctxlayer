@@ -149,10 +149,16 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // Returns the inner result untouched; records bytes/tokens/latency
     // + 'ok' / 'error' status (from `isError` flag) on every call.
     // Errors thrown by `exec` propagate after recording.
+    //
+    // `opts.usageResp` overrides the string whose bytes/tokens are counted for
+    // the response (the agent still receives `result.content` verbatim). Used
+    // by `poll_task` so replaying a done job's result doesn't re-bill tokens
+    // the queue consumer already counted under the real upstream tool.
     const rec = <T extends { content?: unknown; isError?: boolean }>(
       tool: string,
       args: unknown,
-      exec: () => Promise<T>
+      exec: () => Promise<T>,
+      opts?: { usageResp?: (result: T) => string | undefined }
     ): Promise<T> => {
       const t0 = Date.now()
       const reqJson = safeJson(args)
@@ -180,7 +186,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       return exec().then(
         async (result) => {
           await finalize(
-            safeJson(result.content),
+            opts?.usageResp?.(result) ?? safeJson(result.content),
             result.isError ? 'error' : 'ok',
             result.isError ? errorTextFromContent(result.content) : undefined
           )
@@ -410,55 +416,68 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     this.server.registerTool(
       'poll_task',
       { ...builtinToolMeta('poll_task'), inputSchema: BUILTIN_INPUT_SHAPES.poll_task },
-      (args) =>
-        rec('poll_task', args, async () => {
-          const userId = this.props?.userId
-          if (!userId) return errText('not_signed_in')
-          const job = await findJobById(this.env, args.job_id)
-          // Same not_found for missing OR not-owned — don't leak that a job id
-          // exists for another user.
-          if (!job || job.user_id !== userId) return errText('not_found: no such job')
-          if (job.status === 'running') {
-            const elapsed = Math.floor(Date.now() / 1000) - job.created_at
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: `still_running: job ${job.id} has run ${elapsed}s. Call poll_task again in ~30s.`
-                }
-              ]
+      (args) => {
+        // Set only on the `done` branch: the delivered payload was already
+        // billed under the real upstream tool by the queue consumer, so we
+        // count a tiny marker here instead of re-billing the whole result.
+        // Running/error/expired polls fall back to their (small) real content.
+        let usageResp: string | undefined
+        return rec(
+          'poll_task',
+          args,
+          async () => {
+            const userId = this.props?.userId
+            if (!userId) return errText('not_signed_in')
+            const job = await findJobById(this.env, args.job_id)
+            // Same not_found for missing OR not-owned — don't leak that a job id
+            // exists for another user.
+            if (!job || job.user_id !== userId) return errText('not_found: no such job')
+            if (job.status === 'running') {
+              const elapsed = Math.floor(Date.now() / 1000) - job.created_at
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `still_running: job ${job.id} has run ${elapsed}s. Call poll_task again in ~30s.`
+                  }
+                ]
+              }
             }
-          }
-          if (job.status === 'error') {
-            return {
-              isError: true,
-              content: [{ type: 'text', text: job.error_detail ?? job.error_code ?? 'upstream_error' }]
+            if (job.status === 'error') {
+              return {
+                isError: true,
+                content: [{ type: 'text', text: job.error_detail ?? job.error_code ?? 'upstream_error' }]
+              }
             }
-          }
-          // done — replay the stored upstream content array verbatim. The
-          // result blob is cleared ~1 day after completion (retry-warm is 15
-          // min), so a very-late poll finds it gone.
-          if (job.result_json == null) {
-            return {
-              content: [
-                {
-                  type: 'text',
-                  text: `result_expired: job ${job.id} completed but its result is no longer cached (results are retained ~1 day). Re-run the tool to recompute.`
-                }
-              ]
+            // done — replay the stored upstream content array verbatim. The
+            // result blob is cleared ~1 day after completion (retry-warm is 15
+            // min), so a very-late poll finds it gone.
+            if (job.result_json == null) {
+              return {
+                content: [
+                  {
+                    type: 'text',
+                    text: `result_expired: job ${job.id} completed but its result is no longer cached (results are retained ~1 day). Re-run the tool to recompute.`
+                  }
+                ]
+              }
             }
-          }
-          let parsed: unknown
-          try {
-            parsed = JSON.parse(job.result_json)
-          } catch {
-            parsed = null
-          }
-          const content = (
-            Array.isArray(parsed) ? parsed : [{ type: 'text', text: job.result_json ?? '' }]
-          ) as Array<{ type: 'text'; text: string }>
-          return { content }
-        })
+            let parsed: unknown
+            try {
+              parsed = JSON.parse(job.result_json)
+            } catch {
+              parsed = null
+            }
+            const content = (
+              Array.isArray(parsed) ? parsed : [{ type: 'text', text: job.result_json ?? '' }]
+            ) as Array<{ type: 'text'; text: string }>
+            // Bill the delivery, not the payload (already counted on the upstream tool).
+            usageResp = `delivered: '${job.tool}' result replayed to the agent (tokens billed on the upstream tool, not poll_task).`
+            return { content }
+          },
+          { usageResp: () => usageResp }
+        )
+      }
     )
 
     this.server.registerTool('list_tasks', { ...builtinToolMeta('list_tasks') }, () =>
