@@ -55,7 +55,16 @@ export const McpUpstreamToolEntry = z.object({
   // The agent-callable mangled name (e.g. "up-ado__wit_work_item").
   call: z.string(),
   // Sanitized one-line gloss of the tool's description; may be ''.
-  summary: z.string()
+  summary: z.string(),
+  // Org-curated playbooks/docs attached to THIS specific tool (the skill→
+  // (upstream,tool) and doc→(upstream,tool) attachments), surfaced as DATA the
+  // agent may consult via get_skill / get_doc — not an instruction. This is the
+  // structured home for per-tool bindings that formerly rode an imperative
+  // suffix on the tool description. Whole-upstream attachments live on
+  // `list_upstreams`, not here. Always present (default empty) so clients can
+  // rely on the field.
+  attached_skills: z.array(McpAttachedSkillRef),
+  attached_docs: z.array(McpAttachedDocRef)
 })
 export type McpUpstreamToolEntry = z.infer<typeof McpUpstreamToolEntry>
 

@@ -40,8 +40,16 @@ import {
   insertRunningJob,
   supersedeRunningJob
 } from '../db/queries/async-jobs'
-import { listSkillsForUpstreams, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
-import { listDocsForUpstreams, type DocForUpstreamRow } from '../db/queries/doc-attachments'
+import {
+  listSkillsForUpstream,
+  listSkillsForUpstreams,
+  type SkillForUpstreamRow
+} from '../db/queries/skill-attachments'
+import {
+  listDocsForUpstream,
+  listDocsForUpstreams,
+  type DocForUpstreamRow
+} from '../db/queries/doc-attachments'
 import { resolveUserScope } from '../db/queries/doc-tags'
 import { listUserRoleIds } from '../db/queries/roles'
 import {
@@ -55,6 +63,8 @@ import { isDialableTransport, type UpstreamClient } from '../upstream/upstream-c
 import {
   isToolAllowed,
   requiresFromRules,
+  type McpAttachedDocRef,
+  type McpAttachedSkillRef,
   type McpRestrictedTool,
   type McpUpstreamEntry,
   type McpUpstreamToolGroup,
@@ -355,10 +365,14 @@ export class UpstreamProxyRegistry {
   ): Promise<McpUpstreamTools | null> {
     const row = (await listUpstreamsVisibleToUser(env, userId)).find((r) => r.slug === slug)
     if (!row) return null
-    const [principals, aclRows, cached] = await Promise.all([
+    const [principals, aclRows, cached, skills, docs] = await Promise.all([
       resolveUserPrincipals(env, userId),
       listToolAccessForUpstream(env, row.id),
-      listCachedTools(env, row.id)
+      listCachedTools(env, row.id),
+      // Published/org attachments only (default includeDrafts=false) — a
+      // private draft never leaks onto describe_upstream, matching list_upstreams.
+      listSkillsForUpstream(env, row.id),
+      listDocsForUpstream(env, row.id)
     ])
     const acl = indexToolAccess(aclRows)
     const visible = visibleTools(row.id, cached, acl, principals)
@@ -366,7 +380,7 @@ export class UpstreamProxyRegistry {
       slug: row.slug,
       displayName: row.display_name,
       toolsCount: visible.length,
-      groups: groupToolsByFamily(row.slug, visible, opts)
+      groups: groupToolsByFamily(row.slug, visible, perToolAttachments(skills, docs), opts)
     }
   }
 
@@ -495,9 +509,17 @@ export class UpstreamProxyRegistry {
     // reserve room — the pointer is the binding guidance and must
     // survive the 1024-char cap even when the upstream blurb is long.
     if (pointers.length > 0) {
-      const suffix = `\n\n[ctxlayer] Org convention applies — consult ${pointers.join(
-        ', '
-      )} before using this tool.`
+      // Descriptive disclosure, NOT an imperative: name the org playbooks that
+      // exist for this tool and leave the choice to the agent. The old
+      // "consult X before using this tool" framing was a command smuggled
+      // through the data plane — well-behaved agents (correctly) treat tool
+      // metadata as untrusted and resist it, so it was both brittle and
+      // eroding of the very boundary that protects callers from a malicious
+      // upstream's descriptions. The structured home for these is
+      // `describe_upstream` (per-tool `attached_skills`/`attached_docs`); this
+      // line is just passive discoverability on the one field every client
+      // renders. The `[ctxlayer]` label marks it as first-party.
+      const suffix = `\n\n[ctxlayer] Related org playbooks (optional context): ${pointers.join(', ')}.`
       description = truncateDescription(description, 1024 - suffix.length) + suffix
     }
     let inputSchemaJson: unknown = {}
@@ -792,6 +814,7 @@ export function summariseToolDescription(desc: string | null, max = 200): string
 export function groupToolsByFamily(
   slug: string,
   tools: UpstreamToolRow[],
+  attachments: Map<string, ToolAttachments>,
   opts?: { family?: string; query?: string }
 ): McpUpstreamToolGroup[] {
   const familyFilter = opts?.family?.toLowerCase()
@@ -808,7 +831,14 @@ export function groupToolsByFamily(
     ) {
       continue
     }
-    const entry = { name: t.tool_name, call: mangleToolName(slug, t.tool_name), summary }
+    const att = attachments.get(t.tool_name)
+    const entry = {
+      name: t.tool_name,
+      call: mangleToolName(slug, t.tool_name),
+      summary,
+      attached_skills: att?.skills ?? [],
+      attached_docs: att?.docs ?? []
+    }
     const arr = byFamily.get(family)
     if (arr) arr.push(entry)
     else byFamily.set(family, [entry])
@@ -880,6 +910,43 @@ export function perToolPointers(
   }
   for (const s of skills) add(s.tool_name, `skill \`${s.slug}\` (get_skill)`)
   for (const d of docs) add(d.tool_name, `doc \`${d.slug}\` (get_doc)`)
+  return out
+}
+
+/** Structured per-tool attachment refs for one tool (fed into `describe_upstream`). */
+export interface ToolAttachments {
+  skills: McpAttachedSkillRef[]
+  docs: McpAttachedDocRef[]
+}
+
+/**
+ * Per-tool (tool_name != '') attachments grouped by native upstream tool name,
+ * as STRUCTURED data for `describe_upstream` — the agent decides whether to
+ * fetch them via get_skill/get_doc. This is the structured replacement for the
+ * per-tool imperative that used to ride the tool description. Whole-upstream
+ * attachments (tool_name = '') are excluded here; they ride
+ * `list_upstreams.attached_skills`. Mirrors `perToolPointers` but emits
+ * `{slug,title}` / `{id,slug,title}` objects instead of prose ref strings.
+ */
+export function perToolAttachments(
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): Map<string, ToolAttachments> {
+  const out = new Map<string, ToolAttachments>()
+  const bucket = (toolName: string): ToolAttachments => {
+    let b = out.get(toolName)
+    if (!b) {
+      b = { skills: [], docs: [] }
+      out.set(toolName, b)
+    }
+    return b
+  }
+  for (const s of skills) {
+    if (s.tool_name !== '') bucket(s.tool_name).skills.push({ slug: s.slug, title: s.title })
+  }
+  for (const d of docs) {
+    if (d.tool_name !== '') bucket(d.tool_name).docs.push({ id: d.doc_id, slug: d.slug, title: d.title })
+  }
   return out
 }
 
