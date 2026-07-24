@@ -67,7 +67,7 @@ const SERVER_INSTRUCTIONS = `ctxlayer is your org's curated context layer. Along
 
 - \`list_my_context\` — your team / product scopes + the upstreams visible to you.
 - \`list_upstreams\` — visible upstreams with their cached tool counts AND any \`attached_skills\` / \`attached_docs\` (procedural playbooks + reference docs the org has curated for that upstream).
-- \`describe_upstream(slug)\` — that upstream's tools by their NATIVE upstream names, grouped by family prefix, each with its callable \`<slug>__<tool>\` name + a one-line summary. Use when an upstream's mangled tool names are opaque and you need to know what it can do before calling.
+- \`describe_upstream(slug)\` — that upstream's tools by their NATIVE upstream names, grouped by family prefix, each with its callable \`<slug>__<tool>\` name + a one-line summary, PLUS the upstream's \`attached_skills\`/\`attached_docs\` (its org playbooks) and any per-tool attachments on each tool. Use when an upstream's mangled tool names are opaque and you need to know what it can do — and which playbooks govern it — before calling.
 - \`list_skills\` — every published skill, each carrying \`attached_to: [{ upstream_slug, tool_name }]\`.
 - \`get_skill\` / resource \`mcp://ctxlayer/skills/{slug}\` — the skill body (markdown playbook).
 - \`get_doc\` / \`search_docs\` / resource \`mcp://ctxlayer/docs/{id}\` — the doc library with semantic search.

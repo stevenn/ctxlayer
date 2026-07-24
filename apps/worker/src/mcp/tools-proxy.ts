@@ -371,10 +371,13 @@ export class UpstreamProxyRegistry {
     ])
     const acl = indexToolAccess(aclRows)
     const visible = visibleTools(row.id, cached, acl, principals)
+    const whole = wholeUpstreamAttachments(skills, docs)
     return {
       slug: row.slug,
       displayName: row.display_name,
       toolsCount: visible.length,
+      attached_skills: whole.skills,
+      attached_docs: whole.docs,
       groups: groupToolsByFamily(row.slug, visible, perToolAttachments(skills, docs), opts)
     }
   }
@@ -944,6 +947,24 @@ export function perToolAttachments(
     if (d.tool_name !== '') bucket(d.tool_name).docs.push({ id: d.doc_id, slug: d.slug, title: d.title })
   }
   return out
+}
+
+/**
+ * Whole-upstream (tool_name = '') attachments as structured refs for the
+ * `describe_upstream` top level — the same set `list_upstreams` reports,
+ * mirrored so a drill-in shows the upstream's governing playbooks alongside
+ * its tools. Per-tool rows are excluded here (`perToolAttachments` owns those).
+ */
+export function wholeUpstreamAttachments(
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): ToolAttachments {
+  return {
+    skills: skills.filter((s) => s.tool_name === '').map((s) => ({ slug: s.slug, title: s.title })),
+    docs: docs
+      .filter((d) => d.tool_name === '')
+      .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
+  }
 }
 
 /**

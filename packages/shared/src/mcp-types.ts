@@ -84,6 +84,13 @@ export const McpUpstreamTools = z.object({
   // Count of tools VISIBLE TO YOU (after per-tool ACL). May be smaller than
   // `list_upstreams.toolsCount`, which is the raw cached count.
   toolsCount: z.number(),
+  // Whole-upstream (tool_name='') org playbooks/docs governing this upstream —
+  // the SAME set `list_upstreams` reports, mirrored here so a drill-in via
+  // describe_upstream shows the upstream's playbooks alongside its tools
+  // without a second call. Per-tool attachments live on each tool entry
+  // (`groups[].tools[].attached_*`). Always present (default empty).
+  attached_skills: z.array(McpAttachedSkillRef),
+  attached_docs: z.array(McpAttachedDocRef),
   groups: z.array(McpUpstreamToolGroup)
 })
 export type McpUpstreamTools = z.infer<typeof McpUpstreamTools>

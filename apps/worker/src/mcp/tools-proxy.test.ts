@@ -4,6 +4,7 @@ import {
   truncationNotice,
   perToolPointers,
   perToolAttachments,
+  wholeUpstreamAttachments,
   wholeUpstreamPointers,
   summariseToolDescription,
   groupToolsByFamily,
@@ -240,6 +241,36 @@ describe('perToolAttachments', () => {
   it('excludes whole-upstream attachments (tool_name === "")', () => {
     const m = perToolAttachments([skill('', 'sk-whole')], [doc('', 'd-whole')])
     expect(m.size).toBe(0)
+  })
+})
+
+describe('wholeUpstreamAttachments', () => {
+  const skill = (tool_name: string, slug: string): SkillForUpstreamRow => ({
+    skill_id: `id-${slug}`,
+    slug,
+    title: slug,
+    tool_name,
+    status: 'published'
+  })
+  const doc = (tool_name: string, slug: string): DocForUpstreamRow => ({
+    doc_id: `id-${slug}`,
+    slug,
+    title: slug,
+    tool_name
+  })
+
+  it('keeps only tool_name==="" rows and structures them (mirror of list_upstreams)', () => {
+    const out = wholeUpstreamAttachments(
+      [skill('', 'sk-whole'), skill('wit_work_item', 'sk-pertool')],
+      [doc('', 'd-whole'), doc('repo_file', 'd-pertool')]
+    )
+    expect(out.skills).toEqual([{ slug: 'sk-whole', title: 'sk-whole' }])
+    expect(out.docs).toEqual([{ id: 'id-d-whole', slug: 'd-whole', title: 'd-whole' }])
+  })
+
+  it('returns empty arrays (always present) when nothing is whole-upstream', () => {
+    const out = wholeUpstreamAttachments([skill('wit_query', 'sk-x')], [])
+    expect(out).toEqual({ skills: [], docs: [] })
   })
 })
 
