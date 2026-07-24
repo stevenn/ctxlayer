@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { formatUpstreamError, sanitiseUpstreamError } from './upstream-error'
+import { formatUpstreamError, samlSsoNudge, sanitiseUpstreamError } from './upstream-error'
 
 describe('sanitiseUpstreamError', () => {
   it('returns empty for empty input', () => {
@@ -106,5 +106,49 @@ describe('formatUpstreamError', () => {
     })
     expect(out.userMessage).not.toContain(' — ')
     expect(out.userMessage).toMatch(/upstream_error: x\.y \(ref=/)
+  })
+})
+
+describe('samlSsoNudge', () => {
+  const SAML =
+    'failed to resolve git reference: failed to get repository info: GET ' +
+    'https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
+    'Resource protected by organization SAML enforcement. You must grant your OAuth ' +
+    'token access to this organization.'
+
+  it('returns a first-party playbook for a SAML-SSO refusal', () => {
+    const out = samlSsoNudge(SAML, 'up-github')
+    expect(out).not.toBeNull()
+    expect(out).toContain('[ctxlayer]')
+    expect(out).toContain('SAML')
+  })
+
+  it('extracts the org and builds the SSO URL from it', () => {
+    const out = samlSsoNudge(SAML, 'up-github')!
+    expect(out).toContain('"The-Yuki-Company"')
+    expect(out).toContain('https://github.com/orgs/The-Yuki-Company/sso')
+  })
+
+  it('names the connector slug + the exact reconnect route', () => {
+    const out = samlSsoNudge(SAML, 'up-github')!
+    expect(out).toContain('up-github')
+    expect(out).toContain('/app/upstreams')
+    expect(out).toContain('Reconnect')
+  })
+
+  it('does not echo the raw upstream text verbatim (no leaked repo path)', () => {
+    const out = samlSsoNudge(SAML, 'up-github')!
+    expect(out).not.toContain('yuki-public-api-specs')
+    expect(out).not.toContain('api.github.com/repos')
+  })
+
+  it('falls back to a placeholder org when none is parsable', () => {
+    const out = samlSsoNudge('403 Resource protected by organization SAML enforcement.', 'up-github')!
+    expect(out).toContain('https://github.com/orgs/<your-org>/sso')
+  })
+
+  it('returns null for an unrelated error (no false rewrite)', () => {
+    expect(samlSsoNudge('HTTP 404 Not Found', 'up-github')).toBeNull()
+    expect(samlSsoNudge('', 'up-github')).toBeNull()
   })
 })

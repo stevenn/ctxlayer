@@ -46,6 +46,59 @@ export function formatUpstreamError(args: {
 }
 
 /**
+ * GitHub returns SAML-SSO refusals as a tool RESULT error (`isError: true`
+ * content), not a thrown one — so it bypasses `sanitiseUpstreamError` and the
+ * raw "Resource protected by organization SAML enforcement" text would reach
+ * the agent verbatim. Detect that specific signature and substitute a
+ * first-party, actionable playbook telling the caller exactly how to SSO-link
+ * their token. Because it REPLACES the upstream content, it also closes the
+ * one error path that forwarded upstream text unsanitised.
+ *
+ * Returns null when the message isn't a SAML-SSO refusal (caller then leaves
+ * the normal error surface untouched). The org, when parsable from a
+ * github.com URL in the message, is validated against GitHub's org-slug
+ * charset before being interpolated into a URL we construct — the message is
+ * never echoed back; only the extracted, constrained slug is.
+ */
+export function samlSsoNudge(raw: string, slug: string): string | null {
+  if (!raw) return null
+  // Conservative: only unambiguous SAML-SSO refusal phrasings.
+  if (
+    !/resource protected by organization saml|saml sso|saml enforcement|saml single sign-?on|grant your (?:oauth |personal access )?token access to this organization|single sign-?on/i.test(
+      raw
+    )
+  ) {
+    return null
+  }
+  const org = extractGithubOrg(raw)
+  const orgLabel = org ? `"${org}"` : 'the GitHub organization'
+  const orgPossessive = org ? `${org}'s` : "the org's"
+  const ssoUrl = org
+    ? `https://github.com/orgs/${org}/sso`
+    : 'https://github.com/orgs/<your-org>/sso'
+  return (
+    `[ctxlayer] This GitHub call was blocked because org ${orgLabel} enforces SAML ` +
+    `single sign-on and your GitHub authorization is not SSO-linked to it. Your token ` +
+    `still works for your own repos — only ${orgPossessive} resources are affected.\n\n` +
+    `To fix (per-user, one-time):\n` +
+    `1. Open ${ssoUrl} and complete single sign-on to authorize your token for the org.\n` +
+    `2. Re-run the tool. If it still fails, reconnect the ${slug} connector in ctxlayer ` +
+    `at /app/upstreams (find GitHub → "Reconnect") so a fresh token is minted during the ` +
+    `active SAML session.\n` +
+    `3. If GitHub does not re-prompt on reconnect (an existing grant is cached), first ` +
+    `revoke it at GitHub → Settings → Applications → Authorized OAuth Apps, then reconnect.`
+  )
+}
+
+// GitHub org slugs: 1–39 chars, alphanumeric or hyphen, must start
+// alphanumeric. Constrained enough to safely drop into a URL we build.
+const GITHUB_ORG_RE = /github\.com\/(?:repos|orgs)\/([A-Za-z0-9][A-Za-z0-9-]{0,38})/i
+
+function extractGithubOrg(raw: string): string | null {
+  return GITHUB_ORG_RE.exec(raw)?.[1] ?? null
+}
+
+/**
  * Strip the patterns most likely to leak secrets / internal topology
  * from an upstream MCP error message, then length-cap so a chatty
  * upstream can't bloat the model's context.

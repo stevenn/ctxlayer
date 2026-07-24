@@ -322,6 +322,43 @@ describe('runUpstreamCall', () => {
     expect(out.surface.content[0]?.text).not.toContain('sk-secret-123')
     expect(out.surface.content[0]?.text).toMatch(/ref=/)
   })
+
+  it('rewrites a SAML-SSO tool-result error into an actionable nudge', async () => {
+    const out = await runUpstreamCall({
+      slug: 'up-github',
+      toolName: 'get_file_contents',
+      run: async () => ({
+        content: [
+          {
+            type: 'text',
+            text:
+              'GET https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
+              'Resource protected by organization SAML enforcement.'
+          }
+        ],
+        isError: true
+      })
+    })
+    expect(out.status).toBe('error')
+    expect(out.surface.isError).toBe(true)
+    expect(out.errorCode).toBe('saml_sso_required')
+    expect(out.surface.content[0]?.text).toContain('[ctxlayer]')
+    expect(out.surface.content[0]?.text).toContain('github.com/orgs/The-Yuki-Company/sso')
+    // Raw upstream text is not forwarded verbatim.
+    expect(out.surface.content[0]?.text).not.toContain('yuki-public-api-specs')
+    // ...but is preserved for the usage errors table.
+    expect(out.errorDetail).toContain('yuki-public-api-specs')
+  })
+
+  it('leaves a non-SAML tool-result error on the generic path', async () => {
+    const out = await runUpstreamCall({
+      slug: 'up-github',
+      toolName: 'x',
+      run: async () => ({ content: [{ type: 'text', text: 'HTTP 404 Not Found' }], isError: true })
+    })
+    expect(out.errorCode).not.toBe('saml_sso_required')
+    expect(out.surface.content[0]?.text).toBe('HTTP 404 Not Found')
+  })
 })
 
 describe('isAsyncTool', () => {

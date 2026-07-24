@@ -65,7 +65,7 @@ import {
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
 import { jsonSchemaToZod } from './json-schema-to-zod'
-import { formatUpstreamError, newCorrelationId } from './upstream-error'
+import { formatUpstreamError, newCorrelationId, samlSsoNudge } from './upstream-error'
 import {
   classifyUpstreamError,
   errorTextFromContent,
@@ -951,6 +951,22 @@ export async function runUpstreamCall(opts: {
       status = 'error'
       errorDetail = errorTextFromContent(result.content)
       errorCode = classifyUpstreamError('error', errorDetail)
+      // A SAML-SSO refusal arrives as tool-result content (not a thrown
+      // error), so it skips the sanitiser in the catch below and would reach
+      // the agent verbatim. Swap it for a first-party, actionable playbook and
+      // tag a distinct code so the usage Errors table separates it from the
+      // generic 4xx bucket (and doubles as the "who still needs to SSO" list).
+      const nudge = samlSsoNudge(errorDetail, opts.slug)
+      if (nudge) {
+        return {
+          surface: { isError: true, content: [{ type: 'text', text: nudge }] },
+          respJson,
+          status,
+          truncated: false,
+          errorCode: 'saml_sso_required',
+          errorDetail
+        }
+      }
     }
     const respBytes = byteLength(respJson)
     const cap = opts.maxResponseBytes ?? UPSTREAM_MAX_RESPONSE_BYTES
