@@ -12,6 +12,8 @@
  *      anything that could leak credentials or topology.
  */
 
+import { firstParty } from './provenance'
+
 export interface UpstreamErrorFormat {
   /** User-facing one-liner returned via MCP `errText`. */
   userMessage: string
@@ -76,17 +78,17 @@ export function samlSsoNudge(raw: string, slug: string): string | null {
   const ssoUrl = org
     ? `https://github.com/orgs/${org}/sso`
     : 'https://github.com/orgs/<your-org>/sso'
-  return (
-    `[ctxlayer] This GitHub call was blocked because org ${orgLabel} enforces SAML ` +
-    `single sign-on and your GitHub authorization is not SSO-linked to it. Your token ` +
-    `still works for your own repos — only ${orgPossessive} resources are affected.\n\n` +
-    `To fix (per-user, one-time):\n` +
-    `1. Open ${ssoUrl} and complete single sign-on to authorize your token for the org.\n` +
-    `2. Re-run the tool. If it still fails, reconnect the ${slug} connector in ctxlayer ` +
-    `at /app/upstreams (find GitHub → "Reconnect") so a fresh token is minted during the ` +
-    `active SAML session.\n` +
-    `3. If GitHub does not re-prompt on reconnect (an existing grant is cached), first ` +
-    `revoke it at GitHub → Settings → Applications → Authorized OAuth Apps, then reconnect.`
+  return firstParty(
+    `This GitHub call was blocked because org ${orgLabel} enforces SAML ` +
+      `single sign-on and your GitHub authorization is not SSO-linked to it. Your token ` +
+      `still works for your own repos — only ${orgPossessive} resources are affected.\n\n` +
+      `To fix (per-user, one-time):\n` +
+      `1. Open ${ssoUrl} and complete single sign-on to authorize your token for the org.\n` +
+      `2. Re-run the tool. If it still fails, reconnect the ${slug} connector in ctxlayer ` +
+      `at /app/upstreams (find GitHub → "Reconnect") so a fresh token is minted during the ` +
+      `active SAML session.\n` +
+      `3. If GitHub does not re-prompt on reconnect (an existing grant is cached), first ` +
+      `revoke it at GitHub → Settings → Applications → Authorized OAuth Apps, then reconnect.`
   )
 }
 

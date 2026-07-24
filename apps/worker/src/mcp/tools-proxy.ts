@@ -74,6 +74,7 @@ import {
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
+import { defangContent, defangProvenance, firstParty } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId, samlSsoNudge } from './upstream-error'
 import {
@@ -244,26 +245,20 @@ export class UpstreamProxyRegistry {
       this.clients.set(conn.id, client)
       const skills = skillsByUpstream.get(conn.id) ?? []
       const docs = docsByUpstream.get(conn.id) ?? []
-      // Two attachment scopes, both surfaced on the tool description so the
-      // binding nudge rides in context at call time (not just the easily-
-      // skipped server `instructions` tail): whole-upstream playbooks
-      // (tool_name = '') fan out onto EVERY tool of this upstream; per-tool
-      // pointers (tool_name != '') attach only to their named tool. The
-      // server `instructions` still names the whole-upstream ones too
-      // (`upstreamGuidance`) — intentional redundancy, the description is
-      // the reliable surface.
-      const wholeUpstream = wholeUpstreamPointers(skills, docs)
+      // Only PER-TOOL pointers (tool_name != '') ride the description now.
+      // Whole-upstream playbooks (tool_name = '') are NOT fanned onto every
+      // tool anymore — they already live in the server `instructions`
+      // (`upstreamGuidance`) and in `list_upstreams.attached_skills`, so
+      // repeating them on each tool was redundant noise. Per-tool bindings also
+      // have a structured home in `describe_upstream`; this description line is
+      // just passive discoverability for the tool-specific ones.
       const perTool = perToolPointers(skills, docs)
       let count = 0
       for (const t of tools) {
         const key = accessKey(conn.id, t.tool_name)
         if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
         this.allowedToolKeys.add(key)
-        // Whole-upstream first (the general "how we do X here" playbook),
-        // then the narrower per-tool pointers; dedup so an attachment that
-        // is both scopes isn't named twice.
-        const pointers = [...new Set([...wholeUpstream, ...(perTool.get(t.tool_name) ?? [])])]
-        this.registerTool(server, conn, t, pointers)
+        this.registerTool(server, conn, t, perTool.get(t.tool_name) ?? [])
         count++
       }
       added.push({ slug: conn.slug, tools: count })
@@ -518,8 +513,9 @@ export class UpstreamProxyRegistry {
       // upstream's descriptions. The structured home for these is
       // `describe_upstream` (per-tool `attached_skills`/`attached_docs`); this
       // line is just passive discoverability on the one field every client
-      // renders. The `[ctxlayer]` label marks it as first-party.
-      const suffix = `\n\n[ctxlayer] Related org playbooks (optional context): ${pointers.join(', ')}.`
+      // renders. Wrapped in the ⟦ctxlayer⟧ provenance marker (first-party,
+      // unforgeable — the upstream description above it is defanged).
+      const suffix = `\n\n${firstParty(`Related org playbooks (optional context): ${pointers.join(', ')}.`)}`
       description = truncateDescription(description, 1024 - suffix.length) + suffix
     }
     let inputSchemaJson: unknown = {}
@@ -957,8 +953,10 @@ export function perToolAttachments(
  * and Unicode intact.
  */
 function sanitizeUntrustedText(s: string): string {
+  // Strip control chars, THEN neutralise the ⟦ctxlayer⟧ provenance marker so
+  // an upstream description can't forge a first-party segment (see provenance.ts).
   // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
-  return s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, '')
+  return defangProvenance(s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ''))
 }
 
 function stringifyError(err: unknown): string {
@@ -1050,9 +1048,11 @@ export async function runUpstreamCall(opts: {
     return {
       surface: {
         isError: !!result.isError,
+        // Defang the provenance marker in upstream-originated result text so a
+        // tool result can't forge a first-party ⟦ctxlayer⟧ directive.
         content: Array.isArray(result.content)
-          ? (result.content as Array<{ type: string; text?: string }>)
-          : [{ type: 'text', text: JSON.stringify(result.content ?? null, null, 2) }],
+          ? defangContent(result.content as Array<{ type: string; text?: string }>)
+          : [{ type: 'text', text: defangProvenance(JSON.stringify(result.content ?? null, null, 2)) }],
         structuredContent: result.structuredContent as Record<string, unknown> | undefined
       },
       respJson,
@@ -1154,10 +1154,10 @@ function errText(msg: string) {
  * text (no upstream input), so no sanitisation needed.
  */
 export function truncationNotice(slug: string, tool: string, bytes: number, cap: number): string {
-  return (
-    `[ctxlayer] The response from ${slug}.${tool} was ${bytes} bytes, over the ` +
-    `${cap}-byte relay cap, and was withheld to protect the agent's context. ` +
-    `Re-run with a narrower scope (e.g. a path, directory, depth, or page/limit ` +
-    `argument) so the tool returns a smaller payload.`
+  return firstParty(
+    `The response from ${slug}.${tool} was ${bytes} bytes, over the ` +
+      `${cap}-byte relay cap, and was withheld to protect the agent's context. ` +
+      `Re-run with a narrower scope (e.g. a path, directory, depth, or page/limit ` +
+      `argument) so the tool returns a smaller payload.`
   )
 }

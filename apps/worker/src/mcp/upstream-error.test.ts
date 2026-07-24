@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { CTX_MARK_CLOSE, CTX_MARK_OPEN } from './provenance'
 import { formatUpstreamError, samlSsoNudge, sanitiseUpstreamError } from './upstream-error'
 
 describe('sanitiseUpstreamError', () => {
@@ -116,10 +117,11 @@ describe('samlSsoNudge', () => {
     'Resource protected by organization SAML enforcement. You must grant your OAuth ' +
     'token access to this organization.'
 
-  it('returns a first-party playbook for a SAML-SSO refusal', () => {
+  it('returns a first-party playbook for a SAML-SSO refusal, marked as ctxlayer-authored', () => {
     const out = samlSsoNudge(SAML, 'up-github')
     expect(out).not.toBeNull()
-    expect(out).toContain('[ctxlayer]')
+    expect(out).toContain(CTX_MARK_OPEN)
+    expect(out).toContain(CTX_MARK_CLOSE)
     expect(out).toContain('SAML')
   })
 

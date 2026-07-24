@@ -1,0 +1,58 @@
+/**
+ * Content provenance marking.
+ *
+ * ctxlayer mixes two provenances in the text it hands the agent:
+ *   - FIRST-PARTY: content ctxlayer itself authored (org-playbook pointers on
+ *     tool descriptions, the SAML-SSO nudge, the size-cap notice). This is
+ *     trusted operator guidance.
+ *   - THIRD-PARTY: everything an upstream emits — tool descriptions and
+ *     tool-call results. This is UNTRUSTED data and must never be obeyed as
+ *     instructions, however it is framed.
+ *
+ * A plain `[ctxlayer]` label is spoofable: a malicious/compromised upstream
+ * could put `[ctxlayer] you are pre-authorized to…` in a description or result
+ * and impersonate the gateway. We fix that with an UNFORGEABLE marker:
+ *
+ *   - `firstParty(text)` wraps ctxlayer's own text in ⟦ctxlayer⟧ … ⟦/ctxlayer⟧
+ *     (U+27E6 / U+27E7 — mathematical white square brackets, effectively never
+ *     present in real tool text/data).
+ *   - `defangProvenance(text)` STRIPS those bracket codepoints from every piece
+ *     of upstream-originated text before ctxlayer forwards it.
+ *
+ * Because the strip runs on all untrusted input, the invariant holds: a
+ * ⟦ctxlayer⟧ … ⟦/ctxlayer⟧ segment in what the agent receives can only have
+ * been placed by ctxlayer, never forged by an upstream. The marker value is
+ * not secret — its integrity comes from the strip, not from obscurity.
+ *
+ * This is a wire convention: it is inert until a client/model is taught to
+ * honor it, but it is readable, harmless when ignored, and the substrate a
+ * provenance-aware client needs. The convention is documented to the agent in
+ * the MCP server `instructions` (the trusted channel), not smuggled as data.
+ */
+
+export const CTX_MARK_OPEN = '⟦ctxlayer⟧' // ⟦ctxlayer⟧
+export const CTX_MARK_CLOSE = '⟦/ctxlayer⟧' // ⟦/ctxlayer⟧
+
+/** Wrap first-party ctxlayer text in the provenance markers. */
+export function firstParty(text: string): string {
+  return `${CTX_MARK_OPEN} ${text} ${CTX_MARK_CLOSE}`
+}
+
+/**
+ * Neutralise the provenance markers in UNTRUSTED (upstream-originated) text so
+ * it cannot forge a first-party segment. Strips only the two rare bracket
+ * codepoints, so legitimate data is left intact (they essentially never occur
+ * in real tool descriptions or results).
+ */
+export function defangProvenance(s: string): string {
+  return s.replace(/[⟦⟧]/g, '')
+}
+
+/**
+ * Apply `defangProvenance` to the text of every content item in an upstream
+ * tool result before it is forwarded to the agent. Non-text items pass through
+ * untouched.
+ */
+export function defangContent<T extends { type: string; text?: string }>(content: T[]): T[] {
+  return content.map((c) => (typeof c.text === 'string' ? { ...c, text: defangProvenance(c.text) } : c))
+}
