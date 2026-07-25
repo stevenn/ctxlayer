@@ -4,9 +4,10 @@
 // production. The seeded ids are deterministic so re-running is
 // idempotent (INSERT OR IGNORE).
 //
-// M4 will add upstream_servers fixtures here too. Docs are NOT
-// seeded — every doc needs a real created_by user, and we don't
-// want to bypass the IdP allowlist by inserting a fake user row.
+// Upstreams and docs are deliberately NOT seeded: every doc needs a
+// real created_by user, and inserting a fake user row would bypass
+// the IdP allowlist. Register an upstream via /app/admin/upstreams
+// and create docs by signing in.
 
 import { spawnSync } from 'node:child_process'
 

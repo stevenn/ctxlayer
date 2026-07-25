@@ -73,7 +73,7 @@ import {
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
-import { defangContent, defangProvenance, firstParty, sanitizeUntrustedText } from './provenance'
+import { firstParty, sanitizeUntrustedContent, sanitizeUntrustedText } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId, samlSsoNudge } from './upstream-error'
 import {
@@ -1034,11 +1034,17 @@ export async function runUpstreamCall(opts: {
     return {
       surface: {
         isError: !!result.isError,
-        // Defang the provenance marker in upstream-originated result text so a
-        // tool result can't forge a first-party ⟦ctxlayer⟧ directive.
+        // Strip control chars + neutralise the ⟦ctxlayer⟧ marker in
+        // upstream-originated result text, so a tool result can neither forge a
+        // first-party directive nor smuggle terminal/C1 bytes to the model.
         content: Array.isArray(result.content)
-          ? defangContent(result.content as Array<{ type: string; text?: string }>)
-          : [{ type: 'text', text: defangProvenance(JSON.stringify(result.content ?? null, null, 2)) }],
+          ? sanitizeUntrustedContent(result.content as Array<{ type: string; text?: string }>)
+          : [
+              {
+                type: 'text',
+                text: sanitizeUntrustedText(JSON.stringify(result.content ?? null, null, 2))
+              }
+            ],
         structuredContent: result.structuredContent as Record<string, unknown> | undefined
       },
       respJson,

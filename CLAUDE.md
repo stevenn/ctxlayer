@@ -46,7 +46,7 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
 2. Use the slash commands in `.claude/commands/`:
    - `/smoke` — deploy a preview + hit smoke endpoints + print a status table.
    - `/migrate` — apply pending D1 migrations.
-   - `/seed` — load fixture upstreams + docs into local D1.
+   - `/seed` — load fixture teams + products into local D1 (not upstreams/docs).
    - `/deploy:preview` — deploy a versioned preview and print the URL.
 3. Before pushing: `bun run verify` (typecheck + lint + unit + integration
    tests, fully offline; `bun run verify:full` adds smoke).
@@ -83,16 +83,39 @@ any of these on a new endpoint or proxy hop is a regression.
   used to `console.error(await tokenRes.text())` on failure — that
   string can contain access/id tokens or detailed IdP error meta that
   leak to centralised logs. Log HTTP status and error code only.
-- **Never echo upstream MCP error messages verbatim to the agent.**
-  `mcp/tools-proxy.ts` returns proxied-tool errors to the caller; the
-  message field must be a generic code (`upstream_error`, `timeout`)
-  with the real text logged server-side only. Upstream errors can
-  carry API keys, internal hostnames, or stack traces.
-- **Untrusted upstream tool descriptions are model input.** When a tool
-  description from a third-party MCP server is forwarded to the agent
-  (via `mcp/tools-proxy.ts`), strip control characters and treat it as
-  untrusted prompt content. Never inline-concatenate it into a prompt
-  template without sanitisation.
+- **Never echo a THROWN upstream error verbatim to the agent.** When a
+  proxied call throws, `mcp/tools-proxy.ts` must return a generic code
+  (`upstream_error`, `timeout`) + a `ref=` id, with the real text logged
+  server-side only — it can carry API keys, internal hostnames, stack
+  traces. `formatUpstreamError` owns this; the catch block is covered by
+  a test asserting no credential leak.
+  **Known gap, deliberate:** an upstream that reports failure the
+  MCP-idiomatic way — `{ content, isError: true }` — does NOT throw, so
+  its text is forwarded to the agent (and replayed by `poll_task` from
+  `async_jobs.error_detail`). `tools-proxy.test.ts` asserts that
+  passthrough. It IS control-char stripped + provenance defanged; it is
+  NOT credential-scrubbed. Tightening this is an open decision — see
+  `docs/review-2026-07.md`.
+- **Untrusted upstream text is model input — sanitise on EVERY path.**
+  `sanitizeUntrustedText` / `sanitizeUntrustedContent` live in
+  `mcp/provenance.ts` (control-char strip + `defangProvenance`), NOT in
+  the proxy — precisely so a non-proxy consumer can't skip them. Both
+  tool descriptions and tool RESULTS go through them. This is what makes
+  the `⟦ctxlayer⟧` unforgeability claim in `provenance.ts` true, so any
+  new path that forwards upstream text must use them. The
+  `draft_skill` bundle (`skills/draft-context.ts`) is the worked
+  example: it inlines descriptions into a prompt template next to
+  first-party guidance, and skipping the gate there let an upstream
+  forge a first-party segment. Never inline-concatenate raw upstream
+  text into a prompt template.
+- **Agent-facing upstream reads are gated TWICE: visibility, then
+  per-tool ACL.** Resolve upstreams via `listUpstreamsVisibleToUser`
+  (never a bare `getUpstreamBySlug`/`getUpstreamById`) and filter the
+  catalogue with `isToolAllowed`. `describe_upstream` and
+  `draft_skill` both do this; an ungranted slug must be indistinguishable
+  from a nonexistent one. `draft_skill` is open to every signed-in user,
+  so it is the easiest place to accidentally build a read oracle for
+  upstreams an admin never granted.
 - **Validate upstream URLs at the trust boundary.** Admin can register
   any URL on `/api/admin/upstreams`; the `global_fetch_strictly_public`
   compatibility flag (set in `wrangler.toml`) blocks RFC 1918 ranges at
