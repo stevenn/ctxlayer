@@ -29,7 +29,7 @@ verifies over interactive flows.
 
 ## Module rules
 
-- ≤200 LoC per file. Split early.
+- ≤300 LoC per file. Split early.
 - No circular deps across the four top-level concerns:
   `api/`, `mcp/`, `collab/`, `queues/`.
 - All env via the typed `Env` from `apps/worker/src/env.ts`.

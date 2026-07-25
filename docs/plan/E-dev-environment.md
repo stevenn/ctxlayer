@@ -71,13 +71,13 @@ Optimisations specifically for typing into Claude on a phone:
 - **`bun run verify`** — composite command: typecheck + lint + unit + integration (fully offline; `bun run verify:full` adds smoke). Returns a final pass/fail table. Designed to fit on one phone screen.
 - **`wrangler tail` aliases** — `bun run logs` (errors only), `bun run logs:all`, `bun run logs:mcp` (filtered to /mcp routes). All print as plain text.
 - **Curl-bot test tokens** — a long-lived non-prod OAuth client whose secret is in CI secret env vars, used by smoke scripts. Scoped to a "test" user that doesn't appear in real usage rollups.
-- **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the strict module-size cap (~200 lines), the test-first cadence. Reduces token cost of every future session.
+- **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the strict module-size cap (~300 lines), the test-first cadence. Reduces token cost of every future session.
 - **Repository-level `.claude/output-style.json`** sets terse, mobile-friendly defaults for AI replies in this repo.
 
 ### E6. Module conventions
 
 To keep AI agents (and humans) productive at scale:
-- Hard cap modules at ~200 LoC. Split when it grows.
+- Hard cap modules at ~300 LoC. Split when it grows.
 - One folder = one concern. No circular imports across `apps/worker/src/*` directories.
 - Every Hono route handler lives in `api/*` with a one-line export; route-mounting happens centrally in `app.ts` (`index.ts` only wraps the composed app in the OAuthProvider + queue/scheduled handlers).
 - Every DO class has the file pattern `*-do.ts` and the only export is the class.
@@ -103,7 +103,7 @@ Added by Section E:
 2. Run `/smoke` to confirm the preview deploy works.
 3. Read `CLAUDE.md` (5min).
 4. Run `bun run verify` locally OR in the cloud session.
-5. Skim `CONTRIBUTING.md` for the change loop, pick something small, and keep the PR focused (the ~200 LoC module cap keeps changes reviewable).
+5. Skim `CONTRIBUTING.md` for the change loop, pick something small, and keep the PR focused (the ~300 LoC module cap keeps changes reviewable).
 
 ---
 

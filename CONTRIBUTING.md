@@ -39,7 +39,7 @@ because Vectorize has no local emulator — both are expected.
 These are enforced by review, not just style preference. The rationale lives in
 [`docs/plan/G-conventions.md`](docs/plan/G-conventions.md).
 
-- **~200 LoC per module.** Split early; one folder = one concern.
+- **~300 LoC per module.** Split early; one folder = one concern.
 - **No circular imports** across `apps/worker/src/*` concern folders.
 - **All env access** goes through the typed `Env` in `apps/worker/src/env.ts` —
   never `process.env`.

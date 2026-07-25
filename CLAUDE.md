@@ -53,7 +53,7 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
 
 ## Conventions
 
-- Module size cap: ~200 LoC. Split when it grows.
+- Module size cap: ~300 LoC. Split when it grows.
 - One folder = one concern. No circular imports across `apps/worker/src/*`.
 - All env access goes through the typed `env.ts` — never `process.env`.
 - D1 queries live in `apps/worker/src/db/queries/*.ts`; route handlers stay
