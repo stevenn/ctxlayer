@@ -53,8 +53,14 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
 
 ## Conventions
 
-- Module size cap: ~300 LoC. Split when it grows.
-- One folder = one concern. No circular imports across `apps/worker/src/*`.
+- One file = one concern; one folder = one concern. No circular imports across
+  `apps/worker/src/*`.
+- ~300 LoC is a **review trigger, not a limit** — a prompt to ask whether the
+  file still holds one concern. Split when it holds separable ones (two things
+  a reader would name, changing for different reasons). Do NOT split a cohesive
+  unit to hit the number: a standalone component, one DO's lifecycle, one
+  linear pipeline are each *one* concern at any length, and slicing them buys
+  prop-drilling and indirection for no boundary.
 - All env access goes through the typed `env.ts` — never `process.env`.
 - D1 queries live in `apps/worker/src/db/queries/*.ts`; route handlers stay
   SQL-free.
