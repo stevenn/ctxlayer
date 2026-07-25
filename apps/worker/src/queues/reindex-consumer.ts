@@ -236,8 +236,8 @@ async function handle(
   const chunks = chunkMarkdown(markdown, { title: doc.title })
   // Embed the doc title + section breadcrumb ALONG WITH each chunk's
   // body, so the doc/section identity is part of every vector. A query
-  // that matches the title (e.g. "yuki architecture" → a doc titled
-  // "Yuki Architecture Analysis") then matches the doc's chunks
+  // that matches the title (e.g. "platform architecture" → a doc titled
+  // "Platform Architecture Analysis") then matches the doc's chunks
   // semantically. The stored snippet (metadata.text) stays the raw body,
   // so result snippets read naturally — only the embedding input carries
   // the header.

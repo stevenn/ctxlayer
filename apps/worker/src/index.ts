@@ -52,7 +52,7 @@ const worker: ExportedHandler<Env> = {
   async queue(batch, env, ctx) {
     // Match on the type SUFFIX, not an exact name: queue names are
     // deployment-specific (tenants prefix them with the worker name, e.g.
-    // `ctxlayer-yukitools-usage`). See queues/route.ts. Matching exact base
+    // `ctxlayer-acme-usage`). See queues/route.ts. Matching exact base
     // names silently broke usage/reindex/git-sync on every tenant.
     switch (queueKind(batch.queue)) {
       case 'usage':

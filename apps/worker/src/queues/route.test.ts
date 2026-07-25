@@ -10,10 +10,10 @@ describe('queueKind', () => {
   })
 
   it('routes tenant-prefixed queue names (the bug this fixes)', () => {
-    expect(queueKind('ctxlayer-yukitools-usage')).toBe('usage')
-    expect(queueKind('ctxlayer-yukitools-reindex')).toBe('reindex')
-    expect(queueKind('ctxlayer-yukitools-git-sync')).toBe('git-sync')
-    expect(queueKind('ctxlayer-yukitools-jobs')).toBe('jobs')
+    expect(queueKind('ctxlayer-acme-usage')).toBe('usage')
+    expect(queueKind('ctxlayer-acme-reindex')).toBe('reindex')
+    expect(queueKind('ctxlayer-acme-git-sync')).toBe('git-sync')
+    expect(queueKind('ctxlayer-acme-jobs')).toBe('jobs')
     expect(queueKind('ctxlayer-dev-usage')).toBe('usage')
   })
 
@@ -23,7 +23,7 @@ describe('queueKind', () => {
   })
 
   it('returns null for an unknown queue', () => {
-    expect(queueKind('ctxlayer-yukitools-other')).toBeNull()
+    expect(queueKind('ctxlayer-acme-other')).toBeNull()
     expect(queueKind('something-else')).toBeNull()
     expect(queueKind('')).toBeNull()
   })

@@ -423,7 +423,7 @@ describe('runUpstreamCall', () => {
           {
             type: 'text',
             text:
-              'GET https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
+              'GET https://api.github.com/repos/Acme-Corp/internal-api-specs: 403 ' +
               'Resource protected by organization SAML enforcement.'
           }
         ],
@@ -434,11 +434,11 @@ describe('runUpstreamCall', () => {
     expect(out.surface.isError).toBe(true)
     expect(out.errorCode).toBe('saml_sso_required')
     expect(out.surface.content[0]?.text).toContain(CTX_MARK_OPEN)
-    expect(out.surface.content[0]?.text).toContain('github.com/orgs/The-Yuki-Company/sso')
+    expect(out.surface.content[0]?.text).toContain('github.com/orgs/Acme-Corp/sso')
     // Raw upstream text is not forwarded verbatim.
-    expect(out.surface.content[0]?.text).not.toContain('yuki-public-api-specs')
+    expect(out.surface.content[0]?.text).not.toContain('internal-api-specs')
     // ...but is preserved for the usage errors table.
-    expect(out.errorDetail).toContain('yuki-public-api-specs')
+    expect(out.errorDetail).toContain('internal-api-specs')
   })
 
   it('leaves a non-SAML tool-result error on the generic path', async () => {

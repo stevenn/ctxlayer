@@ -37,14 +37,14 @@ function fakeEnv(over: Partial<Env> = {}): Env {
 
 function authorizeReq(headers: Record<string, string> = {}): Request {
   return new Request(
-    'https://mcp.yukitools.dev/oauth/authorize?response_type=code&client_id=client-1',
+    'https://mcp.acme.example/oauth/authorize?response_type=code&client_id=client-1',
     { headers }
   )
 }
 
 const activeUser = {
   id: 'u1',
-  email: 'user@yuki.be',
+  email: 'user@acme.example',
   name: null,
   avatar_url: null,
   idp: 'access',
@@ -61,7 +61,7 @@ afterEach(() => vi.restoreAllMocks())
 describe('handleAuthorize — Cloudflare Access branch', () => {
   it('completes the grant from a valid Access token, reusing the stashed request id', async () => {
     const env = fakeEnv()
-    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@yuki.be', name: null })
+    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@acme.example', name: null })
     upsertUser.mockResolvedValue({ user: activeUser, promotedToAdmin: false })
     const completed = new Response(null, {
       status: 302,
@@ -75,7 +75,7 @@ describe('handleAuthorize — Cloudflare Access branch', () => {
     // upsert is admitted as idp='access', active, never running the local allowlist.
     expect(upsertUser).toHaveBeenCalledWith(
       env,
-      { idp: 'access', idpSub: 'sub-1', email: 'user@yuki.be', name: null, avatarUrl: null },
+      { idp: 'access', idpSub: 'sub-1', email: 'user@acme.example', name: null, avatarUrl: null },
       'active'
     )
     // The grant is completed against the SAME request id stashed in KV.
@@ -113,7 +113,7 @@ describe('handleAuthorize — Cloudflare Access branch', () => {
 
   it('blocks a suspended user and does NOT complete the grant', async () => {
     const env = fakeEnv()
-    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@yuki.be', name: null })
+    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@acme.example', name: null })
     upsertUser.mockResolvedValue({
       user: { ...activeUser, status: 'suspended' },
       promotedToAdmin: false
@@ -128,7 +128,7 @@ describe('handleAuthorize — Cloudflare Access branch', () => {
 
   it('shows a pending message for a pending user', async () => {
     const env = fakeEnv()
-    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@yuki.be', name: null })
+    verifyCfAccessJwt.mockResolvedValue({ sub: 'sub-1', email: 'user@acme.example', name: null })
     upsertUser.mockResolvedValue({
       user: { ...activeUser, status: 'pending' },
       promotedToAdmin: false

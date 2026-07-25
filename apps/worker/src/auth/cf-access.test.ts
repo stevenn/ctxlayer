@@ -67,7 +67,7 @@ async function setup() {
   const claims = (over: Record<string, unknown> = {}) => ({
     iss: `https://${team}`,
     aud: AUD,
-    email: 'User@Yuki.be',
+    email: 'User@Acme.example',
     sub: 'sub-123',
     exp: NOW + 300,
     ...over
@@ -93,7 +93,7 @@ describe('verifyCfAccessJwt', () => {
     const jwt = await signJwt(t.key.privateKey, t.kid, t.claims())
     expect(await verifyCfAccessJwt(jwt, t.env, NOW)).toEqual({
       sub: 'sub-123',
-      email: 'user@yuki.be',
+      email: 'user@acme.example',
       name: null
     })
   })

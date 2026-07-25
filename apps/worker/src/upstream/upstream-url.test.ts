@@ -21,7 +21,7 @@ describe.each([
     // The old TLD-wide reject wrongly blocked third-party workers. The
     // self-loop guard now lives in the admin REST handler (isSameOrigin
     // vs PUBLIC_BASE_URL), so the schema must accept these.
-    expect(schema.safeParse('https://yuki-ia-mcp.dizzydata-bv.workers.dev/mcp').success).toBe(true)
+    expect(schema.safeParse('https://other-mcp.thirdparty.workers.dev/mcp').success).toBe(true)
     expect(schema.safeParse('https://foo.cloudflareworkers.com').success).toBe(true)
   })
 })
@@ -35,7 +35,7 @@ describe('isSameOrigin (self-loop guard)', () => {
   })
 
   it('does not match a different Cloudflare-hosted worker', () => {
-    expect(isSameOrigin('https://yuki-ia-mcp.dizzydata-bv.workers.dev/mcp', base)).toBe(false)
+    expect(isSameOrigin('https://other-mcp.thirdparty.workers.dev/mcp', base)).toBe(false)
   })
 
   it('distinguishes localhost ports (dev server vs a dev upstream)', () => {

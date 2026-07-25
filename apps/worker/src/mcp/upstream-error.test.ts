@@ -113,7 +113,7 @@ describe('formatUpstreamError', () => {
 describe('samlSsoNudge', () => {
   const SAML =
     'failed to resolve git reference: failed to get repository info: GET ' +
-    'https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
+    'https://api.github.com/repos/Acme-Corp/internal-api-specs: 403 ' +
     'Resource protected by organization SAML enforcement. You must grant your OAuth ' +
     'token access to this organization.'
 
@@ -127,8 +127,8 @@ describe('samlSsoNudge', () => {
 
   it('extracts the org and builds the SSO URL from it', () => {
     const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).toContain('"The-Yuki-Company"')
-    expect(out).toContain('https://github.com/orgs/The-Yuki-Company/sso')
+    expect(out).toContain('"Acme-Corp"')
+    expect(out).toContain('https://github.com/orgs/Acme-Corp/sso')
   })
 
   it('names the connector slug + the exact reconnect route', () => {
@@ -140,7 +140,7 @@ describe('samlSsoNudge', () => {
 
   it('does not echo the raw upstream text verbatim (no leaked repo path)', () => {
     const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).not.toContain('yuki-public-api-specs')
+    expect(out).not.toContain('internal-api-specs')
     expect(out).not.toContain('api.github.com/repos')
   })
 

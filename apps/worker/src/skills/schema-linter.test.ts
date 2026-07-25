@@ -85,13 +85,13 @@ describe('lintSkillBody', () => {
   })
 
   it('matches multi-hyphen slugs', async () => {
-    setup([attach('up-yuki-ia-nl', 'y-id')], { 'y-id': [tool('y-id', 'list_nodes')] })
-    const out = await lintSkillBody(env, 'sk', '`up-yuki-ia-nl__list_nodes`')
+    setup([attach('up-acme-ia-nl', 'y-id')], { 'y-id': [tool('y-id', 'list_nodes')] })
+    const out = await lintSkillBody(env, 'sk', '`up-acme-ia-nl__list_nodes`')
     expect(out).toEqual([
       {
         kind: 'mangled_reference',
-        reference: 'up-yuki-ia-nl__list_nodes',
-        upstreamSlug: 'up-yuki-ia-nl',
+        reference: 'up-acme-ia-nl__list_nodes',
+        upstreamSlug: 'up-acme-ia-nl',
         toolName: 'list_nodes'
       }
     ])

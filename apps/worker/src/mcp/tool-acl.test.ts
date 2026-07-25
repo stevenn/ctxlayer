@@ -37,9 +37,9 @@ describe('isToolAllowed', () => {
   it('grants on ANY matching rule across kinds (additive within the lock)', () => {
     const rules: ToolAccessRuleLike[] = [
       { principalKind: 'role', principalId: 'r_eng' },
-      { principalKind: 'team', principalId: 't_yuki' }
+      { principalKind: 'team', principalId: 't_platform' }
     ]
-    expect(isToolAllowed(rules, principals({ teams: new Set(['t_yuki']) }))).toBe(true)
+    expect(isToolAllowed(rules, principals({ teams: new Set(['t_platform']) }))).toBe(true)
     expect(isToolAllowed(rules, principals({ products: new Set(['p_driver']) }))).toBe(false)
   })
 
@@ -59,12 +59,12 @@ describe('requiresFromRules', () => {
     const rules: ToolAccessRuleLike[] = [
       { principalKind: 'role', principalId: 'r_eng' },
       { principalKind: 'role', principalId: 'r_qa' },
-      { principalKind: 'team', principalId: 't_yuki' },
+      { principalKind: 'team', principalId: 't_platform' },
       { principalKind: 'everyone', principalId: '' }
     ]
     expect(requiresFromRules(rules)).toEqual({
       roles: ['r_eng', 'r_qa'],
-      teams: ['t_yuki'],
+      teams: ['t_platform'],
       products: []
     })
   })
