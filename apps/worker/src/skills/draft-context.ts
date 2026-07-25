@@ -9,13 +9,21 @@
 
 import {
   collapseSlugPrefix,
+  isToolAllowed,
   mangleToolName,
   unmangleToolName,
   type DraftContextBundle,
   type SupportedTransport
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { getUpstreamBySlug } from '../db/queries/upstreams'
+import { listUpstreamsVisibleToUser, type UpstreamServerRow } from '../db/queries/upstreams'
+import {
+  accessKey,
+  indexToolAccess,
+  listToolAccessForUpstream,
+  resolveUserPrincipals
+} from '../db/queries/tool-access'
+import { sanitizeUntrustedText } from '../mcp/provenance'
 import { listCachedTools } from '../db/queries/upstream-tools'
 import { listPublishedSkills } from '../db/queries/skills'
 import { readSnapshot } from '../storage/skills-r2'
@@ -48,25 +56,44 @@ export async function buildDraftContext(
   const slugs = [...new Set(args.upstreamSlugs.filter(Boolean))]
   if (slugs.length === 0) return { ok: false, error: 'upstream_not_found', status: 404 }
 
+  // Drafting is open to every signed-in user, so the bundle must respect the
+  // SAME two gates the agent-facing catalogue does — otherwise `draft_skill`
+  // becomes a read oracle for upstreams an admin never granted:
+  //   1. upstream visibility → resolve slugs against the caller's visible set
+  //      (an ungranted slug is indistinguishable from a nonexistent one);
+  //   2. per-tool ACL → filter the catalogue with `isToolAllowed`, mirroring
+  //      `describe_upstream`'s `visibleTools`.
+  const [visible, principals] = await Promise.all([
+    listUpstreamsVisibleToUser(env, userId),
+    resolveUserPrincipals(env, userId)
+  ])
+
   // Resolve identity + transport for every requested upstream first, so a
   // bad/undialable slug fails fast before the heavier enrichment work.
   const resolved: Array<{
-    upstream: NonNullable<Awaited<ReturnType<typeof getUpstreamBySlug>>>
+    upstream: UpstreamServerRow
     // Captured here (post-guard) where isDialableTransport has narrowed it;
     // the narrowing wouldn't survive into the section-building loop below.
     transport: SupportedTransport
     cachedTools: Awaited<ReturnType<typeof listCachedTools>>
   }> = []
   for (const slug of slugs) {
-    const upstream = await getUpstreamBySlug(env, slug)
+    const upstream = visible.find((r) => r.slug === slug)
     if (!upstream) return { ok: false, error: 'upstream_not_found', status: 404 }
     if (!isDialableTransport(upstream.transport)) {
       return { ok: false, error: 'unsupported_transport', status: 400 }
     }
+    const [cached, aclRows] = await Promise.all([
+      listCachedTools(env, upstream.id),
+      listToolAccessForUpstream(env, upstream.id)
+    ])
+    const acl = indexToolAccess(aclRows)
     resolved.push({
       upstream,
       transport: upstream.transport,
-      cachedTools: await listCachedTools(env, upstream.id)
+      cachedTools: cached.filter((t) =>
+        isToolAllowed(acl.get(accessKey(upstream.id, t.tool_name)), principals)
+      )
     })
   }
 
@@ -115,11 +142,15 @@ export async function buildDraftContext(
       slug: upstream.slug,
       displayName: upstream.display_name,
       transport,
+      // Tool descriptions are THIRD-PARTY text that `buildDraftSkillText`
+      // inlines into a prompt template alongside first-party guidance, so it
+      // gets the same untrusted-text gate the proxy applies before handing a
+      // description to the model (control-char strip + provenance defang).
       focusTool: focus
         ? {
             name: focus.tool_name,
             mangledName: mangleToolName(upstream.slug, focus.tool_name),
-            description: focus.description,
+            description: sanitizeUntrustedText(focus.description ?? ''),
             inputSchema: safeJsonParse(focus.input_schema),
             lastSchemaChangeAt: focus.last_schema_change_at
           }
@@ -127,7 +158,7 @@ export async function buildDraftContext(
       allTools: cachedTools.map((t) => ({
         name: t.tool_name,
         mangledName: mangleToolName(upstream.slug, t.tool_name),
-        description: t.description
+        description: sanitizeUntrustedText(t.description ?? '')
       })),
       usageAggregates
     })

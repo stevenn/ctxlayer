@@ -25,10 +25,10 @@ import { listCachedToolsForUpstreams, type UpstreamToolRow } from '../db/queries
 import {
   accessKey,
   indexToolAccess,
-  listToolAccessForUpstreams
+  listToolAccessForUpstreams,
+  resolveUserPrincipals
 } from '../db/queries/tool-access'
-import { resolveUserScope } from '../db/queries/doc-tags'
-import { listRoles, listUserRoleIds } from '../db/queries/roles'
+import { listRoles } from '../db/queries/roles'
 import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
 import { mangleToolName, toolFamily } from '../mcp/tool-name'
@@ -106,15 +106,7 @@ export function groupDirectoryTools(
  * family-grouped tools. Empty-cache upstreams are listed with `groups: []`.
  */
 export async function buildToolsDirectory(env: Env, userId: string): Promise<ToolsDirectory> {
-  const [scope, roleIds] = await Promise.all([
-    resolveUserScope(env, userId),
-    listUserRoleIds(env, userId)
-  ])
-  const principals: UserPrincipals = {
-    teams: new Set(scope.teams),
-    products: new Set(scope.products),
-    roles: new Set(roleIds)
-  }
+  const principals = await resolveUserPrincipals(env, userId)
 
   // Headers (connection state + raw toolsCount + attachments) come from the
   // same builder `list_upstreams` uses; the visible rows give us id↔slug for

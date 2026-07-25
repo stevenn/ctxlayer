@@ -50,13 +50,12 @@ import {
   listDocsForUpstreams,
   type DocForUpstreamRow
 } from '../db/queries/doc-attachments'
-import { resolveUserScope } from '../db/queries/doc-tags'
-import { listUserRoleIds } from '../db/queries/roles'
 import {
   accessKey,
   indexToolAccess,
   listToolAccessForUpstream,
-  listToolAccessForUpstreams
+  listToolAccessForUpstreams,
+  resolveUserPrincipals
 } from '../db/queries/tool-access'
 import { createUpstreamClient } from '../upstream/create-client'
 import { isDialableTransport, type UpstreamClient } from '../upstream/upstream-client'
@@ -74,7 +73,7 @@ import {
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
-import { defangContent, defangProvenance, firstParty } from './provenance'
+import { defangContent, defangProvenance, firstParty, sanitizeUntrustedText } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId, samlSsoNudge } from './upstream-error'
 import {
@@ -757,25 +756,6 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
   }
 }
 
-/**
- * The caller's group memberships (teams, products, roles), resolved in
- * one pass for the per-tool ACL. Products are transitive via teams
- * (resolveUserScope); roles are direct. `init()` uses this; the
- * `list_my_context` handler builds the same shape from data it already
- * fetched and feeds it to `restrictedToolsFor()` so both evaluate the
- * exact same principal set.
- */
-async function resolveUserPrincipals(env: Env, userId: string): Promise<UserPrincipals> {
-  const [scope, roleIds] = await Promise.all([
-    resolveUserScope(env, userId),
-    listUserRoleIds(env, userId)
-  ])
-  return {
-    teams: new Set(scope.teams),
-    products: new Set(scope.products),
-    roles: new Set(roleIds)
-  }
-}
 
 export function truncateDescription(s: string, max = 1024): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
@@ -965,19 +945,6 @@ export function wholeUpstreamAttachments(
       .filter((d) => d.tool_name === '')
       .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
   }
-}
-
-/**
- * Strip C0 control characters (except tab/newline/carriage return) and
- * the C1 range from an untrusted string before we hand it to the model
- * or echo it back over the wire. Keeps regular punctuation, whitespace,
- * and Unicode intact.
- */
-function sanitizeUntrustedText(s: string): string {
-  // Strip control chars, THEN neutralise the ⟦ctxlayer⟧ provenance marker so
-  // an upstream description can't forge a first-party segment (see provenance.ts).
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
-  return defangProvenance(s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ''))
 }
 
 function stringifyError(err: unknown): string {

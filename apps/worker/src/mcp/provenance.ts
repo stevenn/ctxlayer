@@ -56,3 +56,20 @@ export function defangProvenance(s: string): string {
 export function defangContent<T extends { type: string; text?: string }>(content: T[]): T[] {
   return content.map((c) => (typeof c.text === 'string' ? { ...c, text: defangProvenance(c.text) } : c))
 }
+
+/**
+ * The full untrusted-text gate: strip C0 control characters (except
+ * tab/newline/carriage return) and the C1 range, THEN neutralise the
+ * ⟦ctxlayer⟧ provenance marker. Keeps regular punctuation, whitespace, and
+ * Unicode intact.
+ *
+ * EVERY path that forwards upstream-originated text to the model must run it
+ * through here — that is what makes the provenance invariant above hold. Lives
+ * beside `defangProvenance` (rather than in the proxy) so the non-proxy
+ * consumers — notably the `draft_skill` context bundle, which inlines upstream
+ * tool descriptions into a prompt template — cannot silently skip it.
+ */
+export function sanitizeUntrustedText(s: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
+  return defangProvenance(s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ''))
+}
