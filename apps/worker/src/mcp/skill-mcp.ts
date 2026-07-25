@@ -24,6 +24,7 @@ import {
   requiredUpstreamSlugs,
   skillAccessAdvisory
 } from '../skills/skill-requires'
+import { errText } from './tool-result'
 
 export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
   tool: string,
@@ -151,6 +152,3 @@ export function registerSkillMcp(
 
 // ----- helpers -----------------------------------------------------------
 
-function errText(msg: string) {
-  return { isError: true, content: [{ type: 'text' as const, text: msg }] }
-}

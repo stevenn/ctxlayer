@@ -1,4 +1,5 @@
-import type { DocSummary, FolderTreeNode, UserSummary } from '@ctxlayer/shared'
+import { personLabel } from '../../lib/person'
+import type { DocSummary, FolderTreeNode } from '@ctxlayer/shared'
 import { explain as explainBase } from '../../lib/explain'
 
 // The library is split into two top-level groups: authored docs (Home)
@@ -148,13 +149,6 @@ export function groupCodeDocsByRepo(docs: DocSummary[]): RepoGroup[] {
   }
   groups.sort((a, b) => a.label.localeCompare(b.label))
   return groups
-}
-
-export function personLabel(u: UserSummary | null | undefined): string {
-  if (!u) return '—'
-  if (u.name && u.name.length > 0) return u.name
-  const at = u.email.indexOf('@')
-  return at > 0 ? u.email.slice(0, at) : u.email
 }
 
 export function filterDocs(docs: DocSummary[], query: string): DocSummary[] {

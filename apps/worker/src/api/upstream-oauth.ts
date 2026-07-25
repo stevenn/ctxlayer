@@ -48,6 +48,7 @@ import {
 } from '../upstream/oauth-static'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 import { notFound } from './respond'
+import { errMessage } from '../util/errors'
 
 // SPA paths we're allowed to bounce the user back to after the OAuth
 // dance — `return_to=admin` lands them on the admin upstreams page
@@ -265,7 +266,7 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
         }
       },
       (err) => {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = errMessage(err)
         console.error(`[catalogue] ${upstream.slug}: post-OAuth refresh threw: ${msg}`)
       }
     )
@@ -276,10 +277,6 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
     302
   )
 })
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 /**
  * Does an upstream catalogue-refresh error message signal that the token

@@ -6,7 +6,7 @@
 
 import type { Env } from '../../env'
 import type { ProductRef, TeamProductsAssignment } from '@ctxlayer/shared'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 
 interface ProductRow {
   id: string
@@ -117,6 +117,3 @@ export async function replaceTeamProducts(
   await env.DB.batch(stmts)
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

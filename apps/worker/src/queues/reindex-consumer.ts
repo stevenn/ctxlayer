@@ -10,6 +10,7 @@ import { chunkMarkdown, type Chunk } from '../rag/chunker'
 import { embed } from '../rag/embedder'
 import { upsertChunks } from '../rag/index'
 import { notify } from '../ops/alert'
+import { errMessage } from '../util/errors'
 
 // Mirror of wrangler.toml's `max_retries` on the reindex consumer: on the
 // final attempt we alert + ack (so a poison message is surfaced, not silently
@@ -97,7 +98,7 @@ export async function reindexConsumer(
       await handle(env, { ...parsed.data, force: forcedDocs.has(parsed.data.docId) })
       msg.ack()
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errMessage(err)
       // wrangler dev quirk: `remote = true` on the Vectorize / AI
       // bindings works for the fetch handler but not for queue
       // consumers (they run in a separate context that doesn't get

@@ -52,11 +52,6 @@ export async function getGitConnectionForSource(
   )
 }
 
-export async function listGitConnections(env: Env): Promise<GitConnectionRow[]> {
-  const res = await env.DB.prepare(`${SELECT_CONN} ORDER BY display_name`).all<GitConnectionRow>()
-  return res.results ?? []
-}
-
 /** Set (or clear, with null) the static-OAuth client config JSON on a connection. */
 export async function setGitConnectionAuthConfig(
   env: Env,

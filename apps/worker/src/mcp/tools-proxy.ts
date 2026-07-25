@@ -84,6 +84,8 @@ import {
 import type { RecordUsageArgs } from '../usage/record'
 import { byteLength } from '../usage/tokens'
 import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
+import { errMessage } from '../util/errors'
+import { errText, safeJson } from './tool-result'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
@@ -231,7 +233,7 @@ export class UpstreamProxyRegistry {
     const prepped = await Promise.all(
       rows.map((row) =>
         this.prepareUpstream(row, cachedByUpstream.get(row.id) ?? []).catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err)
+          const msg = errMessage(err)
           console.error(`[upstream-proxy] ${row.slug}: init failed: ${msg}`)
           return null
         })
@@ -478,7 +480,7 @@ export class UpstreamProxyRegistry {
       const tools = await client.listTools()
       await replaceCachedTools(this.env, conn.id, tools)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errMessage(err)
       console.error(`[catalogue] ${conn.slug}: tools/list failed: ${msg}`)
       // Fall back to whatever cache we have, even if stale.
     }
@@ -672,7 +674,7 @@ export class UpstreamProxyRegistry {
       })
     } catch (err) {
       // Lost the race to a concurrent submit that took the running slot.
-      if (/UNIQUE constraint/i.test(stringifyError(err))) {
+      if (/UNIQUE constraint/i.test(errMessage(err))) {
         const running = await findLatestJobByKey(this.env, jobKey)
         if (running && running.status === 'running') {
           return asyncSurface(
@@ -947,13 +949,9 @@ export function wholeUpstreamAttachments(
   }
 }
 
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}
 
 export function isTimeoutError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errMessage(err)
   // Both the upstream/http-client 60s wall cap and the MCP SDK's
   // own RequestTimeoutError surface as messages mentioning timeout.
   return /timeout|timed out|deadline/i.test(msg)
@@ -1051,7 +1049,7 @@ export async function runUpstreamCall(opts: {
     }
   } catch (err) {
     const status: 'error' | 'timeout' = isTimeoutError(err) ? 'timeout' : 'error'
-    const msg = stringifyError(err)
+    const msg = errMessage(err)
     const refId = newCorrelationId()
     console.error(`[upstream-proxy] [ref=${refId}] ${opts.slug}.${opts.toolName} ${status}: ${msg}`)
     const { userMessage } = formatUpstreamError({
@@ -1123,17 +1121,7 @@ export async function callWithHeartbeat<T>(
   }
 }
 
-function safeJson(v: unknown): string {
-  try {
-    return typeof v === 'string' ? v : JSON.stringify(v ?? null)
-  } catch {
-    return ''
-  }
-}
 
-function errText(msg: string) {
-  return { isError: true, content: [{ type: 'text' as const, text: msg }] }
-}
 
 /**
  * Structured notice substituted for an upstream response that exceeded

@@ -22,7 +22,7 @@ import type {
   GitPrState,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 import { getGitConnectionForSource } from './git-connections'
 
 // ----- git_sources -------------------------------------------------------
@@ -715,6 +715,3 @@ function toUint8Array(v: unknown): Uint8Array {
   return new Uint8Array(v as ArrayLike<number>)
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

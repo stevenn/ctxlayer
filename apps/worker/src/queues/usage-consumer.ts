@@ -1,6 +1,7 @@
 import type { Env } from '../env'
 import { UsageEventMsg } from '../usage/event'
 import { writeUsageEvent } from '../db/queries/usage'
+import { errMessage } from '../util/errors'
 
 /**
  * Batch consumer for ctxlayer-usage. One D1 batch per message
@@ -28,7 +29,7 @@ export async function usageConsumer(
       await writeUsageEvent(env, parsed.data)
       msg.ack()
     } catch (err) {
-      const m = err instanceof Error ? err.message : String(err)
+      const m = errMessage(err)
       // Queues deliver at-least-once and the DO usage outbox can re-send
       // a batch it failed to delete, so a duplicate event id is expected
       // and benign: the raw row + rollup were written on the first pass,

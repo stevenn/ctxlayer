@@ -8,6 +8,11 @@
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,
     "noFallthroughCasesInSwitch": true,
+    // Biome's noUnusedVariables does NOT report unused imports, and nothing
+    // else in `verify` reports unused anything — which is how a pile of dead
+    // imports and locals accumulated. These two make it self-policing.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
     "exactOptionalPropertyTypes": false,
     "esModuleInterop": true,
     "resolveJsonModule": true,

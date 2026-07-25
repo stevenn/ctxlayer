@@ -16,18 +16,12 @@
   --bg-elevated: #242836;
   --border: #353b50;
 
-  --fg: #f8fafc;
   --text: #f8fafc;
   --text-muted: #c8d2e0;
-  --muted: #c8d2e0;
   --text-dim: #94a3b8;
 
   --accent: #3b82f6; /* blue-500, brighter in dark mode */
-  --accent-hover: #60a5fa; /* blue-400 */
-  --accent-strong: #2563eb; /* blue-600 — primary CTA shade */
 
-  --danger: #f87171;
-  --success: #34d399;
   --brand: #f38020; /* ctxlayer orange — matches the marketing site logo */
 
   --sidebar-w: 220px;
@@ -43,18 +37,11 @@
   --bg-elevated: #f8fafc;
   --border: #cbd5e1;
 
-  --fg: #0f172a;
   --text: #0f172a;
   --text-muted: #475569;
-  --muted: #475569;
   --text-dim: #64748b;
 
   --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-strong: #2563eb;
-
-  --danger: #dc2626;
-  --success: #16a34a;
 }
 
 * {
@@ -435,24 +422,6 @@ table:hover .bn-table-cell-handle {
 .bn-block-content[data-content-type="codeBlock"] code {
   font-size: 12px !important;
   line-height: 1.45;
-}
-
-/* Compact "kv" style info widget — used by the editor's
-   created/last-edited strip. */
-.info-strip {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  column-gap: 12px;
-  row-gap: 2px;
-  font-size: 12px;
-  color: var(--text-dim);
-}
-.info-strip dt {
-  font-weight: 600;
-  color: var(--text-muted);
-}
-.info-strip dd {
-  margin: 0;
 }
 
 /*

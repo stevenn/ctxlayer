@@ -3,7 +3,7 @@ import { ActionIcon, Tooltip } from '@mantine/core'
 import type { DocDetail } from '@ctxlayer/shared'
 import { setDocLocked } from '../../lib/api'
 import { useDialogs } from '../../lib/dialogs'
-import { personLabel } from '../docs-list'
+import { personLabel } from '../../lib/person'
 import { explain, formatAbsolute } from './helpers'
 
 /**

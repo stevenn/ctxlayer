@@ -36,7 +36,6 @@ import {
   isGitDoc
 } from './helpers'
 
-export { personLabel } from './helpers'
 
 // ImportDocModal instantiates a headless BlockNote editor just to parse
 // markdown → blocks, which would drag the whole editor stack into this

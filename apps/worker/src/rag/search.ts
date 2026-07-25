@@ -40,6 +40,7 @@ import { resolveUserScope } from '../db/queries/doc-tags'
 import { gitDocIdsAmong, listDocRefs } from '../db/queries/docs'
 import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
+import { errMessage } from '../util/errors'
 
 export const SEARCH_K_DEFAULT = 8
 export const SEARCH_K_MAX = 50
@@ -176,7 +177,7 @@ async function lexicalMatches(
   } catch (err) {
     if (!isLocalRemoteBindingError(err)) {
       console.warn('rag/search: lexical query failed (non-fatal)', {
-        err: err instanceof Error ? err.message : String(err)
+        err: errMessage(err)
       })
     }
     return []

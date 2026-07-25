@@ -31,6 +31,7 @@ import { writeSourceMarkdown } from '../storage/docs-r2'
 import { createGitProvider } from './provider'
 import type { GitRepoConfig } from './provider-types'
 import { resolveGitReadToken } from './credentials'
+import { errMessage } from '../util/errors'
 
 export interface RunGitSyncOpts {
   /** Acting user, for user_* read strategies (interactive sync). */
@@ -190,7 +191,7 @@ export async function runGitSync(
     await recordSyncResult(env, sourceId, status, null)
     return { status, ...counts, error: null }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = errMessage(err)
     await recordSyncResult(env, sourceId, 'error', msg)
     return { status: 'error', ...counts, error: msg }
   }

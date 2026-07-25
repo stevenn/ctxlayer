@@ -3,9 +3,11 @@
  * surface their errors).
  */
 
+import { errMessage } from '../../util/errors'
+
 /** True when a D1 error is a SQLite UNIQUE-constraint violation. */
 export function isUniqueViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errMessage(err)
   return /UNIQUE constraint failed/i.test(msg)
 }
 
@@ -39,4 +41,16 @@ export function buildPatchUpdate(
     sql: `UPDATE ${table} SET ${fields.join(', ')} WHERE id = ?${binds.length}${extra}`,
     binds
   }
+}
+
+/**
+ * Primary key for a new row: a UUIDv4 with the dashes stripped.
+ *
+ * Not a ULID despite the historical name in users.ts — ids are opaque and
+ * never sorted on, and D1 assigns no ordering meaning to them. Every table's
+ * insert path and every revision id share this one implementation so the id
+ * shape can't drift per table.
+ */
+export function newId(): string {
+  return crypto.randomUUID().replace(/-/g, '')
 }

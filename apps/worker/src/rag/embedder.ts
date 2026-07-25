@@ -10,6 +10,7 @@
  */
 
 import type { Env } from '../env'
+import { errMessage } from '../util/errors'
 
 const MODEL = '@cf/baai/bge-base-en-v1.5'
 const VECTOR_DIM = 768
@@ -64,7 +65,7 @@ async function runBatchWithRetry(env: Env, batch: string[]): Promise<number[][]>
   } catch (err) {
     console.warn('embedder: batch failed, retrying once', {
       size: batch.length,
-      err: err instanceof Error ? err.message : String(err)
+      err: errMessage(err)
     })
     return runBatch(env, batch)
   }

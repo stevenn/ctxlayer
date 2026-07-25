@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import type { HealthResponse } from '@ctxlayer/shared'
 import { CRON_STALE_AFTER_S, LAST_CRON_KV_KEY } from '../ops/cron-heartbeat'
+import { errMessage } from '../util/errors'
 
 export const healthRoute = new Hono<{ Bindings: Env }>()
 
@@ -75,7 +76,7 @@ async function timed(name: string, fn: () => Promise<void>) {
       name,
       ok: false,
       latencyMs: Date.now() - start,
-      error: err instanceof Error ? err.message : String(err)
+      error: errMessage(err)
     }
   }
 }

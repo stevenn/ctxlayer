@@ -63,7 +63,6 @@ export interface Env {
   JOBS_QUEUE: Queue
   MCP_SESSION_DO: DurableObjectNamespace
   DOC_ROOM_DO: DurableObjectNamespace
-  ASSETS: Fetcher
 
   // Injected at runtime by @cloudflare/workers-oauth-provider so the
   // defaultHandler can parse authorize requests, look up clients, and

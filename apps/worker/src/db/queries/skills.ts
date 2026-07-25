@@ -14,7 +14,7 @@
 import type { Env } from '../../env'
 import { suggestSlug } from '@ctxlayer/shared'
 import type { HeadRevision, RevisionKind } from '../revision-policy'
-import { buildPatchUpdate, isUniqueViolation } from './util'
+import { buildPatchUpdate, isUniqueViolation, newId } from './util'
 
 export interface SkillRow {
   id: string
@@ -438,9 +438,6 @@ export async function getSkillRevision(
 
 // ----- helpers -----------------------------------------------------------
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}
 
 function randomSuffix(): string {
   const buf = new Uint8Array(3)

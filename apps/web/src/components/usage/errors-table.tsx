@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Badge, Group, Select, Text } from '@mantine/core'
-import type { UsageErrorRow, UsageRange } from '@ctxlayer/shared'
+import type { UsageErrorCode, UsageErrorRow, UsageRange } from '@ctxlayer/shared'
 import { UserCell } from './user-cell'
 
 /**
@@ -16,7 +16,12 @@ import { UserCell } from './user-cell'
  * further back than the rows listed here.
  */
 
-const CODE_LABEL: Record<string, string> = {
+// Keyed by the shared `UsageErrorCode` union, so adding a class server-side
+// without giving it a label/colour here is a COMPILE error rather than a
+// silent fall-through to the raw slug with an undefined colour. Lookups still
+// take a plain string: `UsageErrorRow.code` is deliberately loose so a newer
+// worker's response can't fail an older SPA's parse.
+const CODE_LABEL: Record<UsageErrorCode, string> = {
   timeout: 'Timeout',
   upstream_5xx: 'Upstream 5xx',
   upstream_4xx: 'Upstream 4xx',
@@ -26,7 +31,7 @@ const CODE_LABEL: Record<string, string> = {
   local_error: 'Local error'
 }
 
-const CODE_COLOR: Record<string, string> = {
+const CODE_COLOR: Record<UsageErrorCode, string> = {
   timeout: 'yellow',
   upstream_5xx: 'red',
   upstream_4xx: 'orange',
@@ -37,7 +42,7 @@ const CODE_COLOR: Record<string, string> = {
 }
 
 function codeLabel(code: string): string {
-  return CODE_LABEL[code] ?? code
+  return (CODE_LABEL as Record<string, string>)[code] ?? code
 }
 
 // Origin is derived from the row, not stored: a built-in/ctxlayer-side
@@ -165,7 +170,7 @@ export function ErrorsTable({
                   </Badge>
                 </td>
                 <td>
-                  <Badge size="xs" variant="light" color={CODE_COLOR[r.code] ?? 'gray'}>
+                  <Badge size="xs" variant="light" color={(CODE_COLOR as Record<string, string>)[r.code] ?? 'gray'}>
                     {codeLabel(r.code)}
                   </Badge>
                 </td>

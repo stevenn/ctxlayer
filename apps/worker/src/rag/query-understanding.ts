@@ -11,6 +11,7 @@
  */
 
 import type { Env } from '../env'
+import { errMessage } from '../util/errors'
 
 const QU_MODEL = '@cf/meta/llama-3.1-8b-instruct'
 const QU_TIMEOUT_MS = 1500
@@ -83,7 +84,7 @@ export async function understandQuery(
     raw = await withTimeout(runModel(env, rawQuery, scope), QU_TIMEOUT_MS)
   } catch (err) {
     console.warn('query-understanding: model call failed', {
-      err: err instanceof Error ? err.message : String(err)
+      err: errMessage(err)
     })
     return fallback(rawQuery)
   }

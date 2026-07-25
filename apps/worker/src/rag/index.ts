@@ -15,6 +15,7 @@
 
 import type { Env } from '../env'
 import { lexicalVector } from './lexical-embed'
+import { errMessage } from '../util/errors'
 
 export interface ChunkVector {
   /** Stable across revisions: `${docId}:${chunkIdx}`. */
@@ -84,7 +85,7 @@ export async function upsertChunks(env: Env, input: UpsertInput): Promise<void> 
       console.warn('rag/index: orphan delete failed', {
         docId: input.docId,
         orphans: orphans.length,
-        err: err instanceof Error ? err.message : String(err)
+        err: errMessage(err)
       })
     })
   }
@@ -126,7 +127,7 @@ async function upsertLexicalChunks(
   } catch (err) {
     console.warn('rag/index: lexical upsert failed (non-fatal)', {
       docId: input.docId,
-      err: err instanceof Error ? err.message : String(err)
+      err: errMessage(err)
     })
   }
 }

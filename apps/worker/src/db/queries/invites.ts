@@ -7,6 +7,7 @@
 
 import type { Env } from '../../env'
 import type { Invite } from '@ctxlayer/shared'
+import { newId } from './util'
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -90,7 +91,7 @@ export async function createInvites(
   const rows = toAdd.map((email) =>
     env.DB.prepare(
       `INSERT OR IGNORE INTO invites (id, email, invited_by, created_at) VALUES (?1, ?2, ?3, ?4)`
-    ).bind(crypto.randomUUID().replace(/-/g, ''), email, invitedBy, now)
+    ).bind(newId(), email, invitedBy, now)
   )
   const results = await env.DB.batch(rows)
   // OR IGNORE means a racing duplicate lands as 0 changes; count real adds.
