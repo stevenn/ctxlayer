@@ -1,5 +1,4 @@
-import type { ApiError } from '../../lib/api'
-import { explain as explainBase } from '../../lib/explain'
+import { bodyMessage, explain as explainBase } from '../../lib/explain'
 
 export function explain(err: unknown): string {
   return explainBase(err, {
@@ -11,11 +10,3 @@ export function explain(err: unknown): string {
 }
 
 // Preferred body-message order for this screen: hint → message → error.
-function bodyMessage(err: ApiError): string | null {
-  const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
-  if (!body || typeof body !== 'object') return null
-  if (typeof body.hint === 'string' && body.hint) return body.hint
-  if (typeof body.message === 'string' && body.message) return body.message
-  if (typeof body.error === 'string' && body.error) return body.error
-  return null
-}
