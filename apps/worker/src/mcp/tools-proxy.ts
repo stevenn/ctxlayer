@@ -76,7 +76,8 @@ import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
 import { defangContent, defangProvenance, firstParty } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
-import { formatUpstreamError, newCorrelationId, samlSsoNudge } from './upstream-error'
+import { formatUpstreamError, newCorrelationId } from './upstream-error'
+import { githubOrgAccessNudge } from './github-nudges'
 import {
   classifyUpstreamError,
   errorTextFromContent,
@@ -1037,19 +1038,21 @@ export async function runUpstreamCall(opts: {
       status = 'error'
       errorDetail = errorTextFromContent(result.content)
       errorCode = classifyUpstreamError('error', errorDetail)
-      // A SAML-SSO refusal arrives as tool-result content (not a thrown
-      // error), so it skips the sanitiser in the catch below and would reach
-      // the agent verbatim. Swap it for a first-party, actionable playbook and
-      // tag a distinct code so the usage Errors table separates it from the
-      // generic 4xx bucket (and doubles as the "who still needs to SSO" list).
-      const nudge = samlSsoNudge(errorDetail, opts.slug)
+      // GitHub org access refusals (SAML SSO, IP allow list, OAuth-app
+      // restriction) arrive as tool-result content (not a thrown error), so
+      // they skip the sanitiser in the catch below and would reach the agent
+      // verbatim. Swap the recognised ones for a first-party, actionable
+      // playbook and tag a distinct code so the usage Errors table separates
+      // them from the generic 4xx bucket (and doubles as the "who's blocked on
+      // what" list).
+      const nudge = githubOrgAccessNudge(errorDetail, opts.slug)
       if (nudge) {
         return {
-          surface: { isError: true, content: [{ type: 'text', text: nudge }] },
+          surface: { isError: true, content: [{ type: 'text', text: nudge.text }] },
           respJson,
           status,
           truncated: false,
-          errorCode: 'saml_sso_required',
+          errorCode: nudge.errorCode,
           errorDetail
         }
       }

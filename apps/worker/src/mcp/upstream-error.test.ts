@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CTX_MARK_CLOSE, CTX_MARK_OPEN } from './provenance'
-import { formatUpstreamError, samlSsoNudge, sanitiseUpstreamError } from './upstream-error'
+import { formatUpstreamError, sanitiseUpstreamError } from './upstream-error'
 
 describe('sanitiseUpstreamError', () => {
   it('returns empty for empty input', () => {
@@ -51,11 +50,21 @@ describe('sanitiseUpstreamError', () => {
     expect(out).toMatch(/TypeError: foo/)
   })
 
-  it('collapses whitespace and caps at 200 chars', () => {
-    const long = 'fetch failed: '.repeat(50)
+  it('collapses whitespace and caps at 500 chars', () => {
+    const long = 'fetch failed: '.repeat(100)
     const out = sanitiseUpstreamError(long)
-    expect(out.length).toBeLessThanOrEqual(200)
+    expect(out.length).toBeLessThanOrEqual(500)
     expect(out).not.toMatch(/\s{2,}/)
+  })
+
+  it('keeps a full actionable message that the old 200-char cap would have chopped', () => {
+    const msg =
+      'HTTP 403: ' +
+      'Although you appear to have the correct authorization credentials, '.repeat(4) +
+      'contact your administrator.'
+    const out = sanitiseUpstreamError(msg)
+    expect(out.length).toBeGreaterThan(200)
+    expect(out).toContain('contact your administrator.')
   })
 
   it('preserves meaningful HTTP-status detail', () => {
@@ -107,50 +116,5 @@ describe('formatUpstreamError', () => {
     })
     expect(out.userMessage).not.toContain(' — ')
     expect(out.userMessage).toMatch(/upstream_error: x\.y \(ref=/)
-  })
-})
-
-describe('samlSsoNudge', () => {
-  const SAML =
-    'failed to resolve git reference: failed to get repository info: GET ' +
-    'https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
-    'Resource protected by organization SAML enforcement. You must grant your OAuth ' +
-    'token access to this organization.'
-
-  it('returns a first-party playbook for a SAML-SSO refusal, marked as ctxlayer-authored', () => {
-    const out = samlSsoNudge(SAML, 'up-github')
-    expect(out).not.toBeNull()
-    expect(out).toContain(CTX_MARK_OPEN)
-    expect(out).toContain(CTX_MARK_CLOSE)
-    expect(out).toContain('SAML')
-  })
-
-  it('extracts the org and builds the SSO URL from it', () => {
-    const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).toContain('"The-Yuki-Company"')
-    expect(out).toContain('https://github.com/orgs/The-Yuki-Company/sso')
-  })
-
-  it('names the connector slug + the exact reconnect route', () => {
-    const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).toContain('up-github')
-    expect(out).toContain('/app/upstreams')
-    expect(out).toContain('Reconnect')
-  })
-
-  it('does not echo the raw upstream text verbatim (no leaked repo path)', () => {
-    const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).not.toContain('yuki-public-api-specs')
-    expect(out).not.toContain('api.github.com/repos')
-  })
-
-  it('falls back to a placeholder org when none is parsable', () => {
-    const out = samlSsoNudge('403 Resource protected by organization SAML enforcement.', 'up-github')!
-    expect(out).toContain('https://github.com/orgs/<your-org>/sso')
-  })
-
-  it('returns null for an unrelated error (no false rewrite)', () => {
-    expect(samlSsoNudge('HTTP 404 Not Found', 'up-github')).toBeNull()
-    expect(samlSsoNudge('', 'up-github')).toBeNull()
   })
 })
