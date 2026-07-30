@@ -152,7 +152,7 @@ export function ErrorsTable({
                   </td>
                 )}
                 <td>
-                  <code style={{ fontSize: 12 }}>{r.tool}</code>
+                  <code style={{ fontSize: 11 }}>{r.tool}</code>
                   {r.upstreamId === '' && (
                     <Text component="span" fz="xs" c="dimmed" ml={6}>
                       built-in
@@ -172,7 +172,7 @@ export function ErrorsTable({
                 <td>
                   {r.message ? (
                     <Text
-                      fz="xs"
+                      fz={11}
                       style={{
                         fontFamily: 'var(--mantine-font-family-monospace)',
                         wordBreak: 'break-word'

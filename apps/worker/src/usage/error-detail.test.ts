@@ -57,7 +57,7 @@ describe('scrubErrorForStorage', () => {
     const withStack = 'Boom\n    at foo (/srv/app.js:1:2)\n    at bar (/srv/app.js:3:4)'
     const out = scrubErrorForStorage(withStack)
     expect(out).toBe('Boom')
-    expect(scrubErrorForStorage('a'.repeat(500)).length).toBe(200)
+    expect(scrubErrorForStorage('a'.repeat(700)).length).toBe(500)
   })
 })
 

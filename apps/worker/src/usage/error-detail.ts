@@ -29,7 +29,11 @@ export type UsageErrorCode =
   | 'upstream_error'
   | 'local_error'
 
-const MAX_LEN = 200
+// Generous enough to keep a full actionable upstream error intact — e.g.
+// GitHub's SAML-SSO / IP-allowlist 403s prefix the real remedy with a long
+// `GET https://…: 403 …` preamble that blew past the old 200-char cap and got
+// chopped mid-sentence in the usage error table.
+const MAX_LEN = 500
 
 /**
  * Map a failed upstream call to a coarse class. `status` is the usage
