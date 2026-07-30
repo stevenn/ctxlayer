@@ -23,7 +23,12 @@ const CODE_LABEL: Record<string, string> = {
   upstream_auth: 'Auth',
   upstream_unreachable: 'Unreachable',
   upstream_error: 'Upstream error',
-  local_error: 'Local error'
+  local_error: 'Local error',
+  // GitHub org-access 403s the proxy replaces with a first-party nudge
+  // (mcp/github-nudges.ts githubOrgAccessNudge) — grouped as one family below.
+  saml_sso_required: 'SAML SSO',
+  org_ip_allow_list: 'IP allow list',
+  org_oauth_app_restricted: 'OAuth app'
 }
 
 const CODE_COLOR: Record<string, string> = {
@@ -33,7 +38,11 @@ const CODE_COLOR: Record<string, string> = {
   upstream_auth: 'red',
   upstream_unreachable: 'grape',
   upstream_error: 'gray',
-  local_error: 'blue'
+  local_error: 'blue',
+  // One shared hue so the org-access family reads as a group at a glance.
+  saml_sso_required: 'violet',
+  org_ip_allow_list: 'violet',
+  org_oauth_app_restricted: 'violet'
 }
 
 function codeLabel(code: string): string {
