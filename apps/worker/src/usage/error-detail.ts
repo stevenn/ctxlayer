@@ -20,14 +20,12 @@
  * store a secret at rest.
  */
 
-export type UsageErrorCode =
-  | 'timeout'
-  | 'upstream_5xx'
-  | 'upstream_4xx'
-  | 'upstream_auth'
-  | 'upstream_unreachable'
-  | 'upstream_error'
-  | 'local_error'
+// Re-exported, not re-declared: `USAGE_ERROR_CODES` in `packages/shared`
+// is the single source. A hand-written copy here drifted once already —
+// the GitHub org-403 codes reached the SPA without ever being added to the
+// shared list.
+import type { UsageErrorCode } from '@ctxlayer/shared'
+export type { UsageErrorCode }
 
 // Generous enough to keep a full actionable upstream error intact — e.g.
 // GitHub's SAML-SSO / IP-allowlist 403s prefix the real remedy with a long

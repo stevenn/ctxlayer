@@ -6,12 +6,6 @@
 
 import type { Env } from '../../env'
 
-export interface DocLinkRow {
-  source_doc_id: string
-  target_doc_id: string | null
-  target_ref: string
-}
-
 /** Resolve a set of slugs to doc ids in one round trip (non-deleted only). */
 export async function getDocIdsBySlugs(
   env: Env,
@@ -152,22 +146,3 @@ export async function getOutgoingLinkTargets(
   }))
 }
 
-/** Source docs that link TO `docId` (incoming refs + move-rewrite driver). */
-export async function getIncomingLinks(env: Env, docId: string): Promise<DocLinkRow[]> {
-  const res = await env.DB.prepare(
-    `SELECT source_doc_id, target_doc_id, target_ref FROM doc_links WHERE target_doc_id = ?1`
-  )
-    .bind(docId)
-    .all<DocLinkRow>()
-  return res.results ?? []
-}
-
-/** Outgoing links FROM `docId` (resolved + dangling) for the editor panel. */
-export async function getOutgoingLinks(env: Env, docId: string): Promise<DocLinkRow[]> {
-  const res = await env.DB.prepare(
-    `SELECT source_doc_id, target_doc_id, target_ref FROM doc_links WHERE source_doc_id = ?1`
-  )
-    .bind(docId)
-    .all<DocLinkRow>()
-  return res.results ?? []
-}

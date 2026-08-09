@@ -23,6 +23,7 @@ import {
 } from '../db/queries/docs'
 import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { markGitDocLocallyEdited } from '../db/queries/git-sources'
+import { newId } from '../db/queries/util'
 import {
   contentDigest,
   deleteRevisionObjects,
@@ -70,7 +71,7 @@ export async function saveDocContent(
     return { status: 200, body: { revisionId: decision.revisionId, byteSize, contentHash } }
   }
 
-  const revisionId = decision.action === 'amend' ? decision.revisionId : newRevisionId()
+  const revisionId = decision.action === 'amend' ? decision.revisionId : newId()
   const put = await writeRevisionAndSnapshot(env, docId, revisionId, parsed.data)
   if (decision.action === 'amend') {
     await amendRevision(env, {
@@ -116,6 +117,3 @@ export async function saveDocContent(
   }
 }
 
-function newRevisionId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

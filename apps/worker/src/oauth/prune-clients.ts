@@ -24,6 +24,7 @@
 
 import type { Env } from '../env'
 import { buildUserGrantIndex, type OAuthHelpers } from './client-grants'
+import { errMessage } from '../util/errors'
 
 const SECONDS_PER_DAY = 86400
 
@@ -95,7 +96,7 @@ export async function pruneClientsByPolicy(
         failed++
         console.warn(
           `[prune-clients] deleteClient(${client.clientId}) failed:`,
-          err instanceof Error ? err.message : String(err)
+          errMessage(err)
         )
       }
     }

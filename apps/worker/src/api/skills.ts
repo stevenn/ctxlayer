@@ -55,7 +55,7 @@ import { buildSkillExport, buildSkillExportEntry } from '../skills/export'
 import { renderSkillMd } from '../skills/skill-md'
 import { packArchive } from '../bundle/archive'
 import { notFound, parseJsonBody } from './respond'
-import { isUniqueViolation } from '../db/queries/util'
+import { isUniqueViolation, newId } from '../db/queries/util'
 
 const CONTENT_MAX_BYTES = 2 * 1024 * 1024
 
@@ -92,7 +92,7 @@ skillsRoute.post('/', async (c) => {
     // persist a first revision now so the skill isn't empty on first
     // read.
     if (content) {
-      const revisionId = newRevisionId()
+      const revisionId = newId()
       const put = await writeRevisionAndSnapshot(c.env, row.id, revisionId, content)
       await recordSkillRevision(c.env, {
         skillId: row.id,
@@ -240,7 +240,7 @@ skillsRoute.put('/:id/content', async (c) => {
     return c.json({ revisionId: decision.revisionId, byteSize, contentHash, lintFindings: [] })
   }
 
-  const revisionId = decision.action === 'amend' ? decision.revisionId : newRevisionId()
+  const revisionId = decision.action === 'amend' ? decision.revisionId : newId()
   const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
   if (decision.action === 'amend') {
     await amendSkillRevision(c.env, {
@@ -320,7 +320,7 @@ skillsRoute.post('/:id/restore', async (c) => {
   if (!parsed.ok) return parsed.res
   const sourceRev = await getSkillRevision(c.env, id, parsed.data.revisionId)
   if (!sourceRev) return c.json({ error: 'revision_not_found' }, 404)
-  const newRevId = newRevisionId()
+  const newRevId = newId()
   const put = await restoreFromRevision(c.env, id, sourceRev.id, newRevId)
   if (!put) return c.json({ error: 'revision_body_missing' }, 410)
   await recordSkillRevision(c.env, {
@@ -406,9 +406,6 @@ function toAttachmentRef(row: {
   }
 }
 
-function newRevisionId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}
 
 /**
  * Decode the JSON blob stored in skills.drafter_meta. Returns null if

@@ -10,6 +10,7 @@
 import type { Env } from '../../env'
 import type { CreateJoinCodeRequest, JoinCode, JoinCodeRedeem } from '@ctxlayer/shared'
 import { sha256Hex } from '../../crypto/hash'
+import { newId } from './util'
 
 // Crockford-ish base32 minus ambiguous glyphs (no I/L/O/U, no 0/1) so a
 // code is easy to read aloud and re-type.
@@ -87,7 +88,7 @@ export async function createJoinCode(
 ): Promise<{ joinCode: JoinCode; code: string }> {
   const canonical = generateCanonicalCode()
   const hash = await sha256Hex(canonical)
-  const id = crypto.randomUUID().replace(/-/g, '')
+  const id = newId()
   const now = Math.floor(Date.now() / 1000)
   const expiresAt = input.expiresInDays ? now + input.expiresInDays * 86400 : null
 

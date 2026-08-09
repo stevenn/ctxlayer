@@ -207,11 +207,6 @@ export const FolderTreeNode = z.object({
 })
 export type FolderTreeNode = z.infer<typeof FolderTreeNode>
 
-export const FolderTreeResponse = z.object({
-  folders: z.array(FolderTreeNode)
-})
-export type FolderTreeResponse = z.infer<typeof FolderTreeResponse>
-
 // Rename / move folder: every doc whose folder == oldPath OR starts
 // with `${oldPath}/` gets re-pathed under newPath. Server-side validates
 // that the caller can edit ALL affected docs (returns 403 with a list of

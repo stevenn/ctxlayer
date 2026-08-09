@@ -27,6 +27,7 @@ import {
 } from '../git/git-oauth'
 import { buildAuthorizeRedirect, exchangeCode, refreshStatic } from '../upstream/oauth-static'
 import { notFound } from './respond'
+import { errMessage } from '../util/errors'
 
 /** Build the SPA URL to bounce back to — always from a fixed prefix (no open redirect). */
 function returnUrl(env: Env, ret: GitOAuthReturn | undefined, params: string): string {
@@ -124,5 +125,5 @@ gitOauthCallbackRoute.get('/callback', async (c) => {
 })
 
 function msg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
+  return errMessage(err)
 }

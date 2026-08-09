@@ -21,6 +21,7 @@ import {
 } from '../db/queries/upstreams'
 import { replaceCachedTools } from '../db/queries/upstream-tools'
 import { createUpstreamClient } from './create-client'
+import { errMessage } from '../util/errors'
 
 export interface CatalogueRefreshOk {
   ok: true
@@ -76,7 +77,7 @@ export async function refreshCatalogueForConnection(
     // errors carry a negative `code` (e.g. Linear's -32002) whose text is
     // already in the message, so only an HTTP-range code gets the prefix.
     const status = httpStatusOf(err)
-    const base = err instanceof Error ? err.message : String(err)
+    const base = errMessage(err)
     return {
       ok: false,
       reason: 'listTools_failed',
@@ -120,7 +121,7 @@ export async function warmCatalogueAndLog(
       )
     }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = errMessage(err)
     console.error(`[catalogue] ${args.slug}: ${args.failLabel} threw: ${msg}`)
   }
 }

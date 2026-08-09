@@ -7,8 +7,7 @@ import type {
   UpstreamAuthConfig,
   UpstreamToolSummary
 } from '@ctxlayer/shared'
-import type { ApiError } from '../../../lib/api'
-import { explain as explainBase } from '../../../lib/explain'
+import { bodyMessage, explain as explainBase } from '../../../lib/explain'
 
 // Canonical admin micro-components live in components/admin-bits; re-exported
 // here so the sibling section files keep their local import path.
@@ -111,11 +110,3 @@ export function explain(err: unknown): string {
  * We prefer `hint` (instructive) → `message` (raw) → the `error` code
  * itself (machine-y but better than nothing).
  */
-function bodyMessage(err: ApiError): string | null {
-  const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
-  if (!body || typeof body !== 'object') return null
-  if (typeof body.hint === 'string' && body.hint) return body.hint
-  if (typeof body.message === 'string' && body.message) return body.message
-  if (typeof body.error === 'string' && body.error) return body.error
-  return null
-}

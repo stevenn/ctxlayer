@@ -49,6 +49,7 @@ import {
   restoreFromRevision
 } from '../storage/docs-r2'
 import { notFound, parseJsonBody } from './respond'
+import { newId } from '../db/queries/util'
 
 export const docsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 
@@ -214,7 +215,7 @@ docsRoute.post('/:id/restore', async (c) => {
   if (!parsed.ok) return parsed.res
   const sourceRev = await getRevision(c.env, id, parsed.data.revisionId)
   if (!sourceRev) return c.json({ error: 'revision_not_found' }, 404)
-  const newRevId = newRevisionId()
+  const newRevId = newId()
   const put = await restoreFromRevision(c.env, id, sourceRev.id, newRevId)
   if (!put) return c.json({ error: 'revision_body_missing' }, 410)
   await recordRevision(c.env, {
@@ -338,6 +339,3 @@ function toRevisionSummary(row: RevisionRow): RevisionSummary {
   }
 }
 
-function newRevisionId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

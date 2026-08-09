@@ -1,5 +1,6 @@
 import { byteLength, tokenCount } from './tokens'
 import type { UsageEventMsg } from './event'
+import { newId } from '../db/queries/util'
 
 /**
  * Producer-side usage helper. Called from every MCP tool-call site
@@ -34,7 +35,7 @@ export interface RecordUsageArgs {
 
 export function buildUsageMsg(args: RecordUsageArgs): UsageEventMsg {
   return {
-    id: crypto.randomUUID().replace(/-/g, ''),
+    id: newId(),
     ts: Math.floor(Date.now() / 1000),
     userId: args.userId,
     sessionId: args.sessionId,

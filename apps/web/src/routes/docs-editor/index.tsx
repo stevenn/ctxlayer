@@ -48,9 +48,10 @@ import { FolderField } from './FolderField'
 import { PropertyField } from './PropertyField'
 import { OkfBadge } from '../../components/editor/okf-badge'
 import { GitPanel } from './GitPanel'
-import { explain, formatAbsolute, userColor } from './helpers'
+import { explain, userColor } from './helpers'
 import { LockIndicator } from './LockIndicator'
 import { CollabBadge, MetaRow, Person } from './RailMeta'
+import { absDateTime } from '../../lib/time'
 
 type Loaded = { doc: DocDetail; content: DocContent; me: MeResponse }
 type LoadStatus =
@@ -777,13 +778,13 @@ export function DocsEditor() {
           <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
             <MetaRow label="Created">
               <Person u={doc.createdBy} />
-              <div>{formatAbsolute(doc.createdAt)}</div>
+              <div>{absDateTime(doc.createdAt)}</div>
             </MetaRow>
             <MetaRow label="Last edited">
               {doc.updatedBy ? (
                 <>
                   <Person u={doc.updatedBy} />
-                  <div>{formatAbsolute(doc.updatedAt)}</div>
+                  <div>{absDateTime(doc.updatedAt)}</div>
                 </>
               ) : (
                 <span>Never edited</span>

@@ -39,7 +39,13 @@ because Vectorize has no local emulator — both are expected.
 These are enforced by review, not just style preference. The rationale lives in
 [`docs/plan/G-conventions.md`](docs/plan/G-conventions.md).
 
-- **~200 LoC per module.** Split early; one folder = one concern.
+- **One file = one concern**; one folder = one concern. `~300 LoC` is a review
+  trigger, not a hard cap — when a file passes it, ask whether it still does one
+  thing, and split only if it holds concerns that are genuinely separable (ones a
+  reader could name apart, that change for different reasons). A cohesive
+  standalone component, a single Durable Object's lifecycle, or one linear
+  pipeline is one concern at any length; splitting it to satisfy a number trades
+  a real boundary for prop-drilling and indirection.
 - **No circular imports** across `apps/worker/src/*` concern folders.
 - **All env access** goes through the typed `Env` in `apps/worker/src/env.ts` —
   never `process.env`.

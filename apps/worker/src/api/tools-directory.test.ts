@@ -26,7 +26,7 @@ const tool = (tool_name: string, description: string | null = null): UpstreamToo
 
 const names: NameMaps = {
   roles: new Map([['r_eng', 'Engineering']]),
-  teams: new Map([['t_yuki', 'Yuki']]),
+  teams: new Map([['t_platform', 'Platform']]),
   products: new Map([['p_driver', 'Driver']])
 }
 
@@ -82,8 +82,8 @@ describe('groupDirectoryTools', () => {
 describe('resolveRequiresNames', () => {
   it('maps ids to display names', () => {
     expect(
-      resolveRequiresNames({ roles: ['r_eng'], teams: ['t_yuki'], products: ['p_driver'] }, names)
-    ).toEqual({ roles: ['Engineering'], teams: ['Yuki'], products: ['Driver'] })
+      resolveRequiresNames({ roles: ['r_eng'], teams: ['t_platform'], products: ['p_driver'] }, names)
+    ).toEqual({ roles: ['Engineering'], teams: ['Platform'], products: ['Driver'] })
   })
 
   it('falls back to the raw id for an orphaned (deleted) principal', () => {

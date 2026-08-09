@@ -29,7 +29,13 @@ verifies over interactive flows.
 
 ## Module rules
 
-- ≤200 LoC per file. Split early.
+- One file = one concern. Split when a file holds *separable* concerns — not
+  when it crosses a line count.
+- ~300 LoC is a review trigger, not a limit. Past it, ask "is this still one
+  thing?" A standalone component, a single DO's lifecycle, or one linear
+  pipeline stays one file however long it runs; `db/queries/docs.ts` (three
+  tables + ACL predicates) and `mcp/tools-proxy.ts` (registry + catalogue
+  read-models + call runner) are the shape that should split.
 - No circular deps across the four top-level concerns:
   `api/`, `mcp/`, `collab/`, `queues/`.
 - All env via the typed `Env` from `apps/worker/src/env.ts`.

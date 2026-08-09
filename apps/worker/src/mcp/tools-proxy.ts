@@ -50,13 +50,12 @@ import {
   listDocsForUpstreams,
   type DocForUpstreamRow
 } from '../db/queries/doc-attachments'
-import { resolveUserScope } from '../db/queries/doc-tags'
-import { listUserRoleIds } from '../db/queries/roles'
 import {
   accessKey,
   indexToolAccess,
   listToolAccessForUpstream,
-  listToolAccessForUpstreams
+  listToolAccessForUpstreams,
+  resolveUserPrincipals
 } from '../db/queries/tool-access'
 import { createUpstreamClient } from '../upstream/create-client'
 import { isDialableTransport, type UpstreamClient } from '../upstream/upstream-client'
@@ -74,7 +73,7 @@ import {
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
-import { defangContent, defangProvenance, firstParty } from './provenance'
+import { firstParty, sanitizeUntrustedContent, sanitizeUntrustedText } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
 import { githubOrgAccessNudge } from './github-nudges'
@@ -86,6 +85,8 @@ import {
 import type { RecordUsageArgs } from '../usage/record'
 import { byteLength } from '../usage/tokens'
 import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
+import { errMessage } from '../util/errors'
+import { errText, safeJson } from './tool-result'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
@@ -233,7 +234,7 @@ export class UpstreamProxyRegistry {
     const prepped = await Promise.all(
       rows.map((row) =>
         this.prepareUpstream(row, cachedByUpstream.get(row.id) ?? []).catch((err) => {
-          const msg = err instanceof Error ? err.message : String(err)
+          const msg = errMessage(err)
           console.error(`[upstream-proxy] ${row.slug}: init failed: ${msg}`)
           return null
         })
@@ -480,7 +481,7 @@ export class UpstreamProxyRegistry {
       const tools = await client.listTools()
       await replaceCachedTools(this.env, conn.id, tools)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errMessage(err)
       console.error(`[catalogue] ${conn.slug}: tools/list failed: ${msg}`)
       // Fall back to whatever cache we have, even if stale.
     }
@@ -674,7 +675,7 @@ export class UpstreamProxyRegistry {
       })
     } catch (err) {
       // Lost the race to a concurrent submit that took the running slot.
-      if (/UNIQUE constraint/i.test(stringifyError(err))) {
+      if (/UNIQUE constraint/i.test(errMessage(err))) {
         const running = await findLatestJobByKey(this.env, jobKey)
         if (running && running.status === 'running') {
           return asyncSurface(
@@ -758,25 +759,6 @@ function safeConnection(row: UpstreamServerRow): UpstreamConnection | null {
   }
 }
 
-/**
- * The caller's group memberships (teams, products, roles), resolved in
- * one pass for the per-tool ACL. Products are transitive via teams
- * (resolveUserScope); roles are direct. `init()` uses this; the
- * `list_my_context` handler builds the same shape from data it already
- * fetched and feeds it to `restrictedToolsFor()` so both evaluate the
- * exact same principal set.
- */
-async function resolveUserPrincipals(env: Env, userId: string): Promise<UserPrincipals> {
-  const [scope, roleIds] = await Promise.all([
-    resolveUserScope(env, userId),
-    listUserRoleIds(env, userId)
-  ])
-  return {
-    teams: new Set(scope.teams),
-    products: new Set(scope.products),
-    roles: new Set(roleIds)
-  }
-}
 
 export function truncateDescription(s: string, max = 1024): string {
   return s.length > max ? s.slice(0, max - 1) + '…' : s
@@ -968,26 +950,9 @@ export function wholeUpstreamAttachments(
   }
 }
 
-/**
- * Strip C0 control characters (except tab/newline/carriage return) and
- * the C1 range from an untrusted string before we hand it to the model
- * or echo it back over the wire. Keeps regular punctuation, whitespace,
- * and Unicode intact.
- */
-function sanitizeUntrustedText(s: string): string {
-  // Strip control chars, THEN neutralise the ⟦ctxlayer⟧ provenance marker so
-  // an upstream description can't forge a first-party segment (see provenance.ts).
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
-  return defangProvenance(s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ''))
-}
-
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}
 
 export function isTimeoutError(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errMessage(err)
   // Both the upstream/http-client 60s wall cap and the MCP SDK's
   // own RequestTimeoutError surface as messages mentioning timeout.
   return /timeout|timed out|deadline/i.test(msg)
@@ -1072,11 +1037,17 @@ export async function runUpstreamCall(opts: {
     return {
       surface: {
         isError: !!result.isError,
-        // Defang the provenance marker in upstream-originated result text so a
-        // tool result can't forge a first-party ⟦ctxlayer⟧ directive.
+        // Strip control chars + neutralise the ⟦ctxlayer⟧ marker in
+        // upstream-originated result text, so a tool result can neither forge a
+        // first-party directive nor smuggle terminal/C1 bytes to the model.
         content: Array.isArray(result.content)
-          ? defangContent(result.content as Array<{ type: string; text?: string }>)
-          : [{ type: 'text', text: defangProvenance(JSON.stringify(result.content ?? null, null, 2)) }],
+          ? sanitizeUntrustedContent(result.content as Array<{ type: string; text?: string }>)
+          : [
+              {
+                type: 'text',
+                text: sanitizeUntrustedText(JSON.stringify(result.content ?? null, null, 2))
+              }
+            ],
         structuredContent: result.structuredContent as Record<string, unknown> | undefined
       },
       respJson,
@@ -1087,7 +1058,7 @@ export async function runUpstreamCall(opts: {
     }
   } catch (err) {
     const status: 'error' | 'timeout' = isTimeoutError(err) ? 'timeout' : 'error'
-    const msg = stringifyError(err)
+    const msg = errMessage(err)
     const refId = newCorrelationId()
     console.error(`[upstream-proxy] [ref=${refId}] ${opts.slug}.${opts.toolName} ${status}: ${msg}`)
     const { userMessage } = formatUpstreamError({
@@ -1159,17 +1130,7 @@ export async function callWithHeartbeat<T>(
   }
 }
 
-function safeJson(v: unknown): string {
-  try {
-    return typeof v === 'string' ? v : JSON.stringify(v ?? null)
-  } catch {
-    return ''
-  }
-}
 
-function errText(msg: string) {
-  return { isError: true, content: [{ type: 'text' as const, text: msg }] }
-}
 
 /**
  * Structured notice substituted for an upstream response that exceeded

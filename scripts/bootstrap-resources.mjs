@@ -8,7 +8,8 @@
  *   KV namespace      (OAUTH_KV)
  *   R2 bucket         (ctxlayer-docs) — no id, just create
  *   Vectorize index   (ctxlayer-docs)
- *   Queues            (ctxlayer-usage, ctxlayer-reindex, ctxlayer-git-sync)
+ *   Queues            (ctxlayer-usage, ctxlayer-reindex, ctxlayer-git-sync,
+ *                      ctxlayer-jobs)
  *
  * Requires `wrangler login` (or CLOUDFLARE_API_TOKEN + ACCOUNT_ID in
  * env). Re-run any time without harm.
@@ -22,19 +23,24 @@ const DB_NAME = 'ctxlayer'
 const KV_NAME = 'OAUTH_KV'
 const R2_BUCKET = 'ctxlayer-docs'
 const VECTORIZE_NAME = 'ctxlayer-docs'
-const QUEUES = ['ctxlayer-usage', 'ctxlayer-reindex', 'ctxlayer-git-sync']
+const QUEUES = ['ctxlayer-usage', 'ctxlayer-reindex', 'ctxlayer-git-sync', 'ctxlayer-jobs']
 
 const PLACEHOLDER_RE = /^0+(-0+)*$/
 
 let toml = readFileSync(TOML, 'utf8')
 let dirty = false
 
-function patch(pattern, replacement) {
+function patch(pattern, replacement, what) {
   const next = toml.replace(pattern, replacement)
-  if (next === toml) return false
+  if (next === toml) {
+    // Fail loudly: a silent no-op here means we provisioned a real resource
+    // and then threw the id away, leaving an orphan on the account and a
+    // wrangler.toml still pointing at the placeholder.
+    console.error(`Could not write the new ${what} back into ${TOML} (pattern did not match).`)
+    process.exit(1)
+  }
   toml = next
   dirty = true
-  return true
 }
 
 function run(args) {
@@ -65,7 +71,7 @@ if (PLACEHOLDER_RE.test(currentDbId)) {
     console.error('Could not parse database_id from wrangler output:\n' + out)
     process.exit(1)
   }
-  patch(/database_id\s*=\s*"[^"]*"\s*#\s*<TODO>/, `database_id = "${idMatch[1]}"`)
+  patch(/database_id\s*=\s*"[^"]*"/, `database_id = "${idMatch[1]}"`, 'D1 database_id')
   console.log(`✓ D1 id: ${idMatch[1]}`)
 } else {
   console.log(`✓ D1 already provisioned (id: ${currentDbId})`)
@@ -87,7 +93,7 @@ if (PLACEHOLDER_RE.test(currentKvId)) {
     console.error('Could not parse KV id from wrangler output:\n' + out)
     process.exit(1)
   }
-  patch(/(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"[^"]*"\s*#\s*<TODO>/, `$1"${idMatch[1]}"`)
+  patch(/(\[\[kv_namespaces\]\][\s\S]*?id\s*=\s*)"[^"]*"/, `$1"${idMatch[1]}"`, 'KV namespace id')
   console.log(`✓ KV id: ${idMatch[1]}`)
 } else {
   console.log(`✓ KV already provisioned (id: ${currentKvId})`)

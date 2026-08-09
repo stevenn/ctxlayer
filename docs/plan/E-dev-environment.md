@@ -71,13 +71,35 @@ Optimisations specifically for typing into Claude on a phone:
 - **`bun run verify`** — composite command: typecheck + lint + unit + integration (fully offline; `bun run verify:full` adds smoke). Returns a final pass/fail table. Designed to fit on one phone screen.
 - **`wrangler tail` aliases** — `bun run logs` (errors only), `bun run logs:all`, `bun run logs:mcp` (filtered to /mcp routes). All print as plain text.
 - **Curl-bot test tokens** — a long-lived non-prod OAuth client whose secret is in CI secret env vars, used by smoke scripts. Scoped to a "test" user that doesn't appear in real usage rollups.
-- **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the strict module-size cap (~200 lines), the test-first cadence. Reduces token cost of every future session.
+- **`AGENTS.md`** — opinionated "how a Claude agent should make changes in this repo" file alongside `CLAUDE.md`: where types live, what to run before pushing, the one-concern-per-file rule (~300 lines as a review trigger, not a cap), the test-first cadence. Reduces token cost of every future session.
 - **Repository-level `.claude/output-style.json`** sets terse, mobile-friendly defaults for AI replies in this repo.
 
 ### E6. Module conventions
 
 To keep AI agents (and humans) productive at scale:
-- Hard cap modules at ~200 LoC. Split when it grows.
+- **One file = one concern.** This is the actual rule. Split a file when it holds
+  *separable* concerns — two things a reader could name apart, that change for
+  different reasons.
+- **~300 LoC is a review trigger, not a hard cap.** Its only job is to prompt the
+  question "is this still one thing?". It is a proxy for agent read-cost (~8.8
+  tokens/line here, so ~300 LoC ≈ 2.6k tokens — cheap to read whole; the 1100-line
+  `tools-proxy.ts` is ~10k, which forces an agent to grep and reason about a
+  fragment). It is a weak proxy: dense JSX costs far more per line than type
+  declarations, and this repo's comment style inflates counts on files that are
+  conceptually small. Do not let it accrete more authority than that — in the
+  2026-07 review it predicted none of the findings that mattered
+  (`collab/doc-room-do.ts` at 375 is fine; the worst authorization hole was in a
+  ~180-line file).
+- **Cohesive units are exempt at any length.** A standalone component with its own
+  markup and handlers, a single Durable Object's lifecycle, one linear pipeline —
+  each is *one* concern however long it runs. Slicing them to hit a number buys
+  prop-drilling, artificial modules, and indirection across a boundary that isn't
+  there. Keep: `collab/doc-room-do.ts` (one DO, one Y.Doc lifecycle),
+  `queues/reindex-consumer.ts` (one pipeline). Split: `db/queries/docs.ts` (three
+  tables + ACL predicates), `mcp/tools-proxy.ts` (registry + catalogue read-models
+  + call runner), `routes/docs-editor/index.tsx` (six independent hooks).
+- Nothing enforces the number in `verify`, and that is deliberate — a lint rule on
+  line count would mechanise exactly the OCD-splitting this section warns against.
 - One folder = one concern. No circular imports across `apps/worker/src/*` directories.
 - Every Hono route handler lives in `api/*` with a one-line export; route-mounting happens centrally in `app.ts` (`index.ts` only wraps the composed app in the OAuthProvider + queue/scheduled handlers).
 - Every DO class has the file pattern `*-do.ts` and the only export is the class.
@@ -103,7 +125,7 @@ Added by Section E:
 2. Run `/smoke` to confirm the preview deploy works.
 3. Read `CLAUDE.md` (5min).
 4. Run `bun run verify` locally OR in the cloud session.
-5. Skim `CONTRIBUTING.md` for the change loop, pick something small, and keep the PR focused (the ~200 LoC module cap keeps changes reviewable).
+5. Skim `CONTRIBUTING.md` for the change loop, pick something small, and keep the PR focused (one concern per file keeps changes reviewable).
 
 ---
 

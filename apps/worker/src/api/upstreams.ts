@@ -15,11 +15,7 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { seal } from '../crypto/aead'
-import {
-  getUpstreamById,
-  listUpstreamsVisibleToUser,
-  listUserUpstreamSummaries
-} from '../db/queries/upstreams'
+import { listUpstreamsVisibleToUser, listUserUpstreamSummaries } from '../db/queries/upstreams'
 import {
   deleteUserCredential,
   upsertUserCredential
@@ -54,7 +50,11 @@ upstreamsRoute.get('/:id/tools', async (c) => {
 upstreamsRoute.put('/:id/credentials', requireCsrf, async (c) => {
   const userId = c.get('user').userId
   const id = c.req.param('id')
-  const upstream = await getUpstreamById(c.env, id)
+  // Visibility-gated like `GET /:id/tools` above: without it an ungranted
+  // caller learns the upstream exists (404 vs 400 auth_strategy_mismatch) AND
+  // — because the success path warms the catalogue — could replace the
+  // ORG-WIDE `upstream_tools` cache using their own low-privilege token.
+  const upstream = (await listUpstreamsVisibleToUser(c.env, userId)).find((r) => r.id === id)
   if (!upstream) return notFound(c)
   if (upstream.auth_strategy !== 'user_bearer') {
     // Pasting a bearer for shared_bearer / none / user_oauth upstreams

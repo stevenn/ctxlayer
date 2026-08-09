@@ -16,6 +16,7 @@ import { notify } from './ops/alert'
 import { LAST_CRON_KV_KEY } from './ops/cron-heartbeat'
 import { withHsts } from './util/security-headers'
 import { isMcpPathOnWrongHost } from './util/mcp-host'
+import { errMessage } from './util/errors'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -51,7 +52,7 @@ const worker: ExportedHandler<Env> = {
   async queue(batch, env, ctx) {
     // Match on the type SUFFIX, not an exact name: queue names are
     // deployment-specific (tenants prefix them with the worker name, e.g.
-    // `ctxlayer-yukitools-usage`). See queues/route.ts. Matching exact base
+    // `ctxlayer-acme-usage`). See queues/route.ts. Matching exact base
     // names silently broke usage/reindex/git-sync on every tenant.
     switch (queueKind(batch.queue)) {
       case 'usage':
@@ -98,7 +99,7 @@ const worker: ExportedHandler<Env> = {
             }
             console.log(`[cron] git-sync: queued ${queued}/${sources.length} source(s)`)
           } catch (err) {
-            const m = err instanceof Error ? err.message : String(err)
+            const m = errMessage(err)
             console.error(`[cron] git-sync due-check failed: ${m}`)
             await notify(env, { level: 'error', event: 'cron.git_sync_failed', detail: m })
           }
@@ -118,7 +119,7 @@ const worker: ExportedHandler<Env> = {
           const removed = await pruneUsageEvents(env, 30)
           console.log(`[cron] pruned ${removed} usage_events rows older than 30d`)
         } catch (err) {
-          const m = err instanceof Error ? err.message : String(err)
+          const m = errMessage(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.usage_prune_failed', detail: m })
         }
@@ -138,7 +139,7 @@ const worker: ExportedHandler<Env> = {
             `[cron] async_jobs: cleared ${cleared} result blobs (>1d), pruned ${removed} rows (>30d)`
           )
         } catch (err) {
-          const m = err instanceof Error ? err.message : String(err)
+          const m = errMessage(err)
           console.error(`[cron] async_jobs prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.async_jobs_prune_failed', detail: m })
         }
@@ -162,7 +163,7 @@ const worker: ExportedHandler<Env> = {
             )
           }
         } catch (err) {
-          const m = err instanceof Error ? err.message : String(err)
+          const m = errMessage(err)
           console.error(`[cron] oauth-client prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.oauth_prune_failed', detail: m })
         }

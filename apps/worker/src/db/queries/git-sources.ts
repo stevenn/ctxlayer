@@ -1,8 +1,9 @@
 /**
  * D1 queries for the git-mirror tables (`git_sources`,
- * `git_source_visibility`, `git_shared_credentials`,
+ * `git_connection_visibility`, `git_shared_credentials`,
  * `git_user_credentials`, `git_pull_requests`) plus the git-origin
- * columns on `documents`.
+ * columns on `documents`. Visibility hangs off the CONNECTION, not the
+ * repo — `git_source_visibility` was replaced in migration 0030.
  *
  * Mirrors the shapes in `db/queries/upstreams.ts`: additive visibility
  * rules, credential rows storing raw AES-GCM ciphertext (seal/open lives
@@ -22,7 +23,7 @@ import type {
   GitPrState,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 import { getGitConnectionForSource } from './git-connections'
 
 // ----- git_sources -------------------------------------------------------
@@ -715,6 +716,3 @@ function toUint8Array(v: unknown): Uint8Array {
   return new Uint8Array(v as ArrayLike<number>)
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

@@ -27,7 +27,6 @@ invocation_logs = true
 # the asset resolver gets a chance.
 [assets]
 directory = "./apps/web/dist"
-binding = "ASSETS"
 not_found_handling = "single-page-application"
 run_worker_first = [
   "/api/*",
@@ -42,7 +41,12 @@ run_worker_first = [
 ]
 
 # ---------------------------------------------------------------------------
-# Bindings. IDs marked <TODO> are placeholders — populate via:
+# Bindings. The ids below are THIS deployment's — a fork provisions its own.
+#
+# An all-zeros id (`00000000-0000-0000-0000-000000000000`) is the placeholder
+# `bun run bootstrap` looks for; it provisions the resource and writes the real
+# id back here. Zero out `database_id` + the OAUTH_KV `id` to re-run it against
+# a fresh Cloudflare account. Equivalent manual steps:
 #   wrangler d1 create ctxlayer
 #   wrangler kv namespace create OAUTH_KV
 #   wrangler r2 bucket create ctxlayer-docs

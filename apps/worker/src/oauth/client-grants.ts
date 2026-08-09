@@ -28,6 +28,7 @@ import type { getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { OAuthClientUserRef } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { listUserRefs } from '../db/queries/users'
+import { errMessage } from '../util/errors'
 
 export type OAuthHelpers = ReturnType<typeof getOAuthApi<Env>>
 
@@ -55,7 +56,7 @@ export async function buildUserGrantIndex(
       } catch (err) {
         console.warn(
           `[client-grants] listUserGrants(${u.id}) failed:`,
-          err instanceof Error ? err.message : String(err)
+          errMessage(err)
         )
         return { user: u, grants: [], ok: false }
       }

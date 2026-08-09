@@ -10,6 +10,7 @@ import { chunkMarkdown, type Chunk } from '../rag/chunker'
 import { embed } from '../rag/embedder'
 import { upsertChunks } from '../rag/index'
 import { notify } from '../ops/alert'
+import { errMessage } from '../util/errors'
 
 // Mirror of wrangler.toml's `max_retries` on the reindex consumer: on the
 // final attempt we alert + ack (so a poison message is surfaced, not silently
@@ -97,7 +98,7 @@ export async function reindexConsumer(
       await handle(env, { ...parsed.data, force: forcedDocs.has(parsed.data.docId) })
       msg.ack()
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
+      const message = errMessage(err)
       // wrangler dev quirk: `remote = true` on the Vectorize / AI
       // bindings works for the fetch handler but not for queue
       // consumers (they run in a separate context that doesn't get
@@ -235,8 +236,8 @@ async function handle(
   const chunks = chunkMarkdown(markdown, { title: doc.title })
   // Embed the doc title + section breadcrumb ALONG WITH each chunk's
   // body, so the doc/section identity is part of every vector. A query
-  // that matches the title (e.g. "yuki architecture" → a doc titled
-  // "Yuki Architecture Analysis") then matches the doc's chunks
+  // that matches the title (e.g. "platform architecture" → a doc titled
+  // "Platform Architecture Analysis") then matches the doc's chunks
   // semantically. The stored snippet (metadata.text) stays the raw body,
   // so result snippets read naturally — only the embedding input carries
   // the header.

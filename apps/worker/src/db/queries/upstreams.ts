@@ -19,7 +19,7 @@ import type {
 } from '@ctxlayer/shared'
 import type { AuthStrategy, UpstreamAuthConfig } from '@ctxlayer/shared'
 import { DIALABLE_TRANSPORTS, isDialableTransport } from '../../upstream/upstream-client'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 import { countToolsForUpstream, countToolsForUpstreams, getToolsCachedAt } from './upstream-tools'
 import {
   getUserCredential,
@@ -401,6 +401,3 @@ export async function listUserUpstreamSummaries(
   })
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

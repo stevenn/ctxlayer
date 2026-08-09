@@ -63,7 +63,7 @@ describe('UpstreamSlug (read shape) accepts created slugs', () => {
     // (the prefix convention) failed AdminUpstreamRow parse and broke the
     // admin list with "unexpected response shape". Create-shape output MUST
     // satisfy the read shape.
-    for (const s of ['up-notion', 'up-yuki-ia-mcp', suggestSlug('upstream', 'Yuki IA MCP')]) {
+    for (const s of ['up-notion', 'up-acme-ia-mcp', suggestSlug('upstream', 'Acme IA MCP')]) {
       expect(prefixedSlug('upstream').safeParse(s).success).toBe(true)
       expect(UpstreamSlug.safeParse(s).success).toBe(true)
     }

@@ -3,8 +3,9 @@ import { ActionIcon, Tooltip } from '@mantine/core'
 import type { DocDetail } from '@ctxlayer/shared'
 import { setDocLocked } from '../../lib/api'
 import { useDialogs } from '../../lib/dialogs'
-import { personLabel } from '../docs-list'
-import { explain, formatAbsolute } from './helpers'
+import { personLabel } from '../../lib/person'
+import { explain } from './helpers'
+import { absDateTime } from '../../lib/time'
 
 /**
  * Padlock in the header. Renders for everyone when the doc is locked
@@ -52,7 +53,7 @@ export function LockIndicator({
   }
 
   const tooltipLabel = locked
-    ? `Locked by ${personLabel(doc.lockedBy)} on ${formatAbsolute(doc.lockedAt!)} — ${
+    ? `Locked by ${personLabel(doc.lockedBy)} on ${absDateTime(doc.lockedAt!)} — ${
         doc.canLock ? 'click to unlock' : 'an admin or the creator can unlock'
       }`
     : 'Lock this doc — content, title, and tags become read-only until unlocked'

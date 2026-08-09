@@ -7,15 +7,21 @@ import {
   samlSsoNudge
 } from './github-nudges'
 
+// Mixed-case, hyphenated org — exercises the `GITHUB_ORG_RE` shape that a
+// lowercase-only fixture would not.
 const SAML =
   'failed to resolve git reference: failed to get repository info: GET ' +
-  'https://api.github.com/repos/The-Yuki-Company/yuki-public-api-specs: 403 ' +
+  'https://api.github.com/repos/Acme-Corp/internal-api-specs: 403 ' +
   'Resource protected by organization SAML enforcement. You must grant your OAuth ' +
   'token access to this organization.'
 
+// A DIFFERENT org from OAUTH_RESTRICTED's below: the cross-signature null
+// assertions ("no sibling 403 masquerades as this one") only mean something
+// while the three fixtures stay distinguishable. 203.0.113.0/24 is the
+// RFC 5737 documentation range.
 const IP_ALLOW_LIST =
-  'failed to get repository info: GET https://api.github.com/repos/payroll-no/timeterminal: ' +
-  '403 Although you appear to have the correct authorization credentials, the `payroll-no` ' +
+  'failed to get repository info: GET https://api.github.com/repos/globex-eu/time-tracker: ' +
+  '403 Although you appear to have the correct authorization credentials, the `globex-eu` ' +
   'organization has an IP allow list enabled, and 203.0.113.5 is not permitted to access ' +
   'this resource.'
 
@@ -37,8 +43,8 @@ describe('samlSsoNudge', () => {
 
   it('extracts the org and builds the SSO URL from it', () => {
     const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).toContain('"The-Yuki-Company"')
-    expect(out).toContain('https://github.com/orgs/The-Yuki-Company/sso')
+    expect(out).toContain('"Acme-Corp"')
+    expect(out).toContain('https://github.com/orgs/Acme-Corp/sso')
   })
 
   it('names the connector slug + the exact reconnect route', () => {
@@ -50,7 +56,7 @@ describe('samlSsoNudge', () => {
 
   it('does not echo the raw upstream text verbatim (no leaked repo path)', () => {
     const out = samlSsoNudge(SAML, 'up-github')!
-    expect(out).not.toContain('yuki-public-api-specs')
+    expect(out).not.toContain('internal-api-specs')
     expect(out).not.toContain('api.github.com/repos')
   })
 
@@ -73,7 +79,7 @@ describe('ipAllowListNudge', () => {
     const out = ipAllowListNudge(IP_ALLOW_LIST, 'up-github')
     expect(out).not.toBeNull()
     expect(out).toContain(CTX_MARK_OPEN)
-    expect(out).toContain('"payroll-no"')
+    expect(out).toContain('"globex-eu"')
     expect(out).toContain('IP allow list')
   })
 

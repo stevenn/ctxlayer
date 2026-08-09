@@ -29,6 +29,7 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import {
   getUpstreamById,
+  listUpstreamsVisibleToUser,
   parseAuthConfig,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
@@ -47,6 +48,7 @@ import {
 } from '../upstream/oauth-static'
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 import { notFound } from './respond'
+import { errMessage } from '../util/errors'
 
 // SPA paths we're allowed to bounce the user back to after the OAuth
 // dance — `return_to=admin` lands them on the admin upstreams page
@@ -73,7 +75,10 @@ upstreamOauthStartRoute.use('*', requireUser)
 upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
   const userId = c.get('user').userId
   const id = c.req.param('id')
-  const upstream = await getUpstreamById(c.env, id)
+  // Visibility-gated, matching the git equivalent (`api/git-oauth.ts`): an
+  // ungranted caller must not be able to start an OAuth dance against — or
+  // even confirm the existence of — an upstream scoped to another team.
+  const upstream = (await listUpstreamsVisibleToUser(c.env, userId)).find((r) => r.id === id)
   if (!upstream) return notFound(c)
   if (upstream.auth_strategy !== 'user_oauth') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
@@ -261,7 +266,7 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
         }
       },
       (err) => {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = errMessage(err)
         console.error(`[catalogue] ${upstream.slug}: post-OAuth refresh threw: ${msg}`)
       }
     )
@@ -272,10 +277,6 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
     302
   )
 })
-
-function errMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err)
-}
 
 /**
  * Does an upstream catalogue-refresh error message signal that the token

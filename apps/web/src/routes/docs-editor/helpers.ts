@@ -9,10 +9,6 @@ export function userColor(userId: string): string {
   return `hsl(${hue}, 70%, 50%)`
 }
 
-export function formatAbsolute(ts: number): string {
-  return new Date(ts * 1000).toLocaleString()
-}
-
 export function explain(err: unknown): string {
   return explainBase(err, {
     403: 'You do not have permission for this action.',

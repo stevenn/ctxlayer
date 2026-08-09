@@ -18,10 +18,9 @@ import {
   adminCreateJoinCode,
   adminRevokeJoinCode,
   fetchJoinCodes,
-  type ApiError,
   type CreateJoinCodeInput
 } from '../../lib/api'
-import { explain as explainBase } from '../../lib/explain'
+import { bodyMessage, explain as explainBase } from '../../lib/explain'
 import { absDate } from '../../lib/time'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
@@ -270,8 +269,3 @@ function explain(err: unknown): string {
   })
 }
 
-function bodyMessage(err: ApiError): string | null {
-  const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
-  if (!body || typeof body !== 'object') return null
-  return body.hint || body.message || body.error || null
-}

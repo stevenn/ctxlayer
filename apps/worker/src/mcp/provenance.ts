@@ -49,10 +49,37 @@ export function defangProvenance(s: string): string {
 }
 
 /**
- * Apply `defangProvenance` to the text of every content item in an upstream
- * tool result before it is forwarded to the agent. Non-text items pass through
+ * Apply the full untrusted-text gate to every content item in an upstream tool
+ * RESULT before it is forwarded to the agent. Non-text items pass through
  * untouched.
+ *
+ * Results get the same treatment as descriptions. An upstream reports failure
+ * the MCP-idiomatic way — `{ content, isError: true }` — rather than by
+ * throwing, so that text never reaches the `catch` sanitiser in
+ * `runUpstreamCall`; without the strip here, a result was the one path that
+ * could still carry raw C0/C1 bytes to the model.
  */
-export function defangContent<T extends { type: string; text?: string }>(content: T[]): T[] {
-  return content.map((c) => (typeof c.text === 'string' ? { ...c, text: defangProvenance(c.text) } : c))
+export function sanitizeUntrustedContent<T extends { type: string; text?: string }>(
+  content: T[]
+): T[] {
+  return content.map((c) =>
+    typeof c.text === 'string' ? { ...c, text: sanitizeUntrustedText(c.text) } : c
+  )
+}
+
+/**
+ * The full untrusted-text gate: strip C0 control characters (except
+ * tab/newline/carriage return) and the C1 range, THEN neutralise the
+ * ⟦ctxlayer⟧ provenance marker. Keeps regular punctuation, whitespace, and
+ * Unicode intact.
+ *
+ * EVERY path that forwards upstream-originated text to the model must run it
+ * through here — that is what makes the provenance invariant above hold. Lives
+ * beside `defangProvenance` (rather than in the proxy) so the non-proxy
+ * consumers — notably the `draft_skill` context bundle, which inlines upstream
+ * tool descriptions into a prompt template — cannot silently skip it.
+ */
+export function sanitizeUntrustedText(s: string): string {
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: deliberately matches control chars to strip them
+  return defangProvenance(s.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ''))
 }

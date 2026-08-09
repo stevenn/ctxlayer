@@ -36,6 +36,7 @@ import {
 import { UpstreamOAuthProvider } from './oauth-provider'
 import { singleFlightRefresh } from './oauth-refresh'
 import { refreshStaticDetailed, staticOAuth } from './oauth-static'
+import { errMessage } from '../util/errors'
 
 // Refresh a user_oauth access token only when it's within this many
 // seconds of expiry. Going through the SDK's auth() on EVERY bearer
@@ -65,7 +66,7 @@ export async function resolveUserUpstreamBearer(
     try {
       return await openSecret(sealed, env.ENCRYPTION_KEY)
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err)
+      const msg = errMessage(err)
       console.error(`[shared-bearer] ${conn.slug}: decrypt failed: ${msg}`)
       return null
     }
@@ -148,7 +149,7 @@ export async function resolveUserUpstreamBearer(
   try {
     return await openSecret(sealed, env.ENCRYPTION_KEY)
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = errMessage(err)
     console.error(`[bearer] ${conn.slug}: decrypt failed: ${msg}`)
     return null
   }
@@ -180,7 +181,7 @@ async function refreshViaSdk(
     )
     return null
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const msg = errMessage(err)
     console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
     return null
   }

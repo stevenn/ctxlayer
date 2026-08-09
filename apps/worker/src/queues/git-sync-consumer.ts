@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import type { Env } from '../env'
 import { runGitSync } from '../git/sync'
+import { errMessage } from '../util/errors'
 
 /**
  * Batch consumer for ctxlayer-git-sync. One message per source per run.
@@ -41,7 +42,7 @@ export async function gitSyncConsumer(
     } catch (err) {
       console.error('git-sync-consumer: unexpected error; retrying', {
         id: msg.id,
-        err: err instanceof Error ? err.message : String(err)
+        err: errMessage(err)
       })
       msg.retry()
     }

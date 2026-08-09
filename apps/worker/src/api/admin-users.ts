@@ -33,6 +33,7 @@ import { revokeAllUserGrants } from '../oauth/revoke-grants'
 import { audit } from '../audit/log'
 import { notify } from '../ops/alert'
 import { notFound, parseJsonBody } from './respond'
+import { errMessage } from '../util/errors'
 
 /**
  * Grant revocation is best-effort (KV); when it reports incomplete the
@@ -252,6 +253,6 @@ async function guardRemovesAdminAccess(
 }
 
 function isForeignKeyViolation(err: unknown): boolean {
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errMessage(err)
   return /FOREIGN KEY constraint failed/i.test(msg)
 }

@@ -6,7 +6,7 @@
 
 import type { Env } from '../../env'
 import type { AdminTeamRow, TeamRef, TeamMemberRow as TeamMemberShape } from '@ctxlayer/shared'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 
 interface TeamRow {
   id: string
@@ -169,6 +169,3 @@ export async function removeTeamMember(env: Env, teamId: string, userId: string)
     .run()
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

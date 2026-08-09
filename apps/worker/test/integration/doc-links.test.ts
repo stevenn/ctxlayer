@@ -1,12 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { rebuildDocLinks } from '../../src/docs/doc-links'
-import {
-  getIncomingLinkDocs,
-  getIncomingLinks,
-  getOutgoingLinkTargets,
-  getOutgoingLinks
-} from '../../src/db/queries/doc-links'
+import { getIncomingLinkDocs, getOutgoingLinkTargets } from '../../src/db/queries/doc-links'
 import type { Env as WorkerEnv } from '../../src/env'
 
 /**
@@ -48,38 +43,41 @@ describe('rebuildDocLinks', () => {
 
     await rebuildDocLinks(testEnv, 'A', md)
 
-    const out = await getOutgoingLinks(testEnv, 'A')
+    const out = await getOutgoingLinkTargets(testEnv, 'A')
     // Two distinct refs to B (absolute + relative) + one dangling. External /
     // non-.md ignored.
     expect(out.length).toBe(3)
-    const resolved = out.filter((l) => l.target_doc_id === 'B').map((l) => l.target_ref).sort()
+    const resolved = out
+      .filter((l) => l.target?.id === 'B')
+      .map((l) => l.ref)
+      .sort()
     expect(resolved).toEqual(['../api/doc-b.md', '/specs/api/doc-b.md'])
-    const dangling = out.filter((l) => l.target_doc_id === null)
-    expect(dangling.map((l) => l.target_ref)).toEqual(['/specs/gone.md'])
+    const dangling = out.filter((l) => l.target === null)
+    expect(dangling.map((l) => l.ref)).toEqual(['/specs/gone.md'])
 
-    const incoming = await getIncomingLinks(testEnv, 'B')
-    // Two refs from A both resolve to B → two incoming rows, one source.
-    expect(incoming.length).toBe(2)
-    expect([...new Set(incoming.map((l) => l.source_doc_id))]).toEqual(['A'])
+    // Both refs from A resolve to B, but a backlink list is per-SOURCE.
+    expect(await getIncomingLinkDocs(testEnv, 'B')).toEqual([
+      { id: 'A', title: 'Doc A', slug: 'doc-a' }
+    ])
   })
 
   it('resolves a legacy /app/docs/{id} link and drops self-links', async () => {
     await seedDoc('A', null, 'doc-a')
     await seedDoc('B', null, 'doc-b')
     await rebuildDocLinks(testEnv, 'A', 'legacy [B](/app/docs/B) and self [me](/doc-a.md)')
-    const out = await getOutgoingLinks(testEnv, 'A')
+    const out = await getOutgoingLinkTargets(testEnv, 'A')
     // Self-link (slug doc-a → A) dropped; only the legacy link to B remains.
     expect(out.length).toBe(1)
-    expect(out[0]?.target_doc_id).toBe('B')
+    expect(out[0]?.target?.id).toBe('B')
   })
 
   it('replaces the prior link set on rebuild', async () => {
     await seedDoc('A', null, 'doc-a')
     await seedDoc('B', null, 'doc-b')
     await rebuildDocLinks(testEnv, 'A', '[B](/doc-b.md)')
-    expect((await getOutgoingLinks(testEnv, 'A')).length).toBe(1)
+    expect((await getOutgoingLinkTargets(testEnv, 'A')).length).toBe(1)
     await rebuildDocLinks(testEnv, 'A', 'no links anymore')
-    expect((await getOutgoingLinks(testEnv, 'A')).length).toBe(0)
+    expect((await getOutgoingLinkTargets(testEnv, 'A')).length).toBe(0)
   })
 })
 

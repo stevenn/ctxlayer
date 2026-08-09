@@ -28,6 +28,7 @@ import { lintSkillBody, type LintFinding } from './schema-linter'
 import { markdownToBlocks } from './markdown-to-blocks'
 import { DRAFTER_PROMPT_VERSION } from './drafter-prompt'
 import { audit } from '../audit/log'
+import { newId } from '../db/queries/util'
 
 export interface SaveDraftSkillInput {
   userId: string
@@ -166,7 +167,7 @@ async function writeRevision(
   authorId: string,
   content: SkillContent
 ): Promise<void> {
-  const revisionId = crypto.randomUUID().replace(/-/g, '')
+  const revisionId = newId()
   const put = await writeSkillRevisionAndSnapshot(env, skillId, revisionId, content)
   await recordSkillRevision(env, {
     skillId,

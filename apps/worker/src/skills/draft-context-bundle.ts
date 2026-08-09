@@ -11,6 +11,7 @@ import { mangleToolName } from '@ctxlayer/shared'
 import { embed } from '../rag/embedder'
 import type { ChunkMetadata } from '../rag/index'
 import { getUpstreamUsageRollup } from '../db/queries/usage-read'
+import { errMessage } from '../util/errors'
 
 const RELATED_DOCS_K = 3
 const RELATED_DOCS_SNIPPET = 500
@@ -52,7 +53,7 @@ export async function findRelatedDocs(
   } catch (err) {
     console.warn(
       'draft-context: findRelatedDocs failed (non-fatal):',
-      err instanceof Error ? err.message : String(err)
+      errMessage(err)
     )
     return []
   }
@@ -99,7 +100,7 @@ export async function buildUsageAggregates(
   } catch (err) {
     console.warn(
       'draft-context: buildUsageAggregates failed (non-fatal):',
-      err instanceof Error ? err.message : String(err)
+      errMessage(err)
     )
     return null
   }

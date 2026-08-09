@@ -16,6 +16,7 @@
 import type { Env } from '../env'
 import type { ChunkMetadata } from './index'
 import { isLocalRemoteBindingError } from './ai-util'
+import { errMessage } from '../util/errors'
 
 const RERANK_MODEL = '@cf/baai/bge-reranker-base'
 
@@ -109,7 +110,7 @@ export async function rerankCandidates(
   } catch (err) {
     if (!isLocalRemoteBindingError(err)) {
       console.warn('reranker: call failed; dense fallback', {
-        err: err instanceof Error ? err.message : String(err)
+        err: errMessage(err)
       })
     }
     return null

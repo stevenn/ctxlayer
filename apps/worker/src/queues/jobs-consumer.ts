@@ -12,6 +12,7 @@ import { completeJobDone, completeJobError, findJobById } from '../db/queries/as
 import { buildUsageMsg } from '../usage/record'
 import { scrubErrorForStorage } from '../usage/error-detail'
 import { mangleToolName } from '../mcp/tool-name'
+import { errMessage } from '../util/errors'
 
 /**
  * Batch consumer for ctxlayer-jobs. One message per async tool submit
@@ -56,7 +57,7 @@ export async function jobsConsumer(
       // message. `runJob` itself never throws for ordinary tool failures.
       console.error('[jobs-consumer] unexpected error; retrying', {
         id: msg.id,
-        err: err instanceof Error ? err.message : String(err)
+        err: errMessage(err)
       })
       msg.retry()
     }
@@ -173,7 +174,7 @@ export async function runJob(
   } catch (err) {
     console.error('[jobs-consumer] usage enqueue failed (job already stored)', {
       jobId: j.jobId,
-      err: err instanceof Error ? err.message : String(err)
+      err: errMessage(err)
     })
   }
 }

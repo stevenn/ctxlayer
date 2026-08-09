@@ -89,7 +89,7 @@ export interface MangledRef {
  * flags bad/mangled refs) and the skill upstream-dependency calculator
  * both import this, so the pattern can't drift between them.
  *
- * The slug group is kebab-aware (`up-ado`, `up-yuki-ia-nl`); the tool
+ * The slug group is kebab-aware (`up-ado`, `up-acme-ia-nl`); the tool
  * group keeps `~`/`-`/`_` because BlockNote inline code preserves them.
  * Returns the RAW captured `toolName` (still carrying any `_~_` escape);
  * callers comparing against native names un-escape with

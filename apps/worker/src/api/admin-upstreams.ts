@@ -52,6 +52,7 @@ import { listToolAccessForUpstream, replaceToolAccessForTool } from '../db/queri
 import { buildUpstreamToolsPayload } from './upstreams-attachments'
 import { notFound, parseJsonBody } from './respond'
 import { isUniqueViolation } from '../db/queries/util'
+import { errMessage } from '../util/errors'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -348,7 +349,7 @@ adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
         }
       },
       (err) => {
-        const msg = err instanceof Error ? err.message : String(err)
+        const msg = errMessage(err)
         console.error(`[catalogue] ${row.slug}: shared-bearer refresh threw: ${msg}`)
       }
     )

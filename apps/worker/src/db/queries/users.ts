@@ -5,6 +5,7 @@
 
 import type { Env } from '../../env'
 import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
+import { newId } from './util'
 
 export interface UserRow {
   id: string
@@ -55,7 +56,7 @@ export async function upsertUser(
   // Try insert first; on conflict update mutable fields. `status` is set
   // only on INSERT — deliberately absent from the UPDATE SET clause so a
   // re-sign-in can't override an admin's suspend/approve decision.
-  const id = newUlid()
+  const id = newId()
   await env.DB.prepare(
     `INSERT INTO users (id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at)
      VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
@@ -321,14 +322,6 @@ function parseAdminEmails(raw: string | undefined): Set<string> {
   )
 }
 
-/**
- * Minimal ULID-like generator using crypto.randomUUID. Stored as TEXT in
- * D1; collisions are not a concern at this scale. If a strict ULID is
- * needed later, swap for a real implementation.
- */
-function newUlid(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}
 
 /**
  * Case-insensitive email-prefix lookup for the Sharing dialog autocomplete

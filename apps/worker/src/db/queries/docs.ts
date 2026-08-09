@@ -8,7 +8,7 @@
 import type { Env } from '../../env'
 import { slugifyBody, suggestSlug } from '@ctxlayer/shared'
 import type { HeadRevision, RevisionKind } from '../revision-policy'
-import { buildPatchUpdate, isUniqueViolation } from './util'
+import { buildPatchUpdate, isUniqueViolation, newId } from './util'
 
 export interface DocumentRow {
   id: string
@@ -775,9 +775,6 @@ export async function clearDocLock(env: Env, docId: string): Promise<void> {
 
 // ----- helpers -----------------------------------------------------------
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}
 
 function randomSuffix(): string {
   const buf = new Uint8Array(3)

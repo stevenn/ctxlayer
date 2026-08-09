@@ -103,7 +103,11 @@ export type UsageTopUser = z.infer<typeof UsageTopUser>
 
 // Coarse, filterable class for a failed tool call. `local_error` is a
 // built-in / ctxlayer-side failure; every other code involved a remote
-// upstream. Exported for the SPA's label/colour maps + filter options.
+// upstream. THE single source for the code set: the worker's classifier
+// (`usage/error-detail.ts`), the nudge codes (`mcp/github-nudges.ts`) and
+// the SPA's label/colour maps all derive from this list, so adding a class
+// in one place without the others is a compile error rather than a row that
+// renders as a raw slug with an undefined colour.
 export const USAGE_ERROR_CODES = [
   'timeout',
   'upstream_5xx',
@@ -111,7 +115,13 @@ export const USAGE_ERROR_CODES = [
   'upstream_auth',
   'upstream_unreachable',
   'upstream_error',
-  'local_error'
+  'local_error',
+  // GitHub org-access 403s the proxy rewrites into a first-party playbook
+  // (`githubOrgAccessNudge`). Split out of the generic 4xx bucket so the
+  // Errors table doubles as the "who is blocked on what" list.
+  'saml_sso_required',
+  'org_ip_allow_list',
+  'org_oauth_app_restricted'
 ] as const
 export type UsageErrorCode = (typeof USAGE_ERROR_CODES)[number]
 

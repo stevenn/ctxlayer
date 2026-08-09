@@ -18,6 +18,7 @@
 
 import { getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { Env } from '../env'
+import { errMessage } from '../util/errors'
 
 export async function revokeAllUserGrants(
   env: Env,
@@ -43,7 +44,7 @@ export async function revokeAllUserGrants(
           complete = false
           console.warn(
             `[revoke-grants] revokeGrant(${g.id}) failed:`,
-            err instanceof Error ? err.message : String(err)
+            errMessage(err)
           )
         }
       }
@@ -53,7 +54,7 @@ export async function revokeAllUserGrants(
     complete = false
     console.warn(
       `[revoke-grants] listUserGrants(${userId}) failed:`,
-      err instanceof Error ? err.message : String(err)
+      errMessage(err)
     )
   }
   return { revoked, complete }

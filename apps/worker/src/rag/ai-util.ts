@@ -6,8 +6,10 @@
  * through and surface normally. Used by both retrieveCandidates and the
  * reranker, so it lives on its own to avoid a search↔reranker import cycle.
  */
+
+import { errMessage } from '../util/errors'
 export function isLocalRemoteBindingError(err: unknown): boolean {
   if (err && typeof err === 'object' && (err as { remote?: unknown }).remote === true) return true
-  const msg = err instanceof Error ? err.message : String(err)
+  const msg = errMessage(err)
   return /needs to be run remotely/i.test(msg)
 }

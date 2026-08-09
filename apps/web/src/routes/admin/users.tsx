@@ -15,7 +15,6 @@ import {
 } from '@mantine/core'
 import type { AdminUserRow, AdminUserTeam, Role, UserStatus } from '@ctxlayer/shared'
 import {
-  type ApiError,
   adminDeleteUser,
   adminPatchUserRole,
   adminReactivateUser,
@@ -28,7 +27,7 @@ import {
 } from '../../lib/api'
 import { KV, Section } from '../../components/admin-bits'
 import { clickableRow } from '../../lib/a11y'
-import { explain as explainBase } from '../../lib/explain'
+import { bodyMessage, explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
 import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
@@ -506,12 +505,3 @@ function explain(err: unknown): string {
   })
 }
 
-// Preferred body-message order for this screen: hint → message → error.
-function bodyMessage(err: ApiError): string | null {
-  const body = err.body as { error?: string; hint?: string; message?: string } | null | undefined
-  if (!body || typeof body !== 'object') return null
-  if (typeof body.hint === 'string' && body.hint) return body.hint
-  if (typeof body.message === 'string' && body.message) return body.message
-  if (typeof body.error === 'string' && body.error) return body.error
-  return null
-}

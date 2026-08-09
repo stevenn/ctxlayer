@@ -16,6 +16,7 @@
 import type { Env } from '../env'
 import { readSessionCookie, verifySession } from '../auth/session'
 import { canEditDoc, getDocById } from '../db/queries/docs'
+import { findById } from '../db/queries/users'
 import { isAllowedOrigin } from '../util/origin'
 
 export async function handleCollabUpgrade(
@@ -34,6 +35,15 @@ export async function handleCollabUpgrade(
 
   const session = await verifySession(readSessionCookie(req), env.SESSION_COOKIE_SECRET)
   if (!session) return new Response('not_signed_in', { status: 401 })
+
+  // The cookie is a stateless 30-day bearer, so the signature alone proves
+  // nothing about the account TODAY. Re-read the row and require `active`,
+  // exactly as the REST middleware's `resolveActiveUser` does — without this a
+  // suspended or deleted user keeps read+write access to every doc they could
+  // edit, over a socket, until the cookie expires. (Role changes are already
+  // picked up: `canEditDoc` reads `users.role` live.)
+  const user = await findById(env, session.userId)
+  if (!user || user.status !== 'active') return new Response('not_signed_in', { status: 401 })
 
   const doc = await getDocById(env, docId)
   if (!doc) return new Response('not_found', { status: 404 })

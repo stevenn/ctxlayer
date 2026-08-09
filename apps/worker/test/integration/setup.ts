@@ -1,4 +1,6 @@
-import type { D1Migration } from 'cloudflare:test'
+// NOTE: no `import type { D1Migration }` here — inside the `declare module`
+// augmentation below the name resolves to the module's OWN export, so an outer
+// import would be genuinely unused (and now trips noUnusedLocals).
 import { applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll } from 'vitest'
 

@@ -18,13 +18,18 @@
  * raw message is never echoed back; only the extracted, constrained slug is.
  */
 
+import type { UsageErrorCode } from '@ctxlayer/shared'
 import { firstParty } from './provenance'
 
 export interface GithubOrgNudge {
   /** First-party replacement text surfaced to the agent. */
   text: string
-  /** Usage error_code so the Errors table separates it from generic 4xx. */
-  errorCode: string
+  /**
+   * Usage error_code so the Errors table separates it from generic 4xx.
+   * Typed off the shared union, so a new nudge class can't reach the SPA
+   * without a label + colour existing for it.
+   */
+  errorCode: UsageErrorCode
 }
 
 // GitHub org slugs: 1–39 chars, alphanumeric or hyphen, must start

@@ -47,6 +47,8 @@ import {
   McpActiveUsers,
   builtinToolMeta
 } from '@ctxlayer/shared'
+import { errMessage } from '../util/errors'
+import { errText, safeJson } from './tool-result'
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
 // USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
@@ -195,7 +197,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           return result
         },
         async (err) => {
-          const m = stringifyError(err)
+          const m = errMessage(err)
           await finalize(m, 'error', m)
           throw err
         }
@@ -619,7 +621,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             return { content: [{ type: 'text', text: text + warnings }] }
           } catch (err) {
             if (err instanceof SaveDraftSkillError) return errText(err.code)
-            const msg = err instanceof Error ? err.message : String(err)
+            const msg = errMessage(err)
             if (/UNIQUE constraint failed/i.test(msg)) return errText('slug_taken')
             console.error('save_draft_skill failed:', msg)
             return errText('save_failed')
@@ -713,7 +715,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         idempotent: true
       })
     } catch (err) {
-      console.error(`[usage] stage failed for ${args.tool}: ${stringifyError(err)}`)
+      console.error(`[usage] stage failed for ${args.tool}: ${errMessage(err)}`)
     }
   }
 
@@ -736,7 +738,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         })
       }
     } catch (err) {
-      console.error(`[usage] outbox drain failed: ${stringifyError(err)}`)
+      console.error(`[usage] outbox drain failed: ${errMessage(err)}`)
       await this.schedule(USAGE_DRAIN_RETRY_SECONDS, 'flushUsageOutbox', undefined, {
         idempotent: true
       })
@@ -746,19 +748,5 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
 
 // ----- helpers ------------------------------------------------------------
 
-function errText(msg: string) {
-  return { isError: true, content: [{ type: 'text' as const, text: msg }] }
-}
 
-function safeJson(v: unknown): string {
-  try {
-    return typeof v === 'string' ? v : JSON.stringify(v ?? null)
-  } catch {
-    return ''
-  }
-}
 
-function stringifyError(err: unknown): string {
-  if (err instanceof Error) return err.message
-  return String(err)
-}

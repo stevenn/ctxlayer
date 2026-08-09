@@ -7,7 +7,7 @@
 
 import type { Env } from '../../env'
 import type { AdminRoleRow, RoleRef } from '@ctxlayer/shared'
-import { buildPatchUpdate } from './util'
+import { buildPatchUpdate, newId } from './util'
 
 interface RoleRow {
   id: string
@@ -151,6 +151,3 @@ export async function setUserRoles(env: Env, userId: string, roleIds: string[]):
   await env.DB.batch(stmts)
 }
 
-function newId(): string {
-  return crypto.randomUUID().replace(/-/g, '')
-}

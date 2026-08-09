@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { Badge, Button, Group, Menu, Text, Tooltip } from '@mantine/core'
 import type { DocSummary } from '@ctxlayer/shared'
 import { clickableRow } from '../../lib/a11y'
-import { filterDocs, type FolderGroup, formatRelative, isGitDoc, personLabel } from './helpers'
+import { filterDocs, type FolderGroup, formatRelative, isGitDoc } from './helpers'
+import { personLabel } from '../../lib/person'
 
 // ----- Docs table --------------------------------------------------------
 
