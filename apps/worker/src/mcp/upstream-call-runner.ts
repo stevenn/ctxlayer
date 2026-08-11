@@ -13,7 +13,7 @@ import {
   sanitizeUntrustedText
 } from './provenance'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
-import { postProcessErrorResult } from './result-postprocess'
+import { postProcessErrorResult, scrubErrorContent } from './result-postprocess'
 import { classifyUpstreamError, errorTextFromContent } from '../usage/error-detail'
 import { byteLength } from '../usage/tokens'
 import { UPSTREAM_MAX_RESPONSE_BYTES } from '../upstream/http-client'
@@ -64,13 +64,19 @@ export async function runUpstreamCall(opts: {
 }): Promise<UpstreamCallOutcome> {
   try {
     const result = await opts.run()
-    let respJson = safeJson(result.content ?? null)
+    // §1a (2026-07 review): isError text IS forwarded to the agent (and
+    // stored + replayed via async_jobs.error_detail / usage), so credential
+    // shapes are redacted here — the one write site every downstream reader
+    // derives from. Non-error results are never scrubbed: a legitimate
+    // result may carry secret-shaped data the caller asked to read.
+    const content = result.isError ? scrubErrorContent(result.content) : result.content
+    let respJson = safeJson(content ?? null)
     let status: 'ok' | 'error' | 'timeout' = 'ok'
     let errorCode: string | undefined
     let errorDetail: string | undefined
     if (result.isError) {
       status = 'error'
-      errorDetail = errorTextFromContent(result.content)
+      errorDetail = errorTextFromContent(content)
       errorCode = classifyUpstreamError('error', errorDetail)
       // Recognised access refusals (e.g. GitHub SAML SSO / IP allow list /
       // OAuth-app restriction) arrive as tool-result content (not a thrown
@@ -80,10 +86,7 @@ export async function runUpstreamCall(opts: {
       // playbook and tags a distinct code so the usage Errors table separates
       // them from the generic 4xx bucket (and doubles as the "who's blocked on
       // what" list).
-      const rewrite = postProcessErrorResult(
-        { slug: opts.slug, url: opts.upstreamUrl },
-        errorDetail
-      )
+      const rewrite = postProcessErrorResult({ slug: opts.slug, url: opts.upstreamUrl }, errorDetail)
       if (rewrite) {
         return {
           surface: { isError: true, content: [{ type: 'text', text: rewrite.text }] },
@@ -124,12 +127,12 @@ export async function runUpstreamCall(opts: {
         // Strip control chars + neutralise the ⟦ctxlayer⟧ marker in
         // upstream-originated result text, so a tool result can neither forge a
         // first-party directive nor smuggle terminal/C1 bytes to the model.
-        content: Array.isArray(result.content)
-          ? sanitizeUntrustedContent(result.content as Array<{ type: string; text?: string }>)
+        content: Array.isArray(content)
+          ? sanitizeUntrustedContent(content as Array<{ type: string; text?: string }>)
           : [
               {
                 type: 'text',
-                text: sanitizeUntrustedText(JSON.stringify(result.content ?? null, null, 2))
+                text: sanitizeUntrustedText(JSON.stringify(content ?? null, null, 2))
               }
             ],
         structuredContent:

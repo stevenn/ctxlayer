@@ -89,15 +89,18 @@ any of these on a new endpoint or proxy hop is a regression.
   real text logged server-side only — it can carry API keys, internal
   hostnames, stack traces. `formatUpstreamError` owns this; the catch
   block is covered by a test asserting no credential leak.
-  **Known gap, deliberate:** an upstream that reports failure the
+  **Resolved (2026-08, July §1a):** an upstream that reports failure the
   MCP-idiomatic way — `{ content, isError: true }` — does NOT throw, so
-  its text is forwarded to the agent (and replayed by `poll_task` from
-  `async_jobs.error_detail`). `upstream-call-runner.test.ts` asserts
-  that passthrough. It IS control-char stripped + provenance defanged;
-  it is NOT credential-scrubbed. Tightening this is an open decision —
-  see `docs/review-2026-07.md`; the landing spot is the identity-gated
-  registry in `mcp/result-postprocess.ts` (which also owns the GitHub
-  org-403 nudges — keyed on upstream URL host, never on text alone).
+  its text IS forwarded to the agent (and replayed by `poll_task` from
+  `async_jobs.error_detail`); that passthrough is deliberate and tested.
+  It is control-char stripped + provenance defanged, and credential
+  SHAPES (Authorization echoes, bearer blobs, JWTs, vendor token
+  prefixes) are redacted by `scrubErrorContent` in
+  `mcp/result-postprocess.ts` at the runner's single write site. Keep
+  the scrub narrow — hostnames/paths/status text stay, and non-error
+  results are NEVER scrubbed (secret-shaped data can be a legitimate
+  read). The same module owns the identity-gated GitHub org-403 nudges
+  (keyed on upstream URL host, never on text alone).
 - **Untrusted upstream text is model input — sanitise on EVERY path.**
   `sanitizeUntrustedText` / `sanitizeUntrustedContent` live in
   `mcp/provenance.ts` (control-char strip + `defangProvenance`), NOT in

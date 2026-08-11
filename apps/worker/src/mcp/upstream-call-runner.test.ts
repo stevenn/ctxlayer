@@ -197,6 +197,38 @@ describe('runUpstreamCall', () => {
     expect(out.surface.content[0]?.text).toBe('HTTP 404 Not Found')
   })
 
+  it('scrubs credential shapes from isError text on every downstream surface (§1a)', async () => {
+    const raw =
+      'GET https://internal.example/api: 401 Unauthorized. ' +
+      'Request sent with Authorization: Bearer ghp_16C7e42F292c6912E7710c838347Ae178B4a — check the PAT.'
+    const out = await runUpstreamCall({
+      slug: 'up-github',
+      toolName: 'x',
+      upstreamUrl: 'https://api.example.test/mcp',
+      run: async () => ({ content: [{ type: 'text', text: raw }], isError: true })
+    })
+    // The agent-facing surface, the usage response record, and the stored
+    // error detail (replayed later by poll_task) all derive from the same
+    // scrubbed write — none may carry the token.
+    for (const s of [out.surface.content[0]?.text, out.respJson, out.errorDetail]) {
+      expect(s).not.toContain('ghp_')
+      expect(s).toContain('[redacted-credential]')
+    }
+    // The rest of the diagnostic survives (narrow scrub, not a rewrite).
+    expect(out.surface.content[0]?.text).toContain('401 Unauthorized')
+    expect(out.surface.content[0]?.text).toContain('check the PAT')
+  })
+
+  it('never scrubs non-error results (secret-shaped data can be legitimate)', async () => {
+    const fileBody = 'config: { github_token: "ghp_16C7e42F292c6912E7710c838347Ae178B4a" }'
+    const out = await runUpstreamCall({
+      slug: 'up-github',
+      toolName: 'get_file_contents',
+      run: async () => ({ content: [{ type: 'text', text: fileBody }] })
+    })
+    expect(out.surface.content[0]?.text).toContain('ghp_16C7e42F292c6912E7710c838347Ae178B4a')
+  })
+
   it('never fires a GitHub-branded nudge on a non-GitHub upstream (identity gate)', async () => {
     // "single sign-on" alone used to trip the SAML regex regardless of
     // upstream — a Datadog error would come back rebranded as a GitHub

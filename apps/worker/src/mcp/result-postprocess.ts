@@ -7,10 +7,17 @@
  *
  * Runs INSIDE `runUpstreamCall`, before the sanitiser and the size cap
  * (nudge text is first-party ⟦ctxlayer⟧-marked; sanitising it would
- * strip the marker). This is also the intended landing spot for the
- * July-review §1a decision (a narrow credential-shape scrub on isError
- * passthrough) — add it as another processor, not as an inline branch
- * in the runner.
+ * strip the marker).
+ *
+ * This module also owns the July-review §1a scrub (`scrubErrorContent`):
+ * isError result text is deliberately forwarded to the agent (tool errors
+ * are functionally necessary diagnostics), but credential SHAPES in it —
+ * Authorization header echoes, bearer blobs, JWTs, well-known vendor token
+ * prefixes — are redacted first. Unlike the processors above it is not
+ * identity-gated (a leaked credential is a leaked credential regardless of
+ * which upstream echoed it) and it transforms rather than replaces, so its
+ * output stays on the normal sanitise path. Deliberately narrow: hostnames,
+ * paths and status text pass through untouched so diagnostics stay useful.
  */
 
 import type { UsageErrorCode } from '@ctxlayer/shared'
@@ -71,4 +78,55 @@ export function postProcessErrorResult(ref: UpstreamRef, raw: string): ErrorResu
     if (rewrite) return rewrite
   }
   return null
+}
+
+/**
+ * Credential shapes redacted from isError result text (July review §1a).
+ * High-precision on purpose: every pattern anchors on either an auth
+ * keyword or a vendor prefix plus a long token blob, so ordinary error
+ * prose ("token expired", "bearer of…") can't match. Broadening any of
+ * these risks blunting genuinely useful upstream diagnostics — the
+ * review explicitly weighed and rejected an aggressive scrub.
+ */
+const CREDENTIAL_SHAPES: RegExp[] = [
+  // `Authorization: Bearer <anything>` header echoes (any scheme value length —
+  // the header name itself marks the value as a credential).
+  /\bauthorization\s*[:=]\s*(?:bearer|basic|token)\s+[^\s"'`,;]+/gi,
+  // Bare `Bearer <long-blob>` / `token <long-blob>` outside a header echo.
+  /\b(?:bearer|token)\s+[A-Za-z0-9\-._~+/]{20,}=*/gi,
+  // JWT triplet (header.payload.signature).
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g,
+  // Vendor-prefixed tokens: GitHub, Slack, OpenAI-style sk-, AWS access key id.
+  /\b(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]{20,}/g,
+  /\bxox[baprs]-[A-Za-z0-9-]{10,}/g,
+  /\bsk-[A-Za-z0-9_-]{20,}/g,
+  /\bAKIA[0-9A-Z]{16}\b/g
+]
+
+/** Redact credential shapes from one string. Exported for tests. */
+export function scrubCredentialShapes(text: string): string {
+  let out = text
+  for (const re of CREDENTIAL_SHAPES) out = out.replace(re, '[redacted-credential]')
+  return out
+}
+
+/**
+ * Scrub an isError result's `content` before ANYTHING downstream reads it —
+ * the agent-facing surface, usage `respJson`/`error_detail`, and the
+ * async_jobs row `poll_task` replays all derive from the return value, so
+ * this is the single write site. Handles the MCP-idiomatic error shapes
+ * (text-item array, bare string); other shapes pass through to the normal
+ * sanitise path unchanged. Never applied to non-error results: a legitimate
+ * tool result may contain secret-shaped data the caller asked to read.
+ */
+export function scrubErrorContent(content: unknown): unknown {
+  if (typeof content === 'string') return scrubCredentialShapes(content)
+  if (Array.isArray(content)) {
+    return content.map((item) =>
+      item && typeof item === 'object' && typeof (item as { text?: unknown }).text === 'string'
+        ? { ...item, text: scrubCredentialShapes((item as { text: string }).text) }
+        : item
+    )
+  }
+  return content
 }
