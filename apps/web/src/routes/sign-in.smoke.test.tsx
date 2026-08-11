@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { ReactNode } from 'react'
-import { cleanup, render, screen } from '@testing-library/react'
+import { render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { MemoryRouter } from 'react-router-dom'
 
@@ -10,11 +10,6 @@ import { fetchConfig } from '../lib/api'
 import { SignIn } from './sign-in'
 
 const mockConfig = vi.mocked(fetchConfig)
-
-// RTL auto-cleanup needs vitest globals, which this suite runs without —
-// these tests assert the ABSENCE of the other mode's elements, so a stale
-// DOM from the previous render would false-fail them.
-afterEach(cleanup)
 
 function wrap(node: ReactNode) {
   return render(
