@@ -1,5 +1,5 @@
 import { env } from 'cloudflare:test'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import type { Env } from '../../src/env'
 import {
   clearAsyncJobResults,
@@ -20,6 +20,13 @@ import { asyncJobStats } from '../../src/db/queries/usage-read'
  * (partial UNIQUE index), and completing a job frees the key for a resubmit.
  */
 const testEnv = env as unknown as Env
+
+// vitest-pool-workers ≥0.20 has no per-test storage rollback (state persists
+// across tests within a file), and the stats assertions below count the whole
+// table — so start every test from an empty one.
+beforeEach(async () => {
+  await testEnv.DB.prepare('DELETE FROM async_jobs').run()
+})
 
 const job = (over: Partial<Parameters<typeof insertRunningJob>[1]> = {}) => ({
   id: 'j1',

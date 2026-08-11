@@ -48,6 +48,5 @@
     "concurrently": "^9.1.0",
     "typescript": "^5.6.3",
     "wrangler": "^4.0.0"
-  },
-  "//zod": "No override needed: @modelcontextprotocol/sdk accepts zod '^3.25 || ^4.0', and every workspace now pins ^4, so bun hoists a single zod@4.4.3 that the SDK binds to (its registerTool zod-compat types then match our schemas). The test runner's bundled wrangler@3.100.0/miniflare keeps its own scoped zod@3.25.76 (it calls zod-3-only z.ostring()). Do NOT add a global zod override -> it forces zod 4 onto that test tooling and breaks suite load. A SCOPED 'overrides' on the SDK is also pointless here: bun does not support nested overrides (warns + ignores), and hoisting already does the job."
+  }
 }

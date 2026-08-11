@@ -1,21 +1,17 @@
-// NOTE: no `import type { D1Migration }` here — inside the `declare module`
-// augmentation below the name resolves to the module's OWN export, so an outer
-// import would be genuinely unused (and now trips noUnusedLocals).
-import { applyD1Migrations, env } from 'cloudflare:test'
+import { type D1Migration, applyD1Migrations, env } from 'cloudflare:test'
 import { beforeAll } from 'vitest'
 
 /**
- * Ambient extension of the test env. The integration vitest config
- * binds the full migration list under `TEST_MIGRATIONS` so test files
- * can apply schema without re-reading the SQL files at runtime.
+ * vitest-pool-workers ≥0.6 types `env` as the project-extensible global
+ * `Cloudflare.Env`. Augmenting that globally would force these test-only
+ * bindings onto the app `Env` too (agents' McpAgent constrains its generic
+ * against `Cloudflare.Env`), so the bindings the integration vitest config
+ * provides — the full migration list under `TEST_MIGRATIONS`, applied here so
+ * test files don't re-read the SQL at runtime — are typed by a local cast,
+ * the same pattern the test files use for the app env.
  */
-declare module 'cloudflare:test' {
-  interface ProvidedEnv {
-    DB: D1Database
-    TEST_MIGRATIONS: D1Migration[]
-  }
-}
+const testEnv = env as unknown as { DB: D1Database; TEST_MIGRATIONS: D1Migration[] }
 
 beforeAll(async () => {
-  await applyD1Migrations(env.DB, env.TEST_MIGRATIONS)
+  await applyD1Migrations(testEnv.DB, testEnv.TEST_MIGRATIONS)
 })
