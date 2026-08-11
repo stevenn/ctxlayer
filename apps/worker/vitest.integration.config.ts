@@ -40,6 +40,9 @@ export default defineConfig(async () => {
           compatibilityFlags: ['nodejs_compat', 'global_fetch_strictly_public'],
           d1Databases: ['DB'],
           r2Buckets: ['DOCS_BUCKET'],
+          // Real KV for the workers-oauth-provider security tests — the
+          // provider keeps clients/grants/keys in OAUTH_KV.
+          kvNamespaces: ['OAUTH_KV'],
           bindings: {
             TEST_MIGRATIONS: migrations
           }
