@@ -62,6 +62,7 @@ import {
   type ProxyToolExtra
 } from './upstream-call-runner'
 import { isAsyncTool, submitAsyncJob } from './async-submit'
+import { credentialFreshnessError } from './credential-freshness'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
@@ -403,6 +404,16 @@ export class UpstreamProxyRegistry {
       }
       const client = this.clients.get(conn.id)
       if (!client) return errText(`upstream ${conn.slug} not connected`)
+      // A6: user-scoped creds were bound at session init — one point-read
+      // per call so a mid-session disconnect / reauth flag blocks now, not
+      // when the session dies. Also gates async SUBMITs (below).
+      const staleCred = await credentialFreshnessError(this.env, this.userId, conn)
+      if (staleCred) {
+        console.warn(
+          `[cred-freshness] blocked ${conn.slug}.${upstreamToolName} for user ${this.userId}`
+        )
+        return errText(staleCred)
+      }
       const t0 = Date.now()
       const reqJson = safeJson(args)
       let status: 'ok' | 'error' | 'timeout' = 'ok'

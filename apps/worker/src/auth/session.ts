@@ -5,8 +5,15 @@
  * bootstrap in scripts/setup-dev-tls.mjs.
  *
  * Format: `<base64url(payload-json)>.<base64url(hmac)>`
- * Payload: { userId, role, iat, exp }   // seconds since epoch
+ * Payload: { userId, role, epoch, iat, exp }   // iat/exp in seconds
  * HMAC: SHA-256 of the payload-json bytes, keyed by SESSION_COOKIE_SECRET.
+ *
+ * `epoch` (A7) is the user's `session_epoch` at mint time. The per-request
+ * check in auth/middleware rejects a cookie whose epoch no longer matches
+ * the DB, which is what makes sign-out / suspend invalidate EVERY
+ * outstanding cookie server-side instead of only clearing the browser's
+ * copy. Cookies minted before the field existed verify as epoch 0 — all
+ * users start at 0, so nothing is force-logged-out by the deploy itself.
  */
 
 import type { Role } from '@ctxlayer/shared'
@@ -18,18 +25,20 @@ const MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 export interface SessionPayload {
   userId: string
   role: Role
+  epoch: number
   iat: number
   exp: number
 }
 
 export async function signSession(
-  payload: { userId: string; role: Role },
+  payload: { userId: string; role: Role; epoch?: number },
   secret: string,
   now: number = Math.floor(Date.now() / 1000)
 ): Promise<string> {
   const full: SessionPayload = {
     userId: payload.userId,
     role: payload.role,
+    epoch: payload.epoch ?? 0,
     iat: now,
     exp: now + MAX_AGE_SECONDS
   }
@@ -64,6 +73,9 @@ export async function verifySession(
   ) {
     return null
   }
+  // Pre-A7 cookies carry no epoch; the HMAC guarantees we minted them, and
+  // every user starts at epoch 0, so they normalise rather than fail.
+  if (typeof payload.epoch !== 'number') payload.epoch = 0
   return payload
 }
 

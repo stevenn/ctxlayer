@@ -46,7 +46,11 @@ async function resolveActiveUser(
   const payload = await verifySession(cookie, c.env.SESSION_COOKIE_SECRET)
   if (payload) {
     const row = await findById(c.env, payload.userId)
-    if (!row || row.status !== 'active') {
+    // A7: a cookie minted under an older epoch is dead — sign-out and admin
+    // suspend bump users.session_epoch, which invalidates every outstanding
+    // cookie server-side (the 30-day exp alone can't). Same 401+clear as a
+    // missing row so the SPA lands on /sign-in.
+    if (!row || row.status !== 'active' || payload.epoch !== row.session_epoch) {
       const res = c.json({ error: 'not_signed_in' }, 401)
       res.headers.append('Set-Cookie', sessionClearCookie())
       return { error: res }
@@ -116,7 +120,7 @@ async function establishFromAccess(
   }
 
   const session = await signSession(
-    { userId: user.id, role: user.role },
+    { userId: user.id, role: user.role, epoch: user.session_epoch },
     c.env.SESSION_COOKIE_SECRET
   )
   c.header('Set-Cookie', sessionSetCookie(session), { append: true })

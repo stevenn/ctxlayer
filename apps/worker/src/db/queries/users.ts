@@ -35,6 +35,8 @@ export interface UserRow {
   status: UserStatus
   created_at: number
   last_seen_at: number | null
+  /** A7: cookies minted under an older epoch are rejected per request. */
+  session_epoch: number
 }
 
 export interface UpsertUserInput {
@@ -108,7 +110,8 @@ export async function upsertUser(
   }
 
   const row = await env.DB.prepare(
-    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at
+    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at,
+            session_epoch
      FROM users WHERE idp = ?1 AND idp_sub = ?2`
   )
     .bind(input.idp, input.idpSub)
@@ -120,12 +123,25 @@ export async function upsertUser(
 
 export async function findById(env: Env, id: string): Promise<UserRow | null> {
   const row = await env.DB.prepare(
-    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at
+    `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at,
+            session_epoch
      FROM users WHERE id = ?1`
   )
     .bind(id)
     .first<UserRow>()
   return row ?? null
+}
+
+/**
+ * A7: invalidate every outstanding session cookie for this user. The cookie
+ * embeds the epoch it was minted under; the per-request check in
+ * auth/middleware rejects any cookie whose epoch no longer matches. Called
+ * on sign-out and admin suspend.
+ */
+export async function bumpSessionEpoch(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(`UPDATE users SET session_epoch = session_epoch + 1 WHERE id = ?1`)
+    .bind(id)
+    .run()
 }
 
 export async function bumpLastSeen(env: Env, id: string): Promise<void> {

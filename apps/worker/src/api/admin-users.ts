@@ -19,6 +19,7 @@ import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
+  bumpSessionEpoch,
   countActiveAdmins,
   deleteUser,
   findById,
@@ -151,6 +152,10 @@ adminUsersRoute.post('/:id/suspend', requireCsrf, async (c) => {
   const guard = await guardRemovesAdminAccess(c, target, actor.userId, 'suspend')
   if (guard) return guard
   if (target.status !== 'suspended') await setUserStatus(c.env, target.id, 'suspended')
+  // A7: kill every outstanding SPA session cookie too (the per-request
+  // status re-check already blocks, but the epoch bump makes the cookies
+  // themselves dead — reactivation doesn't resurrect them).
+  await bumpSessionEpoch(c.env, target.id)
   // Instant MCP/CLI cutoff: kill every bearer/refresh token the user holds.
   const { revoked, complete } = await revokeAllUserGrants(c.env, target.id)
   if (!complete) await notifyIncompleteRevocation(c.env, 'suspend', target.id)

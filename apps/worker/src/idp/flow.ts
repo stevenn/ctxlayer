@@ -59,7 +59,10 @@ export async function finishSignIn(
   }
 
   // SPA path — issue session + CSRF cookies and redirect back to the app.
-  const session = await signSession({ userId: user.id, role: user.role }, env.SESSION_COOKIE_SECRET)
+  const session = await signSession(
+    { userId: user.id, role: user.role, epoch: user.session_epoch },
+    env.SESSION_COOKIE_SECRET
+  )
   const res = appRedirect(env, stateRow.returnTo)
   const headers = new Headers(res.headers)
   headers.append('Set-Cookie', sessionSetCookie(session))
