@@ -212,12 +212,27 @@ export async function listUpstreamsForUser(env: Env, userId: string): Promise<Li
   const credIds = rows
     .filter((r) => r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth')
     .map((r) => r.id)
-  const [credStatuses, toolCounts, skillsByUpstream, docsByUpstream] = await Promise.all([
+  const [credStatuses, toolCounts, skillsByUpstream, docsByUpstream, aclRows] = await Promise.all([
     getUserCredentialStatuses(env, userId, credIds),
     countToolsForUpstreams(env, ids),
     listSkillsForUpstreams(env, ids),
-    listDocsForUpstreams(env, ids)
+    listDocsForUpstreams(env, ids),
+    listToolAccessForUpstreams(env, ids)
   ])
+  // ACL-aware counts: subtract the tools the caller can't call (same
+  // predicate `describe_upstream` uses via `visibleTools`) so the two
+  // surfaces can never disagree. Fast path — the common no-ACL case
+  // keeps the bare COUNT(*) with no extra reads.
+  if (aclRows.length > 0) {
+    const acl = indexToolAccess(aclRows)
+    const principals = await resolveUserPrincipals(env, userId)
+    const aclUpstreamIds = [...new Set(aclRows.map((r) => r.upstream_id))]
+    const toolsByUpstream = await listCachedToolsForUpstreams(env, aclUpstreamIds)
+    for (const id of aclUpstreamIds) {
+      const cached = toolsByUpstream.get(id) ?? []
+      toolCounts.set(id, visibleTools(id, cached, acl, principals).length)
+    }
+  }
   return rows.map((row) => {
     const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
     const cred = requiresCred

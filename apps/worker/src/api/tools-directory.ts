@@ -138,6 +138,10 @@ export async function buildToolsDirectory(env: Env, userId: string): Promise<Too
     totalRows += tools.length
     return {
       ...h,
+      // The directory SHOWS ACL-locked tools (badged with a requires-name),
+      // so its count is the rendered total — deliberately NOT the
+      // ACL-visible count the agent surface (`list_upstreams`) reports.
+      toolsCount: tools.length,
       id: id ?? '',
       groups: id ? groupDirectoryTools(id, h.slug, tools, acl, principals, names) : []
     }

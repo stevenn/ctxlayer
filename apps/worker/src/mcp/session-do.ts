@@ -332,8 +332,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           loadedUpstreams: loaded,
           note:
             added.length > 0
-              ? 'Registered new upstream tools + emitted tools/list_changed. If your client honors it the tools appear now; if not, reconnect the connector.'
-              : 'No upstream connected since this session started. If you just connected one and it still is not callable, your client did not pick up the change — reconnect the connector.'
+              ? 'Registered new upstream tools (newly-connected upstreams AND tools that appeared in the catalogue since this session bound) + emitted tools/list_changed. If your client honors it the tools appear now; if not, reconnect the connector.'
+              : 'Nothing new: no upstream connected since this session started and every catalogued tool is already registered. If a tool still is not callable, your client did not pick up an earlier change — reconnect the connector.'
         }
         return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] }
       })

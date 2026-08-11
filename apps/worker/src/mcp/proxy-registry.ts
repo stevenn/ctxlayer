@@ -104,15 +104,24 @@ export class UpstreamProxyRegistry {
   }
 
   /**
-   * Re-scan the caller's upstreams and register the tools of any upstream
-   * connected AFTER this session's `init` — ctxlayer binds upstream tools
-   * at session init, so a mid-session connect (e.g. the user pastes a token
-   * / completes OAuth in `/app/upstreams`) is otherwise invisible until the
-   * MCP client reconnects. Idempotent: upstreams already loaded this session
-   * are skipped, so no tool is double-registered (registering a duplicate
-   * name would throw). Emits `tools/list_changed` on the live server when
-   * something new registers — a client that honors it surfaces the tools
-   * without a reconnect. Returns a summary of what was added.
+   * Re-scan the caller's upstreams and grow this session's registered
+   * tool set to match reality:
+   *   1. Register every tool of any upstream connected AFTER this
+   *      session's `init` (a mid-session connect is otherwise invisible
+   *      until the MCP client reconnects).
+   *   2. Reconcile ALREADY-connected upstreams against the org-global
+   *      catalogue — the cache may have been refreshed (or healed from a
+   *      degraded `tools/list`) by another session/admin since this
+   *      session registered, leaving this session bound to a subset
+   *      (2026-08-11 Datadog incident: sessions stuck on 3 of 25 tools).
+   *      Newly-visible allowed tools are registered; nothing is ever
+   *      unregistered mid-session (ACL revocation is backstopped in the
+   *      call handler instead).
+   * Idempotent: already-registered tools are skipped, so no tool is
+   * double-registered (registering a duplicate name would throw). Emits
+   * `tools/list_changed` on the live server when something new registers —
+   * a client that honors it surfaces the tools without a reconnect.
+   * Returns a summary of what was added on either path.
    */
   async refresh(
     server: McpServer
@@ -122,6 +131,14 @@ export class UpstreamProxyRegistry {
     const added = (
       await this.registerUpstreams(server, fresh, skillsByUpstream, docsByUpstream)
     ).filter((a) => a.tools > 0)
+    added.push(
+      ...(await this.reconcileConnected(
+        server,
+        rows.filter((r) => this.clients.has(r.id)),
+        skillsByUpstream,
+        docsByUpstream
+      ))
+    )
     if (added.length > 0) {
       // The live session's tool set grew — tell the client to re-read.
       // Belt-and-suspenders: the SDK also emits on `registerTool` when the
@@ -134,6 +151,62 @@ export class UpstreamProxyRegistry {
       }
     }
     return { added, loaded: this.clients.size }
+  }
+
+  /**
+   * Register tools that appeared in the catalogue after this session
+   * bound an upstream (see `refresh` step 2). Re-runs the same
+   * freshness check `init` used — `ensureCatalogue` dials only when the
+   * cache is empty/stale, reusing this session's live client — then
+   * registers every allowed tool not yet in `allowedToolKeys` (the
+   * registered set). Per-upstream failures degrade only that upstream.
+   */
+  private async reconcileConnected(
+    server: McpServer,
+    rows: UpstreamServerRow[],
+    skillsByUpstream: Map<string, SkillForUpstreamRow[]>,
+    docsByUpstream: Map<string, DocForUpstreamRow[]>
+  ): Promise<{ slug: string; tools: number }[]> {
+    if (rows.length === 0) return []
+    const [principals, aclRows, cachedByUpstream] = await Promise.all([
+      resolveUserPrincipals(this.env, this.userId),
+      listToolAccessForUpstreams(
+        this.env,
+        rows.map((r) => r.id)
+      ),
+      listCachedToolsForUpstreams(
+        this.env,
+        rows.map((r) => r.id)
+      )
+    ])
+    const acl = indexToolAccess(aclRows)
+    const out: { slug: string; tools: number }[] = []
+    for (const row of rows) {
+      try {
+        const conn = safeConnection(row)
+        if (!conn) continue
+        const client = this.clients.get(conn.id)
+        if (!client) continue
+        const tools = await this.ensureCatalogue(conn, client, cachedByUpstream.get(conn.id) ?? [])
+        const perTool = perToolPointers(
+          skillsByUpstream.get(conn.id) ?? [],
+          docsByUpstream.get(conn.id) ?? []
+        )
+        let count = 0
+        for (const t of tools) {
+          const key = accessKey(conn.id, t.tool_name)
+          if (this.allowedToolKeys.has(key)) continue // registered this session
+          if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
+          this.allowedToolKeys.add(key)
+          this.registerTool(server, conn, t, perTool.get(t.tool_name) ?? [])
+          count++
+        }
+        if (count > 0) out.push({ slug: conn.slug, tools: count })
+      } catch (err) {
+        console.error(`[upstream-proxy] ${row.slug}: reconcile failed: ${errMessage(err)}`)
+      }
+    }
+    return out
   }
 
   /**
@@ -260,7 +333,13 @@ export class UpstreamProxyRegistry {
       // Reuse the persistent client this registry already opened — avoids
       // a second handshake just to fetch the catalogue.
       const tools = await client.listTools()
-      await replaceCachedTools(this.env, conn.id, tools)
+      const res = await replaceCachedTools(this.env, conn.id, tools)
+      if (res.rejectedShrink) {
+        console.warn(
+          `[catalogue] ${conn.slug}: refresh returned ${res.rejectedShrink.incoming} tools vs ` +
+            `${res.rejectedShrink.prior} cached — suspect shrink rejected, serving prior catalogue`
+        )
+      }
     } catch (err) {
       const msg = errMessage(err)
       console.error(`[catalogue] ${conn.slug}: tools/list failed: ${msg}`)

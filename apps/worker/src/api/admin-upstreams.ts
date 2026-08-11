@@ -284,7 +284,9 @@ adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
       400
     )
   }
-  const result = await refreshCatalogueForConnection(c.env, conn, bearer)
+  // `force` bypasses the catalogue shrink-guard: the admin button is the
+  // deliberate path for applying a genuine large tool removal.
+  const result = await refreshCatalogueForConnection(c.env, conn, bearer, { force: true })
   if (!result.ok) {
     return c.json({ error: 'refresh_failed', message: result.message }, 502)
   }

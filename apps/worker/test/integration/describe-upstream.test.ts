@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Env } from '../../src/env'
-import { describeUpstreamForUser } from '../../src/mcp/catalogue-views'
+import { describeUpstreamForUser, listUpstreamsForUser } from '../../src/mcp/catalogue-views'
 
 /**
  * End-to-end (real D1) cover for `describe_upstream`'s catalogue
@@ -111,5 +111,17 @@ describe('describeUpstreamForUser (real D1)', () => {
 
   it('returns null for a slug that does not exist', async () => {
     expect(await describeUpstreamForUser(testEnv, 'u-1', 'nope')).toBeNull()
+  })
+
+  it('list_upstreams reports the same ACL-visible count as describe_upstream', async () => {
+    // 4 cached tools, wit_query locked to a role u-1 lacks → both
+    // surfaces must say 3. (countToolsForUpstreams alone would say 4.)
+    const entries = await listUpstreamsForUser(testEnv, 'u-1')
+    const ado = entries.find((e) => e.slug === 'up-ado')
+    expect(ado?.toolsCount).toBe(3)
+    const described = await describeUpstreamForUser(testEnv, 'u-1', 'up-ado')
+    expect(described?.toolsCount).toBe(3)
+    // The invisible upstream stays invisible on both surfaces.
+    expect(entries.find((e) => e.slug === 'up-secret')).toBeUndefined()
   })
 })

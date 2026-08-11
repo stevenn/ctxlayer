@@ -32,6 +32,29 @@ export interface CatalogueTool {
   inputSchema: unknown
 }
 
+/**
+ * Shrink-guard thresholds (2026-08-11 Datadog incident): a background
+ * refresh that got a DEGRADED `tools/list` (Datadog's minimal 3-tool
+ * "skills" surface instead of its real 25) replaced the org-global
+ * catalogue and poisoned every session for up to the 24h TTL. A
+ * catalogue of at least MIN_PRIOR rows now refuses an un-forced
+ * replacement that would shrink it below a third (or to zero) —
+ * last-known-good beats degraded-fresh. The admin "Refresh tools"
+ * button passes `force` and remains the deliberate way to apply a
+ * genuine large removal. Note: a rejected write leaves `cached_at`
+ * untouched, so a stale cache stays stale and the next session retries
+ * the dial — deliberate (a transient degraded response must not buy
+ * itself 24h of freshness).
+ */
+export const CATALOGUE_SHRINK_GUARD_MIN_PRIOR = 5
+
+export interface ReplaceCachedToolsResult {
+  /** cached_at written (or the guard-rejection time, rows untouched). */
+  cachedAt: number
+  /** Set when the incoming list was rejected as a suspect shrink. */
+  rejectedShrink?: { prior: number; incoming: number }
+}
+
 export async function listCachedTools(env: Env, upstreamId: string): Promise<UpstreamToolRow[]> {
   const res = await env.DB.prepare(
     `SELECT upstream_id, tool_name, description, input_schema, cached_at,
@@ -123,8 +146,9 @@ export async function countToolsForUpstreams(
 export async function replaceCachedTools(
   env: Env,
   upstreamId: string,
-  tools: CatalogueTool[]
-): Promise<number> {
+  tools: CatalogueTool[],
+  opts?: { force?: boolean }
+): Promise<ReplaceCachedToolsResult> {
   const now = Math.floor(Date.now() / 1000)
 
   // Snapshot prior hashes + change timestamps so we can decide whether
@@ -142,6 +166,24 @@ export async function replaceCachedTools(
       last_schema_change_at: number | null
       last_diff_summary: string | null
     }>()
+
+  // Shrink-guard (see CATALOGUE_SHRINK_GUARD_MIN_PRIOR): keep the prior
+  // catalogue when an un-forced refresh would wipe it or collapse it to
+  // under a third of its size.
+  const priorCount = prior.results?.length ?? 0
+  const incoming = tools.length
+  if (!opts?.force && priorCount > 0) {
+    const wipedOut = incoming === 0
+    const collapsed = priorCount >= CATALOGUE_SHRINK_GUARD_MIN_PRIOR && incoming < priorCount / 3
+    if (wipedOut || collapsed) {
+      console.warn(
+        `[catalogue] upstream ${upstreamId}: suspect shrink ${priorCount}→${incoming} rejected; ` +
+          `keeping prior catalogue (admin "Refresh tools" forces a genuine removal)`
+      )
+      return { cachedAt: now, rejectedShrink: { prior: priorCount, incoming } }
+    }
+  }
+
   const priorByName = new Map(
     (prior.results ?? []).map((r) => [
       r.tool_name,
@@ -257,5 +299,5 @@ export async function replaceCachedTools(
     )
   }
   await env.DB.batch(stmts)
-  return now
+  return { cachedAt: now }
 }

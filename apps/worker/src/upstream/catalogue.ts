@@ -28,6 +28,8 @@ export interface CatalogueRefreshOk {
   slug: string
   toolsCount: number
   cachedAt: number
+  /** The write was rejected by the shrink-guard; `toolsCount` is the KEPT prior count. */
+  suspectShrink?: { prior: number; incoming: number }
 }
 
 export interface CatalogueRefreshErr {
@@ -43,7 +45,8 @@ export type CatalogueRefreshResult = CatalogueRefreshOk | CatalogueRefreshErr
 export async function refreshCatalogueByUpstreamId(
   env: Env,
   upstreamId: string,
-  bearerToken: string | null
+  bearerToken: string | null,
+  opts?: { force?: boolean }
 ): Promise<CatalogueRefreshResult> {
   const row = await getUpstreamById(env, upstreamId)
   if (!row) return { ok: false, reason: 'not_found' }
@@ -53,13 +56,14 @@ export async function refreshCatalogueByUpstreamId(
   } catch {
     return { ok: false, reason: 'unsupported_transport' }
   }
-  return refreshCatalogueForConnection(env, conn, bearerToken)
+  return refreshCatalogueForConnection(env, conn, bearerToken, opts)
 }
 
 export async function refreshCatalogueForConnection(
   env: Env,
   conn: UpstreamConnection,
-  bearerToken: string | null
+  bearerToken: string | null,
+  opts?: { force?: boolean }
 ): Promise<CatalogueRefreshResult> {
   if (conn.authStrategy !== 'none' && !bearerToken) {
     return { ok: false, reason: 'no_credentials' }
@@ -67,8 +71,17 @@ export async function refreshCatalogueForConnection(
   const client = createUpstreamClient(conn, bearerToken)
   try {
     const tools = await client.listTools()
-    const cachedAt = await replaceCachedTools(env, conn.id, tools)
-    return { ok: true, slug: conn.slug, toolsCount: tools.length, cachedAt }
+    const res = await replaceCachedTools(env, conn.id, tools, opts)
+    if (res.rejectedShrink) {
+      return {
+        ok: true,
+        slug: conn.slug,
+        toolsCount: res.rejectedShrink.prior,
+        cachedAt: res.cachedAt,
+        suspectShrink: res.rejectedShrink
+      }
+    }
+    return { ok: true, slug: conn.slug, toolsCount: tools.length, cachedAt: res.cachedAt }
   } catch (err) {
     // MCP transport errors (StreamableHTTPError / SseError) carry `code` = the
     // upstream HTTP status. Surface it: a bare "Error POSTing to endpoint:" is
@@ -112,7 +125,10 @@ export async function warmCatalogueAndLog(
   try {
     const r = await refreshCatalogueByUpstreamId(env, args.upstreamId, args.bearerToken)
     if (r.ok) {
-      console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools ${args.okContext}`)
+      const shrinkNote = r.suspectShrink
+        ? ` (suspect shrink ${r.suspectShrink.prior}→${r.suspectShrink.incoming} rejected, prior kept)`
+        : ''
+      console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools ${args.okContext}${shrinkNote}`)
     } else {
       console.warn(
         `[catalogue] ${args.slug}: ${args.failLabel} failed (${r.reason})${
