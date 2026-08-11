@@ -16,8 +16,12 @@
  */
 
 import type { Env } from '../env'
-import type { CreatePullRequestResult } from '@ctxlayer/shared'
-import { getDocById } from '../db/queries/docs'
+import {
+  frontmatterSemanticallyEqual,
+  splitFrontmatter,
+  type CreatePullRequestResult
+} from '@ctxlayer/shared'
+import { getDocById, getDocForOkfExport } from '../db/queries/docs'
 import {
   getDocGitOrigin,
   getGitSourceById,
@@ -88,6 +92,30 @@ async function setupWriteBack(
   const baseline = normalizeMarkdown(baselineRaw)
   const openPr = await getOpenPrForDoc(env, docId)
   if (normalized === baseline) return { kind: 'noop', openPr }
+  // B4: `emitFrontmatter` re-emits managed keys via `doc.set`, which
+  // normalises quoting / flow-vs-block style, so the first write-back
+  // after import can differ ONLY in frontmatter style. Compare the two
+  // sides semantically: identical bodies + same parsed frontmatter data
+  // ⇒ still a no-op, no pure-churn PR.
+  const edited = splitFrontmatter(normalized)
+  const base2 = splitFrontmatter(baseline)
+  if (
+    edited.body === base2.body &&
+    frontmatterSemanticallyEqual(edited.raw, base2.raw)
+  ) {
+    return { kind: 'noop', openPr }
+  }
+
+  // B5: an import stores `okf_frontmatter = null` when the block exceeds
+  // the size cap — indistinguishable from "never had frontmatter", so the
+  // re-attach above emitted nothing and this write-back would silently
+  // strip the whole OKF block from the repo file. Refuse, like html_unsafe.
+  if (base2.raw !== null) {
+    const okfRow = await getDocForOkfExport(env, docId)
+    if (okfRow && okfRow.okf_frontmatter === null) {
+      return { kind: 'error', status: 422, error: 'frontmatter_dropped' }
+    }
+  }
 
   // The source carries HTML the BlockNote round-trip drops (it's already gone
   // from the editor body), so committing this edit would silently delete it.

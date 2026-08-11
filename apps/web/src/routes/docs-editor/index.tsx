@@ -5,6 +5,7 @@ import * as Y from 'yjs'
 import { useCreateBlockNote } from '@blocknote/react'
 import {
   classifyHref,
+  splitFrontmatter,
   type DocContent,
   type DocDetail,
   type DocSummary,
@@ -158,8 +159,14 @@ export function DocsEditor() {
         if (gs && content.blocks.length === 0) {
           try {
             const { markdown } = await fetchDocGitSource(id, ctrl.signal)
-            if (markdown.trim()) {
-              effective = { blocks: parser.tryParseMarkdownToBlocks(markdown) as unknown[] }
+            // The raw repo file includes the OKF frontmatter block; BlockNote
+            // has no frontmatter support, so parsing it whole would mangle the
+            // `---` fences into blocks — which then persist via the seeded
+            // snapshot AND get duplicated when write-back re-attaches the
+            // stored frontmatter. Seed the editor from the body only.
+            const body = splitFrontmatter(markdown).body
+            if (body.trim()) {
+              effective = { blocks: parser.tryParseMarkdownToBlocks(body) as unknown[] }
             }
           } catch {
             // fall back to an empty editor

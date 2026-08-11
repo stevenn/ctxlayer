@@ -56,6 +56,53 @@ export function splitFrontmatter(text: string): { raw: string | null; body: stri
   return { raw: m[1] ?? '', body: s.slice(m[0].length).replace(/^\n+/, '') }
 }
 
+/**
+ * Semantic equality of two frontmatter blocks (raw YAML, no fences):
+ * true when they parse to the same data, regardless of quoting style,
+ * flow-vs-block lists, key order, comments, or spacing. The write-back
+ * no-op check uses this so a style-only re-emit (`emitFrontmatter`
+ * replaces managed nodes via `doc.set`, normalising their style) does
+ * not open a pure-churn PR. Both-null (no frontmatter on either side)
+ * is equal; null-vs-block is not; two UNPARSEABLE blocks fall back to
+ * trimmed textual equality — malformed YAML carries no semantics to
+ * compare, so only byte-identical junk counts as unchanged.
+ */
+export function frontmatterSemanticallyEqual(a: string | null, b: string | null): boolean {
+  if (a === null || b === null) return a === b
+  let pa: unknown
+  let pb: unknown
+  let aOk = true
+  let bOk = true
+  try {
+    pa = parse(a)
+  } catch {
+    aOk = false
+  }
+  try {
+    pb = parse(b)
+  } catch {
+    bOk = false
+  }
+  if (!aOk || !bOk) return !aOk && !bOk && a.trim() === b.trim()
+  return deepEqual(pa, pb)
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((v, i) => deepEqual(v, b[i]))
+  }
+  if (a !== null && b !== null && typeof a === 'object' && typeof b === 'object') {
+    const ka = Object.keys(a as Record<string, unknown>)
+    const kb = Object.keys(b as Record<string, unknown>)
+    if (ka.length !== kb.length) return false
+    return ka.every((k) =>
+      deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k])
+    )
+  }
+  return false
+}
+
 /** Split + parse the well-known fields out of a document's frontmatter. */
 export function parseFrontmatter(text: string): ParsedFrontmatter {
   const { raw, body } = splitFrontmatter(text)

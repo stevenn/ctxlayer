@@ -1,0 +1,192 @@
+{
+  "blocks": [
+    {
+      "id": "h1",
+      "type": "heading",
+      "props": { "level": 1 },
+      "content": [{ "type": "text", "text": "Release runbook", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "p1",
+      "type": "paragraph",
+      "props": {},
+      "content": [
+        { "type": "text", "text": "Ship ", "styles": {} },
+        { "type": "text", "text": "carefully", "styles": { "bold": true } },
+        { "type": "text", "text": " and ", "styles": {} },
+        { "type": "text", "text": "calmly", "styles": { "italic": true } },
+        { "type": "text", "text": ", never ", "styles": {} },
+        { "type": "text", "text": "rushed", "styles": { "bold": true, "italic": true } },
+        { "type": "text", "text": "; run ", "styles": {} },
+        { "type": "text", "text": "bun run verify", "styles": { "code": true } },
+        { "type": "text", "text": " first. Old advice is ", "styles": {} },
+        { "type": "text", "text": "struck", "styles": { "strike": true } },
+        { "type": "text", "text": " and underlines are ", "styles": {} },
+        { "type": "text", "text": "dropped", "styles": { "underline": true } },
+        { "type": "text", "text": ".", "styles": {} }
+      ],
+      "children": []
+    },
+    {
+      "id": "p2",
+      "type": "paragraph",
+      "props": {},
+      "content": [
+        { "type": "text", "text": "See ", "styles": {} },
+        {
+          "type": "link",
+          "href": "https://ctxlayer.example/docs",
+          "content": [{ "type": "text", "text": "the docs", "styles": { "bold": true } }]
+        },
+        { "type": "text", "text": " for details.", "styles": {} }
+      ],
+      "children": []
+    },
+    {
+      "id": "h9",
+      "type": "heading",
+      "props": { "level": 9 },
+      "content": [{ "type": "text", "text": "Clamped heading", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "b1",
+      "type": "bulletListItem",
+      "props": {},
+      "content": [{ "type": "text", "text": "parent bullet", "styles": {} }],
+      "children": [
+        {
+          "id": "b1a",
+          "type": "bulletListItem",
+          "props": {},
+          "content": [{ "type": "text", "text": "nested child", "styles": {} }],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "n1",
+      "type": "numberedListItem",
+      "props": {},
+      "content": [{ "type": "text", "text": "first step", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "n2",
+      "type": "numberedListItem",
+      "props": {},
+      "content": [{ "type": "text", "text": "second step", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "c1",
+      "type": "checkListItem",
+      "props": { "checked": true },
+      "content": [{ "type": "text", "text": "done thing", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "c2",
+      "type": "checkListItem",
+      "props": { "checked": false },
+      "content": [{ "type": "text", "text": "todo thing", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "t1",
+      "type": "toggleListItem",
+      "props": {},
+      "content": [{ "type": "text", "text": "toggle head", "styles": {} }],
+      "children": [
+        {
+          "id": "t1a",
+          "type": "paragraph",
+          "props": {},
+          "content": [{ "type": "text", "text": "toggle body", "styles": {} }],
+          "children": []
+        }
+      ]
+    },
+    {
+      "id": "q1",
+      "type": "quote",
+      "props": {},
+      "content": [{ "type": "text", "text": "Measure twice,\ncut once.", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "cb1",
+      "type": "codeBlock",
+      "props": { "language": "ts" },
+      "content": [{ "type": "text", "text": "const x: number = 1", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "cb2",
+      "type": "codeBlock",
+      "props": {},
+      "content": [{ "type": "text", "text": "plain fence", "styles": {} }],
+      "children": []
+    },
+    {
+      "id": "tb1",
+      "type": "table",
+      "props": {},
+      "content": {
+        "type": "tableContent",
+        "rows": [
+          {
+            "cells": [
+              [{ "type": "text", "text": "Env", "styles": {} }],
+              [{ "type": "text", "text": "SHA", "styles": {} }]
+            ]
+          },
+          {
+            "cells": [
+              {
+                "type": "tableCell",
+                "props": {},
+                "content": [{ "type": "text", "text": "yukitools", "styles": {} }]
+              },
+              {
+                "type": "tableCell",
+                "props": {},
+                "content": [{ "type": "text", "text": "110f3d0", "styles": {} }]
+              }
+            ]
+          }
+        ]
+      },
+      "children": []
+    },
+    {
+      "id": "img1",
+      "type": "image",
+      "props": { "url": "https://ctxlayer.example/a.png", "caption": "diagram" },
+      "content": [],
+      "children": []
+    },
+    {
+      "id": "f1",
+      "type": "file",
+      "props": { "url": "https://ctxlayer.example/spec.pdf", "name": "spec.pdf" },
+      "content": [],
+      "children": []
+    },
+    {
+      "id": "d1",
+      "type": "divider",
+      "props": {},
+      "content": [],
+      "children": []
+    },
+    {
+      "id": "u1",
+      "type": "futureBlockKind",
+      "props": {},
+      "content": [{ "type": "text", "text": "unknown blocks degrade to text", "styles": {} }],
+      "children": []
+    }
+  ]
+}

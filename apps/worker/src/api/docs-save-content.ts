@@ -42,6 +42,10 @@ export async function saveDocContent(
     // A local edit diverges a git-sourced doc from its synced baseline. Flag it
     // (clean → local_edits) so inbound cron sync won't clobber the edit before
     // it's proposed as a PR. No-op for ordinary (non-git) docs.
+    // B2 (2026-08 review): the DocRoomDO now fires the same flag + a
+    // debounced reindex on every ACTUAL materialised write, so these two
+    // side effects are belt-and-suspenders here — this path remains the
+    // sole trigger for REVISIONS (a deliberate, user-meaningful act).
     await markGitDocLocallyEdited(env, args.docId)
     executionCtx.waitUntil(
       env.DOC_REINDEX_QUEUE.send({ docId: args.docId, revisionId: outcome.revisionId }).catch(

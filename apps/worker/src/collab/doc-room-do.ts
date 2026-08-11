@@ -34,6 +34,7 @@ import * as encoding from 'lib0/encoding'
 import * as decoding from 'lib0/decoding'
 import type { Env } from '../env'
 import { isDocLocked } from '../db/queries/docs'
+import { markGitDocLocallyEdited } from '../db/queries/git-sources'
 import {
   readYjsSnapshot,
   writeYjsSnapshot,
@@ -47,6 +48,12 @@ import { yDocToBlocks } from './yjs-blocks'
 // the D1 read across rapid Yjs frames, short enough that a lock applied
 // by an admin propagates in a few seconds.
 const LOCK_CACHE_TTL_MS = 5_000
+
+// Debounce for the DO-triggered reindex (B2 / DO-owns-current-content):
+// a materialised write lands per edit-drain, and embedding every burst
+// would be wasteful. Fixed-from-first-write (not sliding), so search
+// lags a live typing session by at most this much.
+const REINDEX_DEBOUNCE_MS = 15_000
 
 const MESSAGE_SYNC = 0
 const MESSAGE_AWARENESS = 1
@@ -80,6 +87,12 @@ export class DocRoomDO extends DurableObject<Env> {
   // when the rendered content hasn't changed.
   private lastMaterialisedHash: string | null = null
   private materialisedHashLoaded = false
+
+  // B2 (2026-08 review): the DO owns "current content", so a
+  // materialised write also flips the git local-edits flag eagerly
+  // (the cron-sync clobber guard) once per DO lifetime; the alarm
+  // re-flags on every fire to cover a mid-session sync reset.
+  private gitFlaggedSinceLoad = false
 
   // Lock-state cache so we don't D1-read on every Yjs frame. The
   // upgrade handler already tags new sockets read-only when the doc
@@ -272,8 +285,13 @@ export class DocRoomDO extends DurableObject<Env> {
   /**
    * Render the live Y.Doc to BlockNote blocks and write `snapshot.json`
    * when it differs from what's already there. This is the server-side
-   * source of truth for the materialised body; the client REST autosave
-   * (which also writes revisions) is now belt-and-suspenders.
+   * source of truth for the materialised body — the B2 decision from
+   * the 2026-08 review: the DO owns "current content", so an actual
+   * write here also triggers the reindex + git-divergence side effects
+   * (`afterMaterialisedWrite`), making search consistency and the
+   * cron-sync clobber guard independent of the tab lifecycle. The
+   * client REST autosave stays the trigger for REVISIONS only (a
+   * deliberate, user-meaningful act).
    */
   private async materialiseSnapshot(): Promise<void> {
     if (!this.doc || !this.docId) return
@@ -299,8 +317,64 @@ export class DocRoomDO extends DurableObject<Env> {
     try {
       await writeMaterializedSnapshot(this.env, this.docId, content)
       this.lastMaterialisedHash = hash
+      // Empty renders carry no side effects: the first open of a
+      // never-seeded doc (git-imported, client hasn't pushed blocks yet)
+      // materialises an empty snapshot, and flagging git divergence for
+      // that would freeze inbound sync on a pristine doc. The consumer
+      // skips empty bodies anyway.
+      if (blocks.length > 0) await this.afterMaterialisedWrite()
     } catch (err) {
       console.error('doc-room-do: materialised snapshot write failed', err)
+    }
+  }
+
+  /**
+   * Side effects of an actual materialised write (B2): flag git
+   * divergence eagerly — it is the guard that stops the hourly cron
+   * sync from clobbering an edit whose client autosave never flushed —
+   * and schedule the (debounced) reindex alarm. The pending marker
+   * lives in DO storage and the alarm survives eviction, so a tab that
+   * closes inside the debounce window still gets indexed.
+   */
+  private async afterMaterialisedWrite(): Promise<void> {
+    if (!this.docId) return
+    if (!this.gitFlaggedSinceLoad) {
+      this.gitFlaggedSinceLoad = true
+      await markGitDocLocallyEdited(this.env, this.docId).catch((err) =>
+        console.error('doc-room-do: git local-edits flag failed', err)
+      )
+    }
+    await this.ctx.storage.put('reindexPending', true)
+    if ((await this.ctx.storage.getAlarm()) === null) {
+      await this.ctx.storage.setAlarm(Date.now() + REINDEX_DEBOUNCE_MS)
+    }
+  }
+
+  /**
+   * Debounced reindex for DO-materialised content. `source: 'snapshot'`
+   * tells the consumer to read snapshot.json (there is no revision row
+   * for a materialised write); the consumer's unchanged-hash check makes
+   * redundant fires cheap. On failure the pending marker is restored and
+   * the alarm re-armed.
+   */
+  override async alarm(): Promise<void> {
+    const docId = this.docId ?? ((await this.ctx.storage.get<string>('docId')) ?? null)
+    const pending = await this.ctx.storage.get<boolean>('reindexPending')
+    if (!docId || !pending) return
+    await this.ctx.storage.delete('reindexPending')
+    try {
+      // Re-flag on every fire: a write-back/sync may have reset the git
+      // state to clean mid-session while edits continued.
+      await markGitDocLocallyEdited(this.env, docId)
+      await this.env.DOC_REINDEX_QUEUE.send({
+        docId,
+        revisionId: 'do-materialise',
+        source: 'snapshot'
+      })
+    } catch (err) {
+      console.error('doc-room-do: reindex alarm failed; re-arming', err)
+      await this.ctx.storage.put('reindexPending', true)
+      await this.ctx.storage.setAlarm(Date.now() + REINDEX_DEBOUNCE_MS)
     }
   }
 

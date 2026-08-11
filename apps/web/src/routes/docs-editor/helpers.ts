@@ -1,3 +1,4 @@
+import { ApiError } from '../../lib/api/core'
 import { explain as explainBase } from '../../lib/explain'
 
 // Stable per-user cursor color. HSL hue derived from a fast 32-bit
@@ -12,7 +13,11 @@ export function userColor(userId: string): string {
 export function explain(err: unknown): string {
   return explainBase(err, {
     403: 'You do not have permission for this action.',
-    // Write-back's only 422 is the HTML-round-trip guard.
-    422: "This doc uses HTML the editor can't preserve, so write-back is disabled — edit it directly in git."
+    // Write-back 422s: the HTML-round-trip guard, or the dropped-oversize-
+    // frontmatter guard — branch on the machine code.
+    422: (e: ApiError) =>
+      (e.body as { error?: string } | null)?.error === 'frontmatter_dropped'
+        ? 'This doc was imported with a frontmatter block too large to preserve, so write-back would strip it — edit it directly in git.'
+        : "This doc uses HTML the editor can't preserve, so write-back is disabled — edit it directly in git."
   })
 }

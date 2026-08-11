@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { emitFrontmatter, parseFrontmatter, splitFrontmatter } from '@ctxlayer/shared'
+import {
+  emitFrontmatter,
+  frontmatterSemanticallyEqual,
+  parseFrontmatter,
+  splitFrontmatter
+} from '@ctxlayer/shared'
 
 const SAMPLE = `---
 type: Playbook
@@ -118,5 +123,35 @@ describe('emitFrontmatter', () => {
     expect(reparsed.known.type).toBe('Playbook')
     expect(reparsed.known.title).toBe('Deploy Guide')
     expect(reparsed.known.tags).toEqual(['deploy', 'ops'])
+  })
+})
+
+describe('frontmatterSemanticallyEqual', () => {
+  it('treats style-only differences as equal (flow vs block lists, quoting, order, comments)', () => {
+    expect(
+      frontmatterSemanticallyEqual(
+        `title: 'Deploy Guide'\ntags: [deploy, ops]  # curated`,
+        `tags:\n  - deploy\n  - ops\ntitle: Deploy Guide`
+      )
+    ).toBe(true)
+  })
+
+  it('treats value changes as unequal', () => {
+    expect(frontmatterSemanticallyEqual('title: A', 'title: B')).toBe(false)
+    expect(frontmatterSemanticallyEqual('tags: [a]', 'tags: [a, b]')).toBe(false)
+    expect(frontmatterSemanticallyEqual('title: A', 'title: A\nextra: x')).toBe(false)
+  })
+
+  it('null means "no frontmatter": equal only to null', () => {
+    expect(frontmatterSemanticallyEqual(null, null)).toBe(true)
+    expect(frontmatterSemanticallyEqual(null, 'title: A')).toBe(false)
+    expect(frontmatterSemanticallyEqual('title: A', null)).toBe(false)
+  })
+
+  it('unparseable blocks fall back to trimmed textual equality', () => {
+    const junk = 'title: [unclosed'
+    expect(frontmatterSemanticallyEqual(junk, `  ${junk}  `)).toBe(true)
+    expect(frontmatterSemanticallyEqual(junk, 'other: [junk')).toBe(false)
+    expect(frontmatterSemanticallyEqual(junk, 'title: fine')).toBe(false)
   })
 })
