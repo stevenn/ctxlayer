@@ -126,6 +126,14 @@ export interface StaticRefresh {
    * continue rather than locking the user out.
    */
   reauth: boolean
+  /**
+   * Machine-readable failure summary (`<phase>_<status>[_<oauth code>]`,
+   * e.g. `refresh_400_invalid_grant`) when the token endpoint rejected the
+   * grant. Non-secret by construction; carried into the
+   * `upstream.reauth_required` audit meta so a flag is diagnosable from the
+   * audit page. Absent on success and on non-HTTP (network) failures.
+   */
+  reason?: string
 }
 
 /**
@@ -167,7 +175,14 @@ export async function refreshStaticDetailed(
     json = await postToken(env, oauth, body, 'refresh')
   } catch (err) {
     // Permanent (invalid_grant) ⇒ signal reauth; any other failure is transient.
-    return { token: null, reauth: err instanceof OAuthStaticError && err.permanent }
+    if (err instanceof OAuthStaticError) {
+      return {
+        token: null,
+        reauth: err.permanent,
+        reason: `${err.phase}_${err.status}${err.code ? `_${err.code}` : ''}`
+      }
+    }
+    return { token: null, reauth: false }
   }
   await provider.saveTokens(toOAuthTokens(json))
   return { token: typeof json.access_token === 'string' ? json.access_token : null, reauth: false }

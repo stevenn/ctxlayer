@@ -190,7 +190,11 @@ describe('refreshStaticDetailed (reauth classification)', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: 'invalid_grant' }), { status: 400 })
     )
-    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: true })
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({
+      token: null,
+      reauth: true,
+      reason: 'refresh_400_invalid_grant'
+    })
     expect(p.saved).toBeUndefined()
   })
 
@@ -199,7 +203,11 @@ describe('refreshStaticDetailed (reauth classification)', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response('upstream down', { status: 503 })
     )
-    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: false })
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({
+      token: null,
+      reauth: false,
+      reason: 'refresh_503'
+    })
   })
 
   it('a 400 with a non-invalid_grant code ⇒ TRANSIENT: reauth:false', async () => {
@@ -207,7 +215,11 @@ describe('refreshStaticDetailed (reauth classification)', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: 'temporarily_unavailable' }), { status: 400 })
     )
-    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({ token: null, reauth: false })
+    expect(await refreshStaticDetailed(env, p, ENTRA)).toEqual({
+      token: null,
+      reauth: false,
+      reason: 'refresh_400_temporarily_unavailable'
+    })
   })
 
   it('a network error ⇒ TRANSIENT: reauth:false', async () => {

@@ -37,6 +37,7 @@ import { UpstreamOAuthProvider } from './oauth-provider'
 import { singleFlightRefresh } from './oauth-refresh'
 import { refreshStaticDetailed, staticOAuth } from './oauth-static'
 import { errMessage } from '../util/errors'
+import { scrubErrorForStorage } from '../usage/error-detail'
 
 // Refresh a user_oauth access token only when it's within this many
 // seconds of expiry. Going through the SDK's auth() on EVERY bearer
@@ -87,14 +88,21 @@ export async function resolveUserUpstreamBearer(
     const hadCreds = !!(existing?.access_token || existing?.refresh_token)
 
     // Flag the credential for interactive reconnect (once) so list_upstreams
-    // tells the agent to reconnect; audit the clear→set transition.
-    const flagReauth = async () => {
+    // tells the agent to reconnect; audit the clear→set transition. `reason`
+    // is the refresh-failure mode (scrubbed + capped) — without it a flag is
+    // undiagnosable after the fact, since the raw error only ever hits
+    // console logs that aren't retained. May be absent when the lease loser
+    // observed the failure (the winner's flag carries it).
+    const flagReauth = async (reason?: string) => {
       if (await markReauthRequired(env, userId, row.id)) {
         await audit(env, {
           actorId: userId,
           action: 'upstream.reauth_required',
           target: row.id,
-          meta: { slug: conn.slug }
+          meta: {
+            slug: conn.slug,
+            ...(reason ? { reason: scrubErrorForStorage(reason) } : {})
+          }
         })
       }
     }
@@ -114,28 +122,35 @@ export async function resolveUserUpstreamBearer(
       // PERMANENTLY (invalid_grant) so we flag reauth only then — a transient
       // network / 5xx failure must keep retrying, not lock the user out.
       let permanent = false
+      let reason: string | undefined
       const token = await singleFlightRefresh(env, userId, row.id, {
         refresh: async () => {
           const r = await refreshStaticDetailed(env, provider, staticCfg)
           permanent = r.reauth
+          reason = r.reason
           return r.token
         },
         readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
         isFresh: async () => isFreshAccessToken(await provider.tokens())
       })
-      if (permanent && hadCreds) await flagReauth()
+      if (permanent && hadCreds) await flagReauth(reason)
       return token
     }
 
     // DCR (SDK auth()) path. The SDK exposes no permanent/transient signal, so
     // keep the prior behaviour: any failed refresh with creds present flags for
     // reauth (and retries on the next resolution).
+    let failure: string | undefined
     const token = await singleFlightRefresh(env, userId, row.id, {
-      refresh: () => refreshViaSdk(provider, conn),
+      refresh: async () => {
+        const r = await refreshViaSdk(provider, conn)
+        failure = r.failure
+        return r.token
+      },
       readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
       isFresh: async () => isFreshAccessToken(await provider.tokens())
     })
-    if (token === null && hadCreds) await flagReauth()
+    if (token === null && hadCreds) await flagReauth(failure)
     return token
   }
   // user_bearer
@@ -165,24 +180,29 @@ function isFreshAccessToken(t: OAuthTokens | undefined): boolean {
  * refresh when a refresh_token is present, so the caller invokes this only
  * after the fast path has determined the access token is near expiry. A
  * non-AUTHORIZED outcome means the SDK wants a fresh interactive authz flow;
- * we surface null so the caller skips the upstream (the user reconnects from
- * /upstreams).
+ * we surface a null token so the caller skips the upstream (the user
+ * reconnects from /upstreams). `failure` distinguishes the two ways that
+ * happens — the SDK silently falling through to a new authz flow (its
+ * behaviour on an unstructured refresh rejection) vs. auth() throwing — so
+ * the reauth audit entry records WHY the refresh gave up.
  */
 async function refreshViaSdk(
   provider: UpstreamOAuthProvider,
   conn: UpstreamConnection
-): Promise<string | null> {
+): Promise<{ token: string | null; failure?: string }> {
   try {
     const result = await mcpAuth(provider, { serverUrl: conn.url })
-    if (result === 'AUTHORIZED') return (await provider.tokens())?.access_token ?? null
+    if (result === 'AUTHORIZED') {
+      return { token: (await provider.tokens())?.access_token ?? null }
+    }
     const redirect = provider.capturedRedirect?.toString() ?? '<none>'
     console.warn(
       `[oauth] ${conn.slug}: refresh failed, SDK wants new authz flow (redirect=${redirect})`
     )
-    return null
+    return { token: null, failure: `sdk_wants_new_authz:${result}` }
   } catch (err) {
     const msg = errMessage(err)
     console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
-    return null
+    return { token: null, failure: `sdk_threw:${msg}` }
   }
 }
