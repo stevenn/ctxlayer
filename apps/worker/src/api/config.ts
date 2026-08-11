@@ -2,6 +2,7 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import type { ConfigResponse } from '@ctxlayer/shared'
 import { parseAccessPolicy } from '../auth/admission'
+import { accessTrustConfigured } from '../auth/cf-access'
 
 export const configRoute = new Hono<{ Bindings: Env }>()
 
@@ -34,7 +35,12 @@ configRoute.get('/', (c) => {
     // Dedicated MCP host when configured (Access deployments front the same
     // Worker at mcp.<tenant>); otherwise the MCP surface is the same host.
     mcpBaseUrl: c.env.MCP_PUBLIC_URL || c.env.PUBLIC_BASE_URL,
-    accessPolicy: policy
+    accessPolicy: policy,
+    // Access-trusting deploys sign in at the edge — the sign-in page offers
+    // a "continue with your organization sign-in" entry instead of (or next
+    // to) the IdP buttons. Without this, an Access-only deploy (all IdP
+    // allowlists empty) dead-ends on /sign-in after sign-out.
+    accessSso: accessTrustConfigured(c.env)
   }
   return c.json(body)
 })

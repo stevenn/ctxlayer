@@ -52,6 +52,7 @@ export function SignIn() {
   )
   const idps = config?.idps ?? null
   const policy = config?.accessPolicy ?? 'open_domain'
+  const accessSso = config?.accessSso ?? false
 
   // The SPA belongs on the canonical browser host (publicBaseUrl). If it's
   // loaded on a different host — e.g. the public MCP host (mcp.<tenant>), which
@@ -148,10 +149,20 @@ export function SignIn() {
 
           <Stack gap="xs">
             {idps === null && !configError && <Text c="dimmed">Loading…</Text>}
+            {/* Access-fronted deploys sign in at the edge: a full-page nav
+                into /app rides the Cloudflare Access session (or triggers the
+                org login), and /api/me re-establishes the app session from
+                the edge-asserted identity. On Access-only deploys this is the
+                only way back in after sign-out. */}
+            {accessSso && (
+              <Button fullWidth variant="filled" onClick={() => location.assign('/app')}>
+                Continue with your organization sign-in
+              </Button>
+            )}
             {idps?.map((idp) => (
               <ProviderButton key={idp} idp={idp} code={showCode ? code : ''} />
             ))}
-            {idps?.length === 0 && (
+            {idps?.length === 0 && !accessSso && (
               <Text c="dimmed" fz="sm">
                 No identity providers are configured for this deployment. Ask an admin to set up
                 Google or GitHub sign-in.

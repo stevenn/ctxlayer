@@ -75,6 +75,12 @@ export const ConfigResponse = z.object({
   // Admission policy. The sign-in page shows a join-code input when this
   // is `invite`. `.catch` keeps an older SPA bundle working if the field
   // is ever absent.
-  accessPolicy: AccessPolicy.catch('open_domain')
+  accessPolicy: AccessPolicy.catch('open_domain'),
+  // True when the deployment trusts Cloudflare Access as a sign-in source
+  // (CF_ACCESS_* configured). The sign-in page then offers "continue with
+  // your organization sign-in" — on Access-only deploys (no IdP allowlists,
+  // e.g. Entra-gated tenants) it is the ONLY way back in after sign-out.
+  // Optional for deploy-skew compat — readers treat absent as false.
+  accessSso: z.boolean().optional()
 })
 export type ConfigResponse = z.infer<typeof ConfigResponse>
