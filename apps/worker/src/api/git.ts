@@ -18,6 +18,7 @@ import {
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
+import { auditFromCtx } from '../audit/log'
 import { canEditDoc, getDocById } from '../db/queries/docs'
 import { readSourceMarkdown } from '../storage/docs-r2'
 import {
@@ -197,11 +198,16 @@ gitSourcesUserRoute.put('/:id/credentials', async (c) => {
     iv: sealed.iv,
     keyVersion: sealed.keyVersion
   })
+  // Mirrors the admin trail (git_source.shared_token_set) for the
+  // self-service PAT path, which was silent.
+  await auditFromCtx(c, 'git_credential.set', id, { slug: access.source.slug, scope: 'user' })
   return new Response(null, { status: 204 })
 })
 
 gitSourcesUserRoute.delete('/:id/credentials', async (c) => {
   const actor = c.get('user')
-  await deleteGitUserCredential(c.env, actor.userId, c.req.param('id'))
+  const id = c.req.param('id')
+  await deleteGitUserCredential(c.env, actor.userId, id)
+  await auditFromCtx(c, 'git_credential.revoke', id, { scope: 'user' })
   return new Response(null, { status: 204 })
 })

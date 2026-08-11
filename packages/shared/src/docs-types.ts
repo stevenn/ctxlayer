@@ -6,9 +6,6 @@ import { DOC_LIMITS, clampTags, clampText } from './doc-limits'
 // file never 400s on length. Same limits everywhere (git sync clamps too).
 const okfScalar = (max: number) => z.string().transform((s) => clampText(s, max))
 
-export const DocKind = z.enum(['doc', 'prompt'])
-export type DocKind = z.infer<typeof DocKind>
-
 // Doc body is the BlockNote block tree (BlockNoteJSON). It's a recursive
 // structure with content/props/children per block; pinning a strict shape
 // here would couple us to a specific BlockNote version. We pass it
@@ -66,7 +63,6 @@ export const DocSummary = z.object({
   id: z.string(),
   title: z.string(),
   slug: DocSlug,
-  kind: DocKind,
   // Folder path or null (= root). See FolderPath above for the format.
   folder: FolderPath.nullable(),
   // The git source this doc is synced from, or null for authored docs.
@@ -133,7 +129,6 @@ export const CreateDocRequest = z.object({
   // If omitted, the server derives `doc-<slugified-title>` and appends a
   // 6-char suffix on collision. If provided, must carry the `doc-` prefix.
   slug: prefixedSlug('doc').optional(),
-  kind: DocKind.optional(),
   // Folder path. Omit or pass null to create at root.
   folder: FolderPath.nullable().optional(),
   // OKF frontmatter captured at import time (the SPA import modal parses it
@@ -178,7 +173,6 @@ export const UpdateDocRequest = z.object({
   // Slug is immutable after creation: it's a stable reference (get_doc
   // accepts id-or-slug, search deep-links, doc-link hrefs), so renaming
   // it would silently orphan those. Set once at create; never patched.
-  kind: DocKind.optional(),
   // Pass `null` to move to root, a FolderPath to move, or omit to leave
   // the folder unchanged. `.nullable()` admits null; `.optional()` admits
   // omission — together they distinguish "set to null" from "no change".

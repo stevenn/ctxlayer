@@ -4,6 +4,7 @@ import type { Invite } from '@ctxlayer/shared'
 import { adminCreateInvites, adminDeleteInvite, fetchInvites } from '../../lib/api'
 import { bodyMessage, explain as explainBase } from '../../lib/explain'
 import { absDate } from '../../lib/time'
+import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
@@ -17,29 +18,27 @@ export function AdminInvites() {
   const [error, setError] = useState<string | null>(null)
   const [info, setInfo] = useState<string | null>(null)
   const [emails, setEmails] = useState('')
-  const [busy, setBusy] = useState(false)
 
   const { data: items, reload } = useLoad(fetchInvites, [], { explain, onError: setError })
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    // one error state shared with the load above
+    setError,
+    onStart: () => setInfo(null)
+  })
 
-  async function submit() {
-    if (!emails.trim()) return
-    setBusy(true)
-    setError(null)
-    setInfo(null)
-    try {
+  const submit = () =>
+    withBusy(async () => {
       const r = await adminCreateInvites(emails)
       const parts = [`${r.added} added`, `${r.skipped} skipped`]
       if (r.invalid.length) parts.push(`${r.invalid.length} invalid: ${r.invalid.join(', ')}`)
       setInfo(parts.join(' · '))
       setEmails('')
       await reload()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Invite')
 
+  // The confirm dialog stays outside `withBusy` so the buttons don't show
+  // busy while the dialog is open.
   async function remove(inv: Invite) {
     const ok = await confirm({
       title: 'Delete invite?',
@@ -48,16 +47,10 @@ export function AdminInvites() {
       danger: true
     })
     if (!ok) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await adminDeleteInvite(inv.id)
       await reload()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Delete')
   }
 
   return (
@@ -156,4 +149,3 @@ function explain(err: unknown): string {
     400: (e) => bodyMessage(e) ?? 'Server rejected the request.'
   })
 }
-

@@ -12,6 +12,7 @@
  */
 
 import type { Env } from '../env'
+import type { UpstreamToolsResponse } from '@ctxlayer/shared'
 import { listCachedTools } from '../db/queries/upstream-tools'
 import { listSkillsForUpstream, type SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import { listDocsForUpstream, type DocForUpstreamRow } from '../db/queries/doc-attachments'
@@ -58,7 +59,7 @@ export async function buildUpstreamToolsPayload(
   env: Env,
   upstream: { id: string; slug: string },
   opts: { includeDrafts?: boolean } = {}
-) {
+): Promise<UpstreamToolsResponse> {
   const [tools, skillAtt, docAtt] = await Promise.all([
     listCachedTools(env, upstream.id),
     listSkillsForUpstream(env, upstream.id, opts),

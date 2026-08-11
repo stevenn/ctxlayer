@@ -4,7 +4,10 @@ import {
   localDayIndex,
   type UsageAsyncJobRow,
   type UsageAsyncSummary,
-  type UsageRange
+  type UsageRange,
+  type UsageTopTool,
+  type UsageTopUpstream,
+  type UsageTopUser
 } from '@ctxlayer/shared'
 
 /**
@@ -37,37 +40,13 @@ export interface DailyTotalRow {
   errors: number
 }
 
-export interface TopToolRow {
-  tool: string
-  upstreamId: string // '' for built-in
-  calls: number
-  reqTokens: number
-  respTokens: number
-  errors: number
-  timeouts: number
-  truncations: number
-}
-
-export interface TopUpstreamRow {
-  upstreamId: string // '' for built-in
-  upstreamSlug: string | null
-  upstreamName: string | null
-  calls: number
-  reqTokens: number
-  respTokens: number
-  errors: number
-  timeouts: number
-  truncations: number
-}
-
-export interface TopUserRow {
-  userId: string
-  email: string | null
-  calls: number
-  reqTokens: number
-  respTokens: number
-  errors: number
-}
+// The row shapes ARE the shared wire types — re-exported under the old
+// local names so query-layer callers read naturally. Keeping local
+// interface twins here is exactly the drift the shared schemas exist to
+// prevent (2026-08 review §2, response-side pins).
+export type TopToolRow = UsageTopTool
+export type TopUpstreamRow = UsageTopUpstream
+export type TopUserRow = UsageTopUser
 
 export interface RecentErrorRow {
   ts: number

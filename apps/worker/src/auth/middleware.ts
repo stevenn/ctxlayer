@@ -21,7 +21,11 @@ export interface SessionUser {
 // fetched — exposed so handlers that need it (/api/me) don't re-query.
 export type AuthedVariables = { user: SessionUser; userRow: UserRow }
 
-type Ctx = Context<{ Bindings: Env; Variables: AuthedVariables }>
+/** A route context behind requireUser/requireAdmin — exported for helpers
+ * (e.g. `auditFromCtx`) that read the acting user off the context. */
+export type AuthedContext = Context<{ Bindings: Env; Variables: AuthedVariables }>
+
+type Ctx = AuthedContext
 
 /**
  * Resolve the signed-in user for a request: verify the session cookie, then

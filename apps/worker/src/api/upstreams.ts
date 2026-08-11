@@ -15,6 +15,7 @@ import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { seal } from '../crypto/aead'
+import { auditFromCtx } from '../audit/log'
 import { getUpstreamVisibleToUser, listUserUpstreamSummaries } from '../db/queries/upstreams'
 import {
   deleteUserCredential,
@@ -70,6 +71,9 @@ upstreamsRoute.put('/:id/credentials', requireCsrf, async (c) => {
     iv: sealed.iv,
     keyVersion: sealed.keyVersion
   })
+  // Self-service credential lifecycle is audited like the admin/shared
+  // paths (upstream.shared_bearer_set etc.) — the trail was silent here.
+  await auditFromCtx(c, 'credential.set', id, { slug: upstream.slug, scope: 'user' })
   // Warm the catalogue with the just-stored token so the admin UI's
   // tool count and the next MCP session see a populated cache without
   // waiting for the user to open an agent. Best-effort.
@@ -88,5 +92,6 @@ upstreamsRoute.delete('/:id/credentials', requireCsrf, async (c) => {
   const userId = c.get('user').userId
   const id = c.req.param('id')
   await deleteUserCredential(c.env, userId, id)
+  await auditFromCtx(c, 'credential.revoke', id, { scope: 'user' })
   return new Response(null, { status: 204 })
 })

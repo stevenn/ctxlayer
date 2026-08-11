@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Badge, Button, Group, PasswordInput, Stack, Text } from '@mantine/core'
 import type { GitDocStatus } from '@ctxlayer/shared'
 import { prepareGitReviewUrl, proposeGitPullRequest, putGitUserCredential } from '../../lib/api'
+import { useBusyAction } from '../../lib/use-busy'
 import { explain } from './helpers'
 
 /**
@@ -35,11 +36,21 @@ export function GitPanel({
   getMarkdown: () => Promise<string>
   onRefresh: () => Promise<void>
 }) {
-  const [busy, setBusy] = useState(false)
   const [msg, setMsg] = useState<string | null>(null)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [token, setToken] = useState('')
   const [connectOpen, setConnectOpen] = useState(false)
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    // success + failure share the one `msg` banner
+    setError: (m) => {
+      if (m) setMsg(m)
+    },
+    onStart: () => {
+      setMsg(null)
+      setReviewUrl(null)
+    }
+  })
 
   // Surface the result of the OAuth round-trip (the callback bounces back to
   // /app/docs/:id?git_oauth_connected=… or ?git_oauth_error=…), then clean the
@@ -78,11 +89,8 @@ export function GitPanel({
     status.writeStrategy === 'user_oauth' || status.writeStrategy === 'user_bearer'
   const showAuth = canPropose && needsPersonalAuth
 
-  async function propose() {
-    setBusy(true)
-    setMsg(null)
-    setReviewUrl(null)
-    try {
+  const propose = () =>
+    withBusy(async () => {
       const md = await getMarkdown()
       const res = await proposeGitPullRequest(docId, md)
       setMsg(
@@ -93,18 +101,10 @@ export function GitPanel({
             : 'Pull request updated.'
       )
       await onRefresh()
-    } catch (err) {
-      setMsg(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Propose')
 
-  async function reviewInBrowser() {
-    setBusy(true)
-    setMsg(null)
-    setReviewUrl(null)
-    try {
+  const reviewInBrowser = () =>
+    withBusy(async () => {
       const md = await getMarkdown()
       const res = await prepareGitReviewUrl(docId, md)
       if (res.redirectUrl) {
@@ -113,28 +113,17 @@ export function GitPanel({
       } else {
         setMsg('No changes vs the synced version.')
       }
-    } catch (err) {
-      setMsg(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Review')
 
   async function connect() {
     if (!token.trim()) return
-    setBusy(true)
-    setMsg(null)
-    try {
+    await withBusy(async () => {
       await putGitUserCredential(status.gitSourceId, token.trim())
       setToken('')
       setConnectOpen(false)
       setMsg('Token connected — your commits will be authored as you.')
       await onRefresh()
-    } catch (err) {
-      setMsg(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Connect')
   }
 
   function startOauth() {
@@ -219,7 +208,15 @@ export function GitPanel({
           <Text fz="xs" c="dimmed">
             ✓ Connected — PRs are authored as you.{' '}
             {status.oauthConfigured && (
-              <Text component="a" fz="xs" href="#" onClick={(e) => { e.preventDefault(); startOauth() }}>
+              <Text
+                component="a"
+                fz="xs"
+                href="#"
+                onClick={(e) => {
+                  e.preventDefault()
+                  startOauth()
+                }}
+              >
                 Reconnect
               </Text>
             )}

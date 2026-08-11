@@ -1,6 +1,8 @@
 import { useState } from 'react'
 import { useSlugSuggest } from '../../lib/use-slug-suggest'
-import { Alert, Button, Drawer, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Alert, Button, Drawer, Group, Stack, Text, TextInput } from '@mantine/core'
+import { FormModalShell } from '../../components/form-modal-shell'
+import { ListPageShell } from '../../components/list-page-shell'
 import type { AdminRoleRow } from '@ctxlayer/shared'
 import { clickableRow } from '../../lib/a11y'
 import { adminCreateRole, adminDeleteRole, adminPatchRole, fetchAdminRoles } from '../../lib/api'
@@ -22,56 +24,51 @@ export function AdminRoles() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
-          Admin · Roles
-        </Title>
-        <Button onClick={() => setCreateOpen(true)}>+ New role</Button>
-      </Group>
-
-      <Text fz="xs" c="dimmed" mb="md">
-        Roles cut across teams (a user has a team <em>and</em> one-or-more roles). Use them to gate
-        upstreams + individual tools. Assign members on Admin · Users.
-      </Text>
-
-      {error && (
-        <Alert color="red" variant="light" radius="sm" mb="md">
-          {error}
-        </Alert>
-      )}
-      {!roles && !error && <Text c="dimmed">Loading…</Text>}
-
-      {roles && roles.length === 0 && (
-        <Text c="dimmed">
-          No roles yet. Click <strong>+ New role</strong> to create the first one (e.g. engineering,
-          qa, product).
-        </Text>
-      )}
-
-      {roles && roles.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Display name</th>
-              <th>Slug</th>
-              <th>Description</th>
-              <th>Members</th>
-            </tr>
-          </thead>
-          <tbody>
-            {roles.map((r) => (
-              <tr key={r.id} {...clickableRow(() => setEditing(r))}>
-                <td style={{ fontWeight: 500 }}>{r.displayName}</td>
-                <td className="text-muted">
-                  <code>{r.slug}</code>
-                </td>
-                <td className="text-muted">{r.description ?? '—'}</td>
-                <td className="text-muted">{r.memberCount}</td>
+      <ListPageShell
+        title="Admin · Roles"
+        action={<Button onClick={() => setCreateOpen(true)}>+ New role</Button>}
+        description={
+          <Text fz="xs" c="dimmed" mb="md">
+            Roles cut across teams (a user has a team <em>and</em> one-or-more roles). Use them to
+            gate upstreams + individual tools. Assign members on Admin · Users.
+          </Text>
+        }
+        error={error}
+        loading={!roles && !error}
+        empty={
+          roles && roles.length === 0 ? (
+            <Text c="dimmed">
+              No roles yet. Click <strong>+ New role</strong> to create the first one (e.g.
+              engineering, qa, product).
+            </Text>
+          ) : null
+        }
+      >
+        {roles && roles.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Slug</th>
+                <th>Description</th>
+                <th>Members</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {roles.map((r) => (
+                <tr key={r.id} {...clickableRow(() => setEditing(r))}>
+                  <td style={{ fontWeight: 500 }}>{r.displayName}</td>
+                  <td className="text-muted">
+                    <code>{r.slug}</code>
+                  </td>
+                  <td className="text-muted">{r.description ?? '—'}</td>
+                  <td className="text-muted">{r.memberCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ListPageShell>
 
       {createOpen && (
         <CreateRoleModal
@@ -106,68 +103,48 @@ function CreateRoleModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [displayName, setDisplayName] = useState('')
   const slugField = useSlugSuggest('role', displayName)
   const [description, setDescription] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
 
-  async function submit() {
-    if (!slugField.slug.trim() || !displayName.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
+  const submit = () =>
+    withBusy(async () => {
       await adminCreateRole({
         slug: slugField.slug.trim(),
         displayName: displayName.trim(),
         description: description.trim() || null
       })
       onCreated()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Create')
 
   return (
-    <Modal opened onClose={onClose} title="New role" centered>
-      <Stack gap="md">
-        <TextInput
-          label="Display name"
-          placeholder="Engineering"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.currentTarget.value)}
-        />
-        <TextInput
-          label="Slug"
-          placeholder="role-engineering"
-          value={slugField.slug}
-          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
-          description="Auto-filled from the name; edit to customise. Must start with role-."
-        />
-        <TextInput
-          label="Description"
-          placeholder="Optional"
-          value={description}
-          onChange={(e) => setDescription(e.currentTarget.value)}
-        />
-        {error && (
-          <Alert color="red" variant="light" radius="sm">
-            {error}
-          </Alert>
-        )}
-        <Group justify="flex-end" gap="xs">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            loading={busy}
-            disabled={!slugField.slug.trim() || !displayName.trim()}
-          >
-            Create
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
+    <FormModalShell
+      title="New role"
+      error={error}
+      busy={busy}
+      submitLabel="Create"
+      submitDisabled={!slugField.slug.trim() || !displayName.trim()}
+      onSubmit={submit}
+      onClose={onClose}
+    >
+      <TextInput
+        label="Display name"
+        placeholder="Engineering"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Slug"
+        placeholder="role-engineering"
+        value={slugField.slug}
+        onChange={(e) => slugField.setSlug(e.currentTarget.value)}
+        description="Auto-filled from the name; edit to customise. Must start with role-."
+      />
+      <TextInput
+        label="Description"
+        placeholder="Optional"
+        value={description}
+        onChange={(e) => setDescription(e.currentTarget.value)}
+      />
+    </FormModalShell>
   )
 }
 

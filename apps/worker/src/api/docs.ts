@@ -17,7 +17,7 @@ import {
   UpdateDocRequest
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { requireUser, type AuthedVariables } from '../auth/middleware'
+import { requireUser, type AuthedContext, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import {
   canEditDoc,
@@ -35,7 +35,6 @@ import {
   setDocLock,
   softDeleteDoc,
   type DocumentWithUsersRow,
-  type EditBlockReason,
   type RevisionRow
 } from '../db/queries/docs'
 import { addDocTags } from '../db/queries/doc-tags'
@@ -70,7 +69,6 @@ docsRoute.post('/', async (c) => {
   const row = await createDoc(c.env, {
     title: d.title,
     slug: d.slug,
-    kind: d.kind,
     folder: d.folder,
     createdBy: userId
   })
@@ -114,7 +112,7 @@ docsRoute.get('/:id', async (c) => {
 docsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  const blocked = await gateEdit(c.env, userId, id)
+  const blocked = await gateEdit(c, userId, id)
   if (blocked) return blocked
   const parsed = await parseJsonBody(c, UpdateDocRequest)
   if (!parsed.ok) return parsed.res
@@ -125,7 +123,7 @@ docsRoute.patch('/:id', async (c) => {
 docsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  const blocked = await gateEdit(c.env, userId, id)
+  const blocked = await gateEdit(c, userId, id)
   if (blocked) return blocked
   await softDeleteDoc(c.env, id)
   return new Response(null, { status: 204 })
@@ -159,7 +157,7 @@ docsRoute.get('/:id/content', async (c) => {
 docsRoute.put('/:id/content', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  const blocked = await gateEdit(c.env, userId, id)
+  const blocked = await gateEdit(c, userId, id)
   if (blocked) return blocked
   // `?mode=explicit` (absent → explicit, the safe default for older
   // clients) cuts a distinct checkpoint; autosaves coalesce. The full
@@ -209,7 +207,7 @@ docsRoute.get('/:id/revisions/:rev/content', async (c) => {
 docsRoute.post('/:id/restore', async (c) => {
   const id = c.req.param('id')
   const { userId } = c.get('user')
-  const blocked = await gateEdit(c.env, userId, id)
+  const blocked = await gateEdit(c, userId, id)
   if (blocked) return blocked
   const parsed = await parseJsonBody(c, RestoreRequest)
   if (!parsed.ok) return parsed.res
@@ -267,19 +265,17 @@ docsRoute.put('/:id/lock', async (c) => {
 /**
  * Used by every doc mutation route to short-circuit with the right
  * status code: 404 (no such doc), 423-Locked (doc is frozen), or
- * 403-Forbidden (caller lacks the access role). Returns null when
- * the caller can proceed.
+ * 403-Forbidden (caller lacks the access role). Returns null when the
+ * caller can proceed. Renders through the same `c.json` / `notFound`
+ * atoms as every other route (the old hand-rolled `jsonStatus` was a
+ * second divergent rendering of this gate — doc-tags.ts is the twin).
  */
-async function gateEdit(env: Env, userId: string, docId: string): Promise<Response | null> {
-  const reason = await editGateReason(env, userId, docId)
-  return reasonToResponse(reason)
-}
-
-function reasonToResponse(reason: EditBlockReason | null): Response | null {
+async function gateEdit(c: AuthedContext, userId: string, docId: string): Promise<Response | null> {
+  const reason = await editGateReason(c.env, userId, docId)
   if (reason === null) return null
-  if (reason === 'not_found') return jsonStatus({ error: 'not_found' }, 404)
+  if (reason === 'not_found') return notFound(c)
   if (reason === 'locked') {
-    return jsonStatus(
+    return c.json(
       {
         error: 'locked',
         hint: 'This doc is locked. Ask an admin or the doc creator to unlock it before editing.'
@@ -287,24 +283,22 @@ function reasonToResponse(reason: EditBlockReason | null): Response | null {
       423
     )
   }
-  return jsonStatus({ error: 'forbidden' }, 403)
-}
-
-function jsonStatus(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { 'content-type': 'application/json' }
-  })
+  return c.json({ error: 'forbidden' }, 403)
 }
 
 // ----- shapers ------------------------------------------------------------
 
 function toSummary(row: DocumentWithUsersRow): DocSummary {
-  return {
+  // `kind` left the shared schema in 2026-08 (vestigial since Type-over-
+  // Kind; nothing reads it) but is still EMITTED as a constant so SPA
+  // bundles from before that deploy — whose DocSummary schema requires
+  // it — keep parsing until their tab reloads. Drop the field on the
+  // next pass through this file.
+  const summary = {
     id: row.id,
     title: row.title,
     slug: row.slug,
-    kind: row.kind,
+    kind: 'doc',
     folder: row.folder,
     gitSourceId: row.git_source_id,
     gitSourceSlug: row.git_source_slug,
@@ -326,6 +320,7 @@ function toSummary(row: DocumentWithUsersRow): DocSummary {
       ? { id: row.updated_by_id, email: row.updated_by_email ?? '', name: row.updated_by_name }
       : null
   }
+  return summary
 }
 
 function toRevisionSummary(row: RevisionRow): RevisionSummary {

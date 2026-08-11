@@ -12,6 +12,7 @@ import { clearAsyncJobResults, pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { listEnabledGitSources } from './db/queries/git-sources'
 import { isGitSyncDue } from './git/sync'
+import { audit } from './audit/log'
 import { notify } from './ops/alert'
 import { LAST_CRON_KV_KEY } from './ops/cron-heartbeat'
 import { withHsts } from './util/security-headers'
@@ -161,6 +162,21 @@ const worker: ExportedHandler<Env> = {
               `[cron] pruned ${r.deleted}/${r.orphans} orphan oauth clients ` +
                 `(scanned ${r.scanned}, ${r.failed} delete failures)`
             )
+            // Same summary row the admin-initiated prune writes;
+            // audit_log.actor_id is un-FK'd TEXT, so the sentinel is safe.
+            if (r.deleted > 0) {
+              await audit(env, {
+                actorId: 'cron',
+                action: 'oauth_client.prune',
+                meta: {
+                  scanned: r.scanned,
+                  orphans: r.orphans,
+                  deleted: r.deleted,
+                  failed: r.failed,
+                  deletedIds: r.deletedIds
+                }
+              })
+            }
           }
         } catch (err) {
           const m = errMessage(err)

@@ -1,25 +1,18 @@
 import { Text } from '@mantine/core'
+import type { UsageTopTool, UsageTopUpstream } from '@ctxlayer/shared'
 
 /**
  * Numeric usage tables shared by the personal and admin dashboards.
  * `showResilience` (admin-only) adds the WI-5 timeout / truncation
- * columns.
+ * columns. Row props are the shared wire types — don't re-declare the
+ * shapes inline (2026-08 review, response-side pins).
  */
 
 export function ToolTable({
   rows,
   showResilience = false
 }: {
-  rows: Array<{
-    tool: string
-    upstreamId: string
-    calls: number
-    reqTokens: number
-    respTokens: number
-    errors: number
-    timeouts: number
-    truncations: number
-  }>
+  rows: UsageTopTool[]
   showResilience?: boolean
 }) {
   if (rows.length === 0) {
@@ -60,17 +53,7 @@ export function UpstreamTable({
   rows,
   showResilience = false
 }: {
-  rows: Array<{
-    upstreamId: string
-    upstreamSlug: string | null
-    upstreamName: string | null
-    calls: number
-    reqTokens: number
-    respTokens: number
-    errors: number
-    timeouts: number
-    truncations: number
-  }>
+  rows: UsageTopUpstream[]
   showResilience?: boolean
 }) {
   if (rows.length === 0) {

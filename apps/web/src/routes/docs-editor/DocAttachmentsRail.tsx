@@ -8,6 +8,7 @@ import {
   fetchUpstreams,
   fetchUserUpstreamTools
 } from '../../lib/api'
+import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 import { explain } from './helpers'
@@ -143,9 +144,9 @@ function DocAttachToUpstreamModal({
 }) {
   const [selectedUpstreamId, setSelectedUpstreamId] = useState<string | null>(null)
   const [selectedTool, setSelectedTool] = useState<string>('')
-  const [busy, setBusy] = useState(false)
   // One error channel shared by the loads and the attach action.
   const [error, setError] = useState<string | null>(null)
+  const { busy, run: withBusy } = useBusyAction({ explain, setError })
 
   const { data: upstreams } = useLoad((signal) => fetchUpstreams(signal), [], {
     explain,
@@ -171,20 +172,14 @@ function DocAttachToUpstreamModal({
 
   async function submit() {
     if (!selectedUpstreamId) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await attachDoc({
         docId,
         upstreamId: selectedUpstreamId,
         toolName: selectedTool || undefined
       })
       onAttached()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Attach')
   }
 
   const upstreamOptions = (upstreams ?? []).map((u) => ({

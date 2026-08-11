@@ -4,6 +4,7 @@ import { Link } from 'react-router-dom'
 import type { UserUpstreamSummary } from '@ctxlayer/shared'
 import { deleteUpstreamCredentials, fetchUpstreams, putUpstreamCredentials } from '../lib/api'
 import { explain as explainBase } from '../lib/explain'
+import { useBusyAction } from '../lib/use-busy'
 import { useLoad } from '../lib/use-load'
 import { useOAuthFlashBanner } from '../lib/use-oauth-banner'
 import { useDialogs } from '../lib/dialogs'
@@ -73,7 +74,14 @@ function UpstreamCard({
 }) {
   const dialogs = useDialogs()
   const [token, setToken] = useState('')
-  const [busy, setBusy] = useState(false)
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    // Failures report to the parent's shared error banner; the parent owns
+    // clearing it, so the pre-run null reset has nowhere to go.
+    setError: (m) => {
+      if (m) onError(m)
+    }
+  })
 
   const isUserBearer = upstream.authStrategy === 'user_bearer'
   const isOauth = upstream.authStrategy === 'user_oauth'
@@ -82,18 +90,15 @@ function UpstreamCard({
 
   async function save() {
     if (!token.trim()) return
-    setBusy(true)
-    try {
+    await withBusy(async () => {
       await putUpstreamCredentials(upstream.id, { token: token.trim() })
       setToken('')
       onChanged()
-    } catch (err) {
-      onError(`Save failed: ${explain(err)}`)
-    } finally {
-      setBusy(false)
-    }
+    }, 'Save')
   }
 
+  // The confirm dialog stays outside `withBusy` so the buttons don't show
+  // busy while the dialog is open.
   async function revoke() {
     const ok = await dialogs.confirm({
       title: 'Disconnect upstream?',
@@ -102,15 +107,10 @@ function UpstreamCard({
       danger: true
     })
     if (!ok) return
-    setBusy(true)
-    try {
+    await withBusy(async () => {
       await deleteUpstreamCredentials(upstream.id)
       onChanged()
-    } catch (err) {
-      onError(`Revoke failed: ${explain(err)}`)
-    } finally {
-      setBusy(false)
-    }
+    }, 'Revoke')
   }
 
   return (

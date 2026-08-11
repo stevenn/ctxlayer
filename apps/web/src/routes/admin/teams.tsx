@@ -6,13 +6,13 @@ import {
   Checkbox,
   Drawer,
   Group,
-  Modal,
   Select,
   Stack,
   Text,
-  TextInput,
-  Title
+  TextInput
 } from '@mantine/core'
+import { FormModalShell } from '../../components/form-modal-shell'
+import { ListPageShell } from '../../components/list-page-shell'
 import type {
   AdminTeamRow,
   ProductRef,
@@ -48,54 +48,48 @@ export function AdminTeams() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
-          Admin · Teams
-        </Title>
-        <Button onClick={() => setCreateOpen(true)}>+ New team</Button>
-      </Group>
-
-      {error && (
-        <Alert color="red" variant="light" radius="sm" mb="md">
-          {error}
-        </Alert>
-      )}
-      {!teams && !error && <Text c="dimmed">Loading…</Text>}
-
-      {teams && teams.length === 0 && (
-        <Text c="dimmed">
-          No teams yet. Click <strong>+ New team</strong> to create the first one.
-        </Text>
-      )}
-
-      {teams && teams.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Display name</th>
-              <th>Slug</th>
-              <th>Description</th>
-              <th>IdP group</th>
-              <th>Managed by IdP</th>
-            </tr>
-          </thead>
-          <tbody>
-            {teams.map((t) => (
-              <tr key={t.id} {...clickableRow(() => setEditingTeam(t))}>
-                <td style={{ fontWeight: 500 }}>{t.displayName}</td>
-                <td className="text-muted">
-                  <code>{t.slug}</code>
-                </td>
-                <td className="text-muted">{t.description ?? '—'}</td>
-                <td className="text-muted">
-                  {t.idpGroup ? <code style={{ fontSize: 11 }}>{t.idpGroup}</code> : '—'}
-                </td>
-                <td className="text-muted">{t.managedByIdp ? 'Yes' : 'No'}</td>
+      <ListPageShell
+        title="Admin · Teams"
+        action={<Button onClick={() => setCreateOpen(true)}>+ New team</Button>}
+        error={error}
+        loading={!teams && !error}
+        empty={
+          teams && teams.length === 0 ? (
+            <Text c="dimmed">
+              No teams yet. Click <strong>+ New team</strong> to create the first one.
+            </Text>
+          ) : null
+        }
+      >
+        {teams && teams.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Slug</th>
+                <th>Description</th>
+                <th>IdP group</th>
+                <th>Managed by IdP</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {teams.map((t) => (
+                <tr key={t.id} {...clickableRow(() => setEditingTeam(t))}>
+                  <td style={{ fontWeight: 500 }}>{t.displayName}</td>
+                  <td className="text-muted">
+                    <code>{t.slug}</code>
+                  </td>
+                  <td className="text-muted">{t.description ?? '—'}</td>
+                  <td className="text-muted">
+                    {t.idpGroup ? <code style={{ fontSize: 11 }}>{t.idpGroup}</code> : '—'}
+                  </td>
+                  <td className="text-muted">{t.managedByIdp ? 'Yes' : 'No'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ListPageShell>
 
       {createOpen && (
         <CreateTeamModal
@@ -132,14 +126,10 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
   const [description, setDescription] = useState('')
   const [idpGroup, setIdpGroup] = useState('')
   const [managedByIdp, setManagedByIdp] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
 
-  async function submit() {
-    if (!slugField.slug.trim() || !displayName.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
+  const submit = () =>
+    withBusy(async () => {
       await adminCreateTeam({
         slug: slugField.slug.trim(),
         displayName: displayName.trim(),
@@ -148,67 +138,51 @@ function CreateTeamModal({ onClose, onCreated }: { onClose: () => void; onCreate
         managedByIdp
       })
       onCreated()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Create')
 
   return (
-    <Modal opened onClose={onClose} title="New team" centered>
-      <Stack gap="md">
-        <TextInput
-          label="Display name"
-          placeholder="Platform"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.currentTarget.value)}
-        />
-        <TextInput
-          label="Slug"
-          placeholder="team-platform"
-          value={slugField.slug}
-          onChange={(e) => slugField.setSlug(e.currentTarget.value)}
-          description="Auto-filled from the name; edit to customise. Must start with team-."
-        />
-        <TextInput
-          label="Description"
-          placeholder="Optional"
-          value={description}
-          onChange={(e) => setDescription(e.currentTarget.value)}
-        />
-        <TextInput
-          label="IdP group"
-          placeholder="google:eng@example.com or github:acme/platform"
-          value={idpGroup}
-          onChange={(e) => setIdpGroup(e.currentTarget.value)}
-          description="Optional. Reserved for future SSO/group-sync — no automatic membership today."
-        />
-        <Checkbox
-          label="Managed by IdP"
-          description="Flag intent — sync logic not implemented yet."
-          checked={managedByIdp}
-          onChange={(e) => setManagedByIdp(e.currentTarget.checked)}
-        />
-        {error && (
-          <Alert color="red" variant="light" radius="sm">
-            {error}
-          </Alert>
-        )}
-        <Group justify="flex-end" gap="xs">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            onClick={submit}
-            loading={busy}
-            disabled={!slugField.slug.trim() || !displayName.trim()}
-          >
-            Create
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
+    <FormModalShell
+      title="New team"
+      error={error}
+      busy={busy}
+      submitLabel="Create"
+      submitDisabled={!slugField.slug.trim() || !displayName.trim()}
+      onSubmit={submit}
+      onClose={onClose}
+    >
+      <TextInput
+        label="Display name"
+        placeholder="Platform"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Slug"
+        placeholder="team-platform"
+        value={slugField.slug}
+        onChange={(e) => slugField.setSlug(e.currentTarget.value)}
+        description="Auto-filled from the name; edit to customise. Must start with team-."
+      />
+      <TextInput
+        label="Description"
+        placeholder="Optional"
+        value={description}
+        onChange={(e) => setDescription(e.currentTarget.value)}
+      />
+      <TextInput
+        label="IdP group"
+        placeholder="google:eng@example.com or github:acme/platform"
+        value={idpGroup}
+        onChange={(e) => setIdpGroup(e.currentTarget.value)}
+        description="Optional. Reserved for future SSO/group-sync — no automatic membership today."
+      />
+      <Checkbox
+        label="Managed by IdP"
+        description="Flag intent — sync logic not implemented yet."
+        checked={managedByIdp}
+        onChange={(e) => setManagedByIdp(e.currentTarget.checked)}
+      />
+    </FormModalShell>
   )
 }
 

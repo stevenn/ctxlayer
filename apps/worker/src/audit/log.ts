@@ -18,6 +18,7 @@
  */
 
 import type { Env } from '../env'
+import type { AuthedContext } from '../auth/middleware'
 import { insertAuditRow } from '../db/queries/audit'
 import { newId } from '../db/queries/util'
 import { errMessage } from '../util/errors'
@@ -27,6 +28,22 @@ export interface AuditEntry {
   action: string
   target?: string | null
   meta?: Record<string, unknown> | null
+}
+
+/**
+ * Route-handler sugar over `audit`: pulls env + the acting user off the
+ * Hono context, so admin-mutation call sites stop re-deriving
+ * `c.get('user').userId` fifty times over (2026-08 review, theme D).
+ * Convert existing sites as their files are touched; system paths with
+ * no request context (cron, queue consumers, MCP) keep calling `audit`.
+ */
+export function auditFromCtx(
+  c: AuthedContext,
+  action: string,
+  target?: string | null,
+  meta?: Record<string, unknown> | null
+): Promise<void> {
+  return audit(c.env, { actorId: c.get('user').userId, action, target, meta })
 }
 
 export async function audit(env: Env, entry: AuditEntry): Promise<void> {

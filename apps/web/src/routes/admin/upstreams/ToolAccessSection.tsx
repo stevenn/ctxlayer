@@ -17,6 +17,7 @@ import {
   putUpstreamToolAccess
 } from '../../../lib/api'
 import { toggleId } from '../../../lib/set-utils'
+import { useBusyAction } from '../../../lib/use-busy'
 import { useLoad } from '../../../lib/use-load'
 import { explain } from './helpers'
 import { Section, SubSection } from './helpers'
@@ -181,8 +182,7 @@ function ToolAccessRow({
   const [roleIds, setRoleIds] = useState<Set<string>>(idSet(rules, 'role'))
   const [teamIds, setTeamIds] = useState<Set<string>>(idSet(rules, 'team'))
   const [productIds, setProductIds] = useState<Set<string>>(idSet(rules, 'product'))
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
 
   const locked = rules.length > 0
   const summary = locked
@@ -198,10 +198,8 @@ function ToolAccessRow({
     teamIds.size === 0 &&
     productIds.size === 0
 
-  const save = async () => {
-    setBusy(true)
-    setError(null)
-    try {
+  const save = () =>
+    withBusy(async () => {
       const next: ToolAccessRule[] =
         mode === 'open'
           ? []
@@ -217,12 +215,7 @@ function ToolAccessRow({
       await putUpstreamToolAccess(upstreamId, toolName, next)
       setOpen(false)
       onSaved()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Save')
 
   return (
     <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)' }}>

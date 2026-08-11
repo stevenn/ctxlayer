@@ -57,9 +57,6 @@ export interface GitSourceRow {
   last_synced_at: number | null
   last_sync_status: GitSyncStatus | null
   last_sync_error: string | null
-  // JSON blob holding the static-OAuth client config (see 0022). NULL ⇒
-  // PAT-only. Shape mirrors upstream_servers.auth_config: { oauth: {...} }.
-  auth_config: string | null
   created_by: string | null
   created_at: number
   updated_at: number
@@ -67,7 +64,7 @@ export interface GitSourceRow {
 
 const SELECT_GIT_SOURCE = `SELECT id, slug, display_name, connection_id, provider, base_url, owner, project,
   repo, branch, path_prefix, read_strategy, write_strategy, folder_root, sync_interval, product_id,
-  enabled, last_synced_at, last_sync_status, last_sync_error, auth_config, created_by, created_at, updated_at
+  enabled, last_synced_at, last_sync_status, last_sync_error, created_by, created_at, updated_at
   FROM git_sources`
 
 export async function listGitSources(env: Env): Promise<GitSourceRow[]> {

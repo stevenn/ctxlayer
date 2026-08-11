@@ -46,13 +46,6 @@ export const SkillAttachmentRef = z.object({
 })
 export type SkillAttachmentRef = z.infer<typeof SkillAttachmentRef>
 
-export const SkillTags = z.object({
-  teams: z.array(z.string()),
-  products: z.array(z.string()),
-  tags: z.array(z.string())
-})
-export type SkillTags = z.infer<typeof SkillTags>
-
 // Summary row for /api/skills (and admin/skills table). Mirrors
 // DocSummary shape; no folder/lock fields (skills don't have those).
 export const SkillSummary = z.object({
@@ -77,7 +70,6 @@ export const SkillDetail = SkillSummary.extend({
   triggerText: z.string(),
   currentRevId: z.string().nullish(),
   attachments: z.array(SkillAttachmentRef),
-  tags: SkillTags,
   // M8: opaque JSON blob set by the drafting flow (CLI's draft-skill
   // command). Null for manually-authored skills. Shape validated via
   // DrafterMeta in draft-context-types.ts when the SPA reads it.
@@ -151,7 +143,11 @@ export { RevisionSummary as SkillRevisionSummary } from './docs-types'
 // M8: schema-reference linter finding. Server-side warning, never
 // blocks save. SPA renders as a yellow strip above the editor.
 export const SkillLintFinding = z.object({
-  kind: z.enum(['unknown_upstream', 'unknown_tool']),
+  // Keep in lockstep with skills/schema-linter.ts LintFinding — the
+  // response-side pin on PUT content is what catches drift here (the
+  // linter shipped 'mangled_reference' in 2026-06 and this schema
+  // silently lagged until 2026-08).
+  kind: z.enum(['unknown_upstream', 'unknown_tool', 'mangled_reference']),
   reference: z.string(),
   upstreamSlug: z.string().nullable(),
   toolName: z.string().nullable()

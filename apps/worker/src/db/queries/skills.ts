@@ -26,7 +26,6 @@ export interface SkillRow {
   status: 'draft' | 'published' | 'archived'
   visibility: 'private' | 'org'
   current_rev_id: string | null
-  r2_snapshot: string | null
   drafter_meta: string | null
   created_by: string | null
   created_at: number
@@ -48,7 +47,7 @@ export interface SkillWithUsersRow extends SkillRow {
 
 const SELECT_SKILL_WITH_USERS = `
   SELECT s.id, s.slug, s.title, s.description, s.trigger_text, s.status,
-         s.visibility, s.current_rev_id, s.r2_snapshot, s.drafter_meta, s.created_by,
+         s.visibility, s.current_rev_id, s.drafter_meta, s.created_by,
          s.created_at, s.updated_at, s.deleted_at,
          cu.email AS created_by_email,
          cu.name  AS created_by_name,
@@ -127,7 +126,7 @@ export async function listSkillsForAdmin(
   env: Env,
   opts: { status?: 'draft' | 'published' | 'archived' | 'all' } = {}
 ): Promise<SkillWithUsersRow[]> {
-  const status = opts.status ?? 'active'
+  const status = opts.status
   let where = `s.deleted_at IS NULL`
   if (status === 'draft') where += ` AND s.status = 'draft'`
   else if (status === 'published') where += ` AND s.status = 'published'`
@@ -135,6 +134,7 @@ export async function listSkillsForAdmin(
   else if (status === 'all') {
     /* no extra filter */
   } else {
+    // Default (status omitted): the active set — draft + published.
     where += ` AND s.status IN ('draft', 'published')`
   }
   const res = await env.DB.prepare(
@@ -219,7 +219,7 @@ export async function createSkill(env: Env, input: CreateSkillInput): Promise<Sk
         .run()
       const row = await env.DB.prepare(
         `SELECT id, slug, title, description, trigger_text, status, visibility,
-                current_rev_id, r2_snapshot, drafter_meta, created_by,
+                current_rev_id, drafter_meta, created_by,
                 created_at, updated_at, deleted_at
          FROM skills WHERE id = ?1`
       )

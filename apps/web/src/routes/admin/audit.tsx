@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -17,6 +17,7 @@ import { clickableRow } from '../../lib/a11y'
 import { fetchAdminAudit } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
+import { usePagedLoad } from '../../lib/use-paged-load'
 
 /**
  * Admin · Audit log viewer (M5 phase 3).
@@ -29,94 +30,40 @@ import { absDateTime, relativeTime } from '../../lib/time'
 
 const PAGE_SIZE = 50
 
-type Status =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | {
-      kind: 'ready'
-      entries: AuditLogEntry[]
-      nextBefore: number | null
-      loadingMore: boolean
-    }
-
 export function AdminAudit() {
-  const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [actionFilter, setActionFilter] = useState('')
   const [actorFilter, setActorFilter] = useState('')
   const [selected, setSelected] = useState<AuditLogEntry | null>(null)
 
-  // Debounced + abort-on-supersede load. A ref carries the latest
-  // controller so a fresh filter cancels the in-flight request.
-  const ctrlRef = useRef<AbortController | null>(null)
+  // Debounced copies of the filters (300ms) — they drive the hook's deps,
+  // so each keystroke doesn't fire a round-trip. Settling on unchanged
+  // values is a no-op (Object.is bail-out), so no spurious refetch.
+  const [debouncedAction, setDebouncedAction] = useState('')
+  const [debouncedActor, setDebouncedActor] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedAction(actionFilter.trim())
+      setDebouncedActor(actorFilter.trim())
+    }, 300)
+    return () => clearTimeout(t)
+  }, [actionFilter, actorFilter])
 
-  const load = useCallback(async (filters: { action: string; actorId: string }) => {
-    ctrlRef.current?.abort()
-    const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-    setStatus({ kind: 'loading' })
-    try {
+  const { status, loadMore } = usePagedLoad<AuditLogEntry, number>(
+    async ({ cursor, limit }, signal) => {
       const page = await fetchAdminAudit(
         {
-          action: filters.action || undefined,
-          actorId: filters.actorId || undefined,
-          limit: PAGE_SIZE
+          action: debouncedAction || undefined,
+          actorId: debouncedActor || undefined,
+          limit,
+          before: cursor ?? undefined
         },
-        ctrl.signal
+        signal
       )
-      if (ctrl.signal.aborted) return
-      setStatus({
-        kind: 'ready',
-        entries: page.entries,
-        nextBefore: page.nextBefore,
-        loadingMore: false
-      })
-    } catch (err) {
-      if (ctrl.signal.aborted) return
-      setStatus({ kind: 'error', message: explain(err) })
-    }
-  }, [])
-
-  // Initial load.
-  useEffect(() => {
-    load({ action: '', actorId: '' })
-    return () => ctrlRef.current?.abort()
-  }, [load])
-
-  // Debounced filter changes (300ms).
-  useEffect(() => {
-    const t = setTimeout(
-      () => load({ action: actionFilter.trim(), actorId: actorFilter.trim() }),
-      300
-    )
-    return () => clearTimeout(t)
-  }, [actionFilter, actorFilter, load])
-
-  async function loadMore() {
-    if (status.kind !== 'ready' || status.nextBefore === null || status.loadingMore) return
-    setStatus({ ...status, loadingMore: true })
-    try {
-      const page = await fetchAdminAudit({
-        action: actionFilter.trim() || undefined,
-        actorId: actorFilter.trim() || undefined,
-        limit: PAGE_SIZE,
-        before: status.nextBefore
-      })
-      // Recompute against the latest status snapshot — filters may have
-      // changed while the page was in flight, in which case we drop the
-      // result rather than splicing pages from different filter sets.
-      setStatus((cur) => {
-        if (cur.kind !== 'ready') return cur
-        return {
-          kind: 'ready',
-          entries: [...cur.entries, ...page.entries],
-          nextBefore: page.nextBefore,
-          loadingMore: false
-        }
-      })
-    } catch (err) {
-      setStatus({ kind: 'error', message: explain(err) })
-    }
-  }
+      return { items: page.entries, next: page.nextBefore }
+    },
+    [debouncedAction, debouncedActor],
+    { pageSize: PAGE_SIZE, explain }
+  )
 
   return (
     <>
@@ -152,14 +99,14 @@ export function AdminAudit() {
 
       {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
-      {status.kind === 'ready' && status.entries.length === 0 && (
+      {status.kind === 'ready' && status.items.length === 0 && (
         <Text c="dimmed">
           No audit entries match the current filters.
           {(actionFilter || actorFilter) && ' Clear the filters above to see everything.'}
         </Text>
       )}
 
-      {status.kind === 'ready' && status.entries.length > 0 && (
+      {status.kind === 'ready' && status.items.length > 0 && (
         <>
           <table className="data-table">
             <thead>
@@ -172,7 +119,7 @@ export function AdminAudit() {
               </tr>
             </thead>
             <tbody>
-              {status.entries.map((e) => (
+              {status.items.map((e) => (
                 <tr key={e.id} {...clickableRow(() => setSelected(e))}>
                   <td className="text-muted" title={absDateTime(e.ts)}>
                     {relativeTime(e.ts)}
@@ -193,14 +140,14 @@ export function AdminAudit() {
           </table>
 
           <Group justify="center" mt="md">
-            {status.nextBefore !== null ? (
+            {status.next !== null ? (
               <Button variant="default" size="xs" onClick={loadMore} loading={status.loadingMore}>
                 Load more
               </Button>
             ) : (
               <Text fz="xs" c="dimmed">
-                End of log ({status.entries.length} entr
-                {status.entries.length === 1 ? 'y' : 'ies'}).
+                End of log ({status.items.length} entr
+                {status.items.length === 1 ? 'y' : 'ies'}).
               </Text>
             )}
           </Group>

@@ -1,6 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Alert, Group, Select, Stack, Text, TextInput, Title } from '@mantine/core'
-import { USAGE_RANGE_LABEL, type AdminUsageResponse, type UsageRange } from '@ctxlayer/shared'
+import {
+  USAGE_RANGE_LABEL,
+  type AdminUsageResponse,
+  type UsageRange,
+  type UsageTopUser
+} from '@ctxlayer/shared'
 import { fetchAdminUsage, searchUsers } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { DailyBars, chartDaysForRange } from '../../components/usage/charts'
@@ -266,18 +271,7 @@ function AdminUsageBody({
   )
 }
 
-function UserTable({
-  rows
-}: {
-  rows: Array<{
-    userId: string
-    email: string | null
-    calls: number
-    reqTokens: number
-    respTokens: number
-    errors: number
-  }>
-}) {
+function UserTable({ rows }: { rows: UsageTopUser[] }) {
   if (rows.length === 0) {
     return (
       <Text c="dimmed" fz="sm">

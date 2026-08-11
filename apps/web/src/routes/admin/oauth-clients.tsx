@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import {
   Alert,
   Badge,
@@ -19,6 +19,7 @@ import { clickableRow } from '../../lib/a11y'
 import { fetchAdminOAuthClients, pruneAdminOAuthClients } from '../../lib/api'
 import { explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
+import { usePagedLoad } from '../../lib/use-paged-load'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
@@ -42,87 +43,27 @@ import { useDialogs } from '../../lib/dialogs'
  * unused), so they stay visible and are never auto-pruned.
  */
 
-type Status =
-  | { kind: 'loading' }
-  | { kind: 'error'; message: string }
-  | {
-      kind: 'ready'
-      clients: OAuthClientRow[]
-      nextCursor: string | null
-      loadingMore: boolean
-    }
-
 const PAGE_SIZE = 100
 
 export function AdminOAuthClients() {
-  const [status, setStatus] = useState<Status>({ kind: 'loading' })
   const [query, setQuery] = useState('')
   const [hideOrphans, setHideOrphans] = useState(true)
   const [pruning, setPruning] = useState(false)
   const [selected, setSelected] = useState<OAuthClientRow | null>(null)
-  const ctrlRef = useRef<AbortController | null>(null)
   const dialogs = useDialogs()
 
-  const load = useCallback(async () => {
-    ctrlRef.current?.abort()
-    const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-    setStatus({ kind: 'loading' })
-    try {
-      const page = await fetchAdminOAuthClients({ limit: PAGE_SIZE }, ctrl.signal)
-      if (ctrl.signal.aborted) return
-      setStatus({
-        kind: 'ready',
-        clients: page.clients,
-        nextCursor: page.nextCursor,
-        loadingMore: false
-      })
-    } catch (err) {
-      if (ctrl.signal.aborted) return
-      setStatus({ kind: 'error', message: explain(err) })
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-    return () => ctrlRef.current?.abort()
-  }, [load])
-
-  async function loadMore() {
-    if (status.kind !== 'ready' || !status.nextCursor || status.loadingMore) return
-    // Same ctrlRef discipline as load(): registering this controller means
-    // a concurrent reload (e.g. after a prune) aborts the in-flight page,
-    // so a slow response can never append a stale page onto a fresh list.
-    const ctrl = new AbortController()
-    ctrlRef.current = ctrl
-    setStatus({ ...status, loadingMore: true })
-    try {
-      const page = await fetchAdminOAuthClients(
-        {
-          cursor: status.nextCursor,
-          limit: PAGE_SIZE
-        },
-        ctrl.signal
-      )
-      if (ctrl.signal.aborted) return
-      setStatus((cur) => {
-        if (cur.kind !== 'ready') return cur
-        return {
-          kind: 'ready',
-          clients: [...cur.clients, ...page.clients],
-          nextCursor: page.nextCursor,
-          loadingMore: false
-        }
-      })
-    } catch (err) {
-      if (ctrl.signal.aborted) return
-      setStatus({ kind: 'error', message: explain(err) })
-    }
-  }
+  const { status, loadMore, reload } = usePagedLoad<OAuthClientRow, string>(
+    async ({ cursor, limit }, signal) => {
+      const page = await fetchAdminOAuthClients({ cursor: cursor ?? undefined, limit }, signal)
+      return { items: page.clients, next: page.nextCursor }
+    },
+    [],
+    { pageSize: PAGE_SIZE, explain }
+  )
 
   const orphanCount = useMemo(() => {
     if (status.kind !== 'ready') return 0
-    return status.clients.filter(isOrphanClient).length
+    return status.items.filter(isOrphanClient).length
   }, [status])
 
   async function runPrune() {
@@ -155,7 +96,7 @@ export function AdminOAuthClients() {
             r.orphans === 1 ? '' : 's'
           } (scanned ${r.scanned}${r.failed ? `, ${r.failed} delete failures` : ''}).`
         })
-        await load()
+        await reload()
       }
     } catch (err) {
       await dialogs.alert({ title: 'Prune failed', message: explain(err) })
@@ -167,7 +108,7 @@ export function AdminOAuthClients() {
   const filtered = useMemo(() => {
     if (status.kind !== 'ready') return null
     const q = query.trim().toLowerCase()
-    return status.clients.filter((c) => {
+    return status.items.filter((c) => {
       if (hideOrphans && isOrphanClient(c)) return false
       if (!q) return true
       if (c.clientId.toLowerCase().includes(q)) return true
@@ -232,25 +173,22 @@ export function AdminOAuthClients() {
 
       {status.kind === 'loading' && <Text c="dimmed">Loading…</Text>}
 
-      {status.kind === 'ready' && status.clients.length === 0 && (
+      {status.kind === 'ready' && status.items.length === 0 && (
         <Text c="dimmed">
           No clients have registered yet. Connect Claude or another MCP host via{' '}
           <code>/app/mcp-setup</code> and one will appear here.
         </Text>
       )}
 
-      {filtered &&
-        filtered.length === 0 &&
-        status.kind === 'ready' &&
-        status.clients.length > 0 && (
-          <Text c="dimmed">
-            {query.trim()
-              ? `No clients match "${query}".`
-              : `All ${status.clients.length} loaded client${
-                  status.clients.length === 1 ? ' is an orphan' : 's are orphans'
-                } (hidden). Toggle "Hide orphans" to show them.`}
-          </Text>
-        )}
+      {filtered && filtered.length === 0 && status.kind === 'ready' && status.items.length > 0 && (
+        <Text c="dimmed">
+          {query.trim()
+            ? `No clients match "${query}".`
+            : `All ${status.items.length} loaded client${
+                status.items.length === 1 ? ' is an orphan' : 's are orphans'
+              } (hidden). Toggle "Hide orphans" to show them.`}
+        </Text>
+      )}
 
       {filtered && filtered.length > 0 && (
         <>
@@ -293,14 +231,14 @@ export function AdminOAuthClients() {
 
           {status.kind === 'ready' && (
             <Group justify="center" mt="md">
-              {status.nextCursor ? (
+              {status.next ? (
                 <Button variant="default" size="xs" onClick={loadMore} loading={status.loadingMore}>
                   Load more
                 </Button>
               ) : (
                 <Text fz="xs" c="dimmed">
-                  End of list ({status.clients.length} client
-                  {status.clients.length === 1 ? '' : 's'}).
+                  End of list ({status.items.length} client
+                  {status.items.length === 1 ? '' : 's'}).
                 </Text>
               )}
             </Group>

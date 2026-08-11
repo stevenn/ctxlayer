@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
+import { Badge, Button, Text } from '@mantine/core'
 import type { AdminGitSourceRow } from '@ctxlayer/shared'
+import { ListPageShell } from '../../../components/list-page-shell'
 import { clickableRow } from '../../../lib/a11y'
 import { fetchAdminGitSources, fetchProducts } from '../../../lib/api'
 import { useLoad } from '../../../lib/use-load'
@@ -20,68 +21,63 @@ export function AdminGitSources() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
-          Admin · Git repos
-        </Title>
-        <Button onClick={() => setCreateOpen(true)}>+ New git source</Button>
-      </Group>
-
-      {error && (
-        <Alert color="red" variant="light" radius="sm" mb="md">
-          {error}
-        </Alert>
-      )}
-      {!items && !error && <Text c="dimmed">Loading…</Text>}
-      {items && items.length === 0 && (
-        <Text c="dimmed">
-          No git sources yet. Click <strong>+ New git source</strong> to mirror a repo's markdown
-          into the doc library.
-        </Text>
-      )}
-
-      {items && items.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Display name</th>
-              <th>Slug</th>
-              <th>Provider</th>
-              <th>Repo</th>
-              <th>Branch</th>
-              <th>Product</th>
-              <th>Docs</th>
-              <th>Last sync</th>
-              <th>Enabled</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((g) => (
-              <tr key={g.id} {...clickableRow(() => setEditingId(g.id))}>
-                <td style={{ fontWeight: 500 }}>{g.displayName}</td>
-                <td className="text-muted">
-                  <code>{g.slug}</code>
-                </td>
-                <td className="text-muted">{g.provider}</td>
-                <td className="text-muted">
-                  <code style={{ fontSize: 12 }}>{repoLabel(g)}</code>
-                </td>
-                <td className="text-muted">{g.branch}</td>
-                <td className="text-muted">{productName(g.productId)}</td>
-                <td className="text-muted">{g.docCount}</td>
-                <td>
-                  <SyncBadge row={g} />
-                </td>
-                <td>
-                  <Badge color={g.enabled ? 'green' : 'gray'} variant="light">
-                    {g.enabled ? 'enabled' : 'disabled'}
-                  </Badge>
-                </td>
+      <ListPageShell
+        title="Admin · Git repos"
+        action={<Button onClick={() => setCreateOpen(true)}>+ New git source</Button>}
+        error={error}
+        loading={!items && !error}
+        empty={
+          items && items.length === 0 ? (
+            <Text c="dimmed">
+              No git sources yet. Click <strong>+ New git source</strong> to mirror a repo's
+              markdown into the doc library.
+            </Text>
+          ) : null
+        }
+      >
+        {items && items.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Slug</th>
+                <th>Provider</th>
+                <th>Repo</th>
+                <th>Branch</th>
+                <th>Product</th>
+                <th>Docs</th>
+                <th>Last sync</th>
+                <th>Enabled</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {items.map((g) => (
+                <tr key={g.id} {...clickableRow(() => setEditingId(g.id))}>
+                  <td style={{ fontWeight: 500 }}>{g.displayName}</td>
+                  <td className="text-muted">
+                    <code>{g.slug}</code>
+                  </td>
+                  <td className="text-muted">{g.provider}</td>
+                  <td className="text-muted">
+                    <code style={{ fontSize: 12 }}>{repoLabel(g)}</code>
+                  </td>
+                  <td className="text-muted">{g.branch}</td>
+                  <td className="text-muted">{productName(g.productId)}</td>
+                  <td className="text-muted">{g.docCount}</td>
+                  <td>
+                    <SyncBadge row={g} />
+                  </td>
+                  <td>
+                    <Badge color={g.enabled ? 'green' : 'gray'} variant="light">
+                      {g.enabled ? 'enabled' : 'disabled'}
+                    </Badge>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ListPageShell>
 
       {createOpen && (
         <CreateGitSourceModal

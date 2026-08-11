@@ -15,7 +15,6 @@ export interface DocumentRow {
   id: string
   title: string
   slug: string
-  kind: 'doc' | 'prompt'
   // Folder path (`/specs/api/v2`) or null for root. Format validated
   // at the request layer (packages/shared/src/docs-types.ts).
   folder: string | null
@@ -24,7 +23,6 @@ export interface DocumentRow {
   description: string | null
   resource: string | null
   current_rev_id: string | null
-  r2_snapshot: string | null
   created_by: string | null
   created_at: number
   updated_at: number
@@ -58,9 +56,9 @@ export interface DocumentWithUsersRow extends DocumentRow {
 }
 
 const SELECT_DOC_WITH_USERS = `
-  SELECT d.id, d.title, d.slug, d.kind, d.folder,
+  SELECT d.id, d.title, d.slug, d.folder,
          d.doc_type, d.description, d.resource, d.current_rev_id,
-         d.r2_snapshot, d.created_by, d.created_at, d.updated_at,
+         d.created_by, d.created_at, d.updated_at,
          d.deleted_at, d.chunk_count,
          d.locked_at, d.locked_by, d.git_source_id,
          gs.slug         AS git_source_slug,
@@ -120,7 +118,6 @@ export interface DocOkfExportRow {
   id: string
   title: string
   slug: string
-  kind: 'doc' | 'prompt'
   folder: string | null
   doc_type: string | null
   description: string | null
@@ -140,7 +137,7 @@ export async function getDocForOkfExport(env: Env, id: string): Promise<DocOkfEx
   return row ?? null
 }
 
-const OKF_EXPORT_COLS = `id, title, slug, kind, folder, doc_type, description, resource,
+const OKF_EXPORT_COLS = `id, title, slug, folder, doc_type, description, resource,
   okf_frontmatter, updated_at, git_source_id, git_sync_state`
 
 // A folder root of '' or '/' means the whole library; otherwise the bundle is
@@ -317,7 +314,6 @@ export async function listDocsForReindex(env: Env): Promise<
 export interface CreateDocInput {
   title: string
   slug?: string
-  kind?: 'doc' | 'prompt'
   folder?: string | null
   // Nullable: git-synced docs created by a source whose creator was
   // later deleted (ON DELETE SET NULL) carry no author. The column is
@@ -333,7 +329,6 @@ export interface CreateDocInput {
 export async function createDoc(env: Env, input: CreateDocInput): Promise<DocumentRow> {
   const id = newId()
   const now = Math.floor(Date.now() / 1000)
-  const kind = input.kind ?? 'doc'
   const folder = input.folder ?? null
   const baseSlug = input.slug ?? suggestSlug('doc', input.title)
 
@@ -341,10 +336,10 @@ export async function createDoc(env: Env, input: CreateDocInput): Promise<Docume
     const slug = attempt === 0 ? baseSlug : `${baseSlug}-${randomSuffix()}`
     try {
       await env.DB.prepare(
-        `INSERT INTO documents (id, title, slug, kind, folder, created_by, created_at, updated_at)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)`
+        `INSERT INTO documents (id, title, slug, folder, created_by, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)`
       )
-        .bind(id, input.title, slug, kind, folder, input.createdBy, now)
+        .bind(id, input.title, slug, folder, input.createdBy, now)
         .run()
       const row = await getDocById(env, id)
       if (!row) throw new Error('doc_insert_lost')
@@ -360,7 +355,6 @@ export async function createDoc(env: Env, input: CreateDocInput): Promise<Docume
 export interface PatchDocInput {
   title?: string
   // slug intentionally omitted: doc slugs are immutable after creation.
-  kind?: 'doc' | 'prompt'
   // `null` moves the doc to root; `undefined` leaves folder unchanged.
   folder?: string | null
   // OKF frontmatter fields. `null` clears, `undefined` leaves unchanged.
@@ -378,7 +372,6 @@ export async function patchDoc(env: Env, id: string, patch: PatchDocInput): Prom
     'documents',
     {
       title: patch.title,
-      kind: patch.kind,
       folder: patch.folder,
       doc_type: patch.docType,
       description: patch.description,

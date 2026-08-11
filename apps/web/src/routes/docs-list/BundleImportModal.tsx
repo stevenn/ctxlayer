@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Alert, Button, FileButton, Group, Modal, Stack, Text, TextInput } from '@mantine/core'
 import { type BundleFormat, type ImportBundleResult, importBundle } from '../../lib/api'
+import { useBusyAction } from '../../lib/use-busy'
 import { explain } from './helpers'
 
 function detectFormat(name: string): BundleFormat | null {
@@ -22,24 +23,17 @@ export function BundleImportModal({
 }) {
   const [file, setFile] = useState<File | null>(null)
   const [target, setTarget] = useState('')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [result, setResult] = useState<ImportBundleResult | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
   const format = file ? detectFormat(file.name) : null
 
   async function submit() {
     if (!file || !format) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       const res = await importBundle(file, { target: target.trim() || undefined, format })
       setResult(res)
       onImported()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Import')
   }
 
   return (
@@ -74,7 +68,10 @@ export function BundleImportModal({
               folder; inter-doc links are re-pointed to the new docs.
             </Text>
             <Group gap="sm" align="flex-end">
-              <FileButton onChange={setFile} accept=".tar.gz,.tgz,.zip,application/gzip,application/zip">
+              <FileButton
+                onChange={setFile}
+                accept=".tar.gz,.tgz,.zip,application/gzip,application/zip"
+              >
                 {(props) => (
                   <Button variant="default" {...props}>
                     {file ? 'Change file' : 'Choose archive…'}

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Alert, Button, Group, Select, Stack, Text } from '@mantine/core'
 import type { SkillAttachmentRef } from '@ctxlayer/shared'
 import { attachSkill, detachSkill, fetchAdminUpstreamTools, fetchUpstreams } from '../../lib/api'
+import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
 import type { ConfirmOpts } from '../../lib/dialogs'
 import { explain } from './helpers'
@@ -27,9 +28,9 @@ export function AttachManager({
 }) {
   const [selectedUpstreamId, setSelectedUpstreamId] = useState<string | null>(null)
   const [selectedTool, setSelectedTool] = useState<string>('') // '' = whole upstream
-  const [busy, setBusy] = useState(false)
   // One error channel shared by the loads and the attach/detach actions.
   const [error, setError] = useState<string | null>(null)
+  const { busy, run: withBusy } = useBusyAction({ explain, setError })
 
   const { data: upstreams } = useLoad((signal) => fetchUpstreams(signal), [], {
     explain,
@@ -79,24 +80,15 @@ export function AttachManager({
     return out
   }, [attachments, upstreams, declaredUpstreams])
 
-  async function attachWholeUpstream(upstreamId: string) {
-    setBusy(true)
-    setError(null)
-    try {
+  const attachWholeUpstream = (upstreamId: string) =>
+    withBusy(async () => {
       await attachSkill({ skillId, upstreamId, toolName: undefined })
       await onChanged()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Attach')
 
   async function add() {
     if (!selectedUpstreamId) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await attachSkill({
         skillId,
         upstreamId: selectedUpstreamId,
@@ -105,13 +97,11 @@ export function AttachManager({
       setSelectedUpstreamId(null)
       setSelectedTool('')
       await onChanged()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Attach')
   }
 
+  // The confirm dialog stays outside `withBusy` so the buttons don't show
+  // busy while the dialog is open.
   async function remove(att: SkillAttachmentRef) {
     const ok = await confirm({
       title: 'Remove attachment?',
@@ -120,20 +110,14 @@ export function AttachManager({
       danger: true
     })
     if (!ok) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await detachSkill({
         skillId,
         upstreamId: att.upstreamId,
         toolName: att.toolName || undefined
       })
       await onChanged()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Detach')
   }
 
   return (

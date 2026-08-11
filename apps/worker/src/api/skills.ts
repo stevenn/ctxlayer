@@ -7,11 +7,14 @@
  */
 
 import { Hono, type Context } from 'hono'
+import { z } from 'zod'
 import {
   CreateSkillRequest,
   RestoreRequest,
+  SkillStatus,
   UpdateSkillRequest,
   type SkillAttachmentRef,
+  type SkillContentSaveResult,
   type SkillDetail,
   type SkillRevisionSummary,
   type SkillSummary
@@ -35,7 +38,6 @@ import {
   type SkillWithUsersRow
 } from '../db/queries/skills'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
-import { listTagsForSkill } from '../db/queries/skill-tags'
 import {
   contentDigest,
   deleteRevisionObjects,
@@ -59,7 +61,11 @@ skillsRoute.use('*', requireCsrf)
 
 skillsRoute.get('/', async (c) => {
   const { userId, role } = c.get('user')
-  const status = c.req.query('status') as 'draft' | 'published' | 'archived' | 'all' | undefined
+  // Parsed, not cast: an unknown value degrades to the default filter
+  // instead of lying to the type system (same pattern as usage parseRange).
+  const rawStatus = c.req.query('status')
+  const parsedStatus = SkillStatus.or(z.literal('all')).safeParse(rawStatus)
+  const status = parsedStatus.success ? parsedStatus.data : undefined
   // Admin sees everything (status-filterable); a non-admin sees the
   // org-shared library PLUS all of their own skills (private drafts
   // included), so authoring and testing happen in the same list.
@@ -135,18 +141,19 @@ skillsRoute.get('/:id', async (c) => {
   const { userId, role } = c.get('user')
   const row = await getSkillById(c.env, id)
   if (!row || !canReadSkill(row, userId, role)) return notFound(c)
-  const [attachments, tags] = await Promise.all([
-    listAttachmentsForSkill(c.env, id),
-    listTagsForSkill(c.env, id)
-  ])
-  const body: SkillDetail = {
+  const attachments = await listAttachmentsForSkill(c.env, id)
+  // `tags` left the shared schema in 2026-08: skill_tags never had a
+  // writer (always-empty arrays, one dead D1 round trip per detail).
+  // Emitted as a constant so pre-deploy SPA bundles keep parsing; drop
+  // the field on the next pass through this file.
+  const body = {
     ...toSummary(row),
     triggerText: row.trigger_text,
     currentRevId: row.current_rev_id,
     attachments: attachments.map(toAttachmentRef),
-    tags,
+    tags: { teams: [], products: [], tags: [] },
     drafterMeta: parseDrafterMeta(row.drafter_meta)
-  }
+  } satisfies SkillDetail & { tags: unknown }
   return c.json(body)
 })
 
@@ -242,12 +249,13 @@ skillsRoute.put('/:id/content', async (c) => {
       console.error('skill linter failed (non-fatal):', err)
     }
   }
-  return c.json({
+  const body: SkillContentSaveResult = {
     revisionId: outcome.revisionId,
     byteSize: outcome.byteSize,
     contentHash: outcome.contentHash,
     lintFindings
-  })
+  }
+  return c.json(body)
 })
 
 skillsRoute.get('/:id/revisions', async (c) => {

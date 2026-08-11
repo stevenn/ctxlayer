@@ -38,7 +38,6 @@ const doc: DocDetail = {
   id: 'd_1',
   title: 'Spec',
   slug: 'spec',
-  kind: 'doc',
   folder: '/specs/api',
   gitSourceId: null,
   gitSourceSlug: null,

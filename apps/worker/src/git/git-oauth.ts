@@ -7,8 +7,9 @@
  *
  * Storage:
  *   - Client config (clientId / authorize+token URLs / scopes / sealed secret)
- *     lives in `git_sources.auth_config.oauth` (admin-configured, migration
- *     0022). DCR is not used — see 0022 / J-git.md.
+ *     lives on the CONNECTION — `git_connections.auth_config.oauth`
+ *     (admin-configured; introduced by 0022 on git_sources, moved by
+ *     0030). DCR is not used — see 0022 / J-git.md.
  *   - PKCE verifier + flow context lives in `OAUTH_KV` under
  *     `git:verifier:<state>` (10-min TTL).
  *   - Tokens (access + refresh + expires_at) are sealed via crypto/aead and
@@ -46,7 +47,7 @@ interface StoredGitVerifier {
   createdAt: number
 }
 
-/** Parse a git source's auth_config JSON (NULL / malformed ⇒ empty). */
+/** Parse a git CONNECTION's auth_config JSON (NULL / malformed ⇒ empty). */
 export function parseGitAuthConfig(json: string | null): UpstreamAuthConfig {
   if (!json) return {}
   try {

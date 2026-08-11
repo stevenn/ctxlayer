@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Alert, Button, Group, Modal, Stack, Text, TextInput, Title } from '@mantine/core'
+import { Button, Text, TextInput } from '@mantine/core'
+import { FormModalShell } from '../../components/form-modal-shell'
+import { ListPageShell } from '../../components/list-page-shell'
 import { type ProductRef, suggestSlug } from '@ctxlayer/shared'
 import {
   adminCreateProduct,
@@ -9,6 +11,7 @@ import {
 } from '../../lib/api'
 import { clickableRow } from '../../lib/a11y'
 import { explain as explainBase } from '../../lib/explain'
+import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
@@ -19,46 +22,42 @@ export function AdminProducts() {
 
   return (
     <>
-      <Group justify="space-between" align="center" mb="md">
-        <Title order={2} fz={20} fw={600}>
-          Admin · Products
-        </Title>
-        <Button onClick={() => setCreateOpen(true)}>+ New product</Button>
-      </Group>
-
-      {error && (
-        <Alert color="red" variant="light" radius="sm" mb="md">
-          {error}
-        </Alert>
-      )}
-      {!products && !error && <Text c="dimmed">Loading…</Text>}
-      {products && products.length === 0 && (
-        <Text c="dimmed">
-          No products yet. Click <strong>+ New product</strong> to create the first one.
-        </Text>
-      )}
-      {products && products.length > 0 && (
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Display name</th>
-              <th>Slug</th>
-              <th>Description</th>
-            </tr>
-          </thead>
-          <tbody>
-            {products.map((p) => (
-              <tr key={p.id} {...clickableRow(() => setEditing(p))}>
-                <td style={{ fontWeight: 500 }}>{p.displayName}</td>
-                <td className="text-muted">
-                  <code>{p.slug}</code>
-                </td>
-                <td className="text-muted">{p.description ?? '—'}</td>
+      <ListPageShell
+        title="Admin · Products"
+        action={<Button onClick={() => setCreateOpen(true)}>+ New product</Button>}
+        error={error}
+        loading={!products && !error}
+        empty={
+          products && products.length === 0 ? (
+            <Text c="dimmed">
+              No products yet. Click <strong>+ New product</strong> to create the first one.
+            </Text>
+          ) : null
+        }
+      >
+        {products && products.length > 0 && (
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Display name</th>
+                <th>Slug</th>
+                <th>Description</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+            </thead>
+            <tbody>
+              {products.map((p) => (
+                <tr key={p.id} {...clickableRow(() => setEditing(p))}>
+                  <td style={{ fontWeight: 500 }}>{p.displayName}</td>
+                  <td className="text-muted">
+                    <code>{p.slug}</code>
+                  </td>
+                  <td className="text-muted">{p.description ?? '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </ListPageShell>
 
       {createOpen && (
         <ProductFormModal
@@ -111,8 +110,7 @@ function ProductFormModal({
   const [slugTouched, setSlugTouched] = useState(isEdit)
   const [displayName, setDisplayName] = useState(initial?.displayName ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
 
   // Create-mode live suggestion: `prod-<slugified-name>` until touched.
   useEffect(() => {
@@ -121,36 +119,33 @@ function ProductFormModal({
     }
   }, [isEdit, slugTouched, displayName])
 
-  async function submit() {
-    if (!slug.trim() || !displayName.trim()) return
-    setBusy(true)
-    setError(null)
-    try {
-      if (isEdit && initial) {
-        const trimmedSlug = slug.trim()
-        await adminPatchProduct(initial.id, {
-          // Send slug only when it changed, so a grandfathered (pre-prefix)
-          // product can be edited without being forced to re-slug; the
-          // `prod-` prefix is enforced only on a real rename.
-          ...(trimmedSlug !== initial.slug ? { slug: trimmedSlug } : {}),
-          displayName: displayName.trim(),
-          description: description.trim() || null
-        })
-      } else {
-        await adminCreateProduct({
-          slug: slug.trim(),
-          displayName: displayName.trim(),
-          description: description.trim() || null
-        })
-      }
-      onSaved()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+  const submit = () =>
+    withBusy(
+      async () => {
+        if (isEdit && initial) {
+          const trimmedSlug = slug.trim()
+          await adminPatchProduct(initial.id, {
+            // Send slug only when it changed, so a grandfathered (pre-prefix)
+            // product can be edited without being forced to re-slug; the
+            // `prod-` prefix is enforced only on a real rename.
+            ...(trimmedSlug !== initial.slug ? { slug: trimmedSlug } : {}),
+            displayName: displayName.trim(),
+            description: description.trim() || null
+          })
+        } else {
+          await adminCreateProduct({
+            slug: slug.trim(),
+            displayName: displayName.trim(),
+            description: description.trim() || null
+          })
+        }
+        onSaved()
+      },
+      isEdit ? 'Save' : 'Create'
+    )
 
+  // The confirm dialog stays outside `withBusy` so the Delete button
+  // doesn't show busy while the dialog is open.
   async function onDelete() {
     if (!initial) return
     const ok = await dialogs.confirm({
@@ -160,64 +155,49 @@ function ProductFormModal({
       danger: true
     })
     if (!ok) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await adminDeleteProduct(initial.id)
       onDeleted?.()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Delete')
   }
 
   return (
-    <Modal opened onClose={onClose} title={isEdit ? 'Edit product' : 'New product'} centered>
-      <Stack gap="md">
-        <TextInput
-          label="Display name"
-          value={displayName}
-          onChange={(e) => setDisplayName(e.currentTarget.value)}
-        />
-        <TextInput
-          label="Slug"
-          value={slug}
-          onChange={(e) => {
-            setSlugTouched(true)
-            setSlug(e.currentTarget.value)
-          }}
-          description="Auto-filled from the name; edit to customise. Must start with prod-."
-        />
-        <TextInput
-          label="Description"
-          value={description ?? ''}
-          onChange={(e) => setDescription(e.currentTarget.value)}
-        />
-        {error && (
-          <Alert color="red" variant="light" radius="sm">
-            {error}
-          </Alert>
-        )}
-        <Group justify="space-between" gap="xs">
-          <div>
-            {isEdit && onDeleted && (
-              <Button variant="default" color="red" onClick={onDelete} disabled={busy}>
-                Delete
-              </Button>
-            )}
-          </div>
-          <Group gap="xs">
-            <Button variant="default" onClick={onClose}>
-              Cancel
-            </Button>
-            <Button onClick={submit} loading={busy} disabled={!slug.trim() || !displayName.trim()}>
-              {isEdit ? 'Save' : 'Create'}
-            </Button>
-          </Group>
-        </Group>
-      </Stack>
-    </Modal>
+    <FormModalShell
+      title={isEdit ? 'Edit product' : 'New product'}
+      error={error}
+      busy={busy}
+      submitLabel={isEdit ? 'Save' : 'Create'}
+      submitDisabled={!slug.trim() || !displayName.trim()}
+      onSubmit={submit}
+      onClose={onClose}
+      footerLeft={
+        isEdit && onDeleted ? (
+          <Button variant="default" color="red" onClick={onDelete} disabled={busy}>
+            Delete
+          </Button>
+        ) : undefined
+      }
+    >
+      <TextInput
+        label="Display name"
+        value={displayName}
+        onChange={(e) => setDisplayName(e.currentTarget.value)}
+      />
+      <TextInput
+        label="Slug"
+        value={slug}
+        onChange={(e) => {
+          setSlugTouched(true)
+          setSlug(e.currentTarget.value)
+        }}
+        description="Auto-filled from the name; edit to customise. Must start with prod-."
+      />
+      <TextInput
+        label="Description"
+        value={description ?? ''}
+        onChange={(e) => setDescription(e.currentTarget.value)}
+      />
+    </FormModalShell>
   )
 }
 

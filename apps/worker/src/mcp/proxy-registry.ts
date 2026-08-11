@@ -11,8 +11,8 @@
  *   - Tool handlers dispatch through the cached `UpstreamClient` via
  *     `upstream-call-runner.ts`, or through `async-submit.ts` for
  *     tools on the upstream's `authConfig.asyncTools`.
- *   - `close()` is best-effort; sessions are short-lived and the
- *     workerd isolate frees Client state on its own when the DO dies.
+ *   - There is no teardown: sessions are short-lived and the workerd
+ *     isolate frees Client state on its own when the DO dies.
  *
  * Catalogue freshness: a row older than `CATALOGUE_TTL_SECONDS` is
  * refreshed inline on first session encounter — accepted as a one-time
@@ -279,12 +279,6 @@ export class UpstreamProxyRegistry {
       added.push({ slug: conn.slug, tools: count })
     }
     return added
-  }
-
-  async close(): Promise<void> {
-    const all = [...this.clients.values()]
-    this.clients.clear()
-    await Promise.all(all.map((c) => c.close()))
   }
 
   // ----- internals ------------------------------------------------------

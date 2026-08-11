@@ -17,6 +17,7 @@
 
 import { Hono } from 'hono'
 import { getOAuthApi } from '@cloudflare/workers-oauth-provider'
+import { auditFromCtx } from '../audit/log'
 import type {
   OAuthClientRow,
   OAuthClientsResponse,
@@ -99,6 +100,16 @@ adminOAuthClientsRoute.post('/prune', requireCsrf, async (c) => {
   const helpers = getOAuthApi<Env>(await providerOptions(), c.env)
   const result = await pruneOrphanOAuthClients(c.env, helpers, {
     olderThanDays: 1
+  })
+  // Destructive admin mutation — one summary row per sweep (deletedIds in
+  // meta), not one per client.
+  await auditFromCtx(c, 'oauth_client.prune', null, {
+    scanned: result.scanned,
+    orphans: result.orphans,
+    deleted: result.deleted,
+    failed: result.failed,
+    skippedIncompleteIndex: result.skippedIncompleteIndex,
+    deletedIds: result.deletedIds
   })
   const body: OAuthClientsPruneResponse = result
   return c.json(body)

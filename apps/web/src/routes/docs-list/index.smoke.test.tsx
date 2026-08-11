@@ -26,7 +26,6 @@ const { me, docs } = vi.hoisted(() => {
       id: 'd_1',
       title: 'Onboarding guide',
       slug: 'onboarding-guide',
-      kind: 'doc',
       folder: null,
       gitSourceId: null,
       gitSourceSlug: null,

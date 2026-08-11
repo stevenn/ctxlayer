@@ -1,4 +1,4 @@
-import { ApiError } from '../../lib/api/core'
+import type { ApiError } from '../../lib/api/core'
 import { explain as explainBase } from '../../lib/explain'
 
 // Stable per-user cursor color. HSL hue derived from a fast 32-bit

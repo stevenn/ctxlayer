@@ -22,6 +22,7 @@ import {
 } from '../../lib/api'
 import { bodyMessage, explain as explainBase } from '../../lib/explain'
 import { absDate } from '../../lib/time'
+import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
 import { useDialogs } from '../../lib/dialogs'
 
@@ -33,7 +34,6 @@ import { useDialogs } from '../../lib/dialogs'
 export function AdminJoinCodes() {
   const { confirm } = useDialogs()
   const [error, setError] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
   // The one-time plaintext of the just-created code (+ its label for context).
   const [fresh, setFresh] = useState<{ code: string; label: string } | null>(null)
 
@@ -45,11 +45,14 @@ export function AdminJoinCodes() {
   const [expiresInDays, setExpiresInDays] = useState<number | ''>('')
 
   const { data: items, reload } = useLoad(fetchJoinCodes, [], { explain, onError: setError })
+  const { busy, run: withBusy } = useBusyAction({
+    explain,
+    // one error state shared with the load above
+    setError
+  })
 
-  async function create() {
-    setBusy(true)
-    setError(null)
-    try {
+  const create = () =>
+    withBusy(async () => {
       const input: CreateJoinCodeInput = {
         label: label.trim() || undefined,
         domainRestrict: domain.trim() || null,
@@ -65,13 +68,10 @@ export function AdminJoinCodes() {
       setMaxUses('')
       setExpiresInDays('')
       await reload()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
-  }
+    }, 'Create code')
 
+  // The confirm dialog stays outside `withBusy` so the buttons don't show
+  // busy while the dialog is open.
   async function revoke(jc: JoinCode) {
     const ok = await confirm({
       title: 'Revoke join code?',
@@ -80,16 +80,10 @@ export function AdminJoinCodes() {
       danger: true
     })
     if (!ok) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       await adminRevokeJoinCode(jc.id)
       await reload()
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Revoke')
   }
 
   return (
@@ -268,4 +262,3 @@ function explain(err: unknown): string {
     400: (e) => bodyMessage(e) ?? 'Server rejected the request.'
   })
 }
-

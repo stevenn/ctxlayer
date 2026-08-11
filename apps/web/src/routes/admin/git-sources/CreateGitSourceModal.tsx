@@ -1,8 +1,10 @@
 import { useState } from 'react'
-import { Alert, Button, Group, Modal, Select, Stack, Text, TextInput } from '@mantine/core'
+import { Alert, Group, Select, Text, TextInput } from '@mantine/core'
 import type { GitProvider, ProductRef } from '@ctxlayer/shared'
+import { FormModalShell } from '../../../components/form-modal-shell'
 import { adminCreateGitSource } from '../../../lib/api'
 import { parseGitUrl, type ParsedGitUrl } from '../../../lib/git-url'
+import { useBusyAction } from '../../../lib/use-busy'
 import { explain } from './helpers'
 
 /** When set, the new repo joins an existing connection (auth inherited). */
@@ -43,8 +45,7 @@ export function CreateGitSourceModal({
   const [slugTouched, setSlugTouched] = useState(false)
   const [branchTouched, setBranchTouched] = useState(false)
   const [folderTouched, setFolderTouched] = useState(false)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const { busy, error, run: withBusy } = useBusyAction({ explain })
 
   function onUrlChange(value: string) {
     setUrl(value)
@@ -66,9 +67,7 @@ export function CreateGitSourceModal({
 
   async function submit() {
     if (!parsed || !canSubmit) return
-    setBusy(true)
-    setError(null)
-    try {
+    await withBusy(async () => {
       const created = await adminCreateGitSource({
         slug: slug.trim(),
         displayName: displayName.trim(),
@@ -84,128 +83,111 @@ export function CreateGitSourceModal({
         enabled: true
       })
       onCreated(created.id)
-    } catch (err) {
-      setError(explain(err))
-    } finally {
-      setBusy(false)
-    }
+    }, 'Create')
   }
 
   return (
-    <Modal
-      opened
-      onClose={onClose}
+    <FormModalShell
       title={attachTo ? `Add repo to ${attachTo.displayName}` : 'New git source'}
-      centered
       size="lg"
+      error={error}
+      busy={busy}
+      submitLabel="Create"
+      submitDisabled={!canSubmit}
+      onSubmit={submit}
+      onClose={onClose}
     >
-      <Stack gap="md">
-        {attachTo && (
-          <Alert color="blue" variant="light" radius="sm">
-            This repo joins the <strong>{attachTo.displayName}</strong> connection — its OAuth /
-            token / visibility are inherited. Paste a <strong>{attachTo.provider}</strong> repo URL.
-          </Alert>
-        )}
-        <TextInput
-          label="Git repo URL"
-          placeholder="https://github.com/acme/docs  (or …/tree/main/docs)"
-          description="Paste the repo URL. Provider, owner, repo — and branch + folder from a /tree/ link — are filled in automatically."
-          value={url}
-          onChange={(e) => onUrlChange(e.currentTarget.value)}
-          error={
-            url.trim() && !parsed
-              ? 'Not a recognizable git repo URL'
-              : providerMismatch
-                ? `That's a ${parsed?.provider} URL, but this connection is ${attachTo?.provider}.`
-                : undefined
-          }
-          data-autofocus
-        />
+      {attachTo && (
+        <Alert color="blue" variant="light" radius="sm">
+          This repo joins the <strong>{attachTo.displayName}</strong> connection — its OAuth / token
+          / visibility are inherited. Paste a <strong>{attachTo.provider}</strong> repo URL.
+        </Alert>
+      )}
+      <TextInput
+        label="Git repo URL"
+        placeholder="https://github.com/acme/docs  (or …/tree/main/docs)"
+        description="Paste the repo URL. Provider, owner, repo — and branch + folder from a /tree/ link — are filled in automatically."
+        value={url}
+        onChange={(e) => onUrlChange(e.currentTarget.value)}
+        error={
+          url.trim() && !parsed
+            ? 'Not a recognizable git repo URL'
+            : providerMismatch
+              ? `That's a ${parsed?.provider} URL, but this connection is ${attachTo?.provider}.`
+              : undefined
+        }
+        data-autofocus
+      />
 
-        {parsed && (
-          <Text fz="xs" c="dimmed">
-            {`Detected: ${parsed.provider}${parsed.baseUrl ? ` (${parsed.baseUrl})` : ''} · ${
-              parsed.owner ? `${parsed.owner}/` : ''
-            }${parsed.repo}`}
-          </Text>
-        )}
-
-        <Group grow>
-          <TextInput
-            label="Branch (optional)"
-            placeholder="auto-detect"
-            description="Blank = use the repo's default branch (e.g. main / master). Case-sensitive."
-            value={branch}
-            onChange={(e) => {
-              setBranchTouched(true)
-              setBranch(e.currentTarget.value)
-            }}
-          />
-          <TextInput
-            label="Folder (optional)"
-            placeholder="docs/billing"
-            description="Limit the sync to a subfolder — e.g. for multi-product repos."
-            value={folder}
-            onChange={(e) => {
-              setFolderTouched(true)
-              setFolder(e.currentTarget.value)
-            }}
-          />
-        </Group>
-
-        <Select
-          label="Product (optional)"
-          placeholder="None"
-          description="Synced docs are auto-tagged with this product, scoping search to the right users."
-          data={(products ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
-          value={productId}
-          onChange={setProductId}
-          clearable
-          searchable
-        />
-
-        <Group grow>
-          <TextInput
-            label="Display name"
-            placeholder="acme/docs"
-            value={displayName}
-            onChange={(e) => {
-              setNameTouched(true)
-              setDisplayName(e.currentTarget.value)
-            }}
-          />
-          <TextInput
-            label="Slug"
-            placeholder="repo-docs"
-            description="Auto-filled from the repo; edit to customise. Must start with repo-."
-            value={slug}
-            onChange={(e) => {
-              setSlugTouched(true)
-              setSlug(e.currentTarget.value)
-            }}
-          />
-        </Group>
-
+      {parsed && (
         <Text fz="xs" c="dimmed">
-          {attachTo
-            ? 'Auth is inherited from the connection. Adjust cadence / folder / product in the drawer after creating.'
-            : 'After creating, set the read token + adjust credential strategy / cadence in the drawer.'}
+          {`Detected: ${parsed.provider}${parsed.baseUrl ? ` (${parsed.baseUrl})` : ''} · ${
+            parsed.owner ? `${parsed.owner}/` : ''
+          }${parsed.repo}`}
         </Text>
+      )}
 
-        {error && (
-          <Alert color="red" variant="light" radius="sm">
-            {error}
-          </Alert>
-        )}
-        <Group justify="flex-end" gap="xs">
-          <Button variant="default" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
-            Create
-          </Button>
-        </Group>
-      </Stack>
-    </Modal>
+      <Group grow>
+        <TextInput
+          label="Branch (optional)"
+          placeholder="auto-detect"
+          description="Blank = use the repo's default branch (e.g. main / master). Case-sensitive."
+          value={branch}
+          onChange={(e) => {
+            setBranchTouched(true)
+            setBranch(e.currentTarget.value)
+          }}
+        />
+        <TextInput
+          label="Folder (optional)"
+          placeholder="docs/billing"
+          description="Limit the sync to a subfolder — e.g. for multi-product repos."
+          value={folder}
+          onChange={(e) => {
+            setFolderTouched(true)
+            setFolder(e.currentTarget.value)
+          }}
+        />
+      </Group>
+
+      <Select
+        label="Product (optional)"
+        placeholder="None"
+        description="Synced docs are auto-tagged with this product, scoping search to the right users."
+        data={(products ?? []).map((p) => ({ value: p.id, label: p.displayName }))}
+        value={productId}
+        onChange={setProductId}
+        clearable
+        searchable
+      />
+
+      <Group grow>
+        <TextInput
+          label="Display name"
+          placeholder="acme/docs"
+          value={displayName}
+          onChange={(e) => {
+            setNameTouched(true)
+            setDisplayName(e.currentTarget.value)
+          }}
+        />
+        <TextInput
+          label="Slug"
+          placeholder="repo-docs"
+          description="Auto-filled from the repo; edit to customise. Must start with repo-."
+          value={slug}
+          onChange={(e) => {
+            setSlugTouched(true)
+            setSlug(e.currentTarget.value)
+          }}
+        />
+      </Group>
+
+      <Text fz="xs" c="dimmed">
+        {attachTo
+          ? 'Auth is inherited from the connection. Adjust cadence / folder / product in the drawer after creating.'
+          : 'After creating, set the read token + adjust credential strategy / cadence in the drawer.'}
+      </Text>
+    </FormModalShell>
   )
 }
