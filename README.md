@@ -35,15 +35,12 @@ Agent context layer — an MCP service on Cloudflare that:
   <em>Per-upstream config — transport, auth strategy, resilience caps, and team/product visibility</em>
 </p>
 
-New here? **[`CONTRIBUTING.md`](CONTRIBUTING.md)** is the human-contributor
-on-ramp (setup, the change loop, conventions); the
-[Quickstart](#quickstart-contributors-hacking-on-ctxlayer) below is the
-copy-pasteable version. The architecture & data-model reference is
-**[`docs/PLAN.md`](docs/PLAN.md)** (the milestone-driven plan that built
-ctxlayer is retired; PLAN.md is now a reference, not a roadmap). Briefing for
-AI agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
-**[`AGENTS.md`](AGENTS.md)**. Architectural conventions and gotchas live in
-`docs/plan/G-conventions.md`.
+Pointers: **[`CONTRIBUTING.md`](CONTRIBUTING.md)** for the contributor on-ramp
+(the [Quickstart](#quickstart-contributors-hacking-on-ctxlayer) below is the
+copy-pasteable version), **[`docs/PLAN.md`](docs/PLAN.md)** for the
+architecture & data-model reference, **[`CLAUDE.md`](CLAUDE.md)** /
+**[`AGENTS.md`](AGENTS.md)** for AI agents working in this repo, and
+`docs/plan/G-conventions.md` for conventions and gotchas.
 
 > **Integration surfaces.** The supported, stable contract for external
 > clients is the **MCP** surface (`/mcp`, `/sse`) plus the OAuth provider.
@@ -51,25 +48,35 @@ AI agents working in this repo is **[`CLAUDE.md`](CLAUDE.md)** /
 > SPA** — not versioned and subject to change between releases. Build agents
 > and scripts against MCP, not `/api`.
 
-## Current state
+## What it does
 
-Everything described in [`docs/PLAN.md`](docs/PLAN.md) is shipped and deployed.
-The milestone framing below is kept as a feature inventory, not a roadmap (the
-milestone-driven plan is retired — see `CLAUDE.md`).
-
-| Area | Status | What works |
-|---|---|---|
-| **M1** — Skeleton + sign-in | ✅ done | GitHub / Google sign-in with allowlist, real `/api/me` |
-| **M2** — Docs + RAG via MCP | ✅ done | BlockNote editor with revisions, R2 snapshots, Vectorize embedding pipeline, MCP server at `/mcp` with `search_docs` / `get_doc` / `whoami` / `list_my_context` / `list_upstreams`, doc resources, admin teams + products + tags |
-| **M3** — Realtime collab (Yjs) | ✅ done | `DocRoomDO` over WS Hibernation, BlockNote Yjs extension, awareness-leader REST autosave, R2-backed snapshots |
-| **M4** — Upstream proxy (HTTP/SSE + OAuth) | ✅ done | AES-GCM creds, MCP SDK Client for Streamable HTTP / SSE, namespaced tool aggregation, JSON-Schema → Zod schema preservation, full admin UI for upstreams, user `/upstreams` page with paste-bearer + OAuth. **Validated end-to-end against Notion MCP via Claude Desktop** — search, fetch, create-page. |
-| **M5** — Admin polish | ✅ done | Admin Users (promote/demote + revoke creds), `shared_bearer` storage, admin Audit log viewer (`/app/admin/audit`), admin OAuth-clients viewer (`/app/admin/oauth-clients`), real `/app/mcp-setup` with per-client snippets. Bundled side features: folder organisation for docs, per-doc lock, modal-dialog system, doc-move UI |
-| **M6** — Usage pipeline + dashboards | ✅ done | Per-user/upstream call + token charts, tiktoken consumer, daily rollups, admin + user usage pages |
-| **Skills** — curated playbooks | ✅ done | Published skills surface over MCP (`list_skills` / `get_skill` + `mcp://ctxlayer/skills/{slug}`), per-upstream/per-tool attachments, non-admin skill authoring with private drafts + org sharing, in-app AI drafting (the `/draft-skill` MCP prompt), SKILL.md download |
-| **Git sync** — code docs from repos | ✅ done | Register a GitHub repo (PAT or OAuth), mirror Markdown into the doc store, product-link auto-tagging, scheduled cron sync |
-| **Stdio upstreams** — bring-your-own-bridge | ✅ supported | Run your own stdio↔HTTP bridge; register its URL as a `streamable_http` upstream |
-| **OKF interop** — Open Knowledge Format | ✅ done | Import/export/git-write-back of [OKF](https://github.com/GoogleCloudPlatform/knowledge-catalog/blob/main/okf/SPEC.md) docs; the editor rail *is* the YAML frontmatter editor; unknown keys preserved for round-trip. Deep-dive: [`docs/plan/M-okf.md`](docs/plan/M-okf.md) |
-| **OKF bundles** — directory up/download | ✅ done | Export a folder subtree as a `tar.gz` / `zip` OKF bundle (generated `index.md`/`log.md`); import an archive under a target folder. OKF-native path-based doc links with a consistency graph. Deep-dive: [`docs/plan/N-okf-bundles.md`](docs/plan/N-okf-bundles.md) |
+- **Sign-in & admission** — GitHub / Google OAuth with org/domain/user
+  allowlists, plus `request` (admin-approval queue) and `invite` / join-code
+  admission policies; per-request user lifecycle (suspend cuts live sessions).
+- **Doc library** — BlockNote editor with realtime Yjs collaboration
+  (`DocRoomDO`), revision history with autosave coalescing, folders, per-doc
+  locks, team/product/free-form tags; open-read org-wide.
+- **RAG search** — hybrid retrieval (dense + lexical over Vectorize, LLM query
+  rewrite, cross-encoder rerank) behind the `search_docs` tool and `/api/search`.
+- **MCP server** (`/mcp`, `/sse`) — built-ins (`search_docs`, `get_doc`,
+  `list_upstreams`, `describe_upstream`, `list_skills` / `get_skill`,
+  `draft_skill`, `poll_task` / `list_tasks`, `reload_upstreams`, …), doc +
+  skill resources, and an OAuth provider for MCP clients.
+- **Upstream proxy** — aggregate other MCP servers (Streamable HTTP / SSE;
+  stdio via bring-your-own-bridge) under namespaced tools, with per-user or
+  shared credentials sealed AES-GCM at rest, static or DCR OAuth, per-team/
+  product/role visibility, per-tool ACLs, timeouts + response-size caps, an
+  async submit→poll path for slow tools, and a cached tool catalogue with a
+  degraded-response shrink guard.
+- **Skills** — curated procedural playbooks served over MCP, attachable per
+  upstream or per tool, authorable by any user (private drafts → org sharing),
+  in-app AI drafting, SKILL.md export.
+- **Git sync** — mirror Markdown from GitHub / GitLab / Azure DevOps repos
+  (PAT or OAuth) into the library on a cron, and propose edits back as PRs
+  (round-trip-safe normalisation, HTML + frontmatter guards).
+- **Usage & audit** — per-user/upstream call + token analytics with error
+  detail, and an admin audit log covering role, credential, visibility and
+  content mutations.
 
 ## Open Knowledge Format (OKF) — early adopter
 
@@ -137,74 +144,16 @@ and generates a locally-trusted cert in `.dev-tls/`. Both Vite and Wrangler
 then serve HTTPS on localhost — required for the `__Host-` session cookie
 to work in dev. The cert never leaves your machine.
 
-### Backend + frontend in separate terminals (recommended)
-
-When you're debugging the worker (especially OAuth, MCP, or anything where
-elided stack traces would bite), run each process in its own terminal so
-streams don't interleave and wrangler's interactive UI works correctly:
-
-```bash
-# Terminal 1 — worker only (wrangler on https://localhost:8787)
-bun run dev:worker
-
-# Terminal 2 — SPA only (vite on https://localhost:5173)
-bun run dev:web
-```
-
-To defeat wrangler's log-elision (which folds long stack traces into
-`[N lines elided]`), pipe to a file:
-
-```bash
-bun run dev:worker 2>&1 | tee worker.log
-# in another pane:
-tail -f worker.log | grep -E '\[oauth\]|\[catalogue\]'
-```
-
-### One-window combined runner
-
-```bash
-bun run dev                       # concurrently with worker,web prefix-coloured streams
-```
-
-Convenient for SPA-focused work; less ideal when chasing a backend bug
-because the two streams share one TTY and wrangler's elision is heavier.
-
-## Wiring Claude to a local ctxlayer
-
-`mcp-remote` shims a remote MCP server into Claude Desktop's stdio MCP
-interface and handles the OAuth dance. Because localhost uses an mkcert
-root that Electron-bundled Node won't trust by default, point Node at the
-mkcert CA explicitly.
-
-```bash
-mkcert -CAROOT
-# /Users/<you>/Library/Application Support/mkcert
-```
-
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
-
-```jsonc
-{
-  "mcpServers": {
-    "ctxlayer-local": {
-      "command": "npx",
-      "args": ["-y", "mcp-remote", "https://localhost:8787/mcp"],
-      "env": {
-        "NODE_EXTRA_CA_CERTS": "/Users/<you>/Library/Application Support/mkcert/rootCA.pem"
-      }
-    }
-  }
-}
-```
-
-Fully quit Claude Desktop (`⌘Q`) and relaunch. On first run mcp-remote
-opens a browser tab for OAuth + GitHub sign-in; tokens persist in
-`~/.mcp-auth/`.
-
-Before connecting Claude, **connect upstreams in the browser first** at
-`https://localhost:5173/upstreams` — the proxy registry only registers
-proxied tools (`notion__*`, etc.) for users who have stored credentials at
-session-init time.
+Two dev-loop notes: prefer **separate terminals** (`bun run dev:worker` +
+`bun run dev:web`) when debugging the worker — `bun run dev` shares one TTY
+via `concurrently`, which interleaves streams and worsens wrangler's
+stack-trace elision. And to wire **Claude Desktop to a local ctxlayer**, shim
+it through `mcp-remote` with the mkcert CA
+(`"command": "npx", "args": ["-y", "mcp-remote", "https://localhost:8787/mcp"]`
+plus `NODE_EXTRA_CA_CERTS` pointing at `mkcert -CAROOT`/rootCA.pem in
+`claude_desktop_config.json`), and connect upstreams in the browser first at
+`https://localhost:5173/upstreams` — proxied tools register only for users
+with stored credentials at session init.
 
 ## Deploying ctxlayer to production
 
