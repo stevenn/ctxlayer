@@ -6,6 +6,12 @@ reference, not a roadmap. New work proceeds ad hoc — track it in code,
 commits, and `CLAUDE.md`, not here. Topic deep-dives live under
 [`docs/plan/`](#deep-dive-index)._
 
+_Regime for the deep-dives (E5, 2026-08): plan files are **records** of the
+design as decided, not living documentation — they are not updated per
+change. Each carries a **Status** header saying how far to trust it, and a
+design a later commit overturned gets a `> **Superseded by …**` stamp at the
+affected section. Trust the code first._
+
 ## Context
 
 **ctxlayer** is a remote MCP server that:

@@ -1,5 +1,11 @@
 # N — OKF bundles + path-based link consistency
 
+> **Status (2026-08-11): shipped as specified** (PR #33, migration 0027, live
+> since 2026-06). The scope-locked decisions below (bundle = folder subtree,
+> reserved `index.md`/`log.md`, two-pass import link resolve, export-time path
+> recompute — never body rewrites) are the ones the code implements; details
+> in `apps/worker/src/bundle/`. Kept as the design record for those decisions.
+
 Builds on [M — OKF interop](M-okf.md) (per-file frontmatter import/export). This
 deep-dive covers the **bundle** layer: up/down a whole directory tree, the
 reserved `index.md` / `log.md` files, and a **path-based, always-consistent**

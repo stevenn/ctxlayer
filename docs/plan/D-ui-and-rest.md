@@ -1,5 +1,13 @@
 # UI surface + REST endpoints
 
+> **Status (2026-08-11): historical record — do not use for lookups.** This is
+> the M3-era design of the UI/REST surface, kept for the rationale behind the
+> original shape. The live surface has long outgrown it (3-pane docs workspace
+> + `/edit` editor, tools directory, skills authoring, OKF bundles, admin
+> usage/audit/oauth-clients/upstreams, async task endpoints…). This file is
+> deliberately not updated: routes live in `apps/worker/src/app.ts`, pages in
+> `apps/web/src/`.
+
 ### D1. Sitemap
 
 ```

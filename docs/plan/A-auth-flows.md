@@ -1,5 +1,15 @@
 # Auth flows (inbound + outbound)
 
+> **Status (2026-08-11): record, mostly current.** The flow shapes below still
+> describe the system; two things moved after this was written. (1)
+> `/oauth/authorize` is now a **consent interstitial** (approve/deny naming the
+> client; the IdP links are the approval act; `OAUTH_CONSENT_SKIP_VIA_ACCESS`
+> restores zero-click on Access-fronted deploys) — see
+> `oauth/authorize-page.ts`. (2) The SPA session cookie carries a
+> `session_epoch` checked per request, so sign-out / suspend invalidate all
+> outstanding cookies server-side — see `auth/session.ts` + migration 0033.
+> Trust the code over the diagrams.
+
 ctxlayer is **two-sided**: an OAuth **issuer** to MCP clients and SPA users, and an OAuth **client** to upstream services. Each side has multiple sub-flows. Below are the full sequences.
 
 ### A1. Inbound — MCP client connects (DCR flow, preferred)

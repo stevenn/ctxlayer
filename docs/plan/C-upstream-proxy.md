@@ -1,5 +1,14 @@
 # Upstream proxy mechanics — deep dive
 
+> **Status (2026-08-11): design-time record (M4 era).** The mechanics
+> (aggregation, catalogue caching, error taxonomy, size caps) still describe
+> the system, but the pseudocode is illustrative and the code has moved
+> concerns since: the call runner lives in `mcp/upstream-call-runner.ts`,
+> isError post-processing + the §1a credential scrub in
+> `mcp/result-postprocess.ts`, per-call credential freshness (A6) in
+> `mcp/credential-freshness.ts`, and the session registry in
+> `mcp/proxy-registry.ts`. Trust those files over the sketches here.
+
 > **M4 scope (2026-05-25).** M4 ships **HTTP/SSE upstreams only**. Anything
 > A stdio MCP server is reached by registering an operator-run stdio↔HTTP
 > bridge as a normal `streamable_http` upstream — see [B](B-stdio-bridge.md).
