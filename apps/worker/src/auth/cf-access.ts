@@ -18,7 +18,7 @@
  */
 
 import type { Env } from '../env'
-import { b64urlDecode } from './session'
+import { b64urlDecode } from '../util/base64url'
 
 export interface AccessIdentity {
   /** Stable per-user subject from the Access token (`sub`). */

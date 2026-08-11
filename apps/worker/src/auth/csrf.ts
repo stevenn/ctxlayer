@@ -15,16 +15,15 @@
 
 import type { MiddlewareHandler } from 'hono'
 import type { Env } from '../env'
-import { b64urlEncode, readCookie } from './session'
+import { readCookie } from './session'
 import { isAllowedOrigin } from '../util/origin'
+import { randomToken } from '../util/base64url'
 
 const CSRF_COOKIE_NAME = '__Host-ctx_csrf'
 const CSRF_MAX_AGE_SECONDS = 30 * 24 * 60 * 60
 
 export function newCsrfToken(): string {
-  const buf = new Uint8Array(32)
-  crypto.getRandomValues(buf)
-  return b64urlEncode(buf)
+  return randomToken()
 }
 
 export function csrfSetCookie(token: string): string {

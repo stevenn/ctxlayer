@@ -300,6 +300,31 @@ export async function replaceGitSourceVisibility(
   await env.DB.batch(stmts)
 }
 
+export type GitSourceAccessResult =
+  | { ok: true; source: GitSourceRow }
+  | { ok: false; reason: 'not_found' | 'forbidden' }
+
+/**
+ * The one home for the user-facing git-source gate: fetch + the
+ * admin-or-visibility check, preserving the existing response split
+ * (404 for a nonexistent id, 403 for an ungranted one — the SPA's
+ * connect drawer distinguishes them). Every user-facing route that
+ * resolves a git source by id goes through this, so the gate can't be
+ * hand-rolled subtly differently per endpoint.
+ */
+export async function getGitSourceIfVisible(
+  env: Env,
+  id: string,
+  actor: { userId: string; role: string }
+): Promise<GitSourceAccessResult> {
+  const source = await getGitSourceById(env, id)
+  if (!source) return { ok: false, reason: 'not_found' }
+  const allowed =
+    actor.role === 'admin' || (await isGitSourceVisibleToUser(env, source.id, actor.userId))
+  if (!allowed) return { ok: false, reason: 'forbidden' }
+  return { ok: true, source }
+}
+
 export async function isGitSourceVisibleToUser(
   env: Env,
   gitSourceId: string,

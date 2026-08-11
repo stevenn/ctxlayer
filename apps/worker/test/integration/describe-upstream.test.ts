@@ -1,12 +1,12 @@
 import { env } from 'cloudflare:test'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Env } from '../../src/env'
-import { UpstreamProxyRegistry } from '../../src/mcp/tools-proxy'
+import { describeUpstreamForUser } from '../../src/mcp/catalogue-views'
 
 /**
  * End-to-end (real D1) cover for `describe_upstream`'s catalogue
- * (`UpstreamProxyRegistry.describeUpstreamForUser`). The pure helpers are
- * unit-tested (tools-proxy.test.ts: grouping/summary; tool-acl.test.ts:
+ * (`describeUpstreamForUser`). The pure helpers are
+ * unit-tested (catalogue-views.test.ts: grouping/summary; tool-acl.test.ts:
  * `visibleTools`); this pins the wiring through real D1 — visibility gate,
  * per-tool ACL hiding, and family grouping over the cached catalogue.
  */
@@ -77,7 +77,7 @@ describe('describeUpstreamForUser (real D1)', () => {
   afterEach(cleanup)
 
   it('groups visible tools by family and HIDES the ACL-locked one', async () => {
-    const body = await UpstreamProxyRegistry.describeUpstreamForUser(testEnv, 'u-1', 'up-ado')
+    const body = await describeUpstreamForUser(testEnv, 'u-1', 'up-ado')
     expect(body).not.toBeNull()
     if (!body) return
 
@@ -98,7 +98,7 @@ describe('describeUpstreamForUser (real D1)', () => {
   })
 
   it('honours the family filter', async () => {
-    const body = await UpstreamProxyRegistry.describeUpstreamForUser(testEnv, 'u-1', 'up-ado', {
+    const body = await describeUpstreamForUser(testEnv, 'u-1', 'up-ado', {
       family: 'repo'
     })
     expect(body?.groups.map((g) => g.family)).toEqual(['repo'])
@@ -106,10 +106,10 @@ describe('describeUpstreamForUser (real D1)', () => {
   })
 
   it('returns null for a slug the caller cannot see', async () => {
-    expect(await UpstreamProxyRegistry.describeUpstreamForUser(testEnv, 'u-1', 'up-secret')).toBeNull()
+    expect(await describeUpstreamForUser(testEnv, 'u-1', 'up-secret')).toBeNull()
   })
 
   it('returns null for a slug that does not exist', async () => {
-    expect(await UpstreamProxyRegistry.describeUpstreamForUser(testEnv, 'u-1', 'nope')).toBeNull()
+    expect(await describeUpstreamForUser(testEnv, 'u-1', 'nope')).toBeNull()
   })
 })

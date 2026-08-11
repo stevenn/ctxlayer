@@ -1,13 +1,14 @@
 /**
  * Shared helpers for the IdP redirect dance:
- *   - random state + PKCE verifier/challenge generation,
  *   - signed short-lived state cookie carrying `{state, codeVerifier,
  *     returnTo}` between `start` and `callback`,
  *   - error redirects back to /sign-in with a readable `?error=` code.
+ * (State/PKCE generation lives in util/base64url.ts + util/pkce.ts.)
  */
 
 import type { Env } from '../env'
-import { b64urlDecode, b64urlEncode, hmacSign, hmacVerify, readCookie } from '../auth/session'
+import { hmacSign, hmacVerify, readCookie } from '../auth/session'
+import { b64urlDecode, b64urlEncode } from '../util/base64url'
 
 const STATE_COOKIE_NAME = '__Host-ctx_oauth_state'
 const STATE_MAX_AGE_SECONDS = 10 * 60
@@ -26,22 +27,6 @@ export interface StatePayload {
   // redirect dance so admission can redeem it at the callback. Reaches the
   // IdP NEVER — only ctxlayer's own /start and the signed state cookie.
   joinCode?: string
-}
-
-export function randomToken(byteLength = 32): string {
-  const buf = new Uint8Array(byteLength)
-  crypto.getRandomValues(buf)
-  return b64urlEncode(buf)
-}
-
-export function pkceVerifier(): string {
-  // RFC 7636: 43–128 unreserved chars. 32 random bytes -> ~43 b64url chars.
-  return randomToken(32)
-}
-
-export async function pkceChallenge(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
-  return b64urlEncode(new Uint8Array(digest))
 }
 
 export async function serializeStateCookie(

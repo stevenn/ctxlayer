@@ -16,7 +16,7 @@ import {
   type SupportedTransport
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
-import { listUpstreamsVisibleToUser, type UpstreamServerRow } from '../db/queries/upstreams'
+import { listUpstreamsVisibleToUserBySlugs, type UpstreamServerRow } from '../db/queries/upstreams'
 import {
   accessKey,
   indexToolAccess,
@@ -59,12 +59,13 @@ export async function buildDraftContext(
   // Drafting is open to every signed-in user, so the bundle must respect the
   // SAME two gates the agent-facing catalogue does — otherwise `draft_skill`
   // becomes a read oracle for upstreams an admin never granted:
-  //   1. upstream visibility → resolve slugs against the caller's visible set
-  //      (an ungranted slug is indistinguishable from a nonexistent one);
+  //   1. upstream visibility → resolve slugs through the visible-or-nothing
+  //      batch query (an ungranted slug is indistinguishable from a
+  //      nonexistent one);
   //   2. per-tool ACL → filter the catalogue with `isToolAllowed`, mirroring
   //      `describe_upstream`'s `visibleTools`.
   const [visible, principals] = await Promise.all([
-    listUpstreamsVisibleToUser(env, userId),
+    listUpstreamsVisibleToUserBySlugs(env, userId, slugs),
     resolveUserPrincipals(env, userId)
   ])
 

@@ -7,7 +7,7 @@ import {
 } from '../db/queries/upstreams'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { createUpstreamClient } from '../upstream/create-client'
-import { runUpstreamCall, type UpstreamCallOutcome } from '../mcp/tools-proxy'
+import { runUpstreamCall, type UpstreamCallOutcome } from '../mcp/upstream-call-runner'
 import { completeJobDone, completeJobError, findJobById } from '../db/queries/async-jobs'
 import { buildUsageMsg } from '../usage/record'
 import { scrubErrorForStorage } from '../usage/error-detail'
@@ -16,7 +16,7 @@ import { errMessage } from '../util/errors'
 
 /**
  * Batch consumer for ctxlayer-jobs. One message per async tool submit
- * (`tools-proxy.ts submitAsyncJob`). The consumer re-dials the upstream with
+ * (`mcp/async-submit.ts submitAsyncJob`). The consumer re-dials the upstream with
  * the caller's credentials and runs the real `tools/call` with the full
  * per-upstream budget — a background queue invocation has ~15 min wall-clock,
  * so a 2-3 min tool fits where an interactive client's ~180s request cap would
@@ -131,6 +131,7 @@ export async function runJob(
     outcome = await runUpstreamCall({
       slug: conn.slug,
       toolName: j.tool,
+      upstreamUrl: conn.url,
       maxResponseBytes: conn.authConfig.maxResponseBytes,
       run: () => client.callTool(j.tool, args)
     })

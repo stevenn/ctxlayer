@@ -8,7 +8,8 @@
 import type { Env } from '../../env'
 import { slugifyBody, suggestSlug } from '@ctxlayer/shared'
 import type { HeadRevision, RevisionKind } from '../revision-policy'
-import { buildPatchUpdate, isUniqueViolation, newId } from './util'
+import { buildPatchUpdate, isUniqueViolation, newId, randomSuffix } from './util'
+import { makeRevisionQueries } from './revision-queries'
 
 export interface DocumentRow {
   id: string
@@ -463,176 +464,63 @@ export interface RecordRevisionInput {
   kind?: RevisionKind
 }
 
-/**
- * Insert a new revision row and bump the parent doc's current_rev_id +
- * r2_snapshot + updated_at. Two statements; D1 doesn't expose
- * transactions but writes to a single row from the same Worker
- * request are sequentially consistent.
- */
-export async function recordRevision(env: Env, input: RecordRevisionInput): Promise<RevisionRow> {
-  const now = Math.floor(Date.now() / 1000)
-  // Atomic: the revision INSERT and the head/snapshot UPDATE land together as
-  // one D1 transaction, so a crash can't leave a revision row without a head
-  // pointer (or a head pointing at a revision that never inserted).
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO doc_revisions
-         (id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-    ).bind(
-      input.revisionId,
-      input.docId,
-      input.authorId,
-      input.r2Key,
-      input.byteSize,
-      input.contentHash,
-      now,
-      input.kind ?? 'explicit'
-    ),
-    env.DB.prepare(
-      `UPDATE documents SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
-    ).bind(input.revisionId, input.r2Key, now, input.docId)
-  ])
-  const row = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM doc_revisions WHERE id = ?1`
-  )
-    .bind(input.revisionId)
-    .first<RevisionRow>()
-  if (!row) throw new Error('revision_insert_lost')
-  return row
+// The doc-side instantiation of the shared revision machinery. Semantics
+// (atomic record, coalescing head, head-sparing prune) are documented on
+// the factory members in revision-queries.ts. Exported for the shared
+// save pipeline (api/revision-save.ts); routes use the named delegates.
+export const docRevisionQueries = makeRevisionQueries<RevisionRow>({
+  parentTable: 'documents',
+  revisionTable: 'doc_revisions',
+  fkColumn: 'doc_id',
+  insertLostError: 'revision_insert_lost'
+})
+
+export function recordRevision(env: Env, input: RecordRevisionInput): Promise<RevisionRow> {
+  return docRevisionQueries.record(env, {
+    parentId: input.docId,
+    revisionId: input.revisionId,
+    authorId: input.authorId,
+    r2Key: input.r2Key,
+    byteSize: input.byteSize,
+    contentHash: input.contentHash,
+    kind: input.kind
+  })
 }
 
-/**
- * The doc's current head revision (its `current_rev_id` row), or null if
- * it has none yet. Backs the autosave-coalescing decision: the policy
- * folds an autosave into this row when it's an open, same-author,
- * in-window autosave. Returns only the fields the policy needs.
- */
-export async function getHeadRevision(env: Env, docId: string): Promise<HeadRevision | null> {
-  const row = await env.DB.prepare(
-    `SELECT r.id, r.author_id, r.content_hash, r.created_at, r.kind
-     FROM documents d
-     JOIN doc_revisions r ON r.id = d.current_rev_id
-     WHERE d.id = ?1 AND d.deleted_at IS NULL`
-  )
-    .bind(docId)
-    .first<{
-      id: string
-      author_id: string | null
-      content_hash: string
-      created_at: number
-      kind: RevisionKind
-    }>()
-  if (!row) return null
-  return {
-    id: row.id,
-    authorId: row.author_id,
-    contentHash: row.content_hash,
-    createdAt: row.created_at,
-    kind: row.kind
-  }
+export function getHeadRevision(env: Env, docId: string): Promise<HeadRevision | null> {
+  return docRevisionQueries.head(env, docId)
 }
 
-/**
- * Overwrite the rolling autosave head in place: refresh its byte_size +
- * content_hash (the R2 object was already overwritten at the same revision
- * id) and bump the parent doc's updated_at. created_at stays put — it's
- * the coalesce-window anchor, so the row ages out after the window even
- * under continuous typing. current_rev_id / r2_snapshot are unchanged
- * (same revision id).
- */
-export async function amendRevision(
+export function amendRevision(
   env: Env,
   input: { docId: string; revisionId: string; byteSize: number; contentHash: string }
 ): Promise<void> {
-  const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(
-    `UPDATE doc_revisions SET byte_size = ?1, content_hash = ?2 WHERE id = ?3`
-  )
-    .bind(input.byteSize, input.contentHash, input.revisionId)
-    .run()
-  await env.DB.prepare(`UPDATE documents SET updated_at = ?1 WHERE id = ?2`)
-    .bind(now, input.docId)
-    .run()
+  return docRevisionQueries.amend(env, {
+    parentId: input.docId,
+    revisionId: input.revisionId,
+    byteSize: input.byteSize,
+    contentHash: input.contentHash
+  })
 }
 
-/**
- * Promote a head autosave revision to 'explicit' — the user clicked Save
- * on content identical to the rolling autosave. Freezes it as a checkpoint
- * so the next autosave cuts a new row instead of overwriting this one.
- */
-export async function sealRevision(env: Env, docId: string, revisionId: string): Promise<void> {
-  const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(`UPDATE doc_revisions SET kind = 'explicit' WHERE id = ?1`)
-    .bind(revisionId)
-    .run()
-  await env.DB.prepare(`UPDATE documents SET updated_at = ?1 WHERE id = ?2`)
-    .bind(now, docId)
-    .run()
+export function sealRevision(env: Env, docId: string, revisionId: string): Promise<void> {
+  return docRevisionQueries.seal(env, docId, revisionId)
 }
 
-/**
- * Retention prune: delete all but the `keep` most-recent autosave
- * revisions for a doc, returning the R2 keys of the deleted rows so the
- * caller can drop their bodies. Explicit revisions are never touched, and
- * the doc's current head is always spared (it may be the rolling autosave
- * holding live content). Two statements (select victims → delete by id) so
- * the freed R2 keys come back without relying on DELETE … RETURNING.
- */
-export async function pruneAutosaveRevisions(
-  env: Env,
-  docId: string,
-  keep: number
-): Promise<string[]> {
-  const headRow = await env.DB.prepare(`SELECT current_rev_id FROM documents WHERE id = ?1`)
-    .bind(docId)
-    .first<{ current_rev_id: string | null }>()
-  const headId = headRow?.current_rev_id ?? ''
-  const victims = await env.DB.prepare(
-    `SELECT id, r2_key FROM doc_revisions
-     WHERE doc_id = ?1 AND kind = 'autosave' AND id != ?2
-       AND id NOT IN (
-         SELECT id FROM doc_revisions
-         WHERE doc_id = ?1 AND kind = 'autosave'
-         ORDER BY created_at DESC, id DESC
-         LIMIT ?3
-       )`
-  )
-    .bind(docId, headId, keep)
-    .all<{ id: string; r2_key: string }>()
-  const rows = victims.results ?? []
-  if (rows.length === 0) return []
-  const ids = rows.map((r) => r.id)
-  const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ')
-  await env.DB.prepare(`DELETE FROM doc_revisions WHERE id IN (${placeholders})`)
-    .bind(...ids)
-    .run()
-  return rows.map((r) => r.r2_key)
+export function pruneAutosaveRevisions(env: Env, docId: string, keep: number): Promise<string[]> {
+  return docRevisionQueries.pruneAutosaves(env, docId, keep)
 }
 
-export async function listRevisions(env: Env, docId: string): Promise<RevisionRow[]> {
-  const res = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM doc_revisions WHERE doc_id = ?1 ORDER BY created_at DESC LIMIT 100`
-  )
-    .bind(docId)
-    .all<RevisionRow>()
-  return res.results ?? []
+export function listRevisions(env: Env, docId: string): Promise<RevisionRow[]> {
+  return docRevisionQueries.list(env, docId)
 }
 
-export async function getRevision(
+export function getRevision(
   env: Env,
   docId: string,
   revisionId: string
 ): Promise<RevisionRow | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, doc_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM doc_revisions WHERE doc_id = ?1 AND id = ?2`
-  )
-    .bind(docId, revisionId)
-    .first<RevisionRow>()
-  return row ?? null
+  return docRevisionQueries.get(env, docId, revisionId)
 }
 
 // ----- access predicates -------------------------------------------------
@@ -774,13 +662,6 @@ export async function clearDocLock(env: Env, docId: string): Promise<void> {
 }
 
 // ----- helpers -----------------------------------------------------------
-
-
-function randomSuffix(): string {
-  const buf = new Uint8Array(3)
-  crypto.getRandomValues(buf)
-  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
-}
 
 // Slug BODY for a doc title (no `doc-` prefix). Thin wrapper over the
 // shared canonical slugifier so the worker, SPA, and CLI stay in lockstep.

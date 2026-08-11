@@ -22,7 +22,15 @@ import { resolveUserScope } from '../db/queries/doc-tags'
 import { readSnapshot, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 import { searchDocs, effectiveScope, availableScopeFor, SEARCH_K_DEFAULT } from '../rag/search'
-import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
+import { UpstreamProxyRegistry } from './proxy-registry'
+import {
+  describeUpstreamForUser,
+  listUpstreamsForUser,
+  loadUserContext,
+  restrictedToolsFor,
+  upstreamGuidance,
+  type UpstreamUserContext
+} from './catalogue-views'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
@@ -138,8 +146,8 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     let upstreamCtx: UpstreamUserContext | null = null
     if (userId) {
       try {
-        upstreamCtx = await UpstreamProxyRegistry.loadUserContext(this.env, userId)
-        const guidance = UpstreamProxyRegistry.upstreamGuidance(upstreamCtx)
+        upstreamCtx = await loadUserContext(this.env, userId)
+        const guidance = upstreamGuidance(upstreamCtx)
         if (guidance) {
           this.server = new McpServer(
             { name: 'ctxlayer', version: '0.1.0' },
@@ -235,7 +243,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             listUpstreamsVisibleToUser(this.env, userId)
           ])
           const accessibleUpstreams = rows.map((r) => r.slug)
-          const restrictedTools = await UpstreamProxyRegistry.restrictedToolsFor(this.env, rows, {
+          const restrictedTools = await restrictedToolsFor(this.env, rows, {
             teams: new Set(scope.teams),
             products: new Set(scope.products),
             roles: new Set(roleIds)
@@ -269,7 +277,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         rec('list_upstreams', undefined, async () => {
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
-          const entries = await UpstreamProxyRegistry.listUpstreamsForUser(this.env, userId)
+          const entries = await listUpstreamsForUser(this.env, userId)
           return {
             content: [{ type: 'text', text: JSON.stringify(entries, null, 2) }],
             structuredContent: { upstreams: entries }
@@ -288,7 +296,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         rec('describe_upstream', args, async () => {
           const userId = this.props?.userId
           if (!userId) return errText('not_signed_in')
-          const body = await UpstreamProxyRegistry.describeUpstreamForUser(
+          const body = await describeUpstreamForUser(
             this.env,
             userId,
             args.slug,
@@ -416,7 +424,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // ----- async submit→poll built-ins -----
     // Slow upstream tools (per authConfig.asyncTools) run in the ctxlayer-jobs
     // consumer and return a job token; poll_task fetches the result once ready
-    // (list_tasks recovers a lost job id). See tools-proxy.ts submitAsyncJob +
+    // (list_tasks recovers a lost job id). See mcp/async-submit.ts submitAsyncJob +
     // docs/plan/I-upstream-resilience.md §I9.
     this.server.registerTool(
       'poll_task',

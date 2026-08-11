@@ -28,8 +28,7 @@ import { OAuthError } from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import {
-  getUpstreamById,
-  listUpstreamsVisibleToUser,
+  getUpstreamVisibleToUser,
   parseAuthConfig,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
@@ -46,7 +45,7 @@ import {
   refreshStatic,
   staticOAuth
 } from '../upstream/oauth-static'
-import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
+import { refreshCatalogueByUpstreamId, warmCatalogueAndLog } from '../upstream/catalogue'
 import { notFound } from './respond'
 import { errMessage } from '../util/errors'
 import { newCorrelationId } from '../mcp/upstream-error'
@@ -88,7 +87,7 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
   // Visibility-gated, matching the git equivalent (`api/git-oauth.ts`): an
   // ungranted caller must not be able to start an OAuth dance against — or
   // even confirm the existence of — an upstream scoped to another team.
-  const upstream = (await listUpstreamsVisibleToUser(c.env, userId)).find((r) => r.id === id)
+  const upstream = await getUpstreamVisibleToUser(c.env, userId, { id })
   if (!upstream) return notFound(c)
   if (upstream.auth_strategy !== 'user_oauth') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
@@ -244,7 +243,10 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   }
   returnTo = stored.returnTo ?? 'user'
 
-  const upstream = await getUpstreamById(c.env, stored.upstreamId)
+  // Re-check visibility at token time, matching the git twin
+  // (`api/git-oauth.ts`): a grant revoked mid-dance must not still land
+  // a credential.
+  const upstream = await getUpstreamVisibleToUser(c.env, userId, { id: stored.upstreamId })
   if (!upstream) return notFound(c)
 
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, state)
@@ -282,23 +284,13 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   // success on reload. Best-effort.
   const access = (await provider.tokens())?.access_token ?? null
   c.executionCtx.waitUntil(
-    refreshCatalogueByUpstreamId(c.env, upstream.id, access).then(
-      (r) => {
-        if (r.ok) {
-          console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools after OAuth`)
-        } else {
-          console.warn(
-            `[catalogue] ${upstream.slug}: post-OAuth refresh failed (${r.reason})${
-              r.message ? `: ${r.message}` : ''
-            }`
-          )
-        }
-      },
-      (err) => {
-        const msg = errMessage(err)
-        console.error(`[catalogue] ${upstream.slug}: post-OAuth refresh threw: ${msg}`)
-      }
-    )
+    warmCatalogueAndLog(c.env, {
+      upstreamId: upstream.id,
+      slug: upstream.slug,
+      bearerToken: access,
+      okContext: 'after OAuth',
+      failLabel: 'post-OAuth refresh'
+    })
   )
 
   return c.redirect(

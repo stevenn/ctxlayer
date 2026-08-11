@@ -90,7 +90,8 @@ ctxlayer/
         idp/{google,github,common,complete-mcp}.ts
         oauth/{authorize-page,provider-config}.ts
         mcp/session-do.ts       # McpAgent + built-in tools + usage outbox
-        mcp/{tools-proxy,tool-name,json-schema-to-zod,skill-mcp}.ts
+        mcp/{proxy-registry,catalogue-views,upstream-call-runner,async-submit}.ts
+        mcp/{tool-name,json-schema-to-zod,skill-mcp}.ts
         upstream/{http-client,oauth-provider,upstream-client,bearer}.ts
         collab/{doc-room-do,upgrade}.ts
         queues/{reindex-consumer,usage-consumer}.ts
@@ -245,7 +246,7 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 Full deep-dive in [docs/plan/C-upstream-proxy.md](plan/C-upstream-proxy.md);
 resilience (long calls + oversized responses) in [docs/plan/I-upstream-resilience.md](plan/I-upstream-resilience.md).
 
-- Per-session `UpstreamProxyRegistry` (`apps/worker/src/mcp/tools-proxy.ts`) hydrates on `McpSessionDO.init()`; built-ins never force a connect.
+- Per-session `UpstreamProxyRegistry` (`apps/worker/src/mcp/proxy-registry.ts`; catalogue read-models in `catalogue-views.ts`, the call runner in `upstream-call-runner.ts`, async submit in `async-submit.ts`) hydrates on `McpSessionDO.init()`; built-ins never force a connect.
 - HTTP/SSE upstreams use `@modelcontextprotocol/sdk` Client directly via `apps/worker/src/upstream/http-client.ts`; bearer/OAuth creds decrypted just-in-time; per-call timeout is 150s base inactivity / 300s hard ceiling, per-upstream overridable via `authConfig.timeouts`, plus a 256 KB default response-size cap overridable via `authConfig.maxResponseBytes`.
 - `user_oauth` outbound: `apps/worker/src/upstream/oauth-provider.ts` implements MCP SDK's `OAuthClientProvider`. DCR client info → `upstream_servers.auth_config.oauth`, PKCE verifier + context → `OAUTH_KV`, sealed token bundle → `user_credentials` (kind=`oauth`). Routes at `apps/worker/src/api/upstream-oauth.ts`.
 - Catalogue cache in `upstream_tools`; populates via post-OAuth `ctx.waitUntil` + session-init `ensureCatalogue` for stale rows (24h TTL). Admin "Refresh now" available for `none`-strategy upstreams.
@@ -271,7 +272,7 @@ resilience (long calls + oversized responses) in [docs/plan/I-upstream-resilienc
 
 ## Usage tracking
 
-- Producer wraps every MCP tool call (built-ins in `mcp/session-do.ts`, proxied in `mcp/tools-proxy.ts`) and tokenises req/resp via `js-tiktoken` cl100k_base. Each call **stages** a pre-computed usage event (bytes + tokens) into the McpSessionDO's SQLite **outbox** (`apps/worker/src/usage/{event,tokens,record,outbox}.ts`); an idempotent `flushUsageOutbox` alarm drains staged rows to `USAGE_QUEUE`. Replaced an earlier per-call `ctx.waitUntil(queue.send)` whose background send was cancelled once the streaming response ended (dropping usage rows). Tool responses never block on the network send.
+- Producer wraps every MCP tool call (built-ins in `mcp/session-do.ts`, proxied in `mcp/proxy-registry.ts`) and tokenises req/resp via `js-tiktoken` cl100k_base. Each call **stages** a pre-computed usage event (bytes + tokens) into the McpSessionDO's SQLite **outbox** (`apps/worker/src/usage/{event,tokens,record,outbox}.ts`); an idempotent `flushUsageOutbox` alarm drains staged rows to `USAGE_QUEUE`. Replaced an earlier per-call `ctx.waitUntil(queue.send)` whose background send was cancelled once the streaming response ended (dropping usage rows). Tool responses never block on the network send.
 - Queue consumer (`apps/worker/src/queues/usage-consumer.ts`) acks per-message; writes the raw `usage_events` row and UPSERTs the daily rollup in one D1 batch (`db/queries/usage.ts:writeUsageEvent`). `NULL upstream_id` (built-in) becomes `''` on the rollup PK. Deduplicates on event id (queues are at-least-once and the outbox can re-send a batch it failed to delete), acking a duplicate-PK insert rather than retrying.
 - Tokens are documented as **approximate** — `js-tiktoken cl100k_base` is the same encoder the RAG chunker uses; counts won't exactly match Claude's own tokenizer but track within a few %.
 - Retention: nightly cron `0 3 * * *` calls `pruneUsageEvents(env, 30)` (`apps/worker/src/index.ts:scheduled`); `usage_rollups_daily` retained indefinitely.

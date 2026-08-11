@@ -6,7 +6,7 @@ import {
   type UserPrincipals
 } from '@ctxlayer/shared'
 import { indexToolAccess, accessKey, type ToolAccessRow } from '../db/queries/tool-access'
-import { visibleTools } from './tools-proxy'
+import { visibleTools } from './catalogue-views'
 import type { UpstreamToolRow } from '../db/queries/upstream-tools'
 
 // The per-tool ACL evaluation core. This is the security boundary that

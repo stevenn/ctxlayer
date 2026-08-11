@@ -12,7 +12,7 @@
  */
 
 import type { Env } from '../env'
-import { randomToken } from '../idp/common'
+import { randomToken } from '../util/base64url'
 import { accessTrustConfigured, verifyCfAccessJwt } from '../auth/cf-access'
 import { EmailOnOtherIdpError, upsertUser } from '../db/queries/users'
 import { completeMcpAuthorization } from '../idp/complete-mcp'

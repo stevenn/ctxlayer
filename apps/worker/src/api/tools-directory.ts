@@ -32,7 +32,7 @@ import { listRoles } from '../db/queries/roles'
 import { listTeams } from '../db/queries/teams'
 import { listProducts } from '../db/queries/products'
 import { mangleToolName, toolFamily } from '../mcp/tool-name'
-import { summariseToolDescription, UpstreamProxyRegistry } from '../mcp/tools-proxy'
+import { listUpstreamsForUser, summariseToolDescription } from '../mcp/catalogue-views'
 import { builtinInputJsonSchema } from '../mcp/builtin-schemas'
 
 /** Principal id → display name, per kind, for resolving the "requires" badge. */
@@ -112,7 +112,7 @@ export async function buildToolsDirectory(env: Env, userId: string): Promise<Too
   // same builder `list_upstreams` uses; the visible rows give us id↔slug for
   // the catalogue/ACL reads (the header carries no internal id by design).
   const [headers, rows, roles, teams, products] = await Promise.all([
-    UpstreamProxyRegistry.listUpstreamsForUser(env, userId),
+    listUpstreamsForUser(env, userId),
     listUpstreamsVisibleToUser(env, userId),
     listRoles(env),
     listTeams(env),

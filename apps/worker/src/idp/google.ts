@@ -13,17 +13,15 @@ import { Hono } from 'hono'
 import type { Env } from '../env'
 import { admitOrReject } from './admit'
 import type { AdmissionIdentity } from '../util/allowlist'
-import { b64urlDecode } from '../auth/session'
+import { b64urlDecode, randomToken } from '../util/base64url'
 import { exchangeCodeForToken, finishSignIn } from './flow'
 import {
   callbackUrl,
-  pkceChallenge,
-  pkceVerifier,
-  randomToken,
   readAndVerifyStateCookie,
   serializeStateCookie,
   signInErrorRedirect
 } from './common'
+import { pkceChallenge, pkceVerifier } from '../util/pkce'
 
 const AUTHZ = 'https://accounts.google.com/o/oauth2/v2/auth'
 const TOKEN = 'https://oauth2.googleapis.com/token'

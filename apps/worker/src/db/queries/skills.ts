@@ -13,8 +13,9 @@
 
 import type { Env } from '../../env'
 import { suggestSlug } from '@ctxlayer/shared'
-import type { HeadRevision, RevisionKind } from '../revision-policy'
-import { buildPatchUpdate, isUniqueViolation, newId } from './util'
+import type { RevisionKind } from '../revision-policy'
+import { buildPatchUpdate, isUniqueViolation, newId, randomSuffix } from './util'
+import { makeRevisionQueries } from './revision-queries'
 
 export interface SkillRow {
   id: string
@@ -279,168 +280,41 @@ export interface RecordSkillRevisionInput {
   kind?: RevisionKind
 }
 
-/**
- * Insert a revision row and bump parent skill's current_rev_id +
- * r2_snapshot + updated_at. Two statements; same pattern as
- * recordRevision in docs.ts.
- */
-export async function recordSkillRevision(
+// The skill-side instantiation of the shared revision machinery — see
+// revision-queries.ts for the semantics. skill_revisions mirrors
+// doc_revisions by design (0011). Exported for the shared save pipeline
+// (api/revision-save.ts); routes use the named delegates.
+export const skillRevisionQueries = makeRevisionQueries<SkillRevisionRow>({
+  parentTable: 'skills',
+  revisionTable: 'skill_revisions',
+  fkColumn: 'skill_id',
+  insertLostError: 'skill_revision_insert_lost'
+})
+
+export function recordSkillRevision(
   env: Env,
   input: RecordSkillRevisionInput
 ): Promise<SkillRevisionRow> {
-  const now = Math.floor(Date.now() / 1000)
-  // Atomic: the revision INSERT and the head/snapshot UPDATE land together as
-  // one D1 transaction (same rationale as recordRevision in docs.ts).
-  await env.DB.batch([
-    env.DB.prepare(
-      `INSERT INTO skill_revisions
-         (id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)`
-    ).bind(
-      input.revisionId,
-      input.skillId,
-      input.authorId,
-      input.r2Key,
-      input.byteSize,
-      input.contentHash,
-      now,
-      input.kind ?? 'explicit'
-    ),
-    env.DB.prepare(
-      `UPDATE skills SET current_rev_id = ?1, r2_snapshot = ?2, updated_at = ?3 WHERE id = ?4`
-    ).bind(input.revisionId, input.r2Key, now, input.skillId)
-  ])
-  const row = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM skill_revisions WHERE id = ?1`
-  )
-    .bind(input.revisionId)
-    .first<SkillRevisionRow>()
-  if (!row) throw new Error('skill_revision_insert_lost')
-  return row
+  return skillRevisionQueries.record(env, {
+    parentId: input.skillId,
+    revisionId: input.revisionId,
+    authorId: input.authorId,
+    r2Key: input.r2Key,
+    byteSize: input.byteSize,
+    contentHash: input.contentHash,
+    kind: input.kind
+  })
 }
 
-/** Skill's current head revision, or null. Mirrors getHeadRevision. */
-export async function getHeadSkillRevision(
-  env: Env,
-  skillId: string
-): Promise<HeadRevision | null> {
-  const row = await env.DB.prepare(
-    `SELECT r.id, r.author_id, r.content_hash, r.created_at, r.kind
-     FROM skills s
-     JOIN skill_revisions r ON r.id = s.current_rev_id
-     WHERE s.id = ?1 AND s.deleted_at IS NULL`
-  )
-    .bind(skillId)
-    .first<{
-      id: string
-      author_id: string | null
-      content_hash: string
-      created_at: number
-      kind: RevisionKind
-    }>()
-  if (!row) return null
-  return {
-    id: row.id,
-    authorId: row.author_id,
-    contentHash: row.content_hash,
-    createdAt: row.created_at,
-    kind: row.kind
-  }
+export function listSkillRevisions(env: Env, skillId: string): Promise<SkillRevisionRow[]> {
+  return skillRevisionQueries.list(env, skillId)
 }
 
-/** Overwrite the rolling autosave head in place. Mirrors amendRevision. */
-export async function amendSkillRevision(
-  env: Env,
-  input: { skillId: string; revisionId: string; byteSize: number; contentHash: string }
-): Promise<void> {
-  const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(
-    `UPDATE skill_revisions SET byte_size = ?1, content_hash = ?2 WHERE id = ?3`
-  )
-    .bind(input.byteSize, input.contentHash, input.revisionId)
-    .run()
-  await env.DB.prepare(`UPDATE skills SET updated_at = ?1 WHERE id = ?2`)
-    .bind(now, input.skillId)
-    .run()
-}
-
-/** Promote a head autosave revision to 'explicit'. Mirrors sealRevision. */
-export async function sealSkillRevision(
-  env: Env,
-  skillId: string,
-  revisionId: string
-): Promise<void> {
-  const now = Math.floor(Date.now() / 1000)
-  await env.DB.prepare(`UPDATE skill_revisions SET kind = 'explicit' WHERE id = ?1`)
-    .bind(revisionId)
-    .run()
-  await env.DB.prepare(`UPDATE skills SET updated_at = ?1 WHERE id = ?2`)
-    .bind(now, skillId)
-    .run()
-}
-
-/** Retention prune for skill autosaves. Mirrors pruneAutosaveRevisions. */
-export async function pruneAutosaveSkillRevisions(
-  env: Env,
-  skillId: string,
-  keep: number
-): Promise<string[]> {
-  const headRow = await env.DB.prepare(`SELECT current_rev_id FROM skills WHERE id = ?1`)
-    .bind(skillId)
-    .first<{ current_rev_id: string | null }>()
-  const headId = headRow?.current_rev_id ?? ''
-  const victims = await env.DB.prepare(
-    `SELECT id, r2_key FROM skill_revisions
-     WHERE skill_id = ?1 AND kind = 'autosave' AND id != ?2
-       AND id NOT IN (
-         SELECT id FROM skill_revisions
-         WHERE skill_id = ?1 AND kind = 'autosave'
-         ORDER BY created_at DESC, id DESC
-         LIMIT ?3
-       )`
-  )
-    .bind(skillId, headId, keep)
-    .all<{ id: string; r2_key: string }>()
-  const rows = victims.results ?? []
-  if (rows.length === 0) return []
-  const ids = rows.map((r) => r.id)
-  const placeholders = ids.map((_, i) => `?${i + 1}`).join(', ')
-  await env.DB.prepare(`DELETE FROM skill_revisions WHERE id IN (${placeholders})`)
-    .bind(...ids)
-    .run()
-  return rows.map((r) => r.r2_key)
-}
-
-export async function listSkillRevisions(env: Env, skillId: string): Promise<SkillRevisionRow[]> {
-  const res = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM skill_revisions WHERE skill_id = ?1 ORDER BY created_at DESC LIMIT 100`
-  )
-    .bind(skillId)
-    .all<SkillRevisionRow>()
-  return res.results ?? []
-}
-
-export async function getSkillRevision(
+export function getSkillRevision(
   env: Env,
   skillId: string,
   revisionId: string
 ): Promise<SkillRevisionRow | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, skill_id, author_id, r2_key, byte_size, content_hash, created_at, kind
-     FROM skill_revisions WHERE skill_id = ?1 AND id = ?2`
-  )
-    .bind(skillId, revisionId)
-    .first<SkillRevisionRow>()
-  return row ?? null
+  return skillRevisionQueries.get(env, skillId, revisionId)
 }
 
-// ----- helpers -----------------------------------------------------------
-
-
-function randomSuffix(): string {
-  const buf = new Uint8Array(3)
-  crypto.getRandomValues(buf)
-  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
-}

@@ -14,13 +14,12 @@ import type { AdmissionIdentity } from '../util/allowlist'
 import { exchangeCodeForToken, finishSignIn } from './flow'
 import {
   callbackUrl,
-  pkceChallenge,
-  pkceVerifier,
-  randomToken,
   readAndVerifyStateCookie,
   serializeStateCookie,
   signInErrorRedirect
 } from './common'
+import { randomToken } from '../util/base64url'
+import { pkceChallenge, pkceVerifier } from '../util/pkce'
 
 const AUTHZ = 'https://github.com/login/oauth/authorize'
 const TOKEN = 'https://github.com/login/oauth/access_token'

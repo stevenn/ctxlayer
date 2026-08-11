@@ -107,6 +107,13 @@ export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
   return res.results ?? []
 }
 
+/**
+ * Bare row fetch with NO visibility gate. Admin routes and system paths
+ * (queue consumers, catalogue refresh) only. Anything user- or
+ * agent-facing must resolve through `getUpstreamVisibleToUser` /
+ * `listUpstreamsVisibleToUser*` instead — an ungranted upstream must be
+ * indistinguishable from a nonexistent one (CLAUDE.md security gotcha).
+ */
 export async function getUpstreamById(env: Env, id: string): Promise<UpstreamServerRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
@@ -114,17 +121,6 @@ export async function getUpstreamById(env: Env, id: string): Promise<UpstreamSer
      FROM upstream_servers WHERE id = ?1`
   )
     .bind(id)
-    .first<UpstreamServerRow>()
-  return row ?? null
-}
-
-export async function getUpstreamBySlug(env: Env, slug: string): Promise<UpstreamServerRow | null> {
-  const row = await env.DB.prepare(
-    `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
-            enabled, created_at, updated_at
-     FROM upstream_servers WHERE slug = ?1`
-  )
-    .bind(slug)
     .first<UpstreamServerRow>()
   return row ?? null
 }
@@ -252,24 +248,21 @@ export async function replaceVisibility(
   await env.DB.batch(stmts)
 }
 
+// Placeholder index for the first predicate bind after ?1 (user id) and
+// the dialable-transport IN-list. All visible-to-user queries share it.
+const VISIBLE_EXTRA_IDX = 2 + DIALABLE_TRANSPORTS.length
+
 /**
- * Return only the upstreams whose visibility rules admit `userId`.
- * "everyone" rows match unconditionally; team / product rows match if
- * the user is in that team or has access to that product (transitively
- * through their teams).
- *
- * Single round-trip: a subquery resolves the user's reachable team_ids
- * and product_ids, then we LEFT JOIN visibility and require at least
- * one match per upstream.
+ * Shared core of every visible-to-user upstream read: the user's
+ * reachable teams / products / roles as CTEs, joined against
+ * `upstream_visibility`, restricted to enabled + dialable rows.
+ * `extraPredicate` (an `AND ...` clause using `?${VISIBLE_EXTRA_IDX}`
+ * onward) narrows to one row / a slug set; the visibility, enabled and
+ * transport filters can never be skipped by a caller.
  */
-export async function listUpstreamsVisibleToUser(
-  env: Env,
-  userId: string
-): Promise<UpstreamServerRow[]> {
-  // Dialable-transport filter built from the shared const: ?1 is the
-  // user id, so the IN-list placeholders start at ?2.
+function visibleUpstreamsStmt(env: Env, userId: string, extraPredicate: string, extraBinds: string[]) {
   const transportIn = DIALABLE_TRANSPORTS.map((_, i) => `?${i + 2}`).join(',')
-  const res = await env.DB.prepare(
+  return env.DB.prepare(
     `WITH user_teams AS (
        SELECT team_id FROM team_members WHERE user_id = ?1
      ),
@@ -294,10 +287,64 @@ export async function listUpstreamsVisibleToUser(
          OR (v.scope_kind = 'product' AND v.scope_id IN (SELECT product_id FROM user_products))
          OR (v.scope_kind = 'role'    AND v.scope_id IN (SELECT role_id FROM user_roles_cte))
        )
+       ${extraPredicate}
      ORDER BY u.display_name`
-  )
-    .bind(userId, ...DIALABLE_TRANSPORTS)
-    .all<UpstreamServerRow>()
+  ).bind(userId, ...DIALABLE_TRANSPORTS, ...extraBinds)
+}
+
+/**
+ * Return only the upstreams whose visibility rules admit `userId`.
+ * "everyone" rows match unconditionally; team / product rows match if
+ * the user is in that team or has access to that product (transitively
+ * through their teams).
+ */
+export async function listUpstreamsVisibleToUser(
+  env: Env,
+  userId: string
+): Promise<UpstreamServerRow[]> {
+  const res = await visibleUpstreamsStmt(env, userId, '', []).all<UpstreamServerRow>()
+  return res.results ?? []
+}
+
+/**
+ * Visible-or-nothing single-row resolve — THE way to fetch one upstream
+ * on any user- or agent-facing path. Returns null for ungranted,
+ * disabled, non-dialable and nonexistent alike, so callers can 404
+ * without being able to distinguish them (CLAUDE.md security gotcha).
+ */
+export async function getUpstreamVisibleToUser(
+  env: Env,
+  userId: string,
+  ref: { id: string } | { slug: string }
+): Promise<UpstreamServerRow | null> {
+  const [column, value] = 'id' in ref ? ['u.id', ref.id] : ['u.slug', ref.slug]
+  const row = await visibleUpstreamsStmt(
+    env,
+    userId,
+    `AND ${column} = ?${VISIBLE_EXTRA_IDX}`,
+    [value]
+  ).first<UpstreamServerRow>()
+  return row ?? null
+}
+
+/**
+ * Batch variant for multi-slug resolves (draft_skill): one round trip
+ * for the requested slugs, same gate. Missing/ungranted slugs are simply
+ * absent from the result.
+ */
+export async function listUpstreamsVisibleToUserBySlugs(
+  env: Env,
+  userId: string,
+  slugs: string[]
+): Promise<UpstreamServerRow[]> {
+  if (slugs.length === 0) return []
+  const slugIn = slugs.map((_, i) => `?${VISIBLE_EXTRA_IDX + i}`).join(',')
+  const res = await visibleUpstreamsStmt(
+    env,
+    userId,
+    `AND u.slug IN (${slugIn})`,
+    slugs
+  ).all<UpstreamServerRow>()
   return res.results ?? []
 }
 

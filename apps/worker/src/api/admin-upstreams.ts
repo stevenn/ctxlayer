@@ -17,8 +17,7 @@ import {
   UpdateUpstreamRequest,
   isSameOrigin,
   type ToolAccessEntry,
-  type ToolAccessRule,
-  type UpstreamAuthConfig
+  type ToolAccessRule
 } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireAdmin, type AuthedVariables } from '../auth/middleware'
@@ -39,20 +38,15 @@ import {
   deleteSharedCredential,
   upsertSharedCredential
 } from '../db/queries/upstream-credentials'
-import {
-  refreshCatalogueByUpstreamId,
-  refreshCatalogueForConnection,
-  warmCatalogueAndLog
-} from '../upstream/catalogue'
+import { refreshCatalogueForConnection, warmCatalogueAndLog } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
-import { UPSTREAM_TIMEOUT_CLAMP_MS } from '../upstream/http-client'
-import { seal, sealedToString } from '../crypto/aead'
+import { clampTimeouts, oauthEndpointSelfLoop, prepareOAuthSecret } from '../upstream/admin-config'
+import { seal } from '../crypto/aead'
 import { audit } from '../audit/log'
 import { listToolAccessForUpstream, replaceToolAccessForTool } from '../db/queries/tool-access'
 import { buildUpstreamToolsPayload } from './upstreams-attachments'
 import { notFound, parseJsonBody } from './respond'
 import { isUniqueViolation } from '../db/queries/util'
-import { errMessage } from '../util/errors'
 
 export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 adminUpstreamsRoute.use('*', requireAdmin)
@@ -243,15 +237,6 @@ adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
 })
 
 /**
- * Admin-triggered catalogue refresh. Uses the calling admin's own
- * credentials for upstreams that need them (paste-bearer for
- * `user_bearer`, OAuth tokens for `user_oauth`, no creds for `none`).
- * If the admin hasn't connected the upstream on `/upstreams` yet, we
- * tell them so they can connect once and reuse the refresh button
- * thereafter. The per-user MCP session refresh path is still available
- * as a fallback for non-admin users on session init.
- */
-/**
  * Read the cached tool list for an upstream. Backs the expand-row
  * drill-down on /app/admin/upstreams. Read-only; doesn't trigger a
  * refresh. If the cache is empty (newly created, never warmed) the
@@ -269,6 +254,15 @@ adminUpstreamsRoute.get('/:id/tools', async (c) => {
   )
 })
 
+/**
+ * Admin-triggered catalogue refresh. Uses the calling admin's own
+ * credentials for upstreams that need them (paste-bearer for
+ * `user_bearer`, OAuth tokens for `user_oauth`, no creds for `none`).
+ * If the admin hasn't connected the upstream on `/upstreams` yet, we
+ * tell them so they can connect once and reuse the refresh button
+ * thereafter. The per-user MCP session refresh path is still available
+ * as a fallback for non-admin users on session init.
+ */
 adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
   const row = await getUpstreamById(c.env, id)
@@ -336,23 +330,13 @@ adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
   // Warm catalogue immediately so the admin sees toolsCount populate
   // without a manual Refresh click.
   c.executionCtx.waitUntil(
-    refreshCatalogueByUpstreamId(c.env, id, parsed.data.token).then(
-      (r) => {
-        if (r.ok) {
-          console.log(`[catalogue] ${r.slug}: warmed ${r.toolsCount} tools after shared-bearer set`)
-        } else {
-          console.warn(
-            `[catalogue] ${row.slug}: shared-bearer refresh failed (${r.reason})${
-              r.message ? `: ${r.message}` : ''
-            }`
-          )
-        }
-      },
-      (err) => {
-        const msg = errMessage(err)
-        console.error(`[catalogue] ${row.slug}: shared-bearer refresh threw: ${msg}`)
-      }
-    )
+    warmCatalogueAndLog(c.env, {
+      upstreamId: id,
+      slug: row.slug,
+      bearerToken: parsed.data.token,
+      okContext: 'after shared-bearer set',
+      failLabel: 'shared-bearer refresh'
+    })
   )
   return new Response(null, { status: 204 })
 })
@@ -372,67 +356,3 @@ adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
   return new Response(null, { status: 204 })
 })
 
-/**
- * Defensive clamp on per-upstream timeout overrides before they hit D1.
- * A 150-300s call blocks the serial McpSessionDO for that whole window
- * (docs/plan/I-upstream-resilience.md §I5.1), so no upstream may opt into
- * a window longer than the platform-safe hard cap. The client re-clamps
- * on read; this just keeps the persisted values honest for the admin UI.
- */
-function clampTimeouts(
-  cfg: UpdateUpstreamRequest['authConfig']
-): UpdateUpstreamRequest['authConfig'] {
-  if (!cfg?.timeouts) return cfg
-  const clamp = (v: number | undefined) =>
-    v === undefined ? undefined : Math.min(v, UPSTREAM_TIMEOUT_CLAMP_MS)
-  return {
-    ...cfg,
-    timeouts: {
-      callMs: clamp(cfg.timeouts.callMs),
-      maxCallMs: clamp(cfg.timeouts.maxCallMs),
-      listMs: clamp(cfg.timeouts.listMs)
-    }
-  }
-}
-
-/**
- * Seal the write-only static-OAuth `clientSecret` from the admin form into
- * `clientSecretCiphertext`, and strip the plaintext so it never reaches D1.
- * On edit with no new secret, carry the existing sealed value forward —
- * PATCH replaces the whole auth_config column and the read path redacts the
- * ciphertext, so the form can't round-trip it. No-op when there's no oauth
- * block (every non-`user_oauth` upstream, and DCR clients).
- */
-async function prepareOAuthSecret(
-  cfg: UpdateUpstreamRequest['authConfig'],
-  env: Env,
-  current: UpstreamAuthConfig | undefined
-): Promise<UpdateUpstreamRequest['authConfig']> {
-  if (!cfg?.oauth) return cfg
-  const oauth = { ...cfg.oauth }
-  if (oauth.clientSecret) {
-    const sealed = await seal(oauth.clientSecret, env.ENCRYPTION_KEY)
-    oauth.clientSecretCiphertext = sealedToString(sealed)
-  } else if (current?.oauth?.clientSecretCiphertext) {
-    oauth.clientSecretCiphertext = current.oauth.clientSecretCiphertext
-  }
-  oauth.clientSecret = undefined // never persist plaintext (dropped by JSON.stringify)
-  return { ...cfg, oauth }
-}
-
-/**
- * Self-loop guard for admin-supplied static-OAuth endpoints — same rule as
- * the upstream URL itself (and as `admin-git-sources.ts` applies to its
- * `tokenUrl`): the worker must never POST the authorization code + sealed
- * client secret back into its own origin.
- */
-function oauthEndpointSelfLoop(
-  cfg: UpdateUpstreamRequest['authConfig'],
-  env: Env
-): boolean {
-  const oauth = cfg?.oauth
-  if (!oauth) return false
-  return [oauth.authorizeUrl, oauth.tokenUrl].some(
-    (u) => typeof u === 'string' && isSameOrigin(u, env.PUBLIC_BASE_URL)
-  )
-}

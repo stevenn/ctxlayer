@@ -54,3 +54,13 @@ export function buildPatchUpdate(
 export function newId(): string {
   return crypto.randomUUID().replace(/-/g, '')
 }
+
+/**
+ * Short random hex suffix for slug-collision retries — docs and skills
+ * share the one implementation (`<base-slug>-<suffix>` on attempt > 0).
+ */
+export function randomSuffix(): string {
+  const buf = new Uint8Array(3)
+  crypto.getRandomValues(buf)
+  return Array.from(buf, (b) => b.toString(16).padStart(2, '0')).join('')
+}

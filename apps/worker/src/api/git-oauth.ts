@@ -16,7 +16,7 @@
 import { Hono } from 'hono'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
-import { getGitSourceById, isGitSourceVisibleToUser } from '../db/queries/git-sources'
+import { getGitSourceIfVisible } from '../db/queries/git-sources'
 import { getGitConnectionForSource } from '../db/queries/git-connections'
 import {
   GitOAuthFlowProvider,
@@ -45,13 +45,13 @@ gitOauthStartRoute.use('*', requireUser)
 gitOauthStartRoute.get('/:id/oauth/start', async (c) => {
   const actor = c.get('user')
   const userId = actor.userId
-  const source = await getGitSourceById(c.env, c.req.param('id'))
-  if (!source) return notFound(c)
   // Same gate as the PAT path (PUT /:id/credentials): sources are
   // invisible-until-granted, so connecting needs a visibility grant too.
-  const allowed =
-    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, source.id, userId))
-  if (!allowed) return c.json({ error: 'forbidden' }, 403)
+  const access = await getGitSourceIfVisible(c.env, c.req.param('id'), actor)
+  if (!access.ok) {
+    return access.reason === 'not_found' ? notFound(c) : c.json({ error: 'forbidden' }, 403)
+  }
+  const source = access.source
   const connection = await getGitConnectionForSource(c.env, source.id)
   const oauth = gitStaticOAuth(connection?.auth_config ?? null)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)
@@ -94,16 +94,15 @@ gitOauthCallbackRoute.get('/callback', async (c) => {
   // Anti-pivot: only the user who started the dance may receive the tokens.
   if (stored.userId !== userId) return c.json({ error: 'oauth_user_mismatch' }, 403)
 
-  const source = await getGitSourceById(c.env, stored.gitSourceId)
-  if (!source) return notFound(c)
   // Re-check visibility at token time — a grant revoked mid-dance must not
   // still land a credential.
-  const allowed =
-    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, source.id, userId))
-  if (!allowed) {
+  const access = await getGitSourceIfVisible(c.env, stored.gitSourceId, actor)
+  if (!access.ok) {
+    if (access.reason === 'not_found') return notFound(c)
     await deleteGitVerifierState(c.env, state)
     return c.json({ error: 'forbidden' }, 403)
   }
+  const source = access.source
   const connection = await getGitConnectionForSource(c.env, source.id)
   const oauth = gitStaticOAuth(connection?.auth_config ?? null)
   if (!oauth) return c.json({ error: 'oauth_not_configured' }, 400)

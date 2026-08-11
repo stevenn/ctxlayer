@@ -84,18 +84,20 @@ any of these on a new endpoint or proxy hop is a regression.
   string can contain access/id tokens or detailed IdP error meta that
   leak to centralised logs. Log HTTP status and error code only.
 - **Never echo a THROWN upstream error verbatim to the agent.** When a
-  proxied call throws, `mcp/tools-proxy.ts` must return a generic code
-  (`upstream_error`, `timeout`) + a `ref=` id, with the real text logged
-  server-side only — it can carry API keys, internal hostnames, stack
-  traces. `formatUpstreamError` owns this; the catch block is covered by
-  a test asserting no credential leak.
+  proxied call throws, `mcp/upstream-call-runner.ts` must return a
+  generic code (`upstream_error`, `timeout`) + a `ref=` id, with the
+  real text logged server-side only — it can carry API keys, internal
+  hostnames, stack traces. `formatUpstreamError` owns this; the catch
+  block is covered by a test asserting no credential leak.
   **Known gap, deliberate:** an upstream that reports failure the
   MCP-idiomatic way — `{ content, isError: true }` — does NOT throw, so
   its text is forwarded to the agent (and replayed by `poll_task` from
-  `async_jobs.error_detail`). `tools-proxy.test.ts` asserts that
-  passthrough. It IS control-char stripped + provenance defanged; it is
-  NOT credential-scrubbed. Tightening this is an open decision — see
-  `docs/review-2026-07.md`.
+  `async_jobs.error_detail`). `upstream-call-runner.test.ts` asserts
+  that passthrough. It IS control-char stripped + provenance defanged;
+  it is NOT credential-scrubbed. Tightening this is an open decision —
+  see `docs/review-2026-07.md`; the landing spot is the identity-gated
+  registry in `mcp/result-postprocess.ts` (which also owns the GitHub
+  org-403 nudges — keyed on upstream URL host, never on text alone).
 - **Untrusted upstream text is model input — sanitise on EVERY path.**
   `sanitizeUntrustedText` / `sanitizeUntrustedContent` live in
   `mcp/provenance.ts` (control-char strip + `defangProvenance`), NOT in

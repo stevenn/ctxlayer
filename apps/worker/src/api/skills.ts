@@ -9,7 +9,6 @@
 import { Hono, type Context } from 'hono'
 import {
   CreateSkillRequest,
-  DocContent,
   RestoreRequest,
   UpdateSkillRequest,
   type SkillAttachmentRef,
@@ -22,23 +21,19 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { canReadSkill, canWriteSkill } from '../skills/skill-access'
 import {
-  amendSkillRevision,
   createSkill,
-  getHeadSkillRevision,
   getSkillById,
   getSkillRevision,
   listSkillRevisions,
   listSkillsForAdmin,
   listSkillsVisibleToUser,
   patchSkill,
-  pruneAutosaveSkillRevisions,
   recordSkillRevision,
-  sealSkillRevision,
+  skillRevisionQueries,
   softDeleteSkill,
   type SkillRevisionRow,
   type SkillWithUsersRow
 } from '../db/queries/skills'
-import { decideRevision, MAX_RETAINED_AUTOSAVES } from '../db/revision-policy'
 import { listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { listTagsForSkill } from '../db/queries/skill-tags'
 import {
@@ -55,9 +50,8 @@ import { buildSkillExport, buildSkillExportEntry } from '../skills/export'
 import { renderSkillMd } from '../skills/skill-md'
 import { packArchive } from '../bundle/archive'
 import { notFound, parseJsonBody } from './respond'
+import { saveRevisionContent } from './revision-save'
 import { isUniqueViolation, newId } from '../db/queries/util'
-
-const CONTENT_MAX_BYTES = 2 * 1024 * 1024
 
 export const skillsRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 skillsRoute.use('*', requireUser)
@@ -217,72 +211,41 @@ skillsRoute.put('/:id/content', async (c) => {
   const gate = await loadForWrite(c, id)
   if (gate instanceof Response) return gate
   const raw = await c.req.arrayBuffer()
-  if (raw.byteLength > CONTENT_MAX_BYTES) return c.json({ error: 'content_too_large' }, 413)
-  const parsed = DocContent.safeParse(JSON.parse(new TextDecoder().decode(raw) || 'null'))
-  if (!parsed.success) return c.json({ error: 'bad_request', issues: parsed.error.issues }, 400)
-
   // Autosave coalescing — same policy as docs (see db/revision-policy.ts).
   // `?mode=autosave` opts into coalescing; absent/explicit cuts a checkpoint.
   const explicit = c.req.query('mode') !== 'autosave'
-  const { contentHash, byteSize } = await contentDigest(parsed.data)
-  const head = await getHeadSkillRevision(c.env, id)
-  const decision = decideRevision(head, {
-    contentHash,
-    userId,
-    explicit,
-    now: Math.floor(Date.now() / 1000)
-  })
-
-  // Dedup / seal: content unchanged. Skip the R2 write and the linter
-  // (the body is byte-identical to what's already persisted + linted).
-  if (decision.action === 'noop' || decision.action === 'seal') {
-    if (decision.action === 'seal') await sealSkillRevision(c.env, id, decision.revisionId)
-    return c.json({ revisionId: decision.revisionId, byteSize, contentHash, lintFindings: [] })
+  const outcome = await saveRevisionContent(
+    c.env,
+    c.executionCtx,
+    {
+      queries: skillRevisionQueries,
+      contentDigest,
+      writeRevisionAndSnapshot,
+      deleteRevisionObjects
+    },
+    { parentId: id, userId, raw, explicit }
+  )
+  if (outcome.kind === 'too_large') return c.json({ error: 'content_too_large' }, 413)
+  if (outcome.kind === 'invalid') {
+    return c.json({ error: 'bad_request', issues: outcome.issues }, 400)
   }
-
-  const revisionId = decision.action === 'amend' ? decision.revisionId : newId()
-  const put = await writeRevisionAndSnapshot(c.env, id, revisionId, parsed.data)
-  if (decision.action === 'amend') {
-    await amendSkillRevision(c.env, {
-      skillId: id,
-      revisionId,
-      byteSize: put.byteSize,
-      contentHash: put.contentHash
-    })
-  } else {
-    await recordSkillRevision(c.env, {
-      skillId: id,
-      revisionId,
-      authorId: userId,
-      r2Key: put.key,
-      byteSize: put.byteSize,
-      contentHash: put.contentHash,
-      kind: decision.kind
-    })
-    // Retention: prune the oldest autosaves (D1) and drop their R2 bodies
-    // after the response. Same policy as docs.
-    const prunedKeys = await pruneAutosaveSkillRevisions(c.env, id, MAX_RETAINED_AUTOSAVES)
-    if (prunedKeys.length > 0) {
-      c.executionCtx.waitUntil(
-        deleteRevisionObjects(c.env, prunedKeys).catch((err) =>
-          console.error('autosave prune R2 cleanup failed', err)
-        )
-      )
+  // Dedup / seal (`wrote: false`): the body is byte-identical to what's
+  // already persisted + linted, so skip the linter too.
+  let lintFindings: Awaited<ReturnType<typeof lintSkillBody>> = []
+  if (outcome.wrote) {
+    // Schema-reference linter runs after save. Warning-only — findings
+    // ride along but don't block. Lint failures themselves never fail
+    // the save (skill body is already persisted).
+    try {
+      lintFindings = await lintSkillBody(c.env, id, outcome.content)
+    } catch (err) {
+      console.error('skill linter failed (non-fatal):', err)
     }
   }
-  // Schema-reference linter runs after save. Warning-only — findings
-  // ride along but don't block. Lint failures themselves never fail
-  // the save (skill body is already persisted).
-  let lintFindings: Awaited<ReturnType<typeof lintSkillBody>> = []
-  try {
-    lintFindings = await lintSkillBody(c.env, id, parsed.data)
-  } catch (err) {
-    console.error('skill linter failed (non-fatal):', err)
-  }
   return c.json({
-    revisionId,
-    byteSize: put.byteSize,
-    contentHash: put.contentHash,
+    revisionId: outcome.revisionId,
+    byteSize: outcome.byteSize,
+    contentHash: outcome.contentHash,
     lintFindings
   })
 })

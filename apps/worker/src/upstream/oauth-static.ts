@@ -19,6 +19,7 @@ import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { open as openSecret, sealedFromString } from '../crypto/aead'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
+import { pkceChallenge, pkceVerifier } from '../util/pkce'
 
 export type StaticOAuth = NonNullable<UpstreamAuthConfig['oauth']>
 
@@ -77,9 +78,9 @@ export async function buildAuthorizeRedirect(
   provider: StaticFlowProvider,
   oauth: StaticOAuth
 ): Promise<string> {
-  const verifier = randomVerifier()
+  const verifier = pkceVerifier()
   await provider.saveCodeVerifier(verifier)
-  const challenge = await s256Challenge(verifier)
+  const challenge = await pkceChallenge(verifier)
   const url = new URL(requireField(oauth.authorizeUrl, 'authorizeUrl'))
   url.searchParams.set('client_id', requireField(oauth.clientId, 'clientId'))
   url.searchParams.set('response_type', 'code')
@@ -275,17 +276,3 @@ function requireField(v: string | undefined, name: string): string {
   return v
 }
 
-function randomVerifier(): string {
-  return base64Url(crypto.getRandomValues(new Uint8Array(32)))
-}
-
-async function s256Challenge(verifier: string): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(verifier))
-  return base64Url(new Uint8Array(digest))
-}
-
-function base64Url(bytes: Uint8Array): string {
-  let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}

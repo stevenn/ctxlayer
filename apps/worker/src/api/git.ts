@@ -24,9 +24,9 @@ import {
   deleteGitUserCredential,
   getDocGitOrigin,
   getGitSourceById,
+  getGitSourceIfVisible,
   getGitUserCredential,
   getLatestPrForDoc,
-  isGitSourceVisibleToUser,
   setDocGitSyncState,
   updateGitPrState,
   upsertGitUserCredential,
@@ -184,11 +184,10 @@ gitSourcesUserRoute.use('*', requireCsrf)
 gitSourcesUserRoute.put('/:id/credentials', async (c) => {
   const id = c.req.param('id')
   const actor = c.get('user')
-  const source = await getGitSourceById(c.env, id)
-  if (!source) return notFound(c)
-  const allowed =
-    actor.role === 'admin' || (await isGitSourceVisibleToUser(c.env, id, actor.userId))
-  if (!allowed) return c.json({ error: 'forbidden' }, 403)
+  const access = await getGitSourceIfVisible(c.env, id, actor)
+  if (!access.ok) {
+    return access.reason === 'not_found' ? notFound(c) : c.json({ error: 'forbidden' }, 403)
+  }
   const parsed = await parseJsonBody(c, GitSetCredentialRequest)
   if (!parsed.ok) return parsed.res
   const sealed = await seal(parsed.data.token, c.env.ENCRYPTION_KEY)

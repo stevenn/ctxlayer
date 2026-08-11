@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env } from '../env'
+import { b64urlEncode as b64url } from '../util/base64url'
 import { accessTrustConfigured, verifyCfAccessJwt } from './cf-access'
 
 const AUD = 'test-aud-tag'
 const NOW = 1_700_000_000
 
-function b64url(bytes: Uint8Array): string {
-  let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
 const b64urlStr = (s: string) => b64url(new TextEncoder().encode(s))
 
 async function genKeyPair(): Promise<CryptoKeyPair> {

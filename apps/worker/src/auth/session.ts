@@ -10,6 +10,7 @@
  */
 
 import type { Role } from '@ctxlayer/shared'
+import { b64urlDecode, b64urlEncode } from '../util/base64url'
 
 const COOKIE_NAME = '__Host-ctx_session'
 const MAX_AGE_SECONDS = 30 * 24 * 60 * 60
@@ -90,20 +91,6 @@ export function readCookie(req: Request, name: string): string | undefined {
     if (part.slice(0, eq) === name) return part.slice(eq + 1)
   }
   return undefined
-}
-
-export function b64urlEncode(bytes: Uint8Array): string {
-  let bin = ''
-  for (const b of bytes) bin += String.fromCharCode(b)
-  return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
-export function b64urlDecode(s: string): Uint8Array {
-  const pad = s.length % 4 === 2 ? '==' : s.length % 4 === 3 ? '=' : ''
-  const bin = atob(s.replace(/-/g, '+').replace(/_/g, '/') + pad)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
 }
 
 async function importHmacKey(secret: string): Promise<CryptoKey> {
