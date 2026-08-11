@@ -149,6 +149,11 @@ const UNGATED_ALLOWLIST: { method: Method; path: string; why: string }[] = [
     method: 'POST',
     path: '/api/auth/signout',
     why: 'requireCsrf but no requireUser — signing out needs no live session, so the 401 assertion cannot apply'
+  },
+  {
+    method: 'POST',
+    path: '/oauth/authorize/decision',
+    why: 'pre-session consent form (§1e) — no cookie exists yet; guarded by the Sec-Fetch-Site gate + the unguessable single-use request_id, asserted in authorize-page.test.ts'
   }
 ]
 

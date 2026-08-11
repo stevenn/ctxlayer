@@ -226,6 +226,12 @@ ALLOWED_GITHUB_USERS = ""            # e.g. "octocat,hubot" (comma-sep GitHub lo
 # from `.prod.vars` by scripts/deploy.mjs, so this committed default stays
 # generic.
 ACCESS_POLICY = "open_domain"        # open_domain | request | invite
+# Consent interstitial (July review §1e): /oauth/authorize always shows an
+# approve/deny page naming the client — including on Cloudflare-Access-fronted
+# deploys, where the edge identity turns it into a plain Approve/Deny (no IdP
+# chooser). A deploy that treats the Access gate itself as consent can restore
+# zero-click MCP authorization by injecting OAUTH_CONSENT_SKIP_VIA_ACCESS = "1"
+# (a [var], e.g. via .prod.vars + scripts/deploy.mjs, like PUBLIC_BASE_URL).
 # ADMIN_EMAILS is the one binding still set via `wrangler secret put` (admin
 # identity, not an allowlist); in local dev `.dev.vars` supplies it. Declaring
 # an empty default here would block the secret with code 10053 ("binding name

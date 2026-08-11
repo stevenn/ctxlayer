@@ -29,6 +29,12 @@ export interface Env {
   // deploy. Unset ⇒ Access trust is off and only the IdP/cookie path runs.
   CF_ACCESS_TEAM_DOMAIN?: string // e.g. 'myteam.cloudflareaccess.com'
   CF_ACCESS_AUD?: string // the Access application's AUD tag
+  // Consent interstitial escape hatch (July review §1e). By default,
+  // /oauth/authorize shows an approve/deny page even to Access-verified
+  // users. Set to '1'/'true' on deploys that treat the Access gate itself
+  // as consent to restore zero-click MCP authorization. Ignored unless
+  // Access trust is configured. Not a secret; injected as a [var].
+  OAUTH_CONSENT_SKIP_VIA_ACCESS?: string
   // Build provenance, injected by the `deploy` script via `--var`.
   // Empty in local dev / a bare `wrangler deploy`.
   GIT_SHA: string

@@ -46,7 +46,7 @@ import { toolsRoute } from './api/tools'
 import { upstreamOauthCallbackRoute, upstreamOauthStartRoute } from './api/upstream-oauth'
 import { googleIdpRoute } from './idp/google'
 import { githubIdpRoute } from './idp/github'
-import { handleAuthorize } from './oauth/authorize-page'
+import { handleAuthorize, handleAuthorizeDecision } from './oauth/authorize-page'
 import { handleCollabUpgrade } from './collab/upgrade'
 
 export const app = new Hono<{ Bindings: Env }>()
@@ -122,11 +122,14 @@ app.route('/api/upstreams/oauth', upstreamOauthCallbackRoute)
 app.route('/idp/google', googleIdpRoute)
 app.route('/idp/github', githubIdpRoute)
 
-// /oauth/authorize is the IdP chooser shown to MCP clients. The OAuth
+// /oauth/authorize is the consent interstitial shown to MCP clients
+// (approve/deny + IdP chooser — see oauth/authorize-page.ts); the
+// decision form posts back to /oauth/authorize/decision. The OAuth
 // provider library handles /oauth/token, /oauth/register, and
 // /.well-known/oauth-authorization-server itself (see provider config
 // in index.ts). Everything else under /oauth/ falls through to 404.
 app.get('/oauth/authorize', (c) => handleAuthorize(c.req.raw, c.env))
+app.post('/oauth/authorize/decision', (c) => handleAuthorizeDecision(c.req.raw, c.env))
 
 // Realtime collab WebSocket endpoint. The handler authenticates the
 // upgrade with the SPA session cookie + canEditDoc and then forwards
