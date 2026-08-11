@@ -14,6 +14,7 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import type { UpstreamConnection } from '../db/queries/upstreams'
 import type { UpstreamCallResult, UpstreamCatalogueTool, UpstreamClient } from './upstream-client'
+import { fetchWithSafeRedirects } from '../util/safe-fetch'
 
 /**
  * tools/list is metadata — keep it on a tight fail-fast cap so a hung
@@ -102,10 +103,16 @@ export class UpstreamHttpClient implements UpstreamClient {
       ])
       const url = new URL(this.upstream.url)
       const requestInit: RequestInit = { headers: this.headers() }
+      // Same redirect discipline as the git providers (July-review 1c): the
+      // SDK's default fetch follows redirects with the bearer header attached;
+      // this wrapper re-asserts https per hop and strips credentials on a
+      // cross-origin hop.
+      const safeFetch = (input: string | URL, init?: RequestInit) =>
+        fetchWithSafeRedirects(input.toString(), init ?? {}, 'upstream')
       const transport =
         this.upstream.transport === 'sse'
-          ? new SSEClientTransport(url, { requestInit })
-          : new StreamableHTTPClientTransport(url, { requestInit })
+          ? new SSEClientTransport(url, { requestInit, fetch: safeFetch })
+          : new StreamableHTTPClientTransport(url, { requestInit, fetch: safeFetch })
       const client = new Client(
         { name: CLIENT_NAME, version: CLIENT_VERSION },
         {

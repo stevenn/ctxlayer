@@ -73,7 +73,12 @@ import {
 } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { mangleToolName, toolFamily, unmangleToolName } from './tool-name'
-import { firstParty, sanitizeUntrustedContent, sanitizeUntrustedText } from './provenance'
+import {
+  firstParty,
+  sanitizeUntrustedContent,
+  sanitizeUntrustedStructured,
+  sanitizeUntrustedText
+} from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { formatUpstreamError, newCorrelationId } from './upstream-error'
 import { githubOrgAccessNudge } from './github-nudges'
@@ -746,7 +751,7 @@ export async function hashJobKey(
   toolName: string,
   argsJson: string
 ): Promise<string> {
-  const data = new TextEncoder().encode(`${userId} ${upstreamId} ${toolName} ${argsJson}`)
+  const data = new TextEncoder().encode(`${userId}\u0000${upstreamId}\u0000${toolName}\u0000${argsJson}`)
   const digest = await crypto.subtle.digest('SHA-256', data)
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
@@ -1022,16 +1027,27 @@ export async function runUpstreamCall(opts: {
         }
       }
     }
+    // structuredContent is upstream output too: count its bytes toward the
+    // relay cap and usage accounting alongside content (it used to bypass
+    // both), and run it through the deep untrusted-value gate below.
+    const structJson =
+      result.structuredContent === undefined ? null : safeJson(result.structuredContent)
+    if (structJson) respJson = `${respJson}\n${structJson}`
     const respBytes = byteLength(respJson)
     const cap = opts.maxResponseBytes ?? UPSTREAM_MAX_RESPONSE_BYTES
-    if (!result.isError && respBytes > cap) {
+    // No isError exemption: a hostile upstream can flood the context with a
+    // giant "error" just as easily as with a giant result. The recognised
+    // nudge classes returned above, before this cap, and stay intact.
+    if (respBytes > cap) {
       const notice = truncationNotice(opts.slug, opts.toolName, respBytes, cap)
       respJson = notice
       return {
-        surface: { isError: false, content: [{ type: 'text', text: notice }] },
+        surface: { isError: !!result.isError, content: [{ type: 'text', text: notice }] },
         respJson,
         status,
-        truncated: true
+        truncated: true,
+        errorCode,
+        errorDetail
       }
     }
     return {
@@ -1048,7 +1064,10 @@ export async function runUpstreamCall(opts: {
                 text: sanitizeUntrustedText(JSON.stringify(result.content ?? null, null, 2))
               }
             ],
-        structuredContent: result.structuredContent as Record<string, unknown> | undefined
+        structuredContent:
+          result.structuredContent === undefined
+            ? undefined
+            : (sanitizeUntrustedStructured(result.structuredContent) as Record<string, unknown>)
       },
       respJson,
       status,

@@ -68,6 +68,26 @@ export function sanitizeUntrustedContent<T extends { type: string; text?: string
 }
 
 /**
+ * Deep variant of the untrusted-text gate for STRUCTURED upstream values —
+ * `structuredContent` on tool results and upstream-supplied JSON schemas.
+ * Walks the value and runs every string (object keys included) through
+ * `sanitizeUntrustedText`; non-string primitives pass through. Input is
+ * wire-decoded JSON, so it is finite and acyclic by construction.
+ */
+export function sanitizeUntrustedStructured(value: unknown): unknown {
+  if (typeof value === 'string') return sanitizeUntrustedText(value)
+  if (Array.isArray(value)) return value.map(sanitizeUntrustedStructured)
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value)) {
+      out[sanitizeUntrustedText(k)] = sanitizeUntrustedStructured(v)
+    }
+    return out
+  }
+  return value
+}
+
+/**
  * The full untrusted-text gate: strip C0 control characters (except
  * tab/newline/carriage return) and the C1 range, THEN neutralise the
  * ⟦ctxlayer⟧ provenance marker. Keeps regular punctuation, whitespace, and

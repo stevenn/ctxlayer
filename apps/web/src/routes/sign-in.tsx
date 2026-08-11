@@ -27,7 +27,9 @@ const ERROR_MESSAGE: Record<string, string> = {
   invalid_join_code: "That join code isn't valid. Double-check it and try again.",
   code_expired: 'That join code has expired. Ask an admin for a new one.',
   access_denied: "Your account isn't allowed to access this workspace.",
-  suspended: 'Your access has been suspended. Contact an admin to restore it.'
+  suspended: 'Your access has been suspended. Contact an admin to restore it.',
+  email_other_idp:
+    'This email is already registered under a different sign-in provider. Use your original provider, or ask an admin to migrate the account.'
 }
 
 // Reasons that mean "you need a join code" — show the code field when one

@@ -9,6 +9,12 @@
  * rules, credential rows storing raw AES-GCM ciphertext (seal/open lives
  * in `crypto/aead.ts`), and a composed admin-row hydrator. Route handlers
  * stay SQL-free.
+ *
+ * AUTHORITY RULE: the repo row's `read_strategy` / `write_strategy` /
+ * `base_url` are authoritative for THIS repo's behaviour (sync, token
+ * resolution, write-back, status). The connection carries the attach-time
+ * defaults + the OAuth client config — never read strategies from it.
+ * See db/queries/git-connections.ts for the same rule from the other side.
  */
 
 import type { Env } from '../../env'

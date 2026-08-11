@@ -229,8 +229,9 @@ See [docs/plan/A-auth-flows.md](plan/A-auth-flows.md) for full flow diagrams (in
 - `list_upstreams()` — `[{slug, displayName, connected, toolsCount, attached_skills, attached_docs}]`, already scoped by `upstream_visibility`.
 - `describe_upstream({ slug, family?, query? })` — one upstream's tools by their **native** names, grouped by family prefix, each with its callable `<slug>__<tool>` name + a one-line summary. Lazy drill-in past `list_upstreams`'s count; cache-only, per-tool-ACL filtered. See [C9](plan/C-upstream-proxy.md).
 - `get_doc({ id })` — rendered markdown.
-- `search_docs({ query, k?, scope? })` — Vectorize query; `scope` defaults to caller's teams/products, pass `'all'` to disable. See [F](plan/F-org-ia.md) for scope semantics.
+- `search_docs({ query, k?, scope? })` — hybrid retrieval; **default is open-read (ALL docs)**: `effectiveScope(undefined)` → `all: true`, and an explicit `scope: { teams, products }` NARROWS (intersected with the caller's reachable set, no escalation). This replaced the old scoped-by-default search in commit `2c83665` — see CLAUDE.md's security stance note.
 - `list_skills()` / `get_skill({ slug })` — org-curated procedural playbooks (skills surface), with attachment metadata on upstreams.
+- Also shipped since this list was written: `reload_upstreams`, `poll_task` / `list_tasks` (async submit→poll), `active_users` (admin-gated), `draft_skill` / `save_draft_skill`. `packages/shared/src/builtin-tools.ts` is the authoritative inventory (14 tools).
 
 ### Resources & prompts
 - Each non-deleted document is published as `mcp://ctxlayer/docs/{id}` (`text/markdown`); skills as `mcp://ctxlayer/skills/{slug}`.
@@ -299,7 +300,7 @@ resilience (long calls + oversized responses) in [docs/plan/I-upstream-resilienc
 The live `wrangler.toml`, bootstrap script, and migrations are the source of truth — see [`wrangler.toml`](../wrangler.toml) + [`scripts/bootstrap-resources.mjs`](../scripts/bootstrap-resources.mjs). Highlights:
 
 - Single Worker (`name = "ctxlayer"`), Workers Assets ships the SPA from `apps/web/dist`.
-- Bindings: D1 (`DB`), KV (`OAUTH_KV`), R2 (`DOCS_BUCKET`), Vectorize (`DOCS_INDEX`), AI, two DOs (`McpSessionDO` SQLite-backed, `DocRoomDO` non-SQLite), two queues (`USAGE_QUEUE`, `DOC_REINDEX_QUEUE`).
+- Bindings: D1 (`DB`), KV (`OAUTH_KV`), R2 (`DOCS_BUCKET`), Vectorize (`DOCS_INDEX` + `DOCS_LEXICAL_INDEX`), AI, two DOs (`McpSessionDO` SQLite-backed, `DocRoomDO` non-SQLite), four queues (`USAGE_QUEUE`, `DOC_REINDEX_QUEUE`, `GIT_SYNC_QUEUE`, `JOBS_QUEUE`).
 - DO migrations collapsed to a single tag (`new_classes = ["DocRoomDO"]` + `new_sqlite_classes = ["McpSessionDO"]`) — CF's validator rejects per-tag delete+create on a fresh account (codes 10021/10074). See [docs/plan/G-conventions.md](plan/G-conventions.md) G3.
 - `GIT_SHA` + `BUILT_AT` are injected at deploy via `--var` (`deploy` / `deploy:preview` scripts) and surfaced on `/api/version` + `/api/health`; empty for local dev / a bare `wrangler deploy`.
 - Two crons (`triggers.crons`): **nightly** `0 3 * * *` runs `pruneUsageEvents(env, 30)` (drop raw events >30d; rollups kept forever) **and** `pruneOrphanOAuthClients` (abandoned DCR registrations); **hourly** `0 * * * *` is the git-sync due-check (enqueues `shared_bearer` sources whose interval elapsed). Each cron firing stamps `ops:last_cron` in KV for health cron-liveness. Upstream tool-cache refresh is on-demand per-session (24h TTL).

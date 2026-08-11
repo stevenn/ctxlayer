@@ -6,6 +6,12 @@
  * repos can share one connection (configure auth once). See migration 0030 +
  * [[project-git-connection-repo-split]].
  *
+ * AUTHORITY RULE: this row's `read_strategy` / `write_strategy` / `base_url`
+ * are attach-time DEFAULTS, copied onto the repo at create. The `git_sources`
+ * copies are what sync/write-back actually consult (a per-repo PATCH may
+ * override them), so behaviour and status reporting must both read the SOURCE
+ * columns — only `auth_config` (OAuth client) is read from the connection.
+ *
  * Route handlers stay SQL-free; this module is sibling to git-sources.ts and
  * must NOT import it (no cycles).
  */

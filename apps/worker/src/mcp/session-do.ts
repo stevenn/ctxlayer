@@ -19,7 +19,7 @@ import type { Env, McpProps } from '../env'
 import { findById } from '../db/queries/users'
 import { getDocByIdOrSlug, listDocs } from '../db/queries/docs'
 import { resolveUserScope } from '../db/queries/doc-tags'
-import { readSnapshot } from '../storage/docs-r2'
+import { readSnapshot, readSourceMarkdown } from '../storage/docs-r2'
 import { renderBlocksToMarkdown } from '../rag/markdown'
 import { searchDocs, effectiveScope, availableScopeFor, SEARCH_K_DEFAULT } from '../rag/search'
 import { UpstreamProxyRegistry, type UpstreamUserContext } from './tools-proxy'
@@ -45,10 +45,12 @@ import {
   McpListUpstreamsResult,
   McpUpstreamTools,
   McpActiveUsers,
-  builtinToolMeta
+  builtinToolMeta,
+  splitFrontmatter
 } from '@ctxlayer/shared'
 import { errMessage } from '../util/errors'
 import { errText, safeJson } from './tool-result'
+import { sanitizeUntrustedContent, sanitizeUntrustedText } from './provenance'
 
 // Usage-outbox drain cadence. Staged usage rows are flushed to
 // USAGE_QUEUE by `flushUsageOutbox` on a short, coalesced delay so a
@@ -337,8 +339,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           const { id } = args
           const doc = await getDocByIdOrSlug(this.env, id)
           if (!doc) return errText(`doc not found: ${id}`)
-          const content = await readSnapshot(this.env, doc.id)
-          const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
+          const markdown = await this.docMarkdown(doc.id)
           return {
             content: [
               {
@@ -448,9 +449,17 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
               }
             }
             if (job.status === 'error') {
+              // error_detail is upstream text replayed from storage — gate it
+              // here at the read site, so no storage-shape drift in the queue
+              // consumer can ever hand the agent raw upstream bytes.
               return {
                 isError: true,
-                content: [{ type: 'text', text: job.error_detail ?? job.error_code ?? 'upstream_error' }]
+                content: [
+                  {
+                    type: 'text',
+                    text: sanitizeUntrustedText(job.error_detail ?? job.error_code ?? 'upstream_error')
+                  }
+                ]
               }
             }
             // done — replay the stored upstream content array verbatim. The
@@ -472,9 +481,16 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             } catch {
               parsed = null
             }
-            const content = (
-              Array.isArray(parsed) ? parsed : [{ type: 'text', text: job.result_json ?? '' }]
-            ) as Array<{ type: 'text'; text: string }>
+            // Stored results were sanitised at capture time; re-apply the gate
+            // at replay (same belt-and-suspenders as the error branch above).
+            const content = sanitizeUntrustedContent(
+              (Array.isArray(parsed)
+                ? parsed
+                : [{ type: 'text', text: job.result_json ?? '' }]) as Array<{
+                type: 'text'
+                text: string
+              }>
+            )
             // Bill the delivery, not the payload (already counted on the upstream tool).
             usageResp = `delivered: '${job.tool}' result replayed to the agent (tokens billed on the upstream tool, not poll_task).`
             return { content }
@@ -684,8 +700,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         if (!doc) {
           return { contents: [{ uri: uri.toString(), text: `doc not found: ${id}` }] }
         }
-        const content = await readSnapshot(this.env, doc.id)
-        const markdown = content ? renderBlocksToMarkdown(content.blocks) : ''
+        const markdown = await this.docMarkdown(doc.id)
         return {
           contents: [
             {
@@ -708,6 +723,21 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
    * once a streaming /mcp response ended. Never throws into the tool
    * path — a lost usage row must never break a working tool call.
    */
+  /**
+   * A doc's markdown body for the agent surface (get_doc + the doc
+   * resource): the editor snapshot when one exists, else the imported
+   * source.md with its frontmatter stripped. Git-synced and bundle-imported
+   * docs have no snapshot until a human first opens them in the editor —
+   * without this fallback they are searchable (chunked from source.md) yet
+   * read as "empty document" here. Mirrors `okfBody`'s fallback.
+   */
+  private async docMarkdown(docId: string): Promise<string> {
+    const snap = await readSnapshot(this.env, docId)
+    if (snap) return renderBlocksToMarkdown(snap.blocks)
+    const src = await readSourceMarkdown(this.env, docId)
+    return src !== null ? splitFrontmatter(src).body.replace(/^\s+/, '') : ''
+  }
+
   private async stageUsage(args: RecordUsageArgs): Promise<void> {
     try {
       stageUsageRow(this.ctx.storage.sql, buildUsageMsg(args))

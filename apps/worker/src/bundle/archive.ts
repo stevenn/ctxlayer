@@ -3,8 +3,41 @@
  * (fflate) and `tar.gz` (hand-rolled tar → fflate gzip). Worker-side only.
  */
 
-import { gunzipSync, gzipSync, unzipSync, zipSync } from 'fflate'
+import { Gunzip, gzipSync, unzipSync, zipSync } from 'fflate'
 import { tarPack, tarUnpack } from './tar'
+
+/**
+ * Total decompressed-bytes cap for an uploaded archive. gzip/deflate can
+ * exceed 1000:1, so a small crafted upload could otherwise exhaust worker
+ * memory before the MAX_DOCS count cap (which runs AFTER decompression)
+ * ever sees it. Generous vs. the ~200-doc import cap; a legitimate bundle
+ * never approaches it.
+ */
+export const MAX_DECOMPRESSED_BYTES = 64 * 1024 * 1024
+
+function archiveTooLarge(): Error {
+  return new Error(`decompressed archive exceeds the ${MAX_DECOMPRESSED_BYTES}-byte cap`)
+}
+
+/** Streaming gunzip that aborts once output crosses the cap — never trusts
+ * the (attacker-controlled) gzip size trailer for allocation. */
+function gunzipCapped(bytes: Uint8Array): Uint8Array {
+  const chunks: Uint8Array[] = []
+  let total = 0
+  const gz = new Gunzip((chunk) => {
+    total += chunk.byteLength
+    if (total > MAX_DECOMPRESSED_BYTES) throw archiveTooLarge()
+    chunks.push(chunk)
+  })
+  gz.push(bytes, true)
+  const out = new Uint8Array(total)
+  let off = 0
+  for (const c of chunks) {
+    out.set(c, off)
+    off += c.byteLength
+  }
+  return out
+}
 
 export type BundleFormat = 'tar.gz' | 'zip'
 
@@ -34,10 +67,20 @@ export function packArchive(files: BundleFile[], format: BundleFormat): Uint8Arr
 
 export function unpackArchive(bytes: Uint8Array, format: BundleFormat): BundleFile[] {
   if (format === 'zip') {
-    const map = unzipSync(bytes)
+    // Sum the central directory's declared sizes and refuse past the cap
+    // (a lying header that inflates bigger than declared makes fflate error
+    // on its own). The filter runs per entry before inflation.
+    let declared = 0
+    const map = unzipSync(bytes, {
+      filter: (f) => {
+        declared += f.originalSize
+        if (declared > MAX_DECOMPRESSED_BYTES) throw archiveTooLarge()
+        return true
+      }
+    })
     return Object.entries(map)
       .filter(([path]) => !path.endsWith('/')) // skip directory entries
       .map(([path, b]) => ({ path, bytes: b }))
   }
-  return tarUnpack(gunzipSync(bytes))
+  return tarUnpack(gunzipCapped(bytes))
 }

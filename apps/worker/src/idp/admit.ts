@@ -9,19 +9,22 @@
 import type { Env } from '../env'
 import type { AdmissionIdentity } from '../util/allowlist'
 import { resolveAdmission } from '../auth/admission'
-import { upsertUser, type UpsertUserInput, type UserRow } from '../db/queries/users'
+import {
+  EmailOnOtherIdpError,
+  upsertUser,
+  type UpsertUserInput,
+  type UserRow
+} from '../db/queries/users'
 import { markInviteRedeemed } from '../db/queries/invites'
 import { audit } from '../audit/log'
-import { clearStateCookie, signInErrorRedirect, type ErrorReason } from './common'
+import { signInErrorRedirect, type ErrorReason } from './common'
 
 export type AdmitOutcome = { user: UserRow } | { response: Response }
 
-/** A /sign-in error redirect that also clears the IdP state cookie. */
+/** A /sign-in error redirect. `signInErrorRedirect` clears the IdP state
+ * cookie on every error path, so no extra header work is needed here. */
 function redirectClearingState(env: Env, reason: ErrorReason): Response {
-  const res = signInErrorRedirect(env, reason)
-  const headers = new Headers(res.headers)
-  headers.append('Set-Cookie', clearStateCookie())
-  return new Response(null, { status: res.status, headers })
+  return signInErrorRedirect(env, reason)
 }
 
 export async function admitOrReject(
@@ -33,7 +36,17 @@ export async function admitOrReject(
   const decision = await resolveAdmission({ identity, joinCode, env })
   if (decision.kind === 'reject') return { response: redirectClearingState(env, decision.reason) }
 
-  const { user, promotedToAdmin } = await upsertUser(env, upsertInput, decision.status)
+  let user: UserRow
+  let promotedToAdmin: boolean
+  try {
+    ;({ user, promotedToAdmin } = await upsertUser(env, upsertInput, decision.status))
+  } catch (err) {
+    if (err instanceof EmailOnOtherIdpError) {
+      console.warn(`[admit] email on another idp (attempted ${err.attemptedIdp})`)
+      return { response: redirectClearingState(env, 'email_other_idp') }
+    }
+    throw err
+  }
   // Audit-log the ADMIN_EMAILS-driven promotion. Fires on every sign-in
   // by an allowlisted admin email (no prior-role read in the upsert);
   // readers can dedupe downstream if it matters.

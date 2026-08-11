@@ -9,7 +9,7 @@ import {
 } from './session'
 import { csrfSetCookie, newCsrfToken } from './csrf'
 import { accessTrustConfigured, verifyCfAccessJwt } from './cf-access'
-import { findById, upsertUser, type UserRow } from '../db/queries/users'
+import { EmailOnOtherIdpError, findById, upsertUser, type UserRow } from '../db/queries/users'
 import type { Role } from '@ctxlayer/shared'
 
 export interface SessionUser {
@@ -82,17 +82,29 @@ async function establishFromAccess(
   const identity = await verifyCfAccessJwt(token, c.env)
   if (!identity) return null
 
-  const { user } = await upsertUser(
-    c.env,
-    {
-      idp: 'access',
-      idpSub: identity.sub,
-      email: identity.email,
-      name: identity.name,
-      avatarUrl: null
-    },
-    'active'
-  )
+  let user: UserRow
+  try {
+    ;({ user } = await upsertUser(
+      c.env,
+      {
+        idp: 'access',
+        idpSub: identity.sub,
+        email: identity.email,
+        name: identity.name,
+        avatarUrl: null
+      },
+      'active'
+    ))
+  } catch (err) {
+    // Existing user on another IdP reached via Access with the same email —
+    // a distinguished 403 (identity linking is a deliberate operator action),
+    // not the 500 this used to be.
+    if (err instanceof EmailOnOtherIdpError) {
+      console.warn('[access] email belongs to a user on another idp; refusing session')
+      return { error: c.json({ error: 'email_other_idp' }, 403) }
+    }
+    throw err
+  }
   if (user.status !== 'active') {
     const res = c.json({ error: 'not_signed_in' }, 401)
     res.headers.append('Set-Cookie', sessionClearCookie())

@@ -5,7 +5,24 @@
 
 import type { Env } from '../../env'
 import type { AdminUserRow, AdminUserTeam, Idp, Role, RoleRef, UserStatus } from '@ctxlayer/shared'
-import { newId } from './util'
+import { isUniqueViolation, newId } from './util'
+
+/**
+ * A sign-in identity's email already belongs to a user registered under a
+ * DIFFERENT IdP (`UNIQUE(users.email)` with conflict target `(idp, idp_sub)`).
+ * Hits when an org switches sign-in modes — e.g. an existing GitHub-IdP user
+ * arrives via Cloudflare Access. Identity linking is deliberately NOT automatic;
+ * callers surface a distinguished error instead of a 500.
+ */
+export class EmailOnOtherIdpError extends Error {
+  constructor(
+    readonly email: string,
+    readonly attemptedIdp: string
+  ) {
+    super(`email already registered under a different idp (attempted: ${attemptedIdp})`)
+    this.name = 'EmailOnOtherIdpError'
+  }
+}
 
 export interface UserRow {
   id: string
@@ -57,29 +74,38 @@ export async function upsertUser(
   // only on INSERT — deliberately absent from the UPDATE SET clause so a
   // re-sign-in can't override an admin's suspend/approve decision.
   const id = newId()
-  await env.DB.prepare(
-    `INSERT INTO users (id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
-     ON CONFLICT(idp, idp_sub) DO UPDATE SET
-       email = excluded.email,
-       name = excluded.name,
-       avatar_url = excluded.avatar_url,
-       last_seen_at = excluded.last_seen_at,
-       role = CASE WHEN ?10 = 1 THEN 'admin' ELSE users.role END`
-  )
-    .bind(
-      id,
-      input.email,
-      input.name,
-      input.avatarUrl,
-      input.idp,
-      input.idpSub,
-      promoteToAdmin ? 'admin' : 'user',
-      admitStatus,
-      now,
-      promoteToAdmin ? 1 : 0
+  try {
+    await env.DB.prepare(
+      `INSERT INTO users (id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)
+       ON CONFLICT(idp, idp_sub) DO UPDATE SET
+         email = excluded.email,
+         name = excluded.name,
+         avatar_url = excluded.avatar_url,
+         last_seen_at = excluded.last_seen_at,
+         role = CASE WHEN ?10 = 1 THEN 'admin' ELSE users.role END`
     )
-    .run()
+      .bind(
+        id,
+        input.email,
+        input.name,
+        input.avatarUrl,
+        input.idp,
+        input.idpSub,
+        promoteToAdmin ? 'admin' : 'user',
+        admitStatus,
+        now,
+        promoteToAdmin ? 1 : 0
+      )
+      .run()
+  } catch (err) {
+    // The (idp, idp_sub) conflict is absorbed by ON CONFLICT above, so the
+    // only unique constraint left to trip is UNIQUE(users.email) — either a
+    // fresh identity whose email belongs to a user on another IdP, or an
+    // existing identity whose IdP-side email changed to one already taken.
+    if (isUniqueViolation(err)) throw new EmailOnOtherIdpError(input.email, input.idp)
+    throw err
+  }
 
   const row = await env.DB.prepare(
     `SELECT id, email, name, avatar_url, idp, idp_sub, role, status, created_at, last_seen_at

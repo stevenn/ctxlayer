@@ -23,7 +23,7 @@ import {
   listToolAccessForUpstream,
   resolveUserPrincipals
 } from '../db/queries/tool-access'
-import { sanitizeUntrustedText } from '../mcp/provenance'
+import { sanitizeUntrustedStructured, sanitizeUntrustedText } from '../mcp/provenance'
 import { listCachedTools } from '../db/queries/upstream-tools'
 import { listPublishedSkills } from '../db/queries/skills'
 import { readSnapshot } from '../storage/skills-r2'
@@ -151,7 +151,10 @@ export async function buildDraftContext(
             name: focus.tool_name,
             mangledName: mangleToolName(upstream.slug, focus.tool_name),
             description: sanitizeUntrustedText(focus.description ?? ''),
-            inputSchema: safeJsonParse(focus.input_schema),
+            // The schema is upstream JSON that gets stringified into the same
+            // prompt template — a forged ⟦ctxlayer⟧ marker inside a schema
+            // field would survive JSON.stringify, so deep-gate it too.
+            inputSchema: sanitizeUntrustedStructured(safeJsonParse(focus.input_schema)),
             lastSchemaChangeAt: focus.last_schema_change_at
           }
         : null,

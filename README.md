@@ -106,7 +106,7 @@ brew install mkcert nss           # macOS contributors only; see docs/plan/G-con
 bun install
 cp .dev.vars.example .dev.vars    # then edit it — see "Filling in .dev.vars" below
 bun run migrate:local             # apply D1 migrations to the local (miniflare) DB
-bun run seed:local                # load fixture teams / products / upstreams / docs
+bun run seed:local                # load fixture teams + products (NOT upstreams/docs — add those in-app)
 bun run dev                       # or split-terminals: dev:worker + dev:web (recommended)
 bun run verify                    # typecheck + lint (Biome) + unit + integration tests (all offline)
 ```
@@ -222,8 +222,8 @@ sequence is in the four numbered subsections below.
 ```bash
 wrangler login                  # or set CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID
 bun install
-bun run bootstrap               # provisions D1, KV, R2, Vectorize, both queues
-                                # and patches the IDs into wrangler.toml
+bun run bootstrap               # provisions D1, KV, R2, both Vectorize indexes,
+                                # all four queues, and patches the IDs into wrangler.toml
 bun run migrate:remote          # applies migrations 0001..N to remote D1
 ```
 
@@ -235,10 +235,13 @@ wrangler d1 create ctxlayer
 wrangler kv namespace create OAUTH_KV
 wrangler r2 bucket create ctxlayer-docs
 wrangler vectorize create ctxlayer-docs --dimensions 768 --metric cosine
+wrangler vectorize create ctxlayer-docs-lexical --dimensions 768 --metric cosine   # hybrid search's lexical leg — without it search silently degrades to dense-only
 wrangler queues create ctxlayer-usage
 wrangler queues create ctxlayer-reindex
 wrangler queues create ctxlayer-git-sync
-# then paste the printed IDs into the <TODO>-marked slots in wrangler.toml
+wrangler queues create ctxlayer-jobs        # async submit→poll for slow upstream tools — without it those calls never run
+# then replace the committed resource IDs in wrangler.toml with the printed
+# ones (the binding comments there document which IDs to swap)
 ```
 
 ### 2. Identity provider configuration
@@ -387,7 +390,8 @@ wrangler secret put ADMIN_EMAILS                    # e.g. "you@acme.com,ops@acm
 
 Optional / later:
 
-- `SENTRY_DSN_WORKER` — error reporting (leave unset to disable).
+- `ALERT_WEBHOOK_URL` — ops alerts (cron failures, unknown queues) POSTed
+  as JSON to this URL (leave unset to disable).
 - `CI_SMOKE_OAUTH_CLIENT_ID` / `_SECRET` — only for CI smoke runs that
   drive an inbound MCP OAuth handshake.
 

@@ -119,7 +119,12 @@ gitDocsRoute.get('/:id/git', async (c) => {
     syncState,
     syncedAt: origin.git_synced_at,
     canWrite,
-    writeStrategy: connection?.write_strategy ?? source.write_strategy,
+    // The SOURCE's strategy is what write-back actually uses (see
+    // git/credentials.ts) — the connection's copy is only the attach-time
+    // default and can be stale after a per-repo PATCH. Reporting the
+    // connection copy here made the rail's "smart connect" disagree with
+    // real write behaviour.
+    writeStrategy: source.write_strategy,
     currentUserConnected: userCred !== null,
     oauthConfigured: gitStaticOAuth(connection?.auth_config ?? null) !== null,
     htmlRoundtripUnsafe: htmlUnsafe,

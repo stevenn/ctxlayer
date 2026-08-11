@@ -37,6 +37,15 @@ describe('archive', () => {
       expect(out.get('specs/api/auth.md')).toBe('# Auth\n\nbody')
     })
   }
+
+  for (const format of ['tar.gz', 'zip'] as const) {
+    it(`rejects a ${format} archive that decompresses past the cap (decompression bomb)`, () => {
+      // 80 MiB of zeros compresses to ~80 KiB — a classic small-upload bomb.
+      const bomb = packArchive([{ path: 'bomb.md', bytes: new Uint8Array(80 * 1024 * 1024) }], format)
+      expect(bomb.byteLength).toBeLessThan(1024 * 1024)
+      expect(() => unpackArchive(bomb, format)).toThrow(/decompressed archive exceeds/)
+    })
+  }
 })
 
 describe('reserved files', () => {

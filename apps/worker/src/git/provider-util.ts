@@ -4,10 +4,23 @@
  * `providerCall` used by every provider impl.
  */
 
-import { assertSafeFetchUrl } from '../util/safe-fetch'
+import {
+  fetchWithSafeRedirects,
+  readTextCapped,
+  ResponseTooLargeError
+} from '../util/safe-fetch'
 
 /** Markdown file extensions we mirror. */
 export const MD_RE = /\.(md|mdown|markdown|mkd)$/i
+
+/**
+ * Per-response byte cap on git-provider reads. Generous — recursive tree
+ * listings for large repos are the biggest legitimate payload — but bounded,
+ * where `await res.text()` previously buffered without limit. The upstream
+ * MCP proxy's equivalent is `UPSTREAM_MAX_RESPONSE_BYTES` (256 KiB); git
+ * mirrors whole files + trees, hence the larger budget.
+ */
+export const GIT_MAX_RESPONSE_BYTES = 10 * 1024 * 1024
 
 export interface CallResult {
   status: number
@@ -62,11 +75,24 @@ function isAuthInterstitial(res: Response, text: string, json: unknown): boolean
  * interstitial (see `isAuthInterstitial`) throws `<provider>_auth_failed`.
  */
 export async function providerCall(input: ProviderCallInput): Promise<CallResult> {
-  assertSafeFetchUrl(input.url)
   const init: RequestInit = { method: input.method, headers: input.headers }
   if (input.body !== undefined) init.body = JSON.stringify(input.body)
-  const res = await fetch(input.url, init)
-  const text = await res.text()
+  // Manual redirect-following re-asserts the https check per hop and strips
+  // the PAT when a hop leaves the provider's origin; the capped read bounds
+  // worker memory against a huge blob/tree response.
+  const res = await fetchWithSafeRedirects(input.url, init, input.provider)
+  let text: string
+  try {
+    text = await readTextCapped(res, GIT_MAX_RESPONSE_BYTES, input.provider)
+  } catch (err) {
+    if (err instanceof ResponseTooLargeError) {
+      console.error(
+        `${input.provider}: ${input.method} ${input.url} -> response exceeded ${GIT_MAX_RESPONSE_BYTES} bytes`
+      )
+      throw new Error(`${input.provider}_response_too_large`)
+    }
+    throw err
+  }
   let json: unknown = null
   if (text) {
     try {

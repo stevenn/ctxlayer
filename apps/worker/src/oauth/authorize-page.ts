@@ -14,7 +14,7 @@
 import type { Env } from '../env'
 import { randomToken } from '../idp/common'
 import { accessTrustConfigured, verifyCfAccessJwt } from '../auth/cf-access'
-import { upsertUser } from '../db/queries/users'
+import { EmailOnOtherIdpError, upsertUser } from '../db/queries/users'
 import { completeMcpAuthorization } from '../idp/complete-mcp'
 
 const AUTH_REQ_TTL_SECONDS = 600
@@ -88,17 +88,26 @@ async function tryCompleteViaAccess(
   const identity = await verifyCfAccessJwt(token, env)
   if (!identity) return null
 
-  const { user } = await upsertUser(
-    env,
-    {
-      idp: 'access',
-      idpSub: identity.sub,
-      email: identity.email,
-      name: identity.name,
-      avatarUrl: null
-    },
-    'active'
-  )
+  let user: Awaited<ReturnType<typeof upsertUser>>['user']
+  try {
+    ;({ user } = await upsertUser(
+      env,
+      {
+        idp: 'access',
+        idpSub: identity.sub,
+        email: identity.email,
+        name: identity.name,
+        avatarUrl: null
+      },
+      'active'
+    ))
+  } catch (err) {
+    if (err instanceof EmailOnOtherIdpError) {
+      console.warn('[access] email belongs to a user on another idp; refusing MCP grant')
+      return renderBlockedPage('email_other_idp')
+    }
+    throw err
+  }
   if (user.status !== 'active') return renderBlockedPage(user.status)
 
   return completeMcpAuthorization(env, requestId, user)
@@ -113,7 +122,9 @@ function renderBlockedPage(status: string): Response {
   const message =
     status === 'pending'
       ? 'Your account is awaiting administrator approval. Try again once it has been approved.'
-      : 'Your account has been suspended. Contact an administrator if you believe this is a mistake.'
+      : status === 'email_other_idp'
+        ? 'This email is already registered under a different sign-in provider. Ask an administrator to migrate the account.'
+        : 'Your account has been suspended. Contact an administrator if you believe this is a mistake.'
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />

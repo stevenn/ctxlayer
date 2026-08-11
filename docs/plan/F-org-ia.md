@@ -14,7 +14,7 @@ Defaults are tuned to **spread context, gate execution**:
 |---|---|---|
 | Docs | Open-read for everyone signed in. | Admins manage tags; tags drive filtering, not access. |
 | MCP upstreams | New upstreams visible to **no one**. | Admins grant per team or per product. |
-| `search_docs` | Filters to user's teams ∪ products ∪ untagged "global" docs. | `scope:'all'` overrides. |
+| `search_docs` | Open-read: searches ALL docs (since `2c83665`; see F3). | Explicit `scope:{teams,products}` narrows. |
 | `list_upstreams` | Returns only what the user can use. | (No escape hatch — that IS the access list.) |
 
 ### F1. Data model additions (`0004_org_ia.sql`)
@@ -112,15 +112,18 @@ so route handlers and the MCP layer share one source of truth.
 
 ### F3. Search default scope
 
+> **Superseded by commit `2c83665`** — search now defaults to **open-read
+> (ALL docs)**, matching the docs stance in the table above: tags organize
+> and narrow, they do not gate reads. The original scoped-by-default design
+> below hid team/product-tagged docs from anyone outside that team/product,
+> which left a solo operator in no team seeing almost nothing.
+
 When the agent calls `search_docs({query, k, scope?})`:
 
-- **omitted** — build a Vectorize metadata filter:
-  `tag_team IN user_teams OR tag_product IN user_products OR is_global=true`.
-  "Global" = a doc with zero team/product tags (it may still have free-form
-  tags). Untagged docs are everyone's by design.
-- **`scope: 'all'`** — drop the filter.
-- **`scope: { teams?: [...], products?: [...] }`** — explicit; intersected
-  with what the user belongs to so an agent can't elevate.
+- **omitted** — **no scope filter**: `effectiveScope(undefined)` → `all: true`
+  (every non-deleted doc is searchable, same as `listDocs`).
+- **`scope: { teams?: [...], products?: [...] }`** — explicit NARROWING;
+  intersected with what the user belongs to so an agent can't elevate.
 
 Chunk metadata stored in Vectorize when (re)indexing a doc:
 `{ docId, chunkIdx, revisionId, title, tag_teams: [team_id, ...], tag_products: [...], is_global: bool }`.

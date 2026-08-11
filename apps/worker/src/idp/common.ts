@@ -113,11 +113,20 @@ export type ErrorReason =
   | 'code_expired'
   | 'access_denied'
   | 'suspended'
+  // The identity's email already belongs to a user on a different IdP —
+  // sign-in modes can't be mixed for one account (see EmailOnOtherIdpError).
+  | 'email_other_idp'
 
 export function signInErrorRedirect(env: Env, reason: ErrorReason): Response {
   const url = new URL('/sign-in', env.PUBLIC_BASE_URL)
   url.searchParams.set('error', reason)
-  return Response.redirect(url.toString(), 302)
+  // Every sign-in error ends the IdP flow, so clear the state cookie here —
+  // covering the pre-admission failure branches (state mismatch, token
+  // exchange, profile fetch) that previously relied on the 10-min TTL alone.
+  return new Response(null, {
+    status: 302,
+    headers: { Location: url.toString(), 'Set-Cookie': clearStateCookie() }
+  })
 }
 
 export function appRedirect(env: Env, returnTo: string): Response {

@@ -49,6 +49,7 @@ import {
 import { refreshCatalogueByUpstreamId } from '../upstream/catalogue'
 import { notFound } from './respond'
 import { errMessage } from '../util/errors'
+import { newCorrelationId } from '../mcp/upstream-error'
 
 // SPA paths we're allowed to bounce the user back to after the OAuth
 // dance — `return_to=admin` lands them on the admin upstreams page
@@ -73,6 +74,15 @@ export const upstreamOauthStartRoute = new Hono<{
 upstreamOauthStartRoute.use('*', requireUser)
 
 upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
+  // Two inner branches below delete stored credentials, and SameSite=Lax does
+  // not stop a forced TOP-LEVEL cross-site navigation to a GET. Legit entries
+  // are the SPA (same-origin navigation) or a hand-typed URL (none); reject
+  // what the browser itself labels cross-site. An absent header (older
+  // browsers, curl) passes — defense-in-depth on top of requireUser.
+  const fetchSite = c.req.header('sec-fetch-site')
+  if (fetchSite && fetchSite !== 'same-origin' && fetchSite !== 'none') {
+    return c.json({ error: 'cross_site_navigation' }, 403)
+  }
   const userId = c.get('user').userId
   const id = c.req.param('id')
   // Visibility-gated, matching the git equivalent (`api/git-oauth.ts`): an
@@ -102,16 +112,27 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
       try {
         return await runStart(c, upstream, userId, returnTo)
       } catch (retryErr) {
-        const msg = errMessage(retryErr)
-        console.error(`[oauth] ${upstream.slug}: retry after wipe failed: ${msg}`)
-        return c.json({ error: 'oauth_start_failed', message: msg }, 502)
+        return oauthStartFailed(c, upstream.slug, retryErr, 'retry after wipe failed')
       }
     }
-    const msg = errMessage(err)
-    console.error(`[oauth] ${upstream.slug}: start failed: ${msg}`)
-    return c.json({ error: 'oauth_start_failed', message: msg }, 502)
+    return oauthStartFailed(c, upstream.slug, err, 'start failed')
   }
 })
+
+/**
+ * 502 for a failed OAuth start. SDK/upstream exception text can carry internal
+ * hostnames or endpoint detail, so the browser gets a generic code + a `ref`
+ * correlation id and the real message stays in the server log — the same
+ * stance `git-oauth.ts` and the agent-facing `formatUpstreamError` take.
+ */
+function oauthStartFailed(c: StartCtx, slug: string, err: unknown, what: string): Response {
+  const ref = newCorrelationId()
+  console.error(`[oauth] [ref=${ref}] ${slug}: ${what}: ${errMessage(err)}`)
+  return c.json(
+    { error: 'oauth_start_failed', hint: `OAuth start failed upstream (ref=${ref}).` },
+    502
+  )
+}
 
 type StartCtx = Context<{ Bindings: Env; Variables: AuthedVariables }>
 
@@ -200,9 +221,13 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
   let returnTo: OAuthReturnTarget = 'user'
 
   if (errParam) {
+    // Forward only the enumerable IdP error CODE; the free-text
+    // error_description lands in browser history + access logs, so it stays
+    // in the server log (matching git-oauth's stricter stance).
     const desc = c.req.query('error_description') ?? ''
+    if (desc) console.warn(`[oauth] callback error ${errParam}: ${desc}`)
     return c.redirect(
-      `${spaReturnUrl(c.env, returnTo)}?oauth_error=${encodeURIComponent(errParam)}&desc=${encodeURIComponent(desc)}`,
+      `${spaReturnUrl(c.env, returnTo)}?oauth_error=${encodeURIComponent(errParam)}`,
       302
     )
   }
@@ -238,9 +263,13 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
       }
     }
   } catch (err) {
-    console.error(`oauth callback exchange failed for ${upstream.slug}:`, err)
+    // Generic code + ref in the URL; exception text (SDK internals, endpoint
+    // URLs) stays server-side. The SPA banner renders "OAuth failed:
+    // exchange — ref:XXXX", enough to correlate with the log line.
+    const ref = newCorrelationId()
+    console.error(`[oauth] [ref=${ref}] callback exchange failed for ${upstream.slug}:`, err)
     return c.redirect(
-      `${spaReturnUrl(c.env, returnTo)}?oauth_error=exchange&desc=${encodeURIComponent(errMessage(err))}`,
+      `${spaReturnUrl(c.env, returnTo)}?oauth_error=exchange&desc=${encodeURIComponent(`ref:${ref}`)}`,
       302
     )
   } finally {

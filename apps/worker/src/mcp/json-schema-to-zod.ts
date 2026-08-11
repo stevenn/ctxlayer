@@ -14,6 +14,7 @@
  */
 
 import { z, type ZodTypeAny, type ZodRawShape } from 'zod'
+import { sanitizeUntrustedText } from './provenance'
 
 interface JsonSchemaNode {
   type?: string | string[]
@@ -60,7 +61,9 @@ function objectShape(node: JsonSchemaNode): ZodRawShape {
   const shape: Record<string, ZodTypeAny> = {}
   for (const [key, child] of Object.entries(node.properties ?? {})) {
     let schema = nodeToZod(child)
-    if (child.description) schema = schema.describe(child.description)
+    // Property descriptions are upstream text that the SDK serialises into
+    // tools/list — same untrusted-text gate as the top-level description.
+    if (child.description) schema = schema.describe(sanitizeUntrustedText(child.description))
     if (!required.has(key)) schema = schema.optional()
     shape[key] = schema
   }
