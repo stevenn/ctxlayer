@@ -25,7 +25,8 @@ import {
   fetchRevisions,
   patchDoc,
   putDocContent,
-  restoreRevision
+  restoreRevision,
+  revertGitDoc
 } from '../../lib/api'
 import {
   BlockNoteEditor,
@@ -734,6 +735,19 @@ export function DocsEditor() {
               canEdit={doc.canEdit}
               getMarkdown={() => editorRef.current?.getMarkdown() ?? Promise.resolve('')}
               onRefresh={refreshGitStatus}
+              onRevert={async () => {
+                // Tear the provider down BEFORE the server discards its
+                // state: a live local Y.Doc would re-upload the edits on
+                // the next sync handshake, silently undoing the revert.
+                collab?.provider.destroy()
+                try {
+                  await revertGitDoc(doc.id)
+                } catch (err) {
+                  console.error('git revert failed', err)
+                }
+                // Reload either way — the editor's collab pipe is gone.
+                window.location.reload()
+              }}
             />
           )}
 

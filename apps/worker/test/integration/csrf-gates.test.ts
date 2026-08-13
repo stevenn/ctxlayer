@@ -120,6 +120,7 @@ const CASES: GateCase[] = [
   { method: 'DELETE', path: '/api/docs/d1/editors/user/u1' },
   { method: 'POST', path: '/api/docs/d1/git/pull-request' },
   { method: 'POST', path: '/api/docs/d1/git/review-url' },
+  { method: 'POST', path: '/api/docs/d1/git/revert' },
   { method: 'PUT', path: '/api/git-sources/g1/credentials' },
   { method: 'DELETE', path: '/api/git-sources/g1/credentials' },
   { method: 'PUT', path: '/api/upstreams/up1/credentials' },

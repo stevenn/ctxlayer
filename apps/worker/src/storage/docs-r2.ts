@@ -89,3 +89,15 @@ export async function writeYjsSnapshot(env: Env, docId: string, bytes: Uint8Arra
     httpMetadata: { contentType: YJS_CONTENT_TYPE }
   })
 }
+
+/**
+ * Drop a doc's collab-derived state — the Yjs binary AND the materialised
+ * snapshot.json — so every reader (editor seed, MCP get_doc, search
+ * reindex) falls back to source.md. The git revert path calls this AFTER
+ * telling the DocRoomDO to reset, so a live instance can't rewrite these
+ * from memory. Revision history is deliberately kept: revert must stay
+ * recoverable through the doc's revision timeline.
+ */
+export async function deleteCollabState(env: Env, docId: string): Promise<void> {
+  await env.DOCS_BUCKET.delete([yjsSnapshotKey(docId), `docs/${docId}/snapshot.json`])
+}

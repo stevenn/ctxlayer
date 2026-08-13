@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { isGitSyncDue } from './sync'
+import { isGitSyncDue, syncActionFor } from './sync'
 
 const HOUR = 3600
 const DAY = 24 * HOUR
@@ -35,4 +35,35 @@ describe('isGitSyncDue', () => {
     expect(isGitSyncDue('weekly', now - 7 * DAY, now)).toBe(true)
     expect(isGitSyncDue('weekly', now - 3 * DAY, now)).toBe(false)
   })
+})
+
+describe('syncActionFor (clobber guard)', () => {
+  const doc = (over: Partial<{ git_blob_sha: string | null; git_sync_state: string | null }>) => ({
+    git_blob_sha: 'old-sha',
+    git_sync_state: 'clean' as string | null,
+    ...over
+  })
+
+  it('creates when the path has no doc yet', () => {
+    expect(syncActionFor(null, 'sha')).toBe('create')
+  })
+
+  it('skips when the stored blob matches the tree entry', () => {
+    expect(syncActionFor(doc({ git_blob_sha: 'sha' }), 'sha')).toBe('skip')
+  })
+
+  it('updates a clean doc whose blob moved', () => {
+    expect(syncActionFor(doc({}), 'new-sha')).toBe('update')
+    expect(syncActionFor(doc({ git_sync_state: null }), 'new-sha')).toBe('update')
+  })
+
+  it.each(['local_edits', 'pr_open', 'conflict'])(
+    'never clobbers unmerged local work (%s)',
+    (state) => {
+      // 'conflict' is the regression case: it used to fall through to
+      // 'update' on the pass AFTER the flag was set, silently overwriting
+      // source.md underneath the stale collab snapshot.
+      expect(syncActionFor(doc({ git_sync_state: state }), 'new-sha')).toBe('conflict')
+    }
+  )
 })

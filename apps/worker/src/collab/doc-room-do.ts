@@ -103,10 +103,19 @@ export class DocRoomDO extends DurableObject<Env> {
   private isLockedCached = false
 
   override async fetch(req: Request): Promise<Response> {
+    const url = new URL(req.url)
+    // Internal control plane — only worker code holding the DO binding can
+    // reach this (external traffic only arrives via the /collab upgrade
+    // handler). Drops ALL live collab state so the next open re-seeds from
+    // source.md; the git revert path calls it BEFORE deleting the R2
+    // snapshots so a live instance can't rewrite them from memory.
+    if (req.method === 'POST' && url.pathname === '/reset-content') {
+      await this.resetContent()
+      return new Response(null, { status: 204 })
+    }
     if (req.headers.get('upgrade') !== 'websocket') {
       return new Response('expected websocket upgrade', { status: 426 })
     }
-    const url = new URL(req.url)
     const docId = url.searchParams.get('docId')
     if (!docId) return new Response('missing docId', { status: 400 })
     const userId = req.headers.get('x-ctx-user-id') ?? ''
@@ -203,6 +212,36 @@ export class DocRoomDO extends DurableObject<Env> {
   }
 
   // ----- internals --------------------------------------------------------
+
+  /**
+   * Forget everything this instance knows about the doc (git revert).
+   * Ordering matters: drain the in-flight R2 write first so it can't land
+   * after the caller's snapshot delete; kill the pending reindex alarm,
+   * which would otherwise re-flag `local_edits` and reindex the very
+   * snapshot being discarded; close every socket so clients reconnect and
+   * re-seed from the (fresh) source.md.
+   */
+  private async resetContent(): Promise<void> {
+    this.writePending = null
+    await this.writeInFlight?.catch(() => {})
+    this.writeInFlight = null
+    for (const ws of this.ctx.getWebSockets()) {
+      try {
+        ws.close(4205, 'content-reset')
+      } catch {
+        // already closing
+      }
+    }
+    this.doc?.destroy()
+    this.doc = null
+    this.awareness = null
+    this.loadPromise = null
+    this.lastMaterialisedHash = null
+    this.materialisedHashLoaded = false
+    this.gitFlaggedSinceLoad = false
+    await this.ctx.storage.delete('reindexPending')
+    await this.ctx.storage.deleteAlarm()
+  }
 
   /**
    * TTL-cached lock check. Avoids a D1 read per Yjs frame while still

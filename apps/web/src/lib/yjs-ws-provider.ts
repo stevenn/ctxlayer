@@ -199,9 +199,18 @@ export class CollabWSProvider {
       }
     }
 
-    ws.onclose = () => {
+    ws.onclose = (ev) => {
       this.ws = null
       if (this.destroyed) return
+      // 4205 = the server discarded this doc's collab state (git revert).
+      // Our local Y state is now poison: reconnecting would re-upload the
+      // discarded edits via the sync handshake. Reload instead — the
+      // editor re-seeds from the fresh source.md.
+      if (ev.code === 4205) {
+        this.destroy()
+        window.location.reload()
+        return
+      }
       this.scheduleReconnect()
     }
 

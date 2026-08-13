@@ -20,7 +20,7 @@ import { requireUser, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { auditFromCtx } from '../audit/log'
 import { canEditDoc, getDocById } from '../db/queries/docs'
-import { readSourceMarkdown } from '../storage/docs-r2'
+import { deleteCollabState, readSourceMarkdown } from '../storage/docs-r2'
 import {
   deleteGitUserCredential,
   getDocGitOrigin,
@@ -35,9 +35,11 @@ import {
 } from '../db/queries/git-sources'
 import { getGitConnectionForSource } from '../db/queries/git-connections'
 import { createGitProvider } from '../git/provider'
-import type { GitRepoConfig } from '../git/provider-types'
+import type { GitFileContent, GitRepoConfig } from '../git/provider-types'
 import { resolveGitReadToken } from '../git/credentials'
+import { importGitFile } from '../git/sync'
 import { openWriteBackPr, prepareWriteBackRedirect } from '../git/writeback'
+import { errMessage } from '../util/errors'
 import { htmlRoundtripUnsafe } from '../git/html-guard'
 import { gitStaticOAuth } from '../git/git-oauth'
 import { seal } from '../crypto/aead'
@@ -132,6 +134,57 @@ gitDocsRoute.get('/:id/git', async (c) => {
     pr
   }
   return c.json(body)
+})
+
+/**
+ * Revert a git doc to the repo's current version — discard local edits.
+ * Re-imports the file at the branch head and DROPS the doc's collab state
+ * (Yjs binary + materialised snapshot), so the editor, MCP get_doc, and
+ * search all read the fresh source.md. Deliberately does NOT touch an
+ * open PR — if the local edits were pushed, abandon that in the provider
+ * first (the rail shows it). canEditDoc-gated: reverting destroys content
+ * exactly like editing does; revision history stays for recovery.
+ */
+gitDocsRoute.post('/:id/git/revert', async (c) => {
+  const id = c.req.param('id')
+  const userId = c.get('user').userId
+  if (!(await canEditDoc(c.env, userId, id))) return c.json({ error: 'forbidden' }, 403)
+  const origin = await getDocGitOrigin(c.env, id)
+  if (!origin) return c.json({ error: 'not_a_git_doc' }, 404)
+  const source = await getGitSourceById(c.env, origin.git_source_id)
+  if (!source) return c.json({ error: 'source_gone' }, 404)
+  const token = await resolveGitReadToken(c.env, source, { userId })
+  if (!token) return c.json({ error: 'no_read_token' }, 400)
+
+  const provider = createGitProvider(repoConfig(source), token)
+  let file: GitFileContent
+  let headSha: string
+  try {
+    const branch = source.branch.trim() || (await provider.getDefaultBranch()) || ''
+    if (!branch) throw new Error('repo_no_default_branch')
+    headSha = await provider.resolveRef(branch)
+    file = await provider.readFile(origin.git_path, branch)
+  } catch (err) {
+    // Generic code to the caller; the real detail is server-side only
+    // (provider errors can carry hostnames/status bodies).
+    console.error(`[git-revert] ${source.slug} ${origin.git_path}: ${errMessage(err)}`)
+    return c.json({ error: 'git_fetch_failed' }, 502)
+  }
+
+  // Drop live collab state FIRST (a live DO would rewrite the snapshots
+  // from memory), then the stored artifacts, then re-import.
+  const stub = c.env.DOC_ROOM_DO.get(c.env.DOC_ROOM_DO.idFromName(id))
+  await stub.fetch('https://doc-room/reset-content', { method: 'POST' })
+  await deleteCollabState(c.env, id)
+  await importGitFile(
+    c.env,
+    source,
+    { path: origin.git_path, text: file.text, blobSha: file.blobSha },
+    headSha,
+    id
+  )
+  await auditFromCtx(c, 'doc.git_revert', id, { slug: source.slug, path: origin.git_path })
+  return c.json({ reverted: true })
 })
 
 // Canonical raw markdown for a git doc — the editor parses this into

@@ -102,10 +102,27 @@ describe('docs-editor extracted sub-components (render smoke)', () => {
         canEdit
         getMarkdown={async () => '# md'}
         onRefresh={async () => {}}
+        onRevert={async () => {}}
       />
     )
     expect(screen.getByText('acme/repo')).toBeInTheDocument()
     expect(screen.getByText(/Propose change/)).toBeInTheDocument()
+    // Clean docs have nothing to revert.
+    expect(screen.queryByText(/Revert to git version/)).not.toBeInTheDocument()
+  })
+
+  it('GitPanel offers the revert action once local work diverges', () => {
+    wrap(
+      <GitPanel
+        status={{ ...gitStatus, syncState: 'conflict' }}
+        docId="d_1"
+        canEdit
+        getMarkdown={async () => '# md'}
+        onRefresh={async () => {}}
+        onRevert={async () => {}}
+      />
+    )
+    expect(screen.getByText(/Revert to git version/)).toBeInTheDocument()
   })
 
   it('DocLinkPicker renders its modal with the search/URL input', () => {

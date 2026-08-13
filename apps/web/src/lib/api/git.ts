@@ -107,6 +107,18 @@ export function fetchDocGitSource(id: string, signal?: AbortSignal): Promise<{ m
   })
 }
 
+/**
+ * Discard local edits: re-import the repo's current version of this doc.
+ * The caller must tear down its collab provider BEFORE calling (the local
+ * Y state would re-upload the discarded edits on reconnect) and reload
+ * after.
+ */
+export function revertGitDoc(id: string): Promise<void> {
+  return request(`/api/docs/${encodeURIComponent(id)}/git/revert`, () => undefined, {
+    method: 'POST'
+  })
+}
+
 export function proposeGitPullRequest(
   id: string,
   markdown: string

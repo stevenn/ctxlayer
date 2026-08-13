@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Alert, Badge, Button, Group, PasswordInput, Stack, Text } from '@mantine/core'
 import type { GitDocStatus } from '@ctxlayer/shared'
 import { prepareGitReviewUrl, proposeGitPullRequest, putGitUserCredential } from '../../lib/api'
+import { useDialogs } from '../../lib/dialogs'
 import { useBusyAction } from '../../lib/use-busy'
 import { explain } from './helpers'
 
@@ -28,14 +29,19 @@ export function GitPanel({
   docId,
   canEdit,
   getMarkdown,
-  onRefresh
+  onRefresh,
+  onRevert
 }: {
   status: GitDocStatus
   docId: string
   canEdit: boolean
   getMarkdown: () => Promise<string>
   onRefresh: () => Promise<void>
+  /** Discard local edits and re-import the repo version (owner handles
+   * provider teardown + reload — see docs-editor/index.tsx). */
+  onRevert: () => Promise<void>
 }) {
+  const dialogs = useDialogs()
   const [msg, setMsg] = useState<string | null>(null)
   const [reviewUrl, setReviewUrl] = useState<string | null>(null)
   const [token, setToken] = useState('')
@@ -200,6 +206,33 @@ export function GitPanel({
         {canPropose && (
           <Button size="compact-xs" variant="subtle" onClick={reviewInBrowser} loading={busy}>
             Review &amp; create in {status.provider}…
+          </Button>
+        )}
+        {/* Revert = the other way out of local_edits/conflict/pr_open:
+            discard what's here, take the repo's version. */}
+        {canEdit && stateKey !== 'clean' && (
+          <Button
+            size="compact-xs"
+            variant="subtle"
+            color="red"
+            loading={busy}
+            onClick={async () => {
+              const ok = await dialogs.confirm({
+                title: 'Revert to git version?',
+                message:
+                  `Discard the local edits on this doc and re-import ` +
+                  `${status.path} from ${status.sourceSlug}? The page reloads with the ` +
+                  `repo's version; earlier revisions stay in the doc history.` +
+                  (stateKey === 'pr_open'
+                    ? ' An open PR is NOT closed by this — abandon it in the provider too.'
+                    : ''),
+                confirmLabel: 'Revert',
+                danger: true
+              })
+              if (ok) await onRevert()
+            }}
+          >
+            Revert to git version…
           </Button>
         )}
 

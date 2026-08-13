@@ -170,53 +170,26 @@ export async function runGitSync(
       seen.add(entry.path)
       const doc = docByPath.get(entry.path) ?? null
 
-      if (doc && doc.git_blob_sha === entry.blobSha) {
+      const action = syncActionFor(doc, entry.blobSha)
+      if (action === 'skip') {
         counts.skipped++
         continue
       }
-      if (doc && (doc.git_sync_state === 'local_edits' || doc.git_sync_state === 'pr_open')) {
-        // Remote moved while we hold unmerged local work — flag, don't clobber.
-        await setDocGitSyncState(env, doc.id, 'conflict')
+      if (action === 'conflict') {
+        await setDocGitSyncState(env, doc!.id, 'conflict')
         counts.conflicts++
         continue
       }
 
       const file = await provider.readFile(entry.path, branch)
-      // Parse OKF frontmatter once: title falls back to the body's H1, the
-      // well-known fields land on the doc, the rest is preserved verbatim.
-      const fm = parseFrontmatter(file.text)
-      let docId: string
-      if (doc) {
-        docId = doc.id
-      } else {
-        const created = await createDoc(env, {
-          title: clampText(
-            fm.known.title?.trim() || deriveTitle(fm.body, entry.path),
-            DOC_LIMITS.title
-          ),
-          folder: repoPathToFolder(source.folder_root, entry.path),
-          createdBy: source.created_by
-        })
-        docId = created.id
-      }
-      // source.md stays the EXACT repo file (incl. frontmatter) — it's the
-      // write-back diff baseline. The reindex consumer strips frontmatter
-      // before chunking; OKF fields are projected onto the doc separately.
-      await writeSourceMarkdown(env, docId, file.text)
-      await markDocGitOrigin(env, docId, {
-        sourceId,
-        path: entry.path,
-        blobSha: entry.blobSha,
-        commitSha: headSha
-      })
-      await applyOkfMetadata(env, docId, fm.known, fm.raw)
-      // Auto-tag with the source's product (drives search_docs scope).
-      // Set BEFORE the reindex enqueue so the consumer's tag read picks
-      // it up. null clears any product tag (source has no product).
-      await setDocProductTag(env, docId, source.product_id)
-      // Reindex from source.md directly (revisionId = the commit we read at).
-      await env.DOC_REINDEX_QUEUE.send({ docId, revisionId: headSha, source: 'git' })
-      if (doc) counts.updated++
+      await importGitFile(
+        env,
+        source,
+        { path: entry.path, text: file.text, blobSha: entry.blobSha },
+        headSha,
+        doc?.id
+      )
+      if (action === 'update') counts.updated++
       else counts.created++
     }
 
@@ -239,6 +212,73 @@ export async function runGitSync(
     await recordSyncResult(env, sourceId, 'error', msg)
     return { status: 'error', ...counts, error: msg }
   }
+}
+
+/**
+ * What the sync loop does with one tree entry, given the doc that path
+ * currently maps to. 'conflict' is the don't-clobber branch: the doc holds
+ * unmerged local work (local_edits / pr_open) — or is ALREADY flagged
+ * 'conflict', which must stay in this set or the flag only survives one
+ * pass and the next sync silently overwrites source.md underneath the
+ * stale collab snapshot. Resolution is always explicit: write back via
+ * PR, or POST /:id/git/revert.
+ */
+export function syncActionFor(
+  doc: { git_blob_sha: string | null; git_sync_state: string | null } | null,
+  blobSha: string
+): 'create' | 'skip' | 'conflict' | 'update' {
+  if (!doc) return 'create'
+  if (doc.git_blob_sha === blobSha) return 'skip'
+  if (
+    doc.git_sync_state === 'local_edits' ||
+    doc.git_sync_state === 'pr_open' ||
+    doc.git_sync_state === 'conflict'
+  ) {
+    return 'conflict'
+  }
+  return 'update'
+}
+
+/**
+ * Import one repo file into its doc: create the doc when needed, overwrite
+ * source.md with the EXACT repo file (incl. frontmatter — it's the
+ * write-back diff baseline; the reindex consumer strips frontmatter before
+ * chunking), stamp the git origin (state → clean), project the OKF fields,
+ * re-tag with the source's product (set BEFORE the reindex enqueue so the
+ * consumer's tag read picks it up; null clears), and enqueue the reindex.
+ * Shared by the sync loop above and the revert endpoint (api/git.ts) so
+ * the two import paths can't drift. Returns the doc id.
+ */
+export async function importGitFile(
+  env: Env,
+  source: GitSourceRow,
+  file: { path: string; text: string; blobSha: string },
+  commitSha: string,
+  existingDocId?: string
+): Promise<string> {
+  // Parse OKF frontmatter once: title falls back to the body's H1, the
+  // well-known fields land on the doc, the rest is preserved verbatim.
+  const fm = parseFrontmatter(file.text)
+  let docId = existingDocId
+  if (!docId) {
+    const created = await createDoc(env, {
+      title: clampText(fm.known.title?.trim() || deriveTitle(fm.body, file.path), DOC_LIMITS.title),
+      folder: repoPathToFolder(source.folder_root, file.path),
+      createdBy: source.created_by
+    })
+    docId = created.id
+  }
+  await writeSourceMarkdown(env, docId, file.text)
+  await markDocGitOrigin(env, docId, {
+    sourceId: source.id,
+    path: file.path,
+    blobSha: file.blobSha,
+    commitSha
+  })
+  await applyOkfMetadata(env, docId, fm.known, fm.raw)
+  await setDocProductTag(env, docId, source.product_id)
+  await env.DOC_REINDEX_QUEUE.send({ docId, revisionId: commitSha, source: 'git' })
+  return docId
 }
 
 function repoConfig(s: GitSourceRow): GitRepoConfig {
