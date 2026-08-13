@@ -38,6 +38,10 @@ import {
 
 const API_VERSION = '7.1'
 const ZERO_SHA = '0'.repeat(40)
+// How many oversized-listing fan-outs to tolerate before giving up: root →
+// top-level dirs → their subdirs → one more. Each level multiplies API calls,
+// so a tree still too large this deep is treated as pathological.
+const MAX_TREE_FANOUT_DEPTH = 3
 
 export class AzureDevOpsProvider implements GitProviderClient {
   /** `.../{org}/{project}/_apis/git/repositories/{repo}` — repo-scoped API. */
@@ -72,13 +76,58 @@ export class AzureDevOpsProvider implements GitProviderClient {
   }
 
   async listMarkdownTree(ref: string, pathPrefix: string): Promise<GitTreeEntry[]> {
-    const r = await this.call(
-      'GET',
-      `/items?scopePath=/&recursionLevel=Full` +
-        `&versionDescriptor.version=${enc(ref)}&versionDescriptor.versionType=branch`
-    )
-    const items = asArray(asObj(r.json).value)
     const prefix = normalizePrefix(pathPrefix)
+    // Scope the listing server-side when a prefix is set — ADO then only
+    // sends that subtree instead of the whole repo.
+    const rootScope = prefix ? `/${prefix.replace(/\/$/, '')}` : '/'
+    return this.listMarkdownUnder(rootScope, ref, prefix, 0)
+  }
+
+  /**
+   * One recursive `/items` listing under `scopePath`. A monorepo's full tree
+   * can exceed GIT_MAX_RESPONSE_BYTES (`azure_response_too_large` — the yuki
+   * repo did); ADO's items API has no pagination, so on that error we fan
+   * out: list this level only (OneLevel, small), keep its markdown blobs,
+   * and recurse per subdirectory so each response stays bounded. Only
+   * oversized paths pay the extra calls; the depth budget stops a
+   * pathological tree from turning into an API flood.
+   */
+  private async listMarkdownUnder(
+    scopePath: string,
+    ref: string,
+    prefix: string,
+    depth: number
+  ): Promise<GitTreeEntry[]> {
+    const version = `&versionDescriptor.version=${enc(ref)}&versionDescriptor.versionType=branch`
+    try {
+      const r = await this.call(
+        'GET',
+        `/items?scopePath=${enc(scopePath)}&recursionLevel=Full${version}`
+      )
+      return this.filterMarkdown(r, prefix)
+    } catch (err) {
+      const tooLarge = err instanceof Error && err.message === 'azure_response_too_large'
+      if (!tooLarge || depth >= MAX_TREE_FANOUT_DEPTH) throw err
+      const r = await this.call(
+        'GET',
+        `/items?scopePath=${enc(scopePath)}&recursionLevel=OneLevel${version}`
+      )
+      const out = this.filterMarkdown(r, prefix)
+      for (const e of asArray(asObj(r.json).value)) {
+        const o = asObj(e)
+        const p = typeof o.path === 'string' ? o.path : ''
+        // Descend into subdirectories only; OneLevel echoes the scope
+        // folder itself, which would recurse forever.
+        if (o.gitObjectType !== 'tree' || !p || p === '/' || p === scopePath) continue
+        out.push(...(await this.listMarkdownUnder(p, ref, prefix, depth + 1)))
+      }
+      return out
+    }
+  }
+
+  /** The markdown blobs (under the source's prefix) in one /items response. */
+  private filterMarkdown(r: CallResult, prefix: string): GitTreeEntry[] {
+    const items = asArray(asObj(r.json).value)
     const out: GitTreeEntry[] = []
     for (const e of items) {
       const o = asObj(e)

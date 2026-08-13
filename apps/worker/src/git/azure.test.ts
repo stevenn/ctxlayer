@@ -21,17 +21,18 @@ function jsonResponse(body: unknown, status = 200): Response {
 afterEach(() => vi.unstubAllGlobals())
 
 describe('AzureDevOpsProvider read path', () => {
-  it('lists only markdown blobs under the prefix, stripping the leading slash', async () => {
+  it('lists only markdown blobs under the prefix, scoping the listing server-side', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string) => {
+        // A set prefix becomes ADO's scopePath so the response only carries
+        // that subtree (monorepo full trees can exceed the byte cap).
         expect(url).toContain(
-          '/acme-org/Platform/_apis/git/repositories/docs/items?scopePath=/&recursionLevel=Full'
+          '/acme-org/Platform/_apis/git/repositories/docs/items?scopePath=%2Fdocs&recursionLevel=Full'
         )
         expect(url).toContain('api-version=7.1')
         return jsonResponse({
           value: [
-            { path: '/README.md', gitObjectType: 'blob', objectId: 'a' },
             { path: '/docs/guide.md', gitObjectType: 'blob', objectId: 'b' },
             { path: '/docs/img.png', gitObjectType: 'blob', objectId: 'c' },
             { path: '/docs', gitObjectType: 'tree', objectId: 'e' }
@@ -43,6 +44,63 @@ describe('AzureDevOpsProvider read path', () => {
     const entries = await az.listMarkdownTree('main', 'docs')
     expect(entries.map((e) => e.path)).toEqual(['docs/guide.md'])
     expect(entries[0]?.blobSha).toBe('b')
+  })
+
+  it('fans out per directory when the full tree exceeds the byte cap', async () => {
+    const huge = 'x'.repeat(11 * 1024 * 1024) // > GIT_MAX_RESPONSE_BYTES
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = new URL(url)
+        const scope = u.searchParams.get('scopePath')
+        const level = u.searchParams.get('recursionLevel')
+        if (scope === '/' && level === 'Full') return new Response(huge)
+        if (scope === '/' && level === 'OneLevel') {
+          return jsonResponse({
+            value: [
+              { path: '/', gitObjectType: 'tree', objectId: 'root' },
+              { path: '/README.md', gitObjectType: 'blob', objectId: 'r' },
+              { path: '/apps', gitObjectType: 'tree', objectId: 't1' },
+              { path: '/docs', gitObjectType: 'tree', objectId: 't2' }
+            ]
+          })
+        }
+        if (scope === '/apps' && level === 'Full') {
+          return jsonResponse({
+            value: [
+              { path: '/apps/a.md', gitObjectType: 'blob', objectId: 'a' },
+              { path: '/apps/x.ts', gitObjectType: 'blob', objectId: 'x' }
+            ]
+          })
+        }
+        if (scope === '/docs' && level === 'Full') {
+          return jsonResponse({
+            value: [{ path: '/docs/guide.md', gitObjectType: 'blob', objectId: 'b' }]
+          })
+        }
+        throw new Error(`unexpected request: ${url}`)
+      })
+    )
+    const az = new AzureDevOpsProvider(config, 'pat')
+    const entries = await az.listMarkdownTree('main', '')
+    expect(entries.map((e) => e.path)).toEqual(['README.md', 'apps/a.md', 'docs/guide.md'])
+  })
+
+  it('gives up with azure_response_too_large once the fan-out depth is exhausted', async () => {
+    const huge = 'x'.repeat(11 * 1024 * 1024)
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => {
+        const u = new URL(url)
+        const scope = u.searchParams.get('scopePath') ?? '/'
+        if (u.searchParams.get('recursionLevel') === 'Full') return new Response(huge)
+        // Every level exposes one more subdirectory — an endless oversized chain.
+        const child = scope === '/' ? '/d' : `${scope}/d`
+        return jsonResponse({ value: [{ path: child, gitObjectType: 'tree', objectId: 't' }] })
+      })
+    )
+    const az = new AzureDevOpsProvider(config, 'pat')
+    await expect(az.listMarkdownTree('main', '')).rejects.toThrow('azure_response_too_large')
   })
 
   it('reads raw file content + objectId', async () => {
