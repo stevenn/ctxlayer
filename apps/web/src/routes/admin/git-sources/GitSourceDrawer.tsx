@@ -5,10 +5,12 @@ import {
   adminDeleteGitSharedCredential,
   adminDeleteGitSource,
   adminDeleteGitSourceOAuth,
+  adminDeleteGitSyncIdentity,
   adminPatchGitSource,
   adminPutGitSharedCredential,
   adminPutGitSourceOAuth,
   adminPutGitSourceVisibility,
+  adminPutGitSyncIdentity,
   adminSyncGitSource,
   deleteGitUserCredential,
   fetchAdminGitSource,
@@ -181,6 +183,20 @@ export function GitSourceDrawer({
               await adminSyncGitSource(sourceId)
               setNotice('Sync queued — refresh in a moment to see updated counts.')
             }, 'Sync')
+          }
+          onUseMyIdentity={() =>
+            withBusy(async () => {
+              await adminPutGitSyncIdentity(sourceId)
+              await reload()
+              onChanged()
+            }, 'Enable scheduled sync')
+          }
+          onClearIdentity={() =>
+            withBusy(async () => {
+              await adminDeleteGitSyncIdentity(sourceId)
+              await reload()
+              onChanged()
+            }, 'Stop scheduled sync')
           }
         />
 

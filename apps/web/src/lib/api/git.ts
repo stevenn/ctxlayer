@@ -80,6 +80,16 @@ export function adminSyncGitSource(id: string): Promise<void> {
   return request(`${gitSourcePath(id)}/sync`, () => undefined, { method: 'POST' })
 }
 
+// Self-designate MY connection as the scheduled-sync identity (server binds
+// it to the caller — there is no way to designate someone else's tokens).
+export function adminPutGitSyncIdentity(id: string): Promise<void> {
+  return request(`${gitSourcePath(id)}/sync-identity`, () => undefined, { method: 'PUT' })
+}
+
+export function adminDeleteGitSyncIdentity(id: string): Promise<void> {
+  return request(`${gitSourcePath(id)}/sync-identity`, () => undefined, { method: 'DELETE' })
+}
+
 // ----- per-doc git status / write-back ------------------------------------
 
 const GitDocSource = z.object({ markdown: z.string() })

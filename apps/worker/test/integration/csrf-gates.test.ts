@@ -94,6 +94,8 @@ const CASES: GateCase[] = [
   { method: 'PUT', path: '/api/admin/git-sources/g1/visibility' },
   { method: 'PUT', path: '/api/admin/git-sources/g1/shared-credentials' },
   { method: 'DELETE', path: '/api/admin/git-sources/g1/shared-credentials' },
+  { method: 'PUT', path: '/api/admin/git-sources/g1/sync-identity' },
+  { method: 'DELETE', path: '/api/admin/git-sources/g1/sync-identity' },
   { method: 'PUT', path: '/api/admin/git-sources/g1/oauth' },
   { method: 'DELETE', path: '/api/admin/git-sources/g1/oauth' },
   { method: 'POST', path: '/api/admin/git-sources/g1/sync' },

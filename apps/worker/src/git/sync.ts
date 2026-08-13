@@ -18,6 +18,7 @@ import { DOC_LIMITS, clampText, parseFrontmatter, slugifyHeading } from '@ctxlay
 import { applyOkfMetadata } from '../docs/okf-import'
 import {
   getGitSourceById,
+  listEnabledGitSources,
   listGitDocPaths,
   markDocGitOrigin,
   patchGitSource,
@@ -25,6 +26,7 @@ import {
   setDocGitSyncState,
   type GitSourceRow
 } from '../db/queries/git-sources'
+import { findById as findUserById } from '../db/queries/users'
 import { createDoc, softDeleteDoc } from '../db/queries/docs'
 import { setDocProductTag } from '../db/queries/doc-tags'
 import { writeSourceMarkdown } from '../storage/docs-r2'
@@ -61,6 +63,48 @@ export function isGitSyncDue(
   if (lastSyncedAt == null) return true
   const gap = SYNC_GAP_SECONDS[interval] ?? SYNC_GAP_SECONDS.daily
   return nowSec - lastSyncedAt >= gap - 300
+}
+
+/** One scheduled sync the cron should enqueue: the source + the identity to act as. */
+export interface DueGitSync {
+  sourceId: string
+  slug: string
+  /** Set for user_* read strategies — the designated sync identity. */
+  userId?: string
+}
+
+/**
+ * The syncs the hourly cron should enqueue right now: enabled + due, and
+ * holding an unattended credential path. That's shared_bearer (org token,
+ * no acting user needed), or a user_* read strategy whose owner
+ * self-designated a sync identity (`sync_as_user_id`) — the cron then acts
+ * with that user's stored git credential. A designee that is missing or no
+ * longer active is SKIPPED with a log line, never acted as: revocation and
+ * suspend must bite scheduled jobs the way they bite live sessions (A6).
+ */
+export async function listDueGitSyncs(
+  env: Env,
+  nowSec: number
+): Promise<{ due: DueGitSync[]; total: number }> {
+  const sources = await listEnabledGitSources(env)
+  const due: DueGitSync[] = []
+  for (const s of sources) {
+    if (!isGitSyncDue(s.sync_interval, s.last_synced_at, nowSec)) continue
+    if (s.read_strategy === 'shared_bearer') {
+      due.push({ sourceId: s.id, slug: s.slug })
+      continue
+    }
+    if (!s.sync_as_user_id) continue
+    const designee = await findUserById(env, s.sync_as_user_id)
+    if (!designee || designee.status !== 'active') {
+      console.warn(
+        `[cron] git-sync: skipping ${s.slug} — designated sync user is missing or inactive`
+      )
+      continue
+    }
+    due.push({ sourceId: s.id, slug: s.slug, userId: s.sync_as_user_id })
+  }
+  return { due, total: sources.length }
 }
 
 const ZERO = { created: 0, updated: 0, deleted: 0, skipped: 0, conflicts: 0 }

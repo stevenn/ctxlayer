@@ -26,10 +26,12 @@ import {
   deleteGitSource,
   getGitSourceById,
   gitAdminRowFor,
+  hasGitUserCredential,
   listGitDocPaths,
   listGitSources,
   patchGitSource,
   replaceGitSourceVisibility,
+  setGitSyncIdentity,
   upsertGitSharedCredential
 } from '../db/queries/git-sources'
 import {
@@ -273,6 +275,50 @@ adminGitSourcesRoute.delete('/:id/oauth', async (c) => {
   await audit(c.env, {
     actorId: c.get('user').userId,
     action: 'git_source.oauth_clear',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  return new Response(null, { status: 204 })
+})
+
+/**
+ * Self-designate the SCHEDULED sync identity: the hourly cron may act with
+ * MY stored git credential for this source's user_* read strategy. Strictly
+ * self-service — there is no way to point the schedule at someone else's
+ * tokens (that would be the confused-deputy shape the proxy avoids
+ * everywhere else). Requires the caller to actually have a connected
+ * credential for the source's connection, so a designation can't be armed
+ * dead. DELETE clears the designation (any admin; clearing acts as no one).
+ */
+adminGitSourcesRoute.put('/:id/sync-identity', async (c) => {
+  const id = c.req.param('id')
+  const row = await getGitSourceById(c.env, id)
+  if (!row) return notFound(c)
+  const actor = c.get('user')
+  if (!(await hasGitUserCredential(c.env, actor.userId, id))) {
+    return c.json(
+      { error: 'not_connected', message: 'Connect your own credential for this source first' },
+      400
+    )
+  }
+  await setGitSyncIdentity(c.env, id, actor.userId)
+  await audit(c.env, {
+    actorId: actor.userId,
+    action: 'git_source.sync_identity_set',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  return new Response(null, { status: 204 })
+})
+
+adminGitSourcesRoute.delete('/:id/sync-identity', async (c) => {
+  const id = c.req.param('id')
+  const row = await getGitSourceById(c.env, id)
+  if (!row) return notFound(c)
+  await setGitSyncIdentity(c.env, id, null)
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'git_source.sync_identity_clear',
     target: id,
     meta: { slug: row.slug }
   })

@@ -31,6 +31,7 @@ import type {
 } from '@ctxlayer/shared'
 import { buildPatchUpdate, newId } from './util'
 import { getGitConnectionForSource } from './git-connections'
+import { findById as findUserById } from './users'
 
 // ----- git_sources -------------------------------------------------------
 
@@ -57,6 +58,9 @@ export interface GitSourceRow {
   last_synced_at: number | null
   last_sync_status: GitSyncStatus | null
   last_sync_error: string | null
+  // Whose stored credential the SCHEDULED sync acts with on user_* read
+  // strategies (self-designated; null = unattended sync skips this source).
+  sync_as_user_id: string | null
   created_by: string | null
   created_at: number
   updated_at: number
@@ -64,7 +68,7 @@ export interface GitSourceRow {
 
 const SELECT_GIT_SOURCE = `SELECT id, slug, display_name, connection_id, provider, base_url, owner, project,
   repo, branch, path_prefix, read_strategy, write_strategy, folder_root, sync_interval, product_id,
-  enabled, last_synced_at, last_sync_status, last_sync_error, created_by, created_at, updated_at
+  enabled, last_synced_at, last_sync_status, last_sync_error, sync_as_user_id, created_by, created_at, updated_at
   FROM git_sources`
 
 export async function listGitSources(env: Env): Promise<GitSourceRow[]> {
@@ -75,6 +79,21 @@ export async function listGitSources(env: Env): Promise<GitSourceRow[]> {
 export async function listEnabledGitSources(env: Env): Promise<GitSourceRow[]> {
   const res = await env.DB.prepare(`${SELECT_GIT_SOURCE} WHERE enabled = 1`).all<GitSourceRow>()
   return res.results ?? []
+}
+
+/**
+ * Set (or clear, with null) the designated scheduled-sync identity. The
+ * route layer enforces self-designation — this setter is mechanism only.
+ */
+export async function setGitSyncIdentity(
+  env: Env,
+  sourceId: string,
+  userId: string | null
+): Promise<void> {
+  const now = Math.floor(Date.now() / 1000)
+  await env.DB.prepare(`UPDATE git_sources SET sync_as_user_id = ?2, updated_at = ?3 WHERE id = ?1`)
+    .bind(sourceId, userId, now)
+    .run()
 }
 
 export async function getGitSourceById(env: Env, id: string): Promise<GitSourceRow | null> {
@@ -442,7 +461,7 @@ export async function getGitUserCredential(
   return row
 }
 
-async function hasGitUserCredential(
+export async function hasGitUserCredential(
   env: Env,
   userId: string,
   gitSourceId: string
@@ -669,13 +688,15 @@ export async function gitAdminRowFor(
 ): Promise<AdminGitSourceRow | null> {
   const row = await getGitSourceById(env, gitSourceId)
   if (!row) return null
-  const [visibility, docCount, sharedConfigured, userConnected, connection] = await Promise.all([
-    listVisibilityForGitSource(env, gitSourceId),
-    countGitDocsForSource(env, gitSourceId),
-    hasGitSharedCredential(env, gitSourceId),
-    hasGitUserCredential(env, callerUserId, gitSourceId),
-    getGitConnectionForSource(env, gitSourceId)
-  ])
+  const [visibility, docCount, sharedConfigured, userConnected, connection, syncAsUserRow] =
+    await Promise.all([
+      listVisibilityForGitSource(env, gitSourceId),
+      countGitDocsForSource(env, gitSourceId),
+      hasGitSharedCredential(env, gitSourceId),
+      hasGitUserCredential(env, callerUserId, gitSourceId),
+      getGitConnectionForSource(env, gitSourceId),
+      row.sync_as_user_id ? findUserById(env, row.sync_as_user_id) : Promise.resolve(null)
+    ])
   // OAuth client config lives on the connection (shared across its repos).
   const authConfig = connection?.auth_config ?? null
   return {
@@ -700,6 +721,10 @@ export async function gitAdminRowFor(
     lastSyncedAt: row.last_synced_at,
     lastSyncStatus: row.last_sync_status,
     lastSyncError: row.last_sync_error,
+    // Designated scheduled-sync identity (email for display; the id lets the
+    // SPA tell "me" from "someone else"). Stale designations (deleted user)
+    // read as null here; the enqueue gate skips them too.
+    syncAsUser: syncAsUserRow ? { userId: syncAsUserRow.id, email: syncAsUserRow.email } : null,
     docCount,
     sharedCredentialConfigured: sharedConfigured,
     oauth: oauthPublic(authConfig),

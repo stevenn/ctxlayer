@@ -78,6 +78,11 @@ export const AdminGitSourceRow = z.object({
   lastSyncedAt: z.number().int().nullable(),
   lastSyncStatus: GitSyncStatus.nullable(),
   lastSyncError: z.string().nullable(),
+  // Designated scheduled-sync identity for user_* read strategies: the user
+  // whose stored git credential the hourly cron acts with (self-designated
+  // via PUT /:id/sync-identity). Null = unattended sync skips this source
+  // unless read_strategy is shared_bearer. Default for deploy-skew compat.
+  syncAsUser: z.object({ userId: z.string(), email: z.string() }).nullable().default(null),
   docCount: z.number().int().min(0),
   sharedCredentialConfigured: z.boolean(),
   // The source's static-OAuth client config (NON-secret fields only) for the

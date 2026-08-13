@@ -10,8 +10,7 @@ import { jobsConsumer } from './queues/jobs-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
 import { clearAsyncJobResults, pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
-import { listEnabledGitSources } from './db/queries/git-sources'
-import { isGitSyncDue } from './git/sync'
+import { listDueGitSyncs } from './git/sync'
 import { audit } from './audit/log'
 import { notify } from './ops/alert'
 import { LAST_CRON_KV_KEY } from './ops/cron-heartbeat'
@@ -81,24 +80,23 @@ const worker: ExportedHandler<Env> = {
         String(Math.floor(controller.scheduledTime / 1000))
       ).catch((e) => console.error('[cron] heartbeat write failed', e))
     )
-    // Hourly cron (`0 * * * *`): git-sync due-check. Enqueue one message
-    // per enabled shared_bearer source whose sync_interval has elapsed.
-    // (user_* read strategies have no token without an interactive user,
-    // so unattended sync only applies to shared_bearer sources.)
+    // Hourly cron (`0 * * * *`): git-sync due-check. Enqueue one message per
+    // enabled source whose sync_interval has elapsed AND that has an
+    // unattended credential path: shared_bearer, or a user_* read strategy
+    // with a self-designated sync identity (the message carries that userId
+    // so the consumer resolves their stored token). See listDueGitSyncs.
     if (controller.cron === '0 * * * *') {
       ctx.waitUntil(
         (async () => {
           try {
-            const sources = await listEnabledGitSources(env)
             const nowSec = Math.floor(controller.scheduledTime / 1000)
-            let queued = 0
-            for (const s of sources) {
-              if (s.read_strategy !== 'shared_bearer') continue
-              if (!isGitSyncDue(s.sync_interval, s.last_synced_at, nowSec)) continue
-              await env.GIT_SYNC_QUEUE.send({ sourceId: s.id })
-              queued++
+            const { due, total } = await listDueGitSyncs(env, nowSec)
+            for (const d of due) {
+              await env.GIT_SYNC_QUEUE.send(
+                d.userId ? { sourceId: d.sourceId, userId: d.userId } : { sourceId: d.sourceId }
+              )
             }
-            console.log(`[cron] git-sync: queued ${queued}/${sources.length} source(s)`)
+            console.log(`[cron] git-sync: queued ${due.length}/${total} source(s)`)
           } catch (err) {
             const m = errMessage(err)
             console.error(`[cron] git-sync due-check failed: ${m}`)
