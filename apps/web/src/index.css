@@ -425,6 +425,21 @@ table:hover .bn-table-cell-handle {
 }
 
 /*
+ * Slideout drawers: Mantine's size presets run too narrow for our
+ * forms, so every named size is scaled by 1.15 (base values live in
+ * @mantine/core/styles.css, imported before this file — equal
+ * specificity, later in the cascade, so these win). Small screens are
+ * still safe: the drawer content also carries max-width: 100%.
+ */
+.mantine-Drawer-root {
+  --drawer-size-xs: calc(23rem * var(--mantine-scale));
+  --drawer-size-sm: calc(27.3125rem * var(--mantine-scale));
+  --drawer-size-md: calc(31.625rem * var(--mantine-scale));
+  --drawer-size-lg: calc(44.5625rem * var(--mantine-scale));
+  --drawer-size-xl: calc(56.0625rem * var(--mantine-scale));
+}
+
+/*
  * Transient highlight applied by the editor when a search deep-link
  * (?section=<anchor>) scrolls to a heading block. Added for ~2s then
  * removed; the transition fades it back out.
