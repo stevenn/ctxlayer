@@ -86,34 +86,62 @@ export async function loadUserContext(env: Env, userId: string): Promise<Upstrea
   return { rows, skillsByUpstream, docsByUpstream }
 }
 
+const GUIDANCE_HEADER =
+  '**Org playbooks for your upstreams — read the named skill/doc BEFORE the ' +
+  'first call to that upstream (fetch via `get_skill` / `get_doc`; required ' +
+  'conventions the tool schemas do not show):**\n'
+
+/** Refs named per upstream line before collapsing into `+N more`. */
+const MAX_REFS_PER_LINE = 3
+
 /**
- * Builds the dynamic tail of the MCP server `instructions`: one line
+ * Builds the LEADING block of the MCP server `instructions`: one line
  * per visible upstream that carries a *whole-upstream* skill/doc
  * attachment (tool_name = ''), naming each so the agent reads the org
- * playbook before its first call. Returns '' when nothing is attached.
+ * playbook before its first call. Returns '' when nothing is attached;
+ * otherwise ends with a blank line so the static base reads on from it.
+ * It goes FIRST because clients truncate long instructions and a
+ * trailing tail is exactly what gets cut — see the size-budget note in
+ * server-instructions.ts.
+ *
+ * `budget` (chars, normally GUIDANCE_BUDGET) bounds the block for ANY
+ * attachment count: refs collapse to `+N more` past MAX_REFS_PER_LINE,
+ * and when whole lines no longer fit the rest degrade to one pointer at
+ * `list_upstreams.attached_skills` — the structured second step — so
+ * growth can never push the static base past the client cap. Which
+ * upstreams get named under collapse is row order (the visibility-query
+ * order); nothing smarter until a real org hits it.
  * The slugs are org-curated (kebab-case, first-party) — unlike upstream
  * tool descriptions they are not untrusted input, so no sanitisation.
  * Pure formatting over the prefetched `loadUserContext` data.
  */
-export function upstreamGuidance(ctx: UpstreamUserContext): string {
+export function upstreamGuidance(ctx: UpstreamUserContext, budget: number): string {
   const lines: string[] = []
   for (const row of ctx.rows) {
     const refs = wholeUpstreamPointers(
       ctx.skillsByUpstream.get(row.id) ?? [],
       ctx.docsByUpstream.get(row.id) ?? []
     )
-    if (refs.length > 0) {
-      lines.push(`- \`${row.slug}\`: consult ${refs.join(', ')} before using its tools.`)
-    }
+    if (refs.length === 0) continue
+    const named = refs.slice(0, MAX_REFS_PER_LINE)
+    const extra = refs.length - named.length
+    lines.push(`- \`${row.slug}\`: ${named.join(', ')}${extra > 0 ? ` +${extra} more` : ''}`)
   }
   if (lines.length === 0) return ''
-  return (
-    '\n\n**Org playbooks attached to your upstreams — read these BEFORE the ' +
-    "first call to the named upstream's tools. They encode required conventions " +
-    '(label/status names, formatting rules, prefer-this-tool guidance) the tool ' +
-    'schemas do not show:**\n' +
-    lines.join('\n')
-  )
+  const overflow = (n: number) =>
+    `- …plus ${n} more upstream${n === 1 ? '' : 's'} with playbooks — check \`list_upstreams.attached_skills\`.`
+  const compose = (named: string[], rest: number) =>
+    GUIDANCE_HEADER + [...named, ...(rest > 0 ? [overflow(rest)] : [])].join('\n') + '\n\n'
+  const full = compose(lines, 0)
+  if (full.length <= budget) return full
+  // Largest fitting prefix of named lines; the remainder collapses into
+  // the overflow pointer. keep = 0 (header + pointer alone) always fits
+  // any budget the static-block guard permits.
+  for (let keep = lines.length - 1; keep >= 0; keep--) {
+    const out = compose(lines.slice(0, keep), lines.length - keep)
+    if (out.length <= budget) return out
+  }
+  return ''
 }
 
 /**
@@ -358,17 +386,19 @@ export function visibleTools(
 /**
  * Whole-upstream attachment pointers (tool_name = '') as ready-to-render
  * ref strings, in skills-then-docs order. These name the org playbook for
- * the WHOLE upstream and feed the server `instructions` tail
- * (`upstreamGuidance`). Per-tool rows (tool_name != '') are skipped here;
- * `perToolPointers` owns those.
+ * the WHOLE upstream and feed the server `instructions` leading block
+ * (`upstreamGuidance`), whose header names the fetch tools once — so no
+ * per-ref `(get_skill)` here, unlike `perToolPointers`, whose refs render
+ * standalone on tool descriptions. Per-tool rows (tool_name != '') are
+ * skipped here; `perToolPointers` owns those.
  */
 export function wholeUpstreamPointers(
   skills: SkillForUpstreamRow[],
   docs: DocForUpstreamRow[]
 ): string[] {
   return [
-    ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\` (get_skill)`),
-    ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\` (get_doc)`)
+    ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\``),
+    ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\``)
   ]
 }
 

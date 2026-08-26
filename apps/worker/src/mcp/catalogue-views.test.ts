@@ -7,12 +7,15 @@ import {
   wholeUpstreamPointers,
   summariseToolDescription,
   groupToolsByFamily,
-  type ToolAttachments
+  upstreamGuidance,
+  type ToolAttachments,
+  type UpstreamUserContext
 } from './catalogue-views'
 import { mangleToolName } from './tool-name'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import type { DocForUpstreamRow } from '../db/queries/doc-attachments'
 import type { UpstreamToolRow } from '../db/queries/upstream-tools'
+import type { UpstreamServerRow } from '../db/queries/upstreams'
 
 describe('truncateDescription', () => {
   it('leaves short strings untouched', () => {
@@ -58,15 +61,86 @@ describe('wholeUpstreamPointers', () => {
       [doc('', 'driver-overview')]
     )
     expect(refs).toEqual([
-      'skill `driverai-planning` (get_skill)',
-      'skill `driverai-research` (get_skill)',
-      'doc `driver-overview` (get_doc)'
+      'skill `driverai-planning`',
+      'skill `driverai-research`',
+      'doc `driver-overview`'
     ])
   })
 
   it('ignores per-tool rows (non-empty tool_name)', () => {
     const refs = wholeUpstreamPointers([skill('search', 'how-to-search')], [doc('search', 'sdoc')])
     expect(refs).toEqual([])
+  })
+})
+
+describe('upstreamGuidance', () => {
+  const skill = (slug: string): SkillForUpstreamRow =>
+    ({ tool_name: '', slug, title: slug }) as SkillForUpstreamRow
+  const row = (id: string, slug: string): UpstreamServerRow => ({ id, slug }) as UpstreamServerRow
+  const ctx = (over: Partial<UpstreamUserContext>): UpstreamUserContext => ({
+    rows: [],
+    skillsByUpstream: new Map(),
+    docsByUpstream: new Map(),
+    ...over
+  })
+  const BIG = 100_000
+
+  it('returns empty string when no upstream carries a whole-upstream attachment', () => {
+    const out = upstreamGuidance(ctx({ rows: [row('u1', 'up-plain')] }), BIG)
+    expect(out).toBe('')
+  })
+
+  it('emits a leading block: header, one line per upstream, trailing blank line', () => {
+    const out = upstreamGuidance(
+      ctx({
+        rows: [row('u1', 'up-driver')],
+        skillsByUpstream: new Map([['u1', [skill('sk-plan'), skill('sk-research')]]])
+      }),
+      BIG
+    )
+    expect(out.startsWith('**Org playbooks')).toBe(true)
+    expect(out).toContain('- `up-driver`: skill `sk-plan`, skill `sk-research`')
+    expect(out.endsWith('\n\n')).toBe(true)
+  })
+
+  it('collapses refs past the per-line cap into +N more', () => {
+    const out = upstreamGuidance(
+      ctx({
+        rows: [row('u1', 'up-driver')],
+        skillsByUpstream: new Map([
+          ['u1', [skill('sk-a'), skill('sk-b'), skill('sk-c'), skill('sk-d'), skill('sk-e')]]
+        ])
+      }),
+      BIG
+    )
+    expect(out).toContain('- `up-driver`: skill `sk-a`, skill `sk-b`, skill `sk-c` +2 more')
+    expect(out).not.toContain('sk-d')
+  })
+
+  it('collapses whole upstreams into an overflow pointer when the budget is tight', () => {
+    // Three skills per upstream keep each line longer than the overflow
+    // pointer, so shaving the budget drops exactly the last line.
+    const skillsFor = (u: string) => [
+      skill(`sk-${u}-playbook-alpha`),
+      skill(`sk-${u}-playbook-beta`),
+      skill(`sk-${u}-playbook-gamma`)
+    ]
+    const tight = ctx({
+      rows: [row('u1', 'up-driver'), row('u2', 'up-sentry'), row('u3', 'up-linear')],
+      skillsByUpstream: new Map([
+        ['u1', skillsFor('driver')],
+        ['u2', skillsFor('sentry')],
+        ['u3', skillsFor('linear')]
+      ])
+    })
+    const full = upstreamGuidance(tight, BIG)
+    const out = upstreamGuidance(tight, full.length - 10)
+    expect(out.length).toBeLessThanOrEqual(full.length - 10)
+    expect(out).toContain('- `up-driver`: skill `sk-driver-playbook-alpha`')
+    expect(out).toContain('more upstream')
+    expect(out).toContain('check `list_upstreams.attached_skills`.')
+    expect(out).not.toContain('sk-linear-playbook')
+    expect(out.endsWith('\n\n')).toBe(true)
   })
 })
 
