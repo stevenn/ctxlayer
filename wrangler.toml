@@ -196,6 +196,11 @@ PUBLIC_BASE_URL = "https://YOUR-WORKER.example.workers.dev"
 # overrides both with `--var` from `git rev-parse` + a UTC timestamp.
 GIT_SHA = ""
 BUILT_AT = ""
+# Org-facing alias for this gateway — the connector name the org configured
+# in its MCP clients (e.g. "Yuki MCP"). Woven into the MCP server
+# instructions so agents know the alias and "ctxlayer" are the same gateway.
+# Empty ⇒ no alias clause.
+GATEWAY_ALIAS = ""
 # Google sign-in is enabled if EITHER allowlist is set. A user passes
 # the allowlist when their id_token.hd matches ALLOWED_GOOGLE_HD OR
 # their email is in ALLOWED_GOOGLE_EMAILS. Both empty disables Google.

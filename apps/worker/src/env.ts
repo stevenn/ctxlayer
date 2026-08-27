@@ -35,6 +35,12 @@ export interface Env {
   // as consent to restore zero-click MCP authorization. Ignored unless
   // Access trust is configured. Not a secret; injected as a [var].
   OAUTH_CONSENT_SKIP_VIA_ACCESS?: string
+  // Org-facing alias for this gateway ("Yuki MCP") — the name the org gave
+  // the connector in its MCP client config. Woven into the MCP server
+  // instructions so the model knows the alias and "ctxlayer" denote the same
+  // gateway (client-side org instructions reference the alias). Truncated to
+  // MAX_GATEWAY_ALIAS chars; empty/unset ⇒ no alias clause. Not a secret.
+  GATEWAY_ALIAS?: string
   // Build provenance, injected by the `deploy` script via `--var`.
   // Empty in local dev / a bare `wrangler deploy`.
   GIT_SHA: string

@@ -32,7 +32,7 @@ import {
   type UpstreamUserContext
 } from './catalogue-views'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
-import { SERVER_INSTRUCTIONS, composeInstructions, GUIDANCE_BUDGET } from './server-instructions'
+import { SERVER_INSTRUCTIONS, composeInstructions, guidanceBudget } from './server-instructions'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
 import { listUserRoleIds } from '../db/queries/roles'
@@ -124,11 +124,15 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     if (userId) {
       try {
         upstreamCtx = await loadUserContext(this.env, userId)
-        const guidance = upstreamGuidance(upstreamCtx, GUIDANCE_BUDGET)
-        if (guidance) {
+        // GATEWAY_ALIAS ties the connector name the org configured
+        // client-side ("Yuki MCP") to the "ctxlayer" self-identification,
+        // so client-side org instructions referencing the alias bind.
+        const alias = this.env.GATEWAY_ALIAS
+        const guidance = upstreamGuidance(upstreamCtx, guidanceBudget(alias))
+        if (guidance || (alias ?? '').trim()) {
           this.server = new McpServer(
             { name: 'ctxlayer', version: '0.1.0' },
-            { instructions: composeInstructions(guidance) }
+            { instructions: composeInstructions(guidance, alias) }
           )
         }
       } catch (err) {

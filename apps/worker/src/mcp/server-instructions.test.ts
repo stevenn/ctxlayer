@@ -2,9 +2,12 @@ import { describe, it, expect } from 'vitest'
 import {
   SERVER_INSTRUCTIONS,
   composeInstructions,
+  staticInstructions,
+  guidanceBudget,
   INSTRUCTIONS_CLIENT_CAP,
   STATIC_INSTRUCTIONS_BUDGET,
-  GUIDANCE_BUDGET
+  GUIDANCE_BUDGET,
+  MAX_GATEWAY_ALIAS
 } from './server-instructions'
 import { upstreamGuidance, type UpstreamUserContext } from './catalogue-views'
 import type { UpstreamServerRow } from '../db/queries/upstreams'
@@ -56,6 +59,40 @@ describe('server instructions size budget', () => {
     // Some upstreams are named, the rest collapse to the structured pointer.
     expect(guidance).toContain('- `up-server-number-0`:')
     expect(guidance).toContain('check `list_upstreams.attached_skills`.')
+  })
+})
+
+describe('gateway alias', () => {
+  it('weaves the alias into the static block opening', () => {
+    expect(staticInstructions('Yuki MCP')).toContain(
+      'ctxlayer — the gateway your org calls "Yuki MCP" — is'
+    )
+  })
+
+  it('is the plain static block for empty/blank alias', () => {
+    expect(staticInstructions()).toBe(SERVER_INSTRUCTIONS)
+    expect(staticInstructions('   ')).toBe(SERVER_INSTRUCTIONS)
+  })
+
+  it('stays under the static budget even at the max alias length', () => {
+    const worst = staticInstructions('x'.repeat(MAX_GATEWAY_ALIAS + 100))
+    expect(worst.length).toBeLessThanOrEqual(STATIC_INSTRUCTIONS_BUDGET)
+  })
+
+  it('fits alias + realistic guidance under the client cap (alias-aware budget)', () => {
+    const alias = 'x'.repeat(MAX_GATEWAY_ALIAS)
+    const ctx: UpstreamUserContext = {
+      rows: [row('u1', 'up-driver'), row('u2', 'up-sentry')],
+      skillsByUpstream: new Map([
+        ['u1', [skill('sk-driver-ai-planning-skill'), skill('sk-driver-ai-research-skill')]],
+        ['u2', [skill('sk-sentry-time-window-queries')]]
+      ]),
+      docsByUpstream: new Map()
+    }
+    const guidance = upstreamGuidance(ctx, guidanceBudget(alias))
+    expect(composeInstructions(guidance, alias).length).toBeLessThanOrEqual(
+      INSTRUCTIONS_CLIENT_CAP
+    )
   })
 })
 
