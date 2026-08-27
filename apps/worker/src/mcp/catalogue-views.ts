@@ -266,26 +266,59 @@ export async function listUpstreamsForUser(env: Env, userId: string): Promise<Li
     const cred = requiresCred
       ? (credStatuses.get(row.id) ?? { present: false, needsReauth: false })
       : { present: true, needsReauth: false }
-    // Whole-upstream attachments only (tool_name = ''); per-tool
-    // attachments surface via /api/upstreams/:id/tools.
-    const attached_skills = (skillsByUpstream.get(row.id) ?? [])
-      .filter((s) => s.tool_name === '')
-      .map((s) => ({ slug: s.slug, title: s.title }))
-    const attached_docs = (docsByUpstream.get(row.id) ?? [])
-      .filter((d) => d.tool_name === '')
-      .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
-    return {
-      slug: row.slug,
-      displayName: row.display_name,
-      transport: row.transport,
-      connected: cred.present,
-      ...(cred.needsReauth ? { needsReauth: true } : {}),
-      toolsCount: toolCounts.get(row.id) ?? 0,
-      requiresAuth: row.auth_strategy,
-      attached_skills,
-      attached_docs
-    }
+    return upstreamEntry(
+      row,
+      cred,
+      toolCounts.get(row.id) ?? 0,
+      skillsByUpstream.get(row.id) ?? [],
+      docsByUpstream.get(row.id) ?? []
+    )
   })
+}
+
+/**
+ * Agent-facing recovery note on needsReauth entries — paired with the
+ * zeroed toolsCount below so the two signals can't be read apart.
+ */
+export const NEEDS_REAUTH_NOTE =
+  'credential refresh failed — this session registered none of its tools; ' +
+  'reconnect the upstream at /app/upstreams, then call reload_upstreams'
+
+/**
+ * One `list_upstreams` entry. Pure (exported for tests). On needsReauth
+ * the reported toolsCount is 0 with an explanatory `note`: the session
+ * registers NONE of the upstream's tools (credential-freshness gate), and
+ * reporting the cached catalogue count made an agent plan work it could
+ * not execute — "connected, 25 tools, needsReauth:true" reads as usable
+ * (2026-08-27 Datadog field finding). Same surfaces-never-disagree rule
+ * as the ACL-aligned counts above.
+ */
+export function upstreamEntry(
+  row: UpstreamServerRow,
+  cred: { present: boolean; needsReauth: boolean },
+  toolsCount: number,
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): ListUpstreamsEntry {
+  // Whole-upstream attachments only (tool_name = ''); per-tool
+  // attachments surface via /api/upstreams/:id/tools.
+  const attached_skills = skills
+    .filter((s) => s.tool_name === '')
+    .map((s) => ({ slug: s.slug, title: s.title }))
+  const attached_docs = docs
+    .filter((d) => d.tool_name === '')
+    .map((d) => ({ id: d.doc_id, slug: d.slug, title: d.title }))
+  return {
+    slug: row.slug,
+    displayName: row.display_name,
+    transport: row.transport as SupportedTransport,
+    connected: cred.present,
+    ...(cred.needsReauth ? { needsReauth: true, note: NEEDS_REAUTH_NOTE } : {}),
+    toolsCount: cred.needsReauth ? 0 : toolsCount,
+    requiresAuth: row.auth_strategy,
+    attached_skills,
+    attached_docs
+  }
 }
 
 // ----- pure helpers ------------------------------------------------------

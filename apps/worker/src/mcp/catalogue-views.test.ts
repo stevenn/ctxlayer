@@ -8,6 +8,8 @@ import {
   summariseToolDescription,
   groupToolsByFamily,
   upstreamGuidance,
+  upstreamEntry,
+  NEEDS_REAUTH_NOTE,
   type ToolAttachments,
   type UpstreamUserContext
 } from './catalogue-views'
@@ -325,5 +327,48 @@ describe('wholeUpstreamAttachments', () => {
   it('returns empty arrays (always present) when nothing is whole-upstream', () => {
     const out = wholeUpstreamAttachments([skill('wit_query', 'sk-x')], [])
     expect(out).toEqual({ skills: [], docs: [] })
+  })
+})
+
+describe('upstreamEntry', () => {
+  const skill = (tool_name: string, slug: string): SkillForUpstreamRow =>
+    ({ tool_name, slug, title: slug }) as SkillForUpstreamRow
+  const upRow = (slug: string): UpstreamServerRow =>
+    ({
+      id: `id-${slug}`,
+      slug,
+      display_name: slug.toUpperCase(),
+      transport: 'streamable_http',
+      auth_strategy: 'user_oauth'
+    }) as UpstreamServerRow
+
+  it('reports the cached tool count on a healthy connection', () => {
+    const e = upstreamEntry(upRow('up-x'), { present: true, needsReauth: false }, 25, [], [])
+    expect(e.connected).toBe(true)
+    expect(e.toolsCount).toBe(25)
+    expect(e.needsReauth).toBeUndefined()
+    expect(e.note).toBeUndefined()
+  })
+
+  it('zeroes toolsCount + explains on needsReauth (surfaces never disagree)', () => {
+    // The session registers NONE of this upstream's tools, so reporting
+    // the cached 25 made agents plan Datadog work they could not execute.
+    const e = upstreamEntry(upRow('up-datadog'), { present: true, needsReauth: true }, 25, [], [])
+    expect(e.connected).toBe(true)
+    expect(e.needsReauth).toBe(true)
+    expect(e.toolsCount).toBe(0)
+    expect(e.note).toBe(NEEDS_REAUTH_NOTE)
+    expect(e.note).toContain('reload_upstreams')
+  })
+
+  it('keeps whole-upstream attachments and drops per-tool rows', () => {
+    const e = upstreamEntry(
+      upRow('up-x'),
+      { present: true, needsReauth: false },
+      3,
+      [skill('', 'sk-whole'), skill('some_tool', 'sk-per-tool')],
+      []
+    )
+    expect(e.attached_skills.map((s) => s.slug)).toEqual(['sk-whole'])
   })
 })

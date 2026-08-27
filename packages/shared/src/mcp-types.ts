@@ -29,6 +29,11 @@ export const McpUpstreamEntry = z.object({
   // failed — the upstream is connected-on-paper but its tools won't load until
   // the user reconnects at /upstreams. Absent/false means healthy.
   needsReauth: z.boolean().optional(),
+  // Agent-facing explanation accompanying needsReauth. `toolsCount` is 0 on
+  // such entries (the session registered none of its tools), and this note
+  // says why + how to recover — so an agent can't plan work against a tool
+  // count the session cannot execute (2026-08-27 Datadog field finding).
+  note: z.string().optional(),
   toolsCount: z.number(),
   requiresAuth: AuthStrategy.optional(),
   // Whole-upstream attachments (curated playbooks / reference docs). Always
