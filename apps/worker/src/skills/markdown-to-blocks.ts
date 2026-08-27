@@ -7,7 +7,8 @@
  *
  * Handles at block level: paragraphs, ATX headings (#…######), bullet
  * lists (`-` / `*`), numbered lists (`1.`), fenced code blocks
- * (```...```). Inline within a block: backtick-code, **bold**, *italic*,
+ * (```...```), GFM pipe tables (`|`-fenced header + `---` separator).
+ * Inline within a block: backtick-code, **bold**, *italic*,
  * _italic_, [text](url).
  *
  * Round-trip target is the worker's renderBlocksToMarkdown
@@ -17,8 +18,9 @@
  * `styles.{bold,italic,code}` and a `link` leaf — and avoid constructs it
  * can't emit.
  *
- * Out of scope: blockquotes, tables, images, HTML, nested lists, setext
- * headings, hard breaks, escapes. The author can polish in the SPA editor.
+ * Out of scope: blockquotes, images, HTML, nested lists, setext
+ * headings, hard breaks, escapes (incl. `\|` inside table cells). The
+ * author can polish in the SPA editor.
  */
 
 interface TextLeaf {
@@ -39,10 +41,21 @@ interface LinkLeaf {
 
 type Inline = TextLeaf | LinkLeaf
 
+interface TableCell {
+  type: 'tableCell'
+  props: Record<string, unknown>
+  content: Inline[]
+}
+
+interface TableContent {
+  type: 'tableContent'
+  rows: Array<{ cells: TableCell[] }>
+}
+
 interface Block {
   type: string
   props?: Record<string, unknown>
-  content: Inline[]
+  content: Inline[] | TableContent
 }
 
 export function markdownToBlocks(md: string): Block[] {
@@ -90,6 +103,23 @@ export function markdownToBlocks(md: string): Block[] {
       continue
     }
 
+    // GFM pipe table: `|`-fenced header + all-dashes separator (+ body
+    // rows). Emitted as a BlockNote `table` block in the 0.51 tableCell
+    // shape — exactly what renderBlocksToMarkdown round-trips and the
+    // SPA editor edits natively. Without this branch the rows fell into
+    // the paragraph fallback below, whose space-join collapsed the whole
+    // table onto one line — permanently, at save time.
+    if (isTableStart(lines, i)) {
+      const rows = [tableRow(lines[i] ?? '')]
+      i += 2 // consume header + separator
+      while (i < lines.length && (lines[i] ?? '').startsWith('|')) {
+        rows.push(tableRow(lines[i] ?? ''))
+        i++
+      }
+      out.push({ type: 'table', content: { type: 'tableContent', rows } })
+      continue
+    }
+
     // Bullet list (consume contiguous lines starting with - or *)
     if (/^[-*]\s+/.test(line)) {
       while (i < lines.length && /^[-*]\s+/.test(lines[i] ?? '')) {
@@ -126,7 +156,8 @@ export function markdownToBlocks(md: string): Block[] {
         /^#{1,6}\s+/.test(l) ||
         /^[-*]\s+/.test(l) ||
         /^\d+\.\s+/.test(l) ||
-        /^```/.test(l)
+        /^```/.test(l) ||
+        isTableStart(lines, i)
       ) {
         break
       }
@@ -139,6 +170,42 @@ export function markdownToBlocks(md: string): Block[] {
     })
   }
   return out
+}
+
+// ----- table parser -----------------------------------------------------
+
+/**
+ * A table starts where a `|`-prefixed header line is immediately followed
+ * by a GFM separator row: `|`-prefixed cells of only dashes with optional
+ * alignment colons (`---`, `:---`, `---:`, `:---:`). Both lines must
+ * start with `|` — the renderer always emits that form, and requiring it
+ * keeps prose that merely contains pipes out of the table path.
+ */
+function isTableStart(lines: string[], i: number): boolean {
+  const header = lines[i] ?? ''
+  const sep = lines[i + 1] ?? ''
+  if (!header.startsWith('|') || !sep.startsWith('|')) return false
+  const cells = splitRowCells(sep)
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c))
+}
+
+/** `| a | b |` → trimmed cell strings, outer pipes stripped. */
+function splitRowCells(line: string): string[] {
+  let s = line.trim()
+  if (s.startsWith('|')) s = s.slice(1)
+  if (s.endsWith('|')) s = s.slice(0, -1)
+  return s.split('|').map((c) => c.trim())
+}
+
+/** One markdown row → a tableContent row of 0.51-shape tableCell wrappers. */
+function tableRow(line: string): { cells: TableCell[] } {
+  return {
+    cells: splitRowCells(line).map((cell) => ({
+      type: 'tableCell' as const,
+      props: {},
+      content: parseInline(cell)
+    }))
+  }
 }
 
 // ----- inline parser ----------------------------------------------------
