@@ -87,6 +87,14 @@ export function postProcessErrorResult(ref: UpstreamRef, raw: string): ErrorResu
  * prose ("token expired", "bearer of…") can't match. Broadening any of
  * these risks blunting genuinely useful upstream diagnostics — the
  * review explicitly weighed and rejected an aggressive scrub.
+ *
+ * SUCCESS results are never rewritten or scrubbed by this module. The one
+ * sanctioned augmentation of a success result lives in the registry, not
+ * here: the once-per-session first-result playbook hint — an ADDITIVE
+ * ⟦ctxlayer⟧-marked text item appended post-sanitise in
+ * `UpstreamProxyRegistry.deliverFirstResultHint` (design:
+ * docs/plan/O-result-skill-hint.md). Payload content itself still passes
+ * through untouched.
  */
 const CREDENTIAL_SHAPES: RegExp[] = [
   // `Authorization: Bearer <anything>` header echoes (any scheme value length —

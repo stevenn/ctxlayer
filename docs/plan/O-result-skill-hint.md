@@ -1,9 +1,11 @@
 # O — First-result skill hint (design note, not yet built)
 
-Status: **designed 2026-08-27, awaiting go.** The last discovery channel from
-the 2026-08 skill-discovery work; everything else in that thread shipped
-(guidance-first instructions ≤2048, per-tool description suffix, skills as MCP
-prompts, org-side client instruction line).
+Status: **BUILT 2026-08-27** — `firstResultHint` (catalogue-views.ts) +
+`armFirstResultHint`/`deliverFirstResultHint` (proxy-registry.ts), tested at
+both levels. The last discovery channel from the 2026-08 skill-discovery work;
+everything else in that thread shipped earlier (guidance-first instructions
+≤2048, per-tool description suffix, skills as MCP prompts, org-side client
+instruction line). This doc remains the design rationale.
 
 ## Why this channel
 

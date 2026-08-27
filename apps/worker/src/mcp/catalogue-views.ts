@@ -51,7 +51,7 @@ import {
   type UserPrincipals
 } from '@ctxlayer/shared'
 import { mangleToolName, toolFamily } from './tool-name'
-import { sanitizeUntrustedText } from './provenance'
+import { firstParty, sanitizeUntrustedText } from './provenance'
 
 // The `list_upstreams` entry shape is the shared MCP output contract; the
 // builder below is typed against it so it can't drift from the schema.
@@ -433,6 +433,53 @@ export function wholeUpstreamPointers(
     ...skills.filter((s) => s.tool_name === '').map((s) => `skill \`${s.slug}\``),
     ...docs.filter((d) => d.tool_name === '').map((d) => `doc \`${d.slug}\``)
   ]
+}
+
+/** Refs named in the first-result hint before collapsing into `+N more`. */
+const MAX_HINT_REFS = 3
+/** Per-title cap so one long title can't blow the hint's size budget. */
+const MAX_HINT_TITLE = 60
+
+/**
+ * The once-per-session playbook hint appended to an upstream's FIRST
+ * successful tool result — the discovery channel that is immune to late
+ * instruction binding (design: docs/plan/O-result-skill-hint.md; delivery
+ * + once-per-session state live in `UpstreamProxyRegistry`). Names
+ * whole-upstream attachments only (per-tool ones ride the tool
+ * description), as slugs + titles — never author descriptions.
+ * Returns null when the upstream carries no whole-upstream playbooks.
+ *
+ * The body is passed through `sanitizeUntrustedText` BEFORE the
+ * `firstParty` wrap: titles are author-editable free text (a non-admin
+ * owner can retitle an admin-attached skill), so without the defang a
+ * title containing marker glyphs could forge a first-party segment
+ * inside every member's first result.
+ */
+export function firstResultHint(
+  slug: string,
+  skills: SkillForUpstreamRow[],
+  docs: DocForUpstreamRow[]
+): string | null {
+  const refs = [
+    ...skills
+      .filter((s) => s.tool_name === '')
+      .map((s) => ({ kind: 'skill', slug: s.slug, title: s.title })),
+    ...docs
+      .filter((d) => d.tool_name === '')
+      .map((d) => ({ kind: 'doc', slug: d.slug, title: d.title }))
+  ]
+  if (refs.length === 0) return null
+  const named = refs.slice(0, MAX_HINT_REFS)
+  const extra = refs.length - named.length
+  const list = named
+    .map((r) => `${r.kind} \`${r.slug}\` ("${truncateDescription(r.title, MAX_HINT_TITLE)}")`)
+    .join(', ')
+  return firstParty(
+    sanitizeUntrustedText(
+      `Org playbooks exist for \`${slug}\`: ${list}${extra > 0 ? ` +${extra} more` : ''} — ` +
+        `fetch via get_skill/get_doc if relevant to the task. (shown once per session)`
+    )
+  )
 }
 
 /**

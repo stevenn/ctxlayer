@@ -99,7 +99,13 @@ any of these on a new endpoint or proxy hop is a regression.
   `mcp/result-postprocess.ts` at the runner's single write site. Keep
   the scrub narrow — hostnames/paths/status text stay, and non-error
   results are NEVER scrubbed (secret-shaped data can be a legitimate
-  read). The same module owns the identity-gated GitHub org-403 nudges
+  read). The one sanctioned AUGMENTATION of a success result is the
+  once-per-session first-result playbook hint (additive
+  ⟦ctxlayer⟧-marked text item, slugs+titles only, appended
+  post-sanitise in `UpstreamProxyRegistry.deliverFirstResultHint`;
+  design in `docs/plan/O-result-skill-hint.md`) — payload content
+  still passes through untouched, and hint bytes stay out of usage
+  respJson. The same module owns the identity-gated GitHub org-403 nudges
   (keyed on upstream URL host, never on text alone).
 - **Untrusted upstream text is model input — sanitise on EVERY path.**
   `sanitizeUntrustedText` / `sanitizeUntrustedContent` live in

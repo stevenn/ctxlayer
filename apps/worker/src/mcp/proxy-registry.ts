@@ -51,6 +51,7 @@ import type { RecordUsageArgs } from '../usage/record'
 import { errMessage } from '../util/errors'
 import { errText, safeJson } from './tool-result'
 import {
+  firstResultHint,
   loadUserContext,
   perToolPointers,
   truncateDescription,
@@ -76,6 +77,14 @@ export class UpstreamProxyRegistry {
    * backstops the call handler (defense-in-depth).
    */
   private allowedToolKeys = new Set<string>()
+  /**
+   * upstream_id → the once-per-session playbook hint appended to that
+   * upstream's FIRST successful result (docs/plan/O-result-skill-hint.md).
+   * An entry is removed on delivery; `hintedUpstreams` keeps `refresh()`
+   * from re-arming a hint the session already received.
+   */
+  private firstResultHints = new Map<string, string>()
+  private hintedUpstreams = new Set<string>()
 
   constructor(
     private readonly env: Env,
@@ -193,6 +202,12 @@ export class UpstreamProxyRegistry {
           skillsByUpstream.get(conn.id) ?? [],
           docsByUpstream.get(conn.id) ?? []
         )
+        this.armFirstResultHint(
+          conn.id,
+          conn.slug,
+          skillsByUpstream.get(conn.id) ?? [],
+          docsByUpstream.get(conn.id) ?? []
+        )
         let count = 0
         for (const t of tools) {
           const key = accessKey(conn.id, t.tool_name)
@@ -261,6 +276,7 @@ export class UpstreamProxyRegistry {
       this.clients.set(conn.id, client)
       const skills = skillsByUpstream.get(conn.id) ?? []
       const docs = docsByUpstream.get(conn.id) ?? []
+      this.armFirstResultHint(conn.id, conn.slug, skills, docs)
       // Only PER-TOOL pointers (tool_name != '') ride the description now.
       // Whole-upstream playbooks (tool_name = '') are NOT fanned onto every
       // tool anymore — they already live in the server `instructions`
@@ -283,6 +299,43 @@ export class UpstreamProxyRegistry {
   }
 
   // ----- internals ------------------------------------------------------
+
+  /**
+   * Precompute the upstream's first-result playbook hint at registration
+   * (init and refresh both land here). No-op once the session has
+   * delivered it — refresh() must not re-arm a received hint.
+   */
+  private armFirstResultHint(
+    upstreamId: string,
+    slug: string,
+    skills: SkillForUpstreamRow[],
+    docs: DocForUpstreamRow[]
+  ): void {
+    if (this.hintedUpstreams.has(upstreamId)) return
+    const hint = firstResultHint(slug, skills, docs)
+    if (hint) this.firstResultHints.set(upstreamId, hint)
+    else this.firstResultHints.delete(upstreamId)
+  }
+
+  /**
+   * Append the armed hint to a success surface as ONE extra first-party
+   * text item, once per upstream per session. Runs AFTER the runner (so
+   * after its sanitise pass) — the deliberate, bounded exception to
+   * "success results are never augmented"; the append site is here, not
+   * the runner, precisely so the ⟦ctxlayer⟧ marker survives without a
+   * sanitiser carve-out. Hint bytes never enter respJson (usage stays
+   * honest). Design: docs/plan/O-result-skill-hint.md.
+   */
+  private deliverFirstResultHint<T extends { content: Array<{ type: string; text?: string }> }>(
+    upstreamId: string,
+    surface: T
+  ): T {
+    const hint = this.firstResultHints.get(upstreamId)
+    if (!hint) return surface
+    this.hintedUpstreams.add(upstreamId)
+    this.firstResultHints.delete(upstreamId)
+    return { ...surface, content: [...surface.content, { type: 'text', text: hint }] }
+  }
 
   private resolveBearer(row: UpstreamServerRow, conn: UpstreamConnection): Promise<string | null> {
     return resolveUserUpstreamBearer(this.env, row, conn, this.userId)
@@ -441,7 +494,9 @@ export class UpstreamProxyRegistry {
               args
             )
             respJson = sub.respJson
-            return sub.surface
+            // The ack is the first thing the agent reads for this
+            // upstream — the poll_task replay stays byte-stable.
+            return this.deliverFirstResultHint(conn.id, sub.surface)
           } catch (err) {
             // A failed submit (D1 insert, queue send) reaches the agent as a
             // thrown error — record it as one, not as a zero-byte 'ok'.
@@ -463,6 +518,13 @@ export class UpstreamProxyRegistry {
         truncated = outcome.truncated
         errorCode = outcome.errorCode
         errorDetail = outcome.errorDetail
+        // First SUCCESSFUL result only: errors carry nudges/scrubbing and
+        // "read the playbook" attached to a failure reads as blame; a
+        // truncated result already carries the truncation notice (one
+        // first-party segment per result). Neither consumes the hint.
+        if (outcome.status === 'ok' && !outcome.truncated) {
+          return this.deliverFirstResultHint(conn.id, outcome.surface)
+        }
         return outcome.surface
       } finally {
         await this.stageUsage({
