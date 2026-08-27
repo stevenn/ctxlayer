@@ -11,7 +11,7 @@
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env } from '../env'
-import { listPublishedSkills } from '../db/queries/skills'
+import { listPublishedSkills, type SkillWithUsersRow } from '../db/queries/skills'
 import { listAttachmentsForSkills } from '../db/queries/skill-attachments'
 import { type McpSkillSummary, McpListSkillsResult, builtinToolMeta } from '@ctxlayer/shared'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
@@ -25,6 +25,7 @@ import {
   skillAccessAdvisory
 } from '../skills/skill-requires'
 import { errText } from './tool-result'
+import { errMessage } from '../util/errors'
 
 export type RecWrap = <T extends { content?: unknown; isError?: boolean }>(
   tool: string,
@@ -148,6 +149,86 @@ export function registerSkillMcp(
   // standard `skill://` scheme + a discovery document, and advertise the
   // skills extension capability. See skill-sep2640.ts.
   registerSkillSep2640(server, env)
+}
+
+// ----- prompt surface -----------------------------------------------------
+
+/**
+ * One MCP prompt per published org skill, named by slug — the
+ * deliberate-invocation channel. The two resource surfaces above serve
+ * agents that browse; prompts are what clients actually put in front of
+ * HUMANS (the Claude Code slash list, Desktop's prompt picker), so a user
+ * who knows a playbook exists can pull it in without memorising
+ * `get_skill` slugs. Field-tested gap: resources are invisible in current
+ * clients' UI.
+ *
+ * The prompt LIST is snapshotted at session init (same staleness contract
+ * as the tool catalogue — a skill published mid-session appears on the
+ * next connect). The prompt BODY is loaded fresh at invocation through
+ * the same published+org gate as get_skill, so an unpublish between init
+ * and invocation yields a notice, never stale or draft content.
+ *
+ * Never breaks session init: a failed list read registers nothing, and a
+ * failed single registration (e.g. a grandfathered slug colliding with a
+ * hand-registered prompt name) degrades that one prompt only.
+ */
+export async function registerSkillPrompts(
+  server: McpServer,
+  env: Env,
+  getUserId: () => string | undefined
+): Promise<void> {
+  let rows: SkillWithUsersRow[]
+  try {
+    rows = await listPublishedSkills(env)
+  } catch (err) {
+    console.error(`[skill-prompts] list failed: ${errMessage(err)}`)
+    return
+  }
+  for (const entry of skillPromptEntries(rows)) {
+    try {
+      server.registerPrompt(
+        entry.name,
+        { title: entry.title, description: entry.description },
+        async () => {
+          const md = await loadPublishedSkillMarkdown(env, entry.name)
+          if (md == null) {
+            return promptResult(`Skill ${entry.name} is no longer available.`)
+          }
+          const advisory = await skillAccessAdvisory(env, getUserId(), entry.name)
+          return promptResult(
+            `The user invoked the org playbook "${entry.title}". Apply it to the current task:\n\n${md}${advisory}`,
+            entry.description
+          )
+        }
+      )
+    } catch (err) {
+      console.error(`[skill-prompts] ${entry.name}: register failed: ${errMessage(err)}`)
+    }
+  }
+}
+
+/**
+ * Prompt names owned by hand-registered prompts (session-do.ts). Skill
+ * slugs are normally `sk-` prefixed, but grandfathered pre-convention
+ * slugs can be anything — an unskipped collision would make the later
+ * hand registration throw mid-init.
+ */
+const RESERVED_PROMPT_NAMES = new Set(['draft-skill'])
+
+/** Pure assembly of the per-skill prompt registrations (exported for tests). */
+export function skillPromptEntries(
+  rows: Array<Pick<SkillWithUsersRow, 'slug' | 'title' | 'description'>>
+): Array<{ name: string; title: string; description: string }> {
+  return rows
+    .filter((r) => !RESERVED_PROMPT_NAMES.has(r.slug))
+    .map((r) => ({ name: r.slug, title: r.title, description: r.description }))
+}
+
+function promptResult(text: string, description?: string) {
+  return {
+    ...(description ? { description } : {}),
+    messages: [{ role: 'user' as const, content: { type: 'text' as const, text } }]
+  }
 }
 
 // ----- helpers -----------------------------------------------------------

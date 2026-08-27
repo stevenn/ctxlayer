@@ -37,7 +37,7 @@ import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
 import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
 import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
-import { registerSkillMcp } from './skill-mcp'
+import { registerSkillMcp, registerSkillPrompts } from './skill-mcp'
 import { buildDraftContext } from '../skills/draft-context'
 import {
   buildDraftSkillMessages,
@@ -506,6 +506,11 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // resource template. Extracted to mcp/skill-mcp.ts to keep this
     // file focused on session lifecycle.
     registerSkillMcp(this.server, this.env, rec, () => this.props?.userId)
+    // One MCP prompt per published skill — the deliberate-invocation
+    // channel (slash list / prompt picker). Registered before the
+    // hand-registered /draft-skill prompt below; reserved-name skip in
+    // skillPromptEntries keeps a grandfathered slug from colliding.
+    await registerSkillPrompts(this.server, this.env, () => this.props?.userId)
 
     // ----- skill drafting: /draft-skill prompt + save_draft_skill tool -----
     // In-app AI drafting with NO server-side LLM: the /draft-skill PROMPT
