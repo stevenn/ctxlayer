@@ -325,16 +325,28 @@ export class UpstreamProxyRegistry {
    * the runner, precisely so the ⟦ctxlayer⟧ marker survives without a
    * sanitiser carve-out. Hint bytes never enter respJson (usage stays
    * honest). Design: docs/plan/O-result-skill-hint.md.
+   *
+   * The hinted result also OMITS `structuredContent`: clients render the
+   * structured value INSTEAD of the content array when both are present
+   * (field-verified 2026-08-27 — the hint survived every server layer
+   * including an SDK round-trip yet never reached the model on Driver/
+   * Sentry, whose results carry structuredContent), which would make the
+   * hint invisible on exactly the upstreams it was built for. The text
+   * item carries the identical JSON, so the model loses nothing; only
+   * this one result per upstream per session loses structured output.
    */
-  private deliverFirstResultHint<T extends { content: Array<{ type: string; text?: string }> }>(
-    upstreamId: string,
-    surface: T
-  ): T {
+  private deliverFirstResultHint<
+    T extends { content: Array<{ type: string; text?: string }>; structuredContent?: unknown }
+  >(upstreamId: string, surface: T): T {
     const hint = this.firstResultHints.get(upstreamId)
     if (!hint) return surface
     this.hintedUpstreams.add(upstreamId)
     this.firstResultHints.delete(upstreamId)
-    return { ...surface, content: [...surface.content, { type: 'text', text: hint }] }
+    const { structuredContent: _omitted, ...rest } = surface
+    return {
+      ...rest,
+      content: [...surface.content, { type: 'text', text: hint }]
+    } as T
   }
 
   private resolveBearer(row: UpstreamServerRow, conn: UpstreamConnection): Promise<string | null> {

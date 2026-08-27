@@ -79,9 +79,16 @@ notes to name this exception, the way §1a names the error-scrub exception.
   segment per result is enough).
 - **Usage accounting:** hint bytes are gateway overhead — exclude from
   `respJson` so per-upstream usage stays honest.
-- **`structuredContent`:** untouched. Clients that read only structured
-  output miss the hint; acceptable — those flows are programmatic, not
-  planning contexts.
+- **`structuredContent`:** OMITTED on the one hinted result (kept on all
+  others). The original design left it untouched, assuming clients that
+  read only structured output were programmatic edge cases — the
+  2026-08-27 field tests proved the opposite: Claude Code AND Desktop
+  render the structured value INSTEAD of the content array whenever both
+  are present, so the hint survived every server layer (registry, runner,
+  SDK round-trip — all test-pinned) yet never reached the model on
+  Driver/Sentry, whose results are structured. Dropping structuredContent
+  on that single result makes clients fall back to the content array; the
+  text item carries the identical JSON, so the model loses nothing.
 
 ## Tests (when built)
 

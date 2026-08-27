@@ -139,6 +139,43 @@ describe('first-result playbook hint (real D1)', () => {
     expect(success.content[1]!.text).toMatch(HINT_RE)
   })
 
+  it('hinted first result drops structuredContent so clients render the content array (Driver-shape)', async () => {
+    // Production Driver results return {payload, error_message} as BOTH a
+    // text item and structuredContent. Clients render the structured value
+    // INSTEAD of the content array when both are present (2026-08-27 field
+    // tests: the hint survived every server layer yet never reached the
+    // model), so the ONE hinted result omits structuredContent — the text
+    // item carries the identical JSON. Later results keep it.
+    await attachWholeUpstreamSkill()
+    const body = { payload: ['lucy-a', 'yuki-b'], error_message: null }
+    const client: UpstreamClient = {
+      listTools: vi.fn(async () => []),
+      callTool: vi.fn(async () => ({
+        content: [{ type: 'text', text: JSON.stringify(body) }],
+        structuredContent: body
+      })),
+      close: async () => {}
+    }
+    const server = fakeServer()
+    await makeRegistry(client).init(server as unknown as McpServer)
+
+    const first = (await handlerOf(server)({})) as {
+      content: Array<{ type: string; text?: string }>
+      structuredContent?: unknown
+    }
+    expect(first.content).toHaveLength(2)
+    expect(first.content[1]!.text).toMatch(HINT_RE)
+    expect(first.content[0]!.text).toBe(JSON.stringify(body))
+    expect('structuredContent' in first).toBe(false)
+
+    const second = (await handlerOf(server)({})) as {
+      content: Array<{ type: string; text?: string }>
+      structuredContent?: unknown
+    }
+    expect(second.content).toHaveLength(1)
+    expect(second.structuredContent).toEqual(body)
+  })
+
   it('no whole-upstream attachment → no hint ever', async () => {
     const client: UpstreamClient = {
       listTools: vi.fn(async () => []),
