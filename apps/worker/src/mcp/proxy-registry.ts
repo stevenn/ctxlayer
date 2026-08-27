@@ -62,6 +62,7 @@ import {
   runUpstreamCall,
   type ProxyToolExtra
 } from './upstream-call-runner'
+import { inMemoryHintLedger, type HintLedger } from './hint-ledger'
 import { isAsyncTool, submitAsyncJob } from './async-submit'
 import { credentialFreshnessError } from './credential-freshness'
 
@@ -80,11 +81,13 @@ export class UpstreamProxyRegistry {
   /**
    * upstream_id → the once-per-session playbook hint appended to that
    * upstream's FIRST successful result (docs/plan/O-result-skill-hint.md).
-   * An entry is removed on delivery; `hintedUpstreams` keeps `refresh()`
-   * from re-arming a hint the session already received.
+   * An entry is removed on delivery. Delivered-state lives in the
+   * `hintLedger` (durable, in the DO's SQLite), NOT here: the session DO
+   * hibernates between requests, so every wake rebuilds this instance and
+   * re-runs init() — an in-memory delivered-set re-armed on each call
+   * (2026-08-27 field bug: the "once per session" hint fired repeatedly).
    */
   private firstResultHints = new Map<string, string>()
-  private hintedUpstreams = new Set<string>()
 
   constructor(
     private readonly env: Env,
@@ -96,7 +99,10 @@ export class UpstreamProxyRegistry {
     private readonly sessionId: string,
     // Injectable so tests can substitute a fake transport without real
     // network. Defaults to the real factory in production.
-    private readonly makeClient: typeof createUpstreamClient = createUpstreamClient
+    private readonly makeClient: typeof createUpstreamClient = createUpstreamClient,
+    // Durable once-per-session hint state (session-do passes the SQLite
+    // ledger; the in-memory default backs tests). See hint-ledger.ts.
+    private readonly hintLedger: HintLedger = inMemoryHintLedger()
   ) {}
 
   /**
@@ -311,7 +317,7 @@ export class UpstreamProxyRegistry {
     skills: SkillForUpstreamRow[],
     docs: DocForUpstreamRow[]
   ): void {
-    if (this.hintedUpstreams.has(upstreamId)) return
+    if (this.hintLedger.wasHinted(upstreamId)) return
     const hint = firstResultHint(slug, skills, docs)
     if (hint) this.firstResultHints.set(upstreamId, hint)
     else this.firstResultHints.delete(upstreamId)
@@ -340,7 +346,7 @@ export class UpstreamProxyRegistry {
   >(upstreamId: string, surface: T): T {
     const hint = this.firstResultHints.get(upstreamId)
     if (!hint) return surface
-    this.hintedUpstreams.add(upstreamId)
+    this.hintLedger.markHinted(upstreamId)
     this.firstResultHints.delete(upstreamId)
     const { structuredContent: _omitted, ...rest } = surface
     return {

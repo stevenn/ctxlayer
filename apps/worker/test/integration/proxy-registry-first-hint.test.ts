@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env as WorkerEnv } from '../../src/env'
 import { UpstreamProxyRegistry } from '../../src/mcp/proxy-registry'
+import { inMemoryHintLedger, type HintLedger } from '../../src/mcp/hint-ledger'
 import type { UpstreamClient } from '../../src/upstream/upstream-client'
 
 /**
@@ -30,8 +31,15 @@ function fakeServer() {
   }
 }
 
-function makeRegistry(client: UpstreamClient) {
-  return new UpstreamProxyRegistry(testEnv, 'u-1', async () => {}, 'sess-1', () => client)
+function makeRegistry(client: UpstreamClient, ledger?: HintLedger) {
+  return new UpstreamProxyRegistry(
+    testEnv,
+    'u-1',
+    async () => {},
+    'sess-1',
+    () => client,
+    ledger
+  )
 }
 
 /** The registered handler for the (single) seeded tool. */
@@ -174,6 +182,31 @@ describe('first-result playbook hint (real D1)', () => {
     }
     expect(second.content).toHaveLength(1)
     expect(second.structuredContent).toEqual(body)
+  })
+
+  it('stays once-per-session across DO hibernation re-inits (durable ledger)', async () => {
+    // The 2026-08-27 field bug: the session DO hibernates between requests,
+    // each wake rebuilds the registry and re-runs init(), and an in-memory
+    // delivered-set re-armed the hint on every call. Two registry instances
+    // sharing one ledger model consecutive wakes of the same session.
+    await attachWholeUpstreamSkill()
+    const client: UpstreamClient = {
+      listTools: vi.fn(async () => []),
+      callTool: vi.fn(async () => ({ content: [{ type: 'text', text: 'hello' }] })),
+      close: async () => {}
+    }
+    const ledger = inMemoryHintLedger()
+
+    const wake1 = fakeServer()
+    await makeRegistry(client, ledger).init(wake1 as unknown as McpServer)
+    const first = await handlerOf(wake1)({})
+    expect(first.content).toHaveLength(2)
+    expect(first.content[1]!.text).toMatch(HINT_RE)
+
+    const wake2 = fakeServer()
+    await makeRegistry(client, ledger).init(wake2 as unknown as McpServer)
+    const second = await handlerOf(wake2)({})
+    expect(second.content).toHaveLength(1)
   })
 
   it('no whole-upstream attachment → no hint ever', async () => {

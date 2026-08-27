@@ -38,6 +38,7 @@ import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
 import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
 import { registerSkillMcp, registerSkillPrompts } from './skill-mcp'
+import { sqliteHintLedger } from './hint-ledger'
 import { buildDraftContext } from '../skills/draft-context'
 import {
   buildDraftSkillMessages,
@@ -304,7 +305,9 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             this.env,
             userId,
             (args) => this.stageUsage(args),
-            this.getSessionId()
+            this.getSessionId(),
+            undefined,
+            sqliteHintLedger(this.ctx.storage.sql)
           )
         }
         const { added, loaded } = await this.upstreamProxy.refresh(this.server)
@@ -668,7 +671,11 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           this.env,
           userId,
           (args) => this.stageUsage(args),
-          this.getSessionId()
+          this.getSessionId(),
+          undefined,
+          // Durable once-per-session hint state — the DO hibernates
+          // between requests, so it cannot live on the registry instance.
+          sqliteHintLedger(this.ctx.storage.sql)
         )
         await this.upstreamProxy.init(this.server, upstreamCtx ?? undefined)
       } catch (err) {

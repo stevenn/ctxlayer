@@ -42,10 +42,16 @@ additional `{ type: 'text' }` content item to the result:
   chosen). Cap the hint at ~300 chars (first N refs + `+N more`).
 - **Whole-upstream attachments only** (`tool_name = ''`). Per-tool attachments
   already ride the tool description suffix; repeating them here is noise.
-- **Once per upstream per session.** Per-DO in-memory `Set<upstreamId>` on
-  `UpstreamProxyRegistry` (the registry instance is session-scoped). Survives
-  `refresh()`/`reload_upstreams` naturally; resets on reconnect, which is
-  correct (new session = new context window).
+- **Once per upstream per session — DURABLE state, not in-memory.** The
+  session DO hibernates between requests, so a registry-instance
+  `Set<upstreamId>` dies on every wake and each re-init re-arms the hint
+  (2026-08-27 field bug: "shown once per session" fired on consecutive
+  calls). Delivered-state lives in the DO's own SQLite via
+  `mcp/hint-ledger.ts` (`hinted_upstreams` table — same home as the usage
+  outbox); the armed hint text itself stays in-memory and is recomputed
+  each wake. Survives `refresh()`/`reload_upstreams` and hibernation;
+  resets on reconnect (new session id = new DO = new context window),
+  which is correct.
 - **Placement: in the registry's tool handler, after `runUpstreamCall`
   returns, on the single surface-return path** — NOT inside the runner. The
   runner's sanitise step strips ⟦ctxlayer⟧ from upstream text (that is the
