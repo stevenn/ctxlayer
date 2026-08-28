@@ -18,6 +18,12 @@
  */
 
 import { auth as mcpAuth } from '@modelcontextprotocol/sdk/client/auth.js'
+import {
+  OAuthError,
+  ServerError,
+  TemporarilyUnavailableError,
+  TooManyRequestsError
+} from '@modelcontextprotocol/sdk/server/auth/errors.js'
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { Env } from '../env'
 import { audit } from '../audit/log'
@@ -137,20 +143,24 @@ export async function resolveUserUpstreamBearer(
       return token
     }
 
-    // DCR (SDK auth()) path. The SDK exposes no permanent/transient signal, so
-    // keep the prior behaviour: any failed refresh with creds present flags for
-    // reauth (and retries on the next resolution).
+    // DCR (SDK auth()) path. Failures are classified permanent vs transient
+    // (see classifyDcrRefreshFailure) and only PERMANENT ones flag reauth —
+    // a network blip / 5xx / rate-limit at the token endpoint must keep
+    // retrying on later resolutions (and the nightly keep-warm), not lock
+    // the user out. Mirrors the static path's invalid_grant-only rule.
+    let permanent = false
     let failure: string | undefined
     const token = await singleFlightRefresh(env, userId, row.id, {
       refresh: async () => {
-        const r = await refreshViaSdk(provider, conn)
+        const r = await refreshViaSdk(provider, conn, !!existing?.refresh_token)
+        permanent = r.permanent
         failure = r.failure
         return r.token
       },
       readAccessToken: async () => (await provider.tokens())?.access_token ?? null,
       isFresh: async () => isFreshAccessToken(await provider.tokens())
     })
-    if (token === null && hadCreds) await flagReauth(failure)
+    if (token === null && hadCreds && permanent) await flagReauth(failure)
     return token
   }
   // user_bearer
@@ -181,28 +191,69 @@ function isFreshAccessToken(t: OAuthTokens | undefined): boolean {
  * after the fast path has determined the access token is near expiry. A
  * non-AUTHORIZED outcome means the SDK wants a fresh interactive authz flow;
  * we surface a null token so the caller skips the upstream (the user
- * reconnects from /upstreams). `failure` distinguishes the two ways that
- * happens — the SDK silently falling through to a new authz flow (its
- * behaviour on an unstructured refresh rejection) vs. auth() throwing — so
- * the reauth audit entry records WHY the refresh gave up.
+ * reconnects from /upstreams). `failure` records WHY for the reauth audit
+ * entry; `permanent` drives whether the caller flags reauth at all.
  */
 async function refreshViaSdk(
   provider: UpstreamOAuthProvider,
-  conn: UpstreamConnection
-): Promise<{ token: string | null; failure?: string }> {
+  conn: UpstreamConnection,
+  hadRefreshToken: boolean
+): Promise<{ token: string | null; permanent: boolean; failure?: string }> {
   try {
     const result = await mcpAuth(provider, { serverUrl: conn.url })
     if (result === 'AUTHORIZED') {
-      return { token: (await provider.tokens())?.access_token ?? null }
+      return { token: (await provider.tokens())?.access_token ?? null, permanent: false }
     }
     const redirect = provider.capturedRedirect?.toString() ?? '<none>'
     console.warn(
       `[oauth] ${conn.slug}: refresh failed, SDK wants new authz flow (redirect=${redirect})`
     )
-    return { token: null, failure: `sdk_wants_new_authz:${result}` }
+    return { token: null, ...classifyDcrRefreshFailure({ kind: 'redirect', result, hadRefreshToken }) }
   } catch (err) {
-    const msg = errMessage(err)
-    console.error(`[oauth] ${conn.slug}: auth() threw: ${msg}`)
-    return { token: null, failure: `sdk_threw:${msg}` }
+    console.error(`[oauth] ${conn.slug}: auth() threw: ${errMessage(err)}`)
+    return { token: null, ...classifyDcrRefreshFailure({ kind: 'threw', err }) }
   }
+}
+
+/**
+ * Permanent-vs-transient classification of a failed DCR refresh, mapped
+ * from how SDK 1.29's auth() surfaces each failure mode (verified against
+ * the vendored source; the 2026-08-27 Datadog invalid_grant arrived as a
+ * thrown InvalidGrantError exactly as mapped here):
+ *
+ *  - authInternal's refresh catch SWALLOWS ServerError + non-OAuthError
+ *    failures (5xx, unparseable bodies, network throws) and falls through
+ *    to wanting a new interactive flow → we see `redirect`. With a
+ *    refresh_token present that is the TRANSIENT bucket — the very
+ *    failures that used to over-flag. Without one, `redirect` is the
+ *    normal "nothing left to refresh" outcome: only an interactive
+ *    reconnect can ever produce a token again, so it is permanent.
+ *  - Structured OAuth errors are RE-THROWN (invalid_grant, invalid_client,
+ *    unauthorized_client, invalid_scope, …) → permanent: the grant/client
+ *    is dead until reconnect. Transient-shaped OAuth codes (server_error,
+ *    temporarily_unavailable, too_many_requests) and non-OAuth throws
+ *    (network failures during discovery) stay transient.
+ *
+ * NOTE this mapping depends on `UpstreamOAuthProvider` NOT implementing
+ * `invalidateCredentials` — auth() would otherwise wipe the stored tokens
+ * on invalid_grant and convert it into a `redirect`, destroying both the
+ * classification signal and the evidence. Pinned by a test.
+ */
+export function classifyDcrRefreshFailure(
+  outcome:
+    | { kind: 'redirect'; result: string; hadRefreshToken: boolean }
+    | { kind: 'threw'; err: unknown }
+): { permanent: boolean; failure: string } {
+  if (outcome.kind === 'redirect') {
+    return outcome.hadRefreshToken
+      ? { permanent: false, failure: `sdk_wants_new_authz:${outcome.result}` }
+      : { permanent: true, failure: `no_refresh_token:${outcome.result}` }
+  }
+  const err = outcome.err
+  const transient =
+    !(err instanceof OAuthError) ||
+    err instanceof ServerError ||
+    err instanceof TemporarilyUnavailableError ||
+    err instanceof TooManyRequestsError
+  return { permanent: !transient, failure: `sdk_threw:${errMessage(err)}` }
 }
