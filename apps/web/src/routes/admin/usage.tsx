@@ -17,7 +17,6 @@ import {
   viewerTzLabel
 } from '../../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../../components/usage/tables'
-import { ErrorsTable } from '../../components/usage/errors-table'
 import { AsyncJobsTable } from '../../components/usage/async-jobs-table'
 import { useUsageRange } from '../../lib/use-usage-range'
 
@@ -246,12 +245,6 @@ function AdminUsageBody({
         )}
       </Panel>
 
-      <Panel
-        title="Errors"
-        subtitle="Individual failed tool calls — credential-scrubbed root detail (host/IP/URL kept)."
-      >
-        <ErrorsTable rows={data.recentErrors} range={range} showUser />
-      </Panel>
       <Panel
         title="Async jobs"
         subtitle="Submit→poll runs for tools that exceed interactive client request timeouts (e.g. Driver's gather_task_context). Background run time = the real upstream call."

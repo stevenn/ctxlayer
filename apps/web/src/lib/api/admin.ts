@@ -9,6 +9,7 @@ import {
   OAuthClientsPruneResponse,
   OAuthClientsResponse,
   UpdateUserRoleRequest,
+  UsageErrorsResponse,
   UsageResponse
 } from '@ctxlayer/shared'
 import type { UsageRange } from '@ctxlayer/shared'
@@ -74,6 +75,30 @@ export function fetchAdminUsage(
   return request(path, (b) => AdminUsageResponse.parse(b), { signal })
 }
 
+export function fetchUsageErrors(
+  opts: FetchUsageOpts = {},
+  signal?: AbortSignal
+): Promise<UsageErrorsResponse> {
+  const params = new URLSearchParams()
+  if (opts.range) params.set('range', opts.range)
+  params.set('tz', String(browserTzOffsetMin()))
+  return request(`/api/usage/errors?${params}`, (b) => UsageErrorsResponse.parse(b), { signal })
+}
+
+export function fetchAdminUsageErrors(
+  opts: FetchAdminUsageOpts = {},
+  signal?: AbortSignal
+): Promise<UsageErrorsResponse> {
+  const params = new URLSearchParams()
+  if (opts.range) params.set('range', opts.range)
+  params.set('tz', String(browserTzOffsetMin()))
+  if (opts.userId) params.set('userId', opts.userId)
+  if (opts.upstreamId) params.set('upstreamId', opts.upstreamId)
+  return request(`/api/admin/usage/errors?${params}`, (b) => UsageErrorsResponse.parse(b), {
+    signal
+  })
+}
+
 // ----- admin oauth clients ------------------------------------------------
 
 export interface FetchAdminOAuthClientsOpts {
@@ -104,7 +129,8 @@ export function pruneAdminOAuthClients(): Promise<OAuthClientsPruneResponse> {
 export interface FetchAdminAuditOpts {
   before?: number
   action?: string
-  actorId?: string
+  /** Actor id (exact) or email (substring) — matches what the table shows. */
+  actor?: string
   limit?: number
 }
 
@@ -115,7 +141,7 @@ export function fetchAdminAudit(
   const params = new URLSearchParams()
   if (opts.before !== undefined) params.set('before', String(opts.before))
   if (opts.action) params.set('action', opts.action)
-  if (opts.actorId) params.set('actorId', opts.actorId)
+  if (opts.actor) params.set('actor', opts.actor)
   if (opts.limit) params.set('limit', String(opts.limit))
   const qs = params.toString()
   const path = qs ? `/api/admin/audit?${qs}` : '/api/admin/audit'

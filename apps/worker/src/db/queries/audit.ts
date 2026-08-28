@@ -33,14 +33,17 @@ export async function insertAuditRow(env: Env, row: InsertAuditRow): Promise<voi
  * (indicating no further pages).
  *
  * `actionPrefix` does a `LIKE 'prefix%'` so callers can filter to a
- * family like `doc.` or `user.`. `actorId` is exact. Both filters
+ * family like `doc.` or `user.`. `actor` matches the actor id exactly
+ * OR the actor's email as a case-insensitive substring — the viewer's
+ * Actor column DISPLAYS the email, so an exact-id-only filter read as
+ * broken to anyone pasting what they saw (2026-08-28 report). Filters
  * AND together.
  */
 export interface ListAuditOpts {
   limit: number
   before?: number
   actionPrefix?: string
-  actorId?: string
+  actor?: string
 }
 
 type Row = {
@@ -67,9 +70,12 @@ export async function listAuditEntries(env: Env, opts: ListAuditOpts): Promise<A
     where.push(`a.action LIKE ?`)
     binds.push(`${opts.actionPrefix}%`)
   }
-  if (opts.actorId) {
-    where.push(`a.actor_id = ?`)
-    binds.push(opts.actorId)
+  if (opts.actor) {
+    // Escape LIKE wildcards so a literal % / _ in the filter can't match
+    // everything; the id side stays an exact compare.
+    const escaped = opts.actor.replace(/[\\%_]/g, (ch) => `\\${ch}`)
+    where.push(`(a.actor_id = ? OR u.email LIKE ? ESCAPE '\\')`)
+    binds.push(opts.actor, `%${escaped}%`)
   }
   const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : ''
 

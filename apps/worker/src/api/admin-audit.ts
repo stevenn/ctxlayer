@@ -1,9 +1,11 @@
 /**
  * Admin REST for the Audit-log viewer (M5 phase 3).
  *
- * `GET /api/admin/audit?before=<ts>&action=<prefix>&actorId=<id>&limit=<n>`
+ * `GET /api/admin/audit?before=<ts>&action=<prefix>&actor=<id-or-email>&limit=<n>`
  * returns a page of audit entries newest-first plus `nextBefore`
- * cursor. `limit` is clamped to [1, 200]; default 50.
+ * cursor. `limit` is clamped to [1, 200]; default 50. `actor` matches
+ * actor id exactly or email as a substring (`actorId` accepted as a
+ * legacy alias).
  *
  * No mutations; this endpoint is read-only. Writes land via
  * `audit/log.ts` from every other admin/user-facing route.
@@ -22,7 +24,8 @@ adminAuditRoute.get('/', async (c) => {
   const beforeRaw = url.searchParams.get('before')
   const limitRaw = url.searchParams.get('limit')
   const action = url.searchParams.get('action')?.trim() || undefined
-  const actorId = url.searchParams.get('actorId')?.trim() || undefined
+  const actor =
+    url.searchParams.get('actor')?.trim() || url.searchParams.get('actorId')?.trim() || undefined
 
   const before = beforeRaw ? Number(beforeRaw) : undefined
   if (beforeRaw && (!Number.isFinite(before) || before! < 0)) {
@@ -37,7 +40,7 @@ adminAuditRoute.get('/', async (c) => {
     limit,
     before,
     actionPrefix: action,
-    actorId
+    actor
   })
   return c.json(page)
 })

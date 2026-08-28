@@ -9,7 +9,7 @@
  */
 
 import { Hono } from 'hono'
-import { UsageRange, type UsageResponse } from '@ctxlayer/shared'
+import { UsageRange, type UsageErrorsResponse, type UsageResponse } from '@ctxlayer/shared'
 import type { Env } from '../env'
 import { requireUser, type AuthedVariables } from '../auth/middleware'
 import {
@@ -21,6 +21,9 @@ import {
   rangeCutoff
 } from '../db/queries/usage-read'
 
+/** Row cap for the dedicated Errors pages (deeper than the old in-page list). */
+export const ERRORS_PAGE_LIMIT = 200
+
 export const usageRoute = new Hono<{ Bindings: Env; Variables: AuthedVariables }>()
 usageRoute.use('*', requireUser)
 
@@ -31,11 +34,10 @@ usageRoute.get('/', async (c) => {
   const user = c.get('user')
 
   const scope = { sinceDay: rangeCutoff(range, offsetSec), userId: user.userId }
-  const [daily, tools, upstreams, errors, asyncStats] = await Promise.all([
+  const [daily, tools, upstreams, asyncStats] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
     topUpstreams(c.env, scope, 10),
-    recentErrors(c.env, scope),
     asyncJobStats(c.env, scope)
   ])
 
@@ -44,9 +46,22 @@ usageRoute.get('/', async (c) => {
     dailyTotals: daily,
     topTools: tools,
     topUpstreams: upstreams,
-    recentErrors: errors,
     asyncSummary: asyncStats.summary,
     asyncJobs: asyncStats.jobs
+  }
+  return c.json(body)
+})
+
+// Dedicated feed for the /app/errors page (self-scoped, like `/` above).
+usageRoute.get('/errors', async (c) => {
+  const url = new URL(c.req.url)
+  const range = parseRange(url.searchParams.get('range'))
+  const offsetSec = parseOffset(url.searchParams.get('tz'))
+  const user = c.get('user')
+  const scope = { sinceDay: rangeCutoff(range, offsetSec), userId: user.userId }
+  const body: UsageErrorsResponse = {
+    range,
+    errors: await recentErrors(c.env, scope, ERRORS_PAGE_LIMIT)
   }
   return c.json(body)
 })

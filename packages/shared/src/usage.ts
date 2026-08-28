@@ -203,14 +203,21 @@ export const UsageResponse = z.object({
   dailyTotals: z.array(UsageDailyTotal),
   topTools: z.array(UsageTopTool),
   topUpstreams: z.array(UsageTopUpstream),
-  // Recent individual failures within the window (most-recent first,
-  // capped). Default [] so a response from a worker predating this field
-  // still parses on a newer SPA.
-  recentErrors: z.array(UsageErrorRow).default([]),
   asyncSummary: UsageAsyncSummary.default(EMPTY_ASYNC_SUMMARY),
   asyncJobs: z.array(UsageAsyncJobRow).default([])
 })
 export type UsageResponse = z.infer<typeof UsageResponse>
+
+// Recent individual failures within the window (most-recent first, capped).
+// Served by the dedicated `/api/usage/errors` + `/api/admin/usage/errors`
+// endpoints backing the Errors pages — errors used to ride the dashboard
+// payloads above, but the in-page list cluttered Usage and grew every
+// payload for a table most visits never scrolled to.
+export const UsageErrorsResponse = z.object({
+  range: UsageRange,
+  errors: z.array(UsageErrorRow)
+})
+export type UsageErrorsResponse = z.infer<typeof UsageErrorsResponse>
 
 export const AdminUsageResponse = UsageResponse.extend({
   topUsers: z.array(UsageTopUser)

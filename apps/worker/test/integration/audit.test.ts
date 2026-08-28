@@ -79,14 +79,14 @@ describe('listAuditEntries', () => {
     expect(userOnly.entries.map((e) => e.action).sort()).toEqual(['user.demote', 'user.promote'])
   })
 
-  it('actorId filter is an exact match', async () => {
+  it('actor filter matches the id exactly (email-substring cases in audit-actor-filter.test.ts)', async () => {
     await seedUser('alice')
     await seedUser('bob')
     await seedAudit('doc.lock', 'alice', BASE_TS)
     await seedAudit('doc.unlock', 'bob', BASE_TS + 1)
     await seedAudit('doc.lock', 'alice', BASE_TS + 2)
 
-    const aliceOnly = await listAuditEntries(testEnv, { limit: 10, actorId: 'alice' })
+    const aliceOnly = await listAuditEntries(testEnv, { limit: 10, actor: 'alice' })
     expect(aliceOnly.entries).toHaveLength(2)
     expect(aliceOnly.entries.every((e) => e.actorId === 'alice')).toBe(true)
   })

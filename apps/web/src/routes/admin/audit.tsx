@@ -53,7 +53,7 @@ export function AdminAudit() {
       const page = await fetchAdminAudit(
         {
           action: debouncedAction || undefined,
-          actorId: debouncedActor || undefined,
+          actor: debouncedActor || undefined,
           limit,
           before: cursor ?? undefined
         },
@@ -82,8 +82,8 @@ export function AdminAudit() {
           />
           <TextInput
             size="xs"
-            aria-label="Filter by actor id"
-            placeholder="Actor id"
+            aria-label="Filter by actor id or email"
+            placeholder="Actor id or email"
             value={actorFilter}
             onChange={(e) => setActorFilter(e.currentTarget.value)}
             w={220}

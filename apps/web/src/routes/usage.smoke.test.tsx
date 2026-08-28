@@ -11,7 +11,6 @@ vi.mock('../lib/api', () => ({
     dailyTotals: [],
     topTools: [],
     topUpstreams: [],
-    recentErrors: [],
     asyncSummary: {
       total: 0,
       done: 0,
@@ -29,7 +28,6 @@ vi.mock('../lib/api', () => ({
     topTools: [],
     topUpstreams: [],
     topUsers: [],
-    recentErrors: [],
     asyncSummary: {
       total: 0,
       done: 0,

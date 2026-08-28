@@ -10,6 +10,7 @@ import { Tools } from './routes/tools'
 import { SkillsHome } from './routes/skills'
 import { McpSetup } from './routes/mcp-setup'
 import { Usage } from './routes/usage'
+import { Errors } from './routes/errors'
 import {
   AdminUpstreams,
   AdminGitSources,
@@ -20,6 +21,7 @@ import {
   AdminRoles,
   AdminProducts,
   AdminUsage,
+  AdminErrors,
   AdminAudit,
   AdminOAuthClients,
   AdminSkills
@@ -96,6 +98,7 @@ export function appRoutes() {
           />
           <Route path="mcp-setup" element={<McpSetup />} />
           <Route path="usage" element={<Usage />} />
+          <Route path="errors" element={<Errors />} />
           <Route path="admin/upstreams" element={<AdminUpstreams />} />
           <Route path="admin/git-sources" element={<AdminGitSources />} />
           <Route path="admin/users" element={<AdminUsers />} />
@@ -105,6 +108,7 @@ export function appRoutes() {
           <Route path="admin/roles" element={<AdminRoles />} />
           <Route path="admin/products" element={<AdminProducts />} />
           <Route path="admin/usage" element={<AdminUsage />} />
+          <Route path="admin/errors" element={<AdminErrors />} />
           <Route path="admin/audit" element={<AdminAudit />} />
           <Route path="admin/oauth-clients" element={<AdminOAuthClients />} />
           <Route path="admin/skills" element={<AdminSkills />} />

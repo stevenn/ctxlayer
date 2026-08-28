@@ -30,7 +30,8 @@ const PRIMARY_NAV: NavSpec[] = [
   { to: '/app/tools', label: 'Tools' },
   { to: '/app/upstreams', label: 'Upstreams' },
   { to: '/app/mcp-setup', label: 'MCP setup' },
-  { to: '/app/usage', label: 'Usage' }
+  { to: '/app/usage', label: 'Usage' },
+  { to: '/app/errors', label: 'Errors' }
 ]
 
 const ADMIN_NAV: NavSpec[] = [
@@ -44,6 +45,7 @@ const ADMIN_NAV: NavSpec[] = [
   { to: '/app/admin/roles', label: 'Roles' },
   { to: '/app/admin/products', label: 'Products' },
   { to: '/app/admin/usage', label: 'Usage' },
+  { to: '/app/admin/errors', label: 'Errors' },
   { to: '/app/admin/audit', label: 'Audit' },
   { to: '/app/admin/oauth-clients', label: 'OAuth clients' }
 ]
@@ -56,6 +58,7 @@ const TITLES: Record<string, string> = {
   '/app/upstreams': 'Upstreams',
   '/app/mcp-setup': 'MCP setup',
   '/app/usage': 'Usage',
+  '/app/errors': 'Errors',
   '/app/admin/upstreams': 'Admin · Upstreams',
   '/app/admin/git-sources': 'Admin · Git repos',
   '/app/admin/skills': 'Admin · Skills',
@@ -66,6 +69,7 @@ const TITLES: Record<string, string> = {
   '/app/admin/roles': 'Admin · Roles',
   '/app/admin/products': 'Admin · Products',
   '/app/admin/usage': 'Admin · Usage',
+  '/app/admin/errors': 'Admin · Errors',
   '/app/admin/audit': 'Admin · Audit',
   '/app/admin/oauth-clients': 'Admin · OAuth clients'
 }
