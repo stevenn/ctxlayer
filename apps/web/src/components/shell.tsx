@@ -46,6 +46,7 @@ const ADMIN_NAV: NavSpec[] = [
   { to: '/app/admin/products', label: 'Products' },
   { to: '/app/admin/usage', label: 'Usage' },
   { to: '/app/admin/errors', label: 'Errors' },
+  { to: '/app/admin/jobs', label: 'Jobs' },
   { to: '/app/admin/audit', label: 'Audit' },
   { to: '/app/admin/oauth-clients', label: 'OAuth clients' }
 ]
@@ -70,6 +71,7 @@ const TITLES: Record<string, string> = {
   '/app/admin/products': 'Admin · Products',
   '/app/admin/usage': 'Admin · Usage',
   '/app/admin/errors': 'Admin · Errors',
+  '/app/admin/jobs': 'Admin · Jobs',
   '/app/admin/audit': 'Admin · Audit',
   '/app/admin/oauth-clients': 'Admin · OAuth clients'
 }

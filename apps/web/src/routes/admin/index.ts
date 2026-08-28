@@ -12,6 +12,7 @@ export { AdminAudit } from './audit'
 export { AdminOAuthClients } from './oauth-clients'
 export { AdminUsage } from './usage'
 export { AdminErrors } from './errors'
+export { AdminJobs } from './jobs'
 export { AdminSkills } from './skills'
 // NOTE: the skill body editor (SkillEditor) is intentionally NOT
 // re-exported here. It pulls in the whole BlockNote/ProseMirror editor

@@ -18,6 +18,8 @@ import { withHsts } from './util/security-headers'
 import { isMcpPathOnWrongHost } from './util/mcp-host'
 import { errMessage } from './util/errors'
 import { keepWarmUserCredentials } from './upstream/keep-warm'
+import { recordJobRun } from './ops/job-runs'
+import { pruneJobRuns } from './db/queries/job-runs'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -90,14 +92,17 @@ const worker: ExportedHandler<Env> = {
       ctx.waitUntil(
         (async () => {
           try {
-            const nowSec = Math.floor(controller.scheduledTime / 1000)
-            const { due, total } = await listDueGitSyncs(env, nowSec)
-            for (const d of due) {
-              await env.GIT_SYNC_QUEUE.send(
-                d.userId ? { sourceId: d.sourceId, userId: d.userId } : { sourceId: d.sourceId }
-              )
-            }
-            console.log(`[cron] git-sync: queued ${due.length}/${total} source(s)`)
+            await recordJobRun(env, 'git-sync-due', async () => {
+              const nowSec = Math.floor(controller.scheduledTime / 1000)
+              const { due, total } = await listDueGitSyncs(env, nowSec)
+              for (const d of due) {
+                await env.GIT_SYNC_QUEUE.send(
+                  d.userId ? { sourceId: d.sourceId, userId: d.userId } : { sourceId: d.sourceId }
+                )
+              }
+              console.log(`[cron] git-sync: queued ${due.length}/${total} source(s)`)
+              return { summary: { queued: due.length, total } }
+            })
           } catch (err) {
             const m = errMessage(err)
             console.error(`[cron] git-sync due-check failed: ${m}`)
@@ -116,8 +121,11 @@ const worker: ExportedHandler<Env> = {
     ctx.waitUntil(
       (async () => {
         try {
-          const removed = await pruneUsageEvents(env, 30)
-          console.log(`[cron] pruned ${removed} usage_events rows older than 30d`)
+          await recordJobRun(env, 'usage-prune', async () => {
+            const removed = await pruneUsageEvents(env, 30)
+            console.log(`[cron] pruned ${removed} usage_events rows older than 30d`)
+            return { summary: { removed } }
+          })
         } catch (err) {
           const m = errMessage(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
@@ -133,11 +141,14 @@ const worker: ExportedHandler<Env> = {
     ctx.waitUntil(
       (async () => {
         try {
-          const cleared = await clearAsyncJobResults(env, 24 * 60 * 60)
-          const removed = await pruneAsyncJobs(env, 30 * 24 * 60 * 60)
-          console.log(
-            `[cron] async_jobs: cleared ${cleared} result blobs (>1d), pruned ${removed} rows (>30d)`
-          )
+          await recordJobRun(env, 'async-retention', async () => {
+            const cleared = await clearAsyncJobResults(env, 24 * 60 * 60)
+            const removed = await pruneAsyncJobs(env, 30 * 24 * 60 * 60)
+            console.log(
+              `[cron] async_jobs: cleared ${cleared} result blobs (>1d), pruned ${removed} rows (>30d)`
+            )
+            return { summary: { cleared, removed } }
+          })
         } catch (err) {
           const m = errMessage(err)
           console.error(`[cron] async_jobs prune failed: ${m}`)
@@ -152,11 +163,13 @@ const worker: ExportedHandler<Env> = {
     ctx.waitUntil(
       (async () => {
         try {
-          const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
-          const r = await pruneOrphanOAuthClients(env, helpers, { olderThanDays: 1 })
-          if (r.skippedIncompleteIndex) {
-            console.warn('[cron] oauth-client prune skipped: grant index incomplete')
-          } else {
+          await recordJobRun(env, 'oauth-client-prune', async () => {
+            const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+            const r = await pruneOrphanOAuthClients(env, helpers, { olderThanDays: 1 })
+            if (r.skippedIncompleteIndex) {
+              console.warn('[cron] oauth-client prune skipped: grant index incomplete')
+              return { status: 'partial' as const, summary: { skipped: 'incomplete_grant_index' } }
+            }
             console.log(
               `[cron] pruned ${r.deleted}/${r.orphans} orphan oauth clients ` +
                 `(scanned ${r.scanned}, ${r.failed} delete failures)`
@@ -176,7 +189,11 @@ const worker: ExportedHandler<Env> = {
                 }
               })
             }
-          }
+            return {
+              status: r.failed > 0 ? ('partial' as const) : ('ok' as const),
+              summary: { scanned: r.scanned, orphans: r.orphans, deleted: r.deleted, failed: r.failed }
+            }
+          })
         } catch (err) {
           const m = errMessage(err)
           console.error(`[cron] oauth-client prune failed: ${m}`)
@@ -193,15 +210,32 @@ const worker: ExportedHandler<Env> = {
     ctx.waitUntil(
       (async () => {
         try {
-          const nowSec = Math.floor(controller.scheduledTime / 1000)
-          const r = await keepWarmUserCredentials(env, nowSec)
-          if (r.due > 0) {
-            console.log(`[cron] keep-warm: ${r.warmed}/${r.due} refreshed, ${r.failed} failed`)
-          }
+          await recordJobRun(env, 'keep-warm', async () => {
+            const nowSec = Math.floor(controller.scheduledTime / 1000)
+            const r = await keepWarmUserCredentials(env, nowSec)
+            if (r.due > 0) {
+              console.log(`[cron] keep-warm: ${r.warmed}/${r.due} refreshed, ${r.failed} failed`)
+            }
+            return { status: r.failed > 0 ? ('partial' as const) : ('ok' as const), summary: r }
+          })
         } catch (err) {
           const m = errMessage(err)
           console.error(`[cron] keep-warm failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.keep_warm_failed', detail: m })
+        }
+      })()
+    )
+
+    // 4. Prune the job-runs ledger itself (90d) — recorded like any task.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          await recordJobRun(env, 'jobs-prune', async () => {
+            const removed = await pruneJobRuns(env, 90 * 24 * 60 * 60)
+            return { summary: { removed } }
+          })
+        } catch (err) {
+          console.error(`[cron] job-runs prune failed: ${errMessage(err)}`)
         }
       })()
     )

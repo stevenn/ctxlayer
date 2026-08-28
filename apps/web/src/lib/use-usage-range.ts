@@ -14,7 +14,7 @@ const DEFAULT_RANGE: UsageRange = '30d'
  * client-only SPA, no SSR) so the first fetch already uses the stored range
  * instead of flashing the default and refetching.
  */
-export function useUsageRange(scope: 'personal' | 'admin') {
+export function useUsageRange(scope: 'personal' | 'admin' | 'jobs') {
   return useLocalStorage<UsageRange>({
     key: `ctx-usage-range:${scope}`,
     defaultValue: DEFAULT_RANGE,

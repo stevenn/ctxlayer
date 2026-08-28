@@ -22,6 +22,7 @@ import {
   AdminProducts,
   AdminUsage,
   AdminErrors,
+  AdminJobs,
   AdminAudit,
   AdminOAuthClients,
   AdminSkills
@@ -109,6 +110,7 @@ export function appRoutes() {
           <Route path="admin/products" element={<AdminProducts />} />
           <Route path="admin/usage" element={<AdminUsage />} />
           <Route path="admin/errors" element={<AdminErrors />} />
+          <Route path="admin/jobs" element={<AdminJobs />} />
           <Route path="admin/audit" element={<AdminAudit />} />
           <Route path="admin/oauth-clients" element={<AdminOAuthClients />} />
           <Route path="admin/skills" element={<AdminSkills />} />

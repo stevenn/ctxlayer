@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import type { Env } from '../env'
+import { getGitSourceById } from '../db/queries/git-sources'
 import { runGitSync } from '../git/sync'
+import { recordJobRun } from '../ops/job-runs'
 import { errMessage } from '../util/errors'
 
 /**
@@ -31,13 +33,26 @@ export async function gitSyncConsumer(
       continue
     }
     try {
-      const result = await runGitSync(env, parsed.data.sourceId, { userId: parsed.data.userId })
-      if (result.status === 'error') {
-        console.warn('git-sync-consumer: sync recorded error', {
-          sourceId: parsed.data.sourceId,
-          error: result.error
-        })
-      }
+      // Ledger one row per source run (Admin · Jobs) — before this, each
+      // run overwrote the source's last_sync_* columns and history was
+      // gone. An ordinary sync failure is a 'error' ROW (not a throw);
+      // a truly unexpected throw is recorded too, then retried below.
+      await recordJobRun(env, 'git-sync', async () => {
+        const source = await getGitSourceById(env, parsed.data.sourceId)
+        const result = await runGitSync(env, parsed.data.sourceId, { userId: parsed.data.userId })
+        if (result.status === 'error') {
+          console.warn('git-sync-consumer: sync recorded error', {
+            sourceId: parsed.data.sourceId,
+            error: result.error
+          })
+        }
+        const { status, error, ...counts } = result
+        return {
+          status,
+          summary: { source: source?.slug ?? parsed.data.sourceId, ...counts },
+          ...(error ? { error } : {})
+        }
+      })
       msg.ack()
     } catch (err) {
       console.error('git-sync-consumer: unexpected error; retrying', {

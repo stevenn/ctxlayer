@@ -37,6 +37,7 @@ import { adminUsersRoute } from './api/admin-users'
 import { adminInvitesRoute } from './api/admin-invites'
 import { adminJoinCodesRoute } from './api/admin-join-codes'
 import { adminUsageRoute } from './api/admin-usage'
+import { adminJobsRoute } from './api/admin-jobs'
 import { skillsRoute } from './api/skills'
 import { skillAttachmentsRoute } from './api/skill-attachments'
 import { docAttachmentsRoute } from './api/doc-attachments'
@@ -100,6 +101,7 @@ app.route('/api/admin/join-codes', adminJoinCodesRoute)
 app.route('/api/admin/audit', adminAuditRoute)
 app.route('/api/admin/oauth-clients', adminOAuthClientsRoute)
 app.route('/api/admin/usage', adminUsageRoute)
+app.route('/api/admin/jobs', adminJobsRoute)
 
 // User-facing usage dashboard read endpoint.
 app.route('/api/usage', usageRoute)

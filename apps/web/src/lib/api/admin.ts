@@ -1,4 +1,5 @@
 import {
+  AdminJobsResponse,
   AdminUsageResponse,
   AdminUserRow,
   AuditLogResponse,
@@ -97,6 +98,19 @@ export function fetchAdminUsageErrors(
   return request(`/api/admin/usage/errors?${params}`, (b) => UsageErrorsResponse.parse(b), {
     signal
   })
+}
+
+// ----- admin jobs ---------------------------------------------------------
+
+export function fetchAdminJobs(
+  opts: { range?: UsageRange; task?: string } = {},
+  signal?: AbortSignal
+): Promise<AdminJobsResponse> {
+  const params = new URLSearchParams()
+  if (opts.range) params.set('range', opts.range)
+  params.set('tz', String(browserTzOffsetMin()))
+  if (opts.task) params.set('task', opts.task)
+  return request(`/api/admin/jobs?${params}`, (b) => AdminJobsResponse.parse(b), { signal })
 }
 
 // ----- admin oauth clients ------------------------------------------------
