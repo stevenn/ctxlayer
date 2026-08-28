@@ -31,6 +31,9 @@ export const HealthResponse = z.object({
       name: z.string(),
       ok: z.boolean(),
       latencyMs: z.number().optional(),
+      // No longer emitted (2026-08-28): failure detail is logged
+      // server-side only — /api/health is a public, Access-bypassed
+      // surface. Kept optional so older worker responses still parse.
       error: z.string().optional()
     })
   )

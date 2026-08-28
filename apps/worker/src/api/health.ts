@@ -4,6 +4,20 @@ import type { HealthResponse } from '@ctxlayer/shared'
 import { CRON_STALE_AFTER_S, LAST_CRON_KV_KEY } from '../ops/cron-heartbeat'
 import { errMessage } from '../util/errors'
 
+/**
+ * PUBLIC, UNAUTHENTICATED SURFACE. On Access-fronted deploys a Bypass
+ * app exposes this route to the open internet for external monitoring —
+ * and Access path-matching includes SUBPATHS, so the bypass covers
+ * /api/health/** wholesale. Two invariants follow:
+ *
+ *   1. NEVER mount another route under /api/health/ — it would ship
+ *      Access-unprotected (app-level auth would be its only gate).
+ *   2. The response body must stay safe for anonymous eyes: ok flags,
+ *      version/buildAt, dependency names + latencies. Dependency
+ *      FAILURE DETAIL is logged server-side only (see `timed`) — raw
+ *      binding errors during an outage are internal diagnostics, not
+ *      something to hand every visitor exactly when we're weakest.
+ */
 export const healthRoute = new Hono<{ Bindings: Env }>()
 
 healthRoute.get('/', async (c) => {
@@ -72,11 +86,9 @@ async function timed(name: string, fn: () => Promise<void>) {
     await fn()
     return { name, ok: true, latencyMs: Date.now() - start }
   } catch (err) {
-    return {
-      name,
-      ok: false,
-      latencyMs: Date.now() - start,
-      error: errMessage(err)
-    }
+    // Detail stays server-side (header note #2): a monitor needs WHICH
+    // dependency is down (name + ok:false), not the raw binding error.
+    console.error(`[health] ${name} probe failed: ${errMessage(err)}`)
+    return { name, ok: false, latencyMs: Date.now() - start }
   }
 }
