@@ -17,6 +17,7 @@ import { LAST_CRON_KV_KEY } from './ops/cron-heartbeat'
 import { withHsts } from './util/security-headers'
 import { isMcpPathOnWrongHost } from './util/mcp-host'
 import { errMessage } from './util/errors'
+import { keepWarmUserCredentials } from './upstream/keep-warm'
 
 export { McpSessionDO } from './mcp/session-do'
 export { DocRoomDO } from './collab/doc-room-do'
@@ -180,6 +181,27 @@ const worker: ExportedHandler<Env> = {
           const m = errMessage(err)
           console.error(`[cron] oauth-client prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.oauth_prune_failed', detail: m })
+        }
+      })()
+    )
+
+    // 3. Keep-warm long-idle user_oauth refresh tokens so provider
+    // inactivity windows don't silently kill them; un-preventable deaths
+    // (scope change, revocation) surface as next-morning needsReauth
+    // flags instead of mid-task surprises. Cadence + batch are the
+    // rotation-spend safety knobs — see upstream/keep-warm.ts.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          const nowSec = Math.floor(controller.scheduledTime / 1000)
+          const r = await keepWarmUserCredentials(env, nowSec)
+          if (r.due > 0) {
+            console.log(`[cron] keep-warm: ${r.warmed}/${r.due} refreshed, ${r.failed} failed`)
+          }
+        } catch (err) {
+          const m = errMessage(err)
+          console.error(`[cron] keep-warm failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.keep_warm_failed', detail: m })
         }
       })()
     )

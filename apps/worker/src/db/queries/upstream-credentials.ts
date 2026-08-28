@@ -14,6 +14,7 @@
  */
 
 import type { Env } from '../../env'
+import type { UpstreamServerRow } from './upstreams'
 
 // ----- user_credentials ----------------------------------------------------
 
@@ -317,4 +318,37 @@ export async function deleteSharedCredential(env: Env, upstreamId: string): Prom
   await env.DB.prepare(`DELETE FROM upstream_shared_credentials WHERE upstream_id = ?1`)
     .bind(upstreamId)
     .run()
+}
+
+/**
+ * user_oauth credentials due for the nightly keep-warm refresh
+ * (upstream/keep-warm.ts): oauth-kind, not flagged for reauth, on an
+ * enabled upstream, and untouched for at least `idleSeconds` —
+ * `updated_at` moves on every token save, so normal session traffic
+ * naturally exempts active credentials. Oldest first, capped at `limit`
+ * per run to bound refresh-token rotation spend.
+ */
+export async function listKeepWarmDueCredentials(
+  env: Env,
+  nowSec: number,
+  idleSeconds: number,
+  limit: number
+): Promise<Array<{ userId: string; upstream: UpstreamServerRow }>> {
+  const res = await env.DB.prepare(
+    `SELECT uc.user_id AS cred_user_id, us.*
+     FROM user_credentials uc
+     JOIN upstream_servers us ON us.id = uc.upstream_id
+     WHERE uc.kind = 'oauth'
+       AND uc.reauth_required_at IS NULL
+       AND us.enabled = 1
+       AND uc.updated_at <= ?1 - ?2
+     ORDER BY uc.updated_at ASC
+     LIMIT ?3`
+  )
+    .bind(nowSec, idleSeconds, limit)
+    .all<UpstreamServerRow & { cred_user_id: string }>()
+  return (res.results ?? []).map(({ cred_user_id, ...upstream }) => ({
+    userId: cred_user_id,
+    upstream: upstream as UpstreamServerRow
+  }))
 }
