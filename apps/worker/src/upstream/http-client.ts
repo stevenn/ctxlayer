@@ -12,6 +12,7 @@
  */
 
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js'
+import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 import type { UpstreamConnection } from '../db/queries/upstreams'
 import type { UpstreamCallResult, UpstreamCatalogueTool, UpstreamClient } from './upstream-client'
 import { fetchWithSafeRedirects } from '../util/safe-fetch'
@@ -59,6 +60,29 @@ export const UPSTREAM_MAX_RESPONSE_BYTES = 256 * 1024
 const CLIENT_NAME = 'ctxlayer'
 const CLIENT_VERSION = '0.1.0'
 
+/**
+ * The headers that authenticate one upstream dial.
+ *
+ * Usually one: the sealed shared/user token under `headerName`. Some upstreams
+ * need more than one — a Cloudflare Access service token wants
+ * `CF-Access-Client-Id` alongside `CF-Access-Client-Secret` — and those extras
+ * come from `extraHeaders`, which is plain config in an unencrypted column.
+ * The sealed credential is applied LAST so config can never shadow it.
+ *
+ * Exported because every key here is a credential name the redirect walk in
+ * `safe-fetch` has to strip; that contract deserves a test of its own.
+ */
+export function upstreamAuthHeaders(
+  cfg: UpstreamAuthConfig['http'],
+  bearerToken: string | null
+): Record<string, string> {
+  const out: Record<string, string> = { ...cfg?.extraHeaders }
+  if (bearerToken) {
+    out[cfg?.headerName ?? 'Authorization'] = `${cfg?.headerPrefix ?? 'Bearer '}${bearerToken}`
+  }
+  return out
+}
+
 export class UpstreamHttpClient implements UpstreamClient {
   private client: Client | null = null
   private connecting: Promise<Client> | null = null
@@ -69,14 +93,7 @@ export class UpstreamHttpClient implements UpstreamClient {
   ) {}
 
   private headers(): Record<string, string> {
-    const cfg = this.upstream.authConfig.http
-    const headerName = cfg?.headerName ?? 'Authorization'
-    const headerPrefix = cfg?.headerPrefix ?? 'Bearer '
-    const out: Record<string, string> = {}
-    if (this.bearerToken) {
-      out[headerName] = `${headerPrefix}${this.bearerToken}`
-    }
-    return out
+    return upstreamAuthHeaders(this.upstream.authConfig.http, this.bearerToken)
   }
 
   private async ensureConnected(): Promise<Client> {

@@ -56,6 +56,21 @@ describe('toUpstreamConnection', () => {
     })
   })
 
+  it('round-trips extraHeaders for multi-header upstream auth', () => {
+    const conn = toUpstreamConnection(
+      baseRow({
+        auth_config: JSON.stringify({
+          http: {
+            headerName: 'CF-Access-Client-Secret',
+            headerPrefix: '',
+            extraHeaders: { 'CF-Access-Client-Id': 'abc123.access' }
+          }
+        })
+      })
+    )
+    expect(conn.authConfig.http?.extraHeaders).toEqual({ 'CF-Access-Client-Id': 'abc123.access' })
+  })
+
   it('falls back to an empty config on malformed JSON', () => {
     const conn = toUpstreamConnection(baseRow({ auth_config: 'not json' }))
     expect(conn.authConfig).toEqual({})

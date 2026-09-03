@@ -6,7 +6,15 @@ export type AuthStrategy = z.infer<typeof AuthStrategy>
 
 const HttpAuthConfig = z.object({
   headerName: z.string().default('Authorization'),
-  headerPrefix: z.string().default('Bearer ')
+  headerPrefix: z.string().default('Bearer '),
+  // Static headers sent alongside the sealed credential. For upstreams whose
+  // auth is not one header: a Cloudflare Access service token wants
+  // `CF-Access-Client-Id` AND `CF-Access-Client-Secret`, so the id lives here
+  // (an identifier, shown in the CF dashboard indefinitely) while the secret
+  // rides the sealed shared-token slot under `headerName`. Non-secret config —
+  // this column is not encrypted, so never put a credential here. The auth
+  // header is applied last and cannot be shadowed by these.
+  extraHeaders: z.record(z.string(), z.string()).optional()
 })
 
 // OAuth config supports two shapes that share the same JSON column:
