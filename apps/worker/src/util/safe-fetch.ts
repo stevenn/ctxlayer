@@ -21,16 +21,30 @@ const MAX_REDIRECTS = 5
 const REDIRECT_STATUSES = [301, 302, 303, 307, 308]
 
 /**
+ * Header names that are credentials no matter who dialled. Not the whole
+ * story: an upstream can be configured to carry its secret under any name at
+ * all (`authConfig.http.headerName`, e.g. `X-Notion-Auth`), and such a header
+ * is invisible to a fixed list like this one. Callers that mint their own
+ * credential headers MUST name them in `credentialHeaders`.
+ */
+const ALWAYS_CREDENTIAL_HEADERS = ['authorization', 'proxy-authorization', 'cookie']
+
+/**
  * fetch that follows redirects MANUALLY, re-asserting the https trust check
  * on every hop and dropping credential headers when a hop changes origin.
  * Native `redirect: 'follow'` validates hop 0 only, and whether the runtime
  * strips `Authorization` cross-origin is a detail this repo neither asserts
  * nor tests — so we own the hops ourselves (July-review 1c).
+ *
+ * `credentialHeaders` names any further headers to drop cross-origin —
+ * anything the caller attached to authenticate. Omitting a credential header
+ * here hands it to whatever host the upstream redirects to.
  */
 export async function fetchWithSafeRedirects(
   url: string,
   init: RequestInit = {},
-  context = 'fetch'
+  context = 'fetch',
+  credentialHeaders: readonly string[] = []
 ): Promise<Response> {
   let current = url
   let headers = new Headers(init.headers)
@@ -45,9 +59,11 @@ export async function fetchWithSafeRedirects(
     const next = new URL(location, current)
     if (next.origin !== new URL(current).origin) {
       headers = new Headers(headers)
-      headers.delete('authorization')
-      headers.delete('proxy-authorization')
-      headers.delete('cookie')
+      // Headers.delete is case-insensitive, so a configured name matches
+      // however the caller spelled it.
+      for (const name of [...ALWAYS_CREDENTIAL_HEADERS, ...credentialHeaders]) {
+        headers.delete(name)
+      }
     }
     // 303 always demotes to GET; historically 301/302 do too for non-GET.
     if (

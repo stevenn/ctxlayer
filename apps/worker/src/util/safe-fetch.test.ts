@@ -60,6 +60,36 @@ describe('fetchWithSafeRedirects', () => {
     expect(calls[1]?.headers.get('x-custom')).toBe('kept')
   })
 
+  it('strips a caller-named credential header cross-origin, whatever it is called', async () => {
+    const calls = scriptFetch([
+      redirectTo('https://evil.example.net/collect'),
+      new Response('ok', { status: 200 })
+    ])
+    await fetchWithSafeRedirects(
+      'https://api.example.com/start',
+      { headers: { 'x-notion-auth': 'Token sk-secret', 'x-custom': 'kept' } },
+      'upstream',
+      ['X-Notion-Auth']
+    )
+    // The fixed authorization/cookie list would have handed this one over.
+    expect(calls[1]?.headers.get('x-notion-auth')).toBeNull()
+    expect(calls[1]?.headers.get('x-custom')).toBe('kept')
+  })
+
+  it('keeps a caller-named credential header on a same-origin hop', async () => {
+    const calls = scriptFetch([
+      redirectTo('https://api.example.com/moved'),
+      new Response('ok', { status: 200 })
+    ])
+    await fetchWithSafeRedirects(
+      'https://api.example.com/start',
+      { headers: { 'cf-access-client-secret': 'sk-secret' } },
+      'upstream',
+      ['CF-Access-Client-Secret']
+    )
+    expect(calls[1]?.headers.get('cf-access-client-secret')).toBe('sk-secret')
+  })
+
   it('re-asserts the https check on every hop, not just hop 0', async () => {
     scriptFetch([redirectTo('http://internal-host.example.com/steal')])
     await expect(

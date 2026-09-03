@@ -102,13 +102,21 @@ export class UpstreamHttpClient implements UpstreamClient {
         import('@modelcontextprotocol/sdk/validation/cfworker-provider.js')
       ])
       const url = new URL(this.upstream.url)
-      const requestInit: RequestInit = { headers: this.headers() }
+      const authHeaders = this.headers()
+      const requestInit: RequestInit = { headers: authHeaders }
+      // Every header we attach here is a credential, and the header NAME is
+      // admin configuration (`authConfig.http.headerName`) — so safe-fetch's
+      // fixed authorization/cookie list cannot know about it. Deriving the
+      // names from the same object keeps the two in step as the header set
+      // grows; the SDK's own additions (mcp-session-id, …) are not ours to
+      // strip and are correctly absent from this list.
+      const credentialHeaderNames = Object.keys(authHeaders)
       // Same redirect discipline as the git providers (July-review 1c): the
       // SDK's default fetch follows redirects with the bearer header attached;
       // this wrapper re-asserts https per hop and strips credentials on a
       // cross-origin hop.
       const safeFetch = (input: string | URL, init?: RequestInit) =>
-        fetchWithSafeRedirects(input.toString(), init ?? {}, 'upstream')
+        fetchWithSafeRedirects(input.toString(), init ?? {}, 'upstream', credentialHeaderNames)
       const transport =
         this.upstream.transport === 'sse'
           ? new SSEClientTransport(url, { requestInit, fetch: safeFetch })
