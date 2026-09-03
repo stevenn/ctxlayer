@@ -1,5 +1,15 @@
 import { useEffect, useState } from 'react'
-import { Button, Group, NumberInput, Select, Stack, Switch, Text, TextInput } from '@mantine/core'
+import {
+  Button,
+  Group,
+  NumberInput,
+  Select,
+  Stack,
+  Switch,
+  Text,
+  Textarea,
+  TextInput
+} from '@mantine/core'
 import { isStaticOAuthConfig } from '@ctxlayer/shared'
 import type {
   AdminUpstreamRow,
@@ -52,6 +62,37 @@ function textToAsyncTools(s: string): string[] | undefined {
   return list.length > 0 ? list : undefined
 }
 
+// Auth headers: the drawer edits one `Name: value` per line; the wire format is
+// `authConfig.http.extraHeaders`. Exported for the unit tests — the parse has
+// real edges (a value may itself contain a colon, e.g. a URL) and this is the
+// field that decides what credentials leave the building.
+export function extraHeadersToText(headers?: Record<string, string>): string {
+  return Object.entries(headers ?? {})
+    .map(([name, value]) => `${name}: ${value}`)
+    .join('\n')
+}
+
+/** Lines that carry no `Name: value` pair at all. Surfaced under the field. */
+export function badHeaderLines(text: string): string[] {
+  return text
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '' && line.indexOf(':') <= 0)
+}
+
+export function textToExtraHeaders(text: string): Record<string, string> | undefined {
+  const out: Record<string, string> = {}
+  for (const line of text.split('\n')) {
+    const trimmed = line.trim()
+    // Split on the FIRST colon only: the value is frequently a URL.
+    const sep = trimmed.indexOf(':')
+    if (trimmed === '' || sep <= 0) continue
+    const name = trimmed.slice(0, sep).trim()
+    if (name) out[name] = trimmed.slice(sep + 1).trim()
+  }
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 export function DetailsSection({
   row,
   busy,
@@ -93,6 +134,15 @@ export function DetailsSection({
     bytesToKb(row.authConfig.maxResponseBytes)
   )
   const [asyncToolsText, setAsyncToolsText] = useState(asyncToolsToText(row.authConfig.asyncTools))
+  // Auth headers. Invisible here until now: an upstream could be carrying a
+  // renamed credential header, or a second static one, with nothing on screen
+  // to say so — which is precisely what you want to look at when tools/list
+  // starts failing.
+  const [headerName, setHeaderName] = useState(row.authConfig.http?.headerName ?? '')
+  const [headerPrefix, setHeaderPrefix] = useState(row.authConfig.http?.headerPrefix ?? '')
+  const [extraHeadersText, setExtraHeadersText] = useState(
+    extraHeadersToText(row.authConfig.http?.extraHeaders)
+  )
 
   // Reset when the row changes (e.g. after save → reload).
   useEffect(() => {
@@ -108,7 +158,24 @@ export function DetailsSection({
     setListSec(msToSec(t?.listMs))
     setMaxRespKb(bytesToKb(row.authConfig.maxResponseBytes))
     setAsyncToolsText(asyncToolsToText(row.authConfig.asyncTools))
+    setHeaderName(row.authConfig.http?.headerName ?? '')
+    setHeaderPrefix(row.authConfig.http?.headerPrefix ?? '')
+    setExtraHeadersText(extraHeadersToText(row.authConfig.http?.extraHeaders))
   }, [row])
+
+  function buildHttpConfig(): UpstreamAuthConfig['http'] {
+    const name = headerName.trim()
+    const extraHeaders = textToExtraHeaders(extraHeadersText)
+    // Nothing configured ⇒ omit the block entirely and let the defaults apply.
+    if (!name && headerPrefix === '' && !extraHeaders) return undefined
+    return {
+      headerName: name || 'Authorization',
+      // NOT trimmed: 'Bearer ' is meaningless without its trailing space, and
+      // '' is a deliberate value for a header that takes a bare token.
+      headerPrefix,
+      ...(extraHeaders ? { extraHeaders } : {})
+    }
+  }
 
   function buildAuthConfig(): UpstreamAuthConfig {
     const timeouts = {
@@ -122,6 +189,7 @@ export function DetailsSection({
       timeouts.listMs !== undefined
     const cfg: UpstreamAuthConfig = {
       ...row.authConfig,
+      http: buildHttpConfig(),
       timeouts: hasTimeout ? timeouts : undefined,
       maxResponseBytes: kbToBytes(maxRespKb),
       asyncTools: textToAsyncTools(asyncToolsText)
@@ -139,6 +207,8 @@ export function DetailsSection({
     }
     return cfg
   }
+
+  const badLines = badHeaderLines(extraHeadersText)
 
   return (
     <Section title="Details">
@@ -185,6 +255,50 @@ export function DetailsSection({
             secretConfigured={row.clientSecretConfigured}
           />
         )}
+        <Stack
+          gap={6}
+          p="sm"
+          style={{
+            border: '1px solid var(--mantine-color-default-border)',
+            borderRadius: 8
+          }}
+        >
+          <Text fz="xs" fw={600}>
+            Auth headers
+          </Text>
+          <Text fz="xs" c="dimmed">
+            How the credential is presented. Blank name and prefix ={' '}
+            <code>Authorization: Bearer &lt;token&gt;</code>. The stored token itself is set under
+            “Your connection” — it is never shown here.
+          </Text>
+          <Group gap="xs" grow>
+            <TextInput
+              label="Credential header name"
+              placeholder="Authorization"
+              value={headerName}
+              onChange={(e) => setHeaderName(e.currentTarget.value)}
+            />
+            <TextInput
+              label="Prefix"
+              placeholder="Bearer "
+              value={headerPrefix}
+              onChange={(e) => setHeaderPrefix(e.currentTarget.value)}
+              description="Prepended verbatim — “Bearer ” needs its trailing space. Leave empty for a bare token."
+            />
+          </Group>
+          <Textarea
+            label="Extra headers"
+            placeholder="CF-Access-Client-Id: abc123.access"
+            autosize
+            minRows={2}
+            value={extraHeadersText}
+            onChange={(e) => setExtraHeadersText(e.currentTarget.value)}
+            error={
+              badLines.length > 0 ? `Not a Name: value pair — ${badLines.join(', ')}` : undefined
+            }
+            description="One Name: value per line, sent on every call to this upstream. For auth that is not a single header — a Cloudflare Access service token needs CF-Access-Client-Id here and its secret under the credential header above. NOT encrypted: identifiers only, never a secret."
+          />
+        </Stack>
         <Switch
           label="Enabled"
           checked={enabled}
