@@ -602,6 +602,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
           try {
             const res = await saveDraftSkill(this.env, {
               userId,
+              role: this.props?.role,
               title: args.title,
               description: args.description,
               body: args.body,

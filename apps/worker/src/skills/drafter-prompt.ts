@@ -42,7 +42,7 @@ When you have drafted the skill, DO NOT print it as your final answer — CALL t
   - upstreams    — the upstream slugs this skill uses, from the bundle (e.g. ["up-ado","up-driver"])
 It saves as a PRIVATE draft owned by you; you can then refine and share it from /app/skills.
 
-To REVISE a skill instead of creating a new one — whether one you just saved in this conversation or an existing skill of yours the user asked you to edit — call \`save_draft_skill\` again with its \`skillId\` (from the earlier save result) or the same \`slug\`. That writes a NEW VERSION of that skill (its history is preserved) rather than a duplicate. Editing a skill that is already published pushes the change live to the org.`
+To REVISE a skill instead of creating a new one — whether one you just saved in this conversation or an existing skill of yours the user asked you to edit (org admins may target any skill) — call \`save_draft_skill\` again with its \`skillId\` (from the earlier save result) or the same \`slug\`. That writes a NEW VERSION of that skill (its history is preserved) rather than a duplicate. Editing a skill that is already published pushes the change live to the org.`
 
 export interface DraftPromptResult {
   // The MCP SDK's GetPromptResult carries an open index signature (for

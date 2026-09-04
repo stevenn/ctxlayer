@@ -108,4 +108,40 @@ describe('saveDraftSkill upsert', () => {
       code: 'skill_not_found'
     })
   })
+
+  it('an ADMIN upserts another user\'s skill by explicit slug (owner-or-admin, like the REST)', async () => {
+    await seedUser('alice')
+    await seedUser('root')
+    const alices = await save({ userId: 'alice', slug: 'sk-shared-play' })
+    const revised = await save({
+      userId: 'root',
+      role: 'admin',
+      slug: 'sk-shared-play',
+      body: '# Deploy\n\nAdmin revision.'
+    })
+    expect(revised.id).toBe(alices.id) // revised in place, not forked
+    expect(revised.created).toBe(false)
+    expect(revised.version).toBe(2)
+    // Ownership is untouched — alice still owns her skill.
+    expect((await getSkillById(testEnv, alices.id))!.created_by).toBe('alice')
+  })
+
+  it('an ADMIN updates another user\'s skill by skillId', async () => {
+    await seedUser('alice')
+    await seedUser('root')
+    const alices = await save({ userId: 'alice', slug: 'sk-owned' })
+    const revised = await save({ userId: 'root', role: 'admin', skillId: alices.id })
+    expect(revised.id).toBe(alices.id)
+    expect(revised.created).toBe(false)
+  })
+
+  it('a non-admin role value gets no override — foreign slug still forks', async () => {
+    await seedUser('alice')
+    await seedUser('mallory')
+    const alices = await save({ userId: 'alice', slug: 'sk-guarded' })
+    const forked = await save({ userId: 'mallory', role: 'user', slug: 'sk-guarded' })
+    expect(forked.id).not.toBe(alices.id)
+    expect(forked.created).toBe(true)
+    expect(await listSkillRevisions(testEnv, alices.id)).toHaveLength(1)
+  })
 })

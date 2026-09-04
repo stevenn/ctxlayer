@@ -32,6 +32,11 @@ import { newId } from '../db/queries/util'
 
 export interface SaveDraftSkillInput {
   userId: string
+  /** Caller's org role. Admins may upsert ANY skill (matching the REST
+   *  surface, where writes are owner-or-admin) — without this, an admin
+   *  operating under a different identity than a skill's author forked a
+   *  suffixed copy instead of revising it (2026-09-03 field case). */
+  role?: string
   title: string
   description: string
   /** Skill body as markdown (converted to BlockNote blocks server-side). */
@@ -82,24 +87,30 @@ export async function saveDraftSkill(
 }
 
 /**
- * The caller-owned skill to update, or null to create. `skillId` is explicit
- * (owner-checked, throws on miss/foreign); otherwise a supplied `slug` that
- * resolves to one of the caller's own skills upserts into it. Both keep the
- * tool owner-scoped — it can never mutate someone else's skill.
+ * The skill to update, or null to create. `skillId` is explicit (throws on
+ * miss / on a foreign skill for non-admins); otherwise a supplied `slug`
+ * that resolves to an upsertable skill updates it. Writes are
+ * owner-OR-ADMIN, mirroring the REST surface — for non-admins the tool
+ * stays strictly owner-scoped and can never mutate someone else's skill.
+ * Both admin paths require an explicit target (skillId, or a deliberately
+ * passed slug), so an admin can't collide into a foreign skill by title
+ * derivation alone.
  */
 async function resolveUpsertTarget(
   env: Env,
   input: SaveDraftSkillInput
 ): Promise<SkillWithUsersRow | null> {
+  const mayEdit = (row: SkillWithUsersRow) =>
+    row.created_by === input.userId || input.role === 'admin'
   if (input.skillId) {
     const row = await getSkillById(env, input.skillId)
     if (!row) throw new SaveDraftSkillError('skill_not_found')
-    if (row.created_by !== input.userId) throw new SaveDraftSkillError('not_owner')
+    if (!mayEdit(row)) throw new SaveDraftSkillError('not_owner')
     return row
   }
   if (input.slug) {
     const row = await getSkillBySlug(env, normalizeSkillSlug(input.slug))
-    if (row && row.created_by === input.userId) return row
+    if (row && mayEdit(row)) return row
   }
   return null
 }
@@ -124,7 +135,13 @@ async function updateExistingSkill(
     actorId: input.userId,
     action: 'skill.update',
     target: target.id,
-    meta: { source: 'mcp', draftedBy: 'agent' }
+    meta: {
+      source: 'mcp',
+      draftedBy: 'agent',
+      // Flag admin edits of skills the actor doesn't own, so the audit
+      // trail distinguishes them from ordinary self-edits.
+      ...(target.created_by !== input.userId ? { adminEdit: true } : {})
+    }
   })
   const version = (await listSkillRevisions(env, target.id)).length
   return { id: target.id, slug: target.slug, lintFindings, created: false, status: target.status, version }
