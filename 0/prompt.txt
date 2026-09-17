@@ -1,0 +1,2 @@
+we should move the (date range filtered) errors to its own menu item as the in-page list in Usage is cluttering the screen
+also the actor id audit log filters seem not to work
