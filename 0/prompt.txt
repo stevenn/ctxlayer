@@ -1,0 +1,11 @@
+now that we have a few crons running i actually want a dashboard to review their execution
+* time they were run
+* any specific output relevant for detecting and ficing errors
+we should be able to use the same time range selector
+I want this to be a bit more graphical
+
+explore for me which crons or other recurring batch jobs make sense to list here
+
+* we need to be able to filter on cron type
+
+first come with a proposal
