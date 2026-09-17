@@ -1,0 +1,132 @@
+running into user issues with agent mcp access disconnects with ctxlayer as deployed for yukitools (find deploy info here @../ctxlayer-ops/ ) 
+
+pasting user conversation here verbatim:
+
+Victor Escudero Puig  [10:35 AM]
+Yo guys! It happens a lot lately that I need to daily connect Yuki MCP in claude. For some reason, it disconnects in a daily basis. Do you guys are facing the same issue?
+7 repliesJavier Real  [10:46 AM]
+same here... over the last few days I've been having to reconnect every day
+Carles Molina del Peral  [11:06 AM]
+me too
+Steven Noels  [12:31 PM]
+Hm…. Thanks for notifying - will check - if you have logs I can feed them to my agent?
+
+You mean /mcp reconnect ?
+Jan Peeters  [12:36 PM]
+I think this is the same issue i notified on Tuesday. where it looses the connection in ctxlayer but show that its connected but only works again after reconnecting in ctxlayer (thats the problem i had) - risk is that its not notifying that something is wrong but just invents answers (edited) 
+Jan Peeters  [1:55 PM]
+Just had a quick call with @Victor Escudero Puig and its a different issue, for me the yuki mcp stays connected (so far) but the upstreams are blocked (usually authentication failure) ... for Victor (and the others i assume) it seems to be the Yuki mcp it self (edited) 
+Victor Escudero Puig  [2:04 PM]
+that's right @Steven Noels, I basically need to reconnect to Yuki MCP everyday. About what @Jan Andre L Peeters mentions, I have to say that I faced a very similar issue (probably the same one), where I had connected the Linear upstream, but it was silently failing (so, couldn't lunch any Linear tool from the ctxlayer, I had to directly connect to Linear's MCP in Claude to make it work). (edited) 
+Steven Noels  [2:08 PM]
+Could be refresh tokens not being correctly handled. I did some changes there 2 weeks ago.
+
+
+and an analysis from an educated user below:
+
+
+
+Nota · Yuki MCP (ctxlayer)
+Hoe Claude aan ctxlayer hangt, en waar het stil breekt
+Aan Steven
+Van Jan Peeters
+Datum 17 sep 2026
+Aanleiding: meerdere collega's melden dat ze Yuki MCP in Claude dagelijks opnieuw moeten verbinden — iets wat tot voor kort niet nodig was. Zelf zie ik iets anders: alles toont “verbonden”, maar een dienst werkt pas weer na opnieuw autoriseren in ctxlayer — en in de tussentijd is er geen melding, zodat het model antwoorden kan verzinnen. Dat zijn twee verschillende dingen.
+
+Deel 1 legt uit hoe Claude met ctxlayer verbindt — het verschil tussen de “connector” in de chat-app en de MCP-setup in Claude Code — omdat daar veel van de meldingen uit voortkomen. Deel 2 beschrijft het eigenlijke probleem: de diensten achter ctxlayer verliezen hun autorisatie zonder enige melding of zichtbaar signaal. Alles wat als gemeten staat is op 17 september vastgesteld in Claude Code.
+
+Deel 1
+Connector versus MCP-setup: hoe Claude met ctxlayer verbindt
+ctxlayer is één remote MCP-server op één adres, https://mcp.yukitools.dev/mcp, met OAuth 2.1 (Dynamic Client Registration + PKCE). De setup-pagina noemt drie manieren om die server aan een Claude-client te hangen: in Claude Code met claude mcp add --transport http ctxlayer … gevolgd door /mcp → Authenticate; in Claude Desktop en de web-app via Settings → Connectors → Add custom connector; en in editors via hun eigen mcp.json. ctxlayer zelf kent geen “connector”: dat is alleen het woord van de chat-app voor een toegevoegde remote MCP-server. Voor de gateway zijn het allemaal OAuth-clients op hetzelfde adres.
+
+Connector
+via het Claude-account: chat, Cowork én Code
+Lokale MCP-registratie
+claude mcp add — alleen Code op die machine
+eigen login
+per client
+ctxlayer
+gateway
+autorisatie
+per dienst, per gebruiker
+Linear · ADO · Sentry
+Datadog · GitHub · Notion · …
+Links: twee routes, elk met een eigen login op dezelfde gateway. Rechts: jouw autorisaties per dienst, die voor beide routes gelden (daarover gaat deel 2).
+Twee routes, twee logins
+Er zijn twee manieren om ctxlayer aan Claude te hangen, en elk heeft een eigen login-token. De connector hangt aan je Claude-account en geldt daardoor overal waar je met dat account werkt: de chat-app, Cowork én Claude Code. De lokale registratie via claude mcp add hangt aan Claude Code op die machine en geldt alleen daar. Het token van de ene route is niet bruikbaar voor de andere.
+
+Connector
+hangt aan het Claude-account
+Hoe toegevoegd
+Settings → Connectors → “Yuki MCP” → Connect
+Wie zette het klaar
+De org: staat al in de workspace als “installed for Yuki BE”. Inloggen blijft per gebruiker.
+Login-token
+Eigen token, aan het account
+Geldt voor
+Chat-app, Cowork én Claude Code
+Mijn situatie gemeten
+Nooit ingelogd: status “Not connected”, geen tools in chat of Cowork
+Lokale registratie
+hangt aan Claude Code op die machine
+Hoe toegevoegd
+claude mcp add …, daarna /mcp → Authenticate
+Wie zette het klaar
+De gebruiker zelf
+Login-token
+Eigen token, lokaal bij Claude Code
+Geldt voor
+Alleen Claude Code op die machine
+Mijn situatie gemeten
+Ingelogd en verbonden; hierdoor werkt Code bij mij
+Daarom kan Code bij mij werken terwijl de connector “Not connected” toont: Code draait op de lokale registratie, en op de connector is gewoon nog nooit ingelogd. Dat is geen storing. Eén keer Connect en de connector werkt in chat, Cowork én Code. De autorisaties voor Linear, ADO en Sentry hoeven daarna niet opnieuw — die hangen aan de gebruiker, niet aan de route. Wie beide routes heeft, ziet ctxlayer in Code twee keer staan; één route is genoeg.
+
+Wat er met de login-token gebeurt
+De login op de gateway levert een kortlopend access-token en een refresh-token. De client vernieuwt het access-token stil; normaal merk je daar niets van. Faalt dat vernieuwen, dan valt die ene route eruit en moet je voor die route opnieuw inloggen.
+
+gemeten  Mijn Code-login op 17-09: access-token en refresh-token beide aanwezig; het access-token verliep binnen het uur en werd stil vernieuwd; de verbinding hield de hele sessie. Bij een gezonde login is er dus geen dagelijkse herverbinding.
+
+Dit is nieuw. Tot voor kort bleef de verbinding gewoon staan; de dagelijkse herverbinding begon pas recent, en je gaf zelf aan dat je in die periode wijzigingen aan de gateway hebt gedaan. Dat is de meest waarschijnlijke oorzaak: iets in die wijziging heeft bestaande refresh-tokens of client-registraties ongeldig gemaakt, zodat het stil vernieuwen faalt en clients er telkens uitvallen. Vanaf de client is niet te zien wát precies — de OAuth-app, scopes, sleutels, de levensduur of rotatie van refresh-tokens, of het bewaren van client-registraties.
+
+Eén voorbehoud bij het triëren van zulke meldingen: een connector waarop nooit is ingelogd toont óók “Not connected”, maar dat is geen uitval. Eerste vraag blijft dus: via de connector, of via claude mcp add?
+
+Vraag aan jou
+Welke wijziging is er precies gedaan, en raakt die de refresh-tokens of de client-registraties van bestaande logins?
+Bevestigen de logs van mislukte refresh-pogingen per client sinds die wijziging dat beeld?
+Uitrol
+Connector: staat al klaar in de workspace; per gebruiker één keer Connect in Settings → Connectors, en chat, Cowork én Code werken.
+Lokale registratie: alternatief voor wie ctxlayer alleen in Claude Code wil — per gebruiker claude mcp add …, of een .mcp.json in de repo zodat iedereen die daarin werkt het erbij krijgt en zijn eigen MCP-servers houdt.
+Deel 2
+Het probleem: diensten achter ctxlayer verliezen hun autorisatie zonder luide melding of zichtbare disconnect
+Achter de gateway hangen de diensten. Voor elk daarvan geef je ctxlayer één keer toestemming op /app/upstreams. Zo'n autorisatie is per gebruiker, geldt voor al je clients tegelijk, en heeft haar eigen looptijd bij die dienst — los van je login op de gateway en los van de andere diensten. Het geldt voor de diensten met een persoonlijke autorisatie: ADO, Datadog, GitHub, Linear, Notion, Sentry, Survicate en Yuki IA NL. Driver, Tokenspend en Yuki PDD Org draaien op een gedeeld token en hebben dit probleem niet. Of dit nieuw is, weet ik niet.
+
+Wat er misgaat gemeten
+Een autorisatie verloopt, en nergens wordt dat zichtbaar. De Upstreams-pagina en list_upstreams blijven “verbonden” tonen. Bij de start van mijn sessie op 17-09:
+
+up-linear     connected: true    needsReauth: true    toolsCount: 0
+              note: "credential refresh failed — this session registered none of its tools;
+                     reconnect the upstream at /app/upstreams, then call reload_upstreams"
+up-survicate  connected: false                        toolsCount: 18
+alle andere   connected: true   — en gaven op een echte call ook echte data terug
+Linear stond tegelijk op verbonden én op “opnieuw autoriseren”, met nul bruikbare tools. Survicate was niet verbonden maar telde toch 18 tools. De status komt dus niet uit een echte controle van de autorisatie. De Upstreams-pagina in de UI toont hetzelfde beeld en is daarmee evenmin te vertrouwen als gezondheidssignaal.
+
+Twee uitkomsten voor de gebruiker
+Zichtbaar. De gateway registreert nul tools voor die dienst; een call is onmogelijk en de agent merkt het. Vervelend, maar veilig. Dit was Linear op 17-09 — en alleen omdat de foutmelding letterlijk in het antwoord stond, kon een lokale controle erop aanslaan.
+Onzichtbaar. Alles staat op verbonden, de tools zijn er, maar een call komt leeg of fout terug zonder foutmelding — en het model behandelt dat als een echt antwoord en verzint. Dit is wat ik eerder deze week meemaakte en wat meerdere gebruikers melden. Op 17-09 niet gereproduceerd: alle fouten waren die dag zichtbaar. Dit is het gevaarlijke geval.
+Herstel geeft evenmin een signaal gemeten
+Na opnieuw autoriseren van Linear op /app/upstreams:
+
+reload_upstreams  →  added: []   "Nothing new: no upstream connected since this
+                                    session started and every catalogued tool is
+                                    already registered."
+list_upstreams    →  up-linear  connected: true   toolsCount: 79   (needsReauth weg)
+De dienst ging van 0 naar 79 tools, maar reload_upstreams meldde dat er niets veranderd was. De tools kwamen pas later in de sessie beschikbaar, zonder dat daar een melding van kwam. Een gebruiker kan de werkelijke toestand dus alleen vaststellen door zelf per dienst een echte call te doen.
+
+Waarom dit erger is dan een verloren login. Bij een verloren login (deel 1) zie je dat de verbinding weg is en log je opnieuw in. Hier zie je niets: de status blijft groen, er is geen melding bij verlopen, geen melding bij herstel, en het antwoord kan fout zijn. Wat nodig is, is precies wat nu ontbreekt: luid melden en zichtbaar disconnecten in ctxlayer zodra een autorisatie wegvalt.
+
+Vragen aan jou
+Luid melden: kan ctxlayer de gebruiker een duidelijke notificatie geven zodra een autorisatie verloopt of een refresh faalt — in plaats van dat je het ontdekt aan een fout antwoord?
+Zichtbaar disconnecten: kan de Upstreams-pagina en list_upstreams die dienst dan ook echt als niet verbonden tonen, met een status uit een echte controle in plaats van uit cache — zodat connected en needsReauth nooit tegelijk waar zijn?
+Kan een call op een verlopen autorisatie altijd een harde fout teruggeven — nooit een leeg of gedeeltelijk “succes”?
+Kan reload_upstreams rapporteren wat er werkelijk veranderde, zodat ook herstel zichtbaar is?
+Metingen van 17 sep 2026 in Claude Code (desktop).
