@@ -1,0 +1,5 @@
+content looks ok
+don't know why md file is stored in /private/tmp but anyway
+
+how will you go about the slide creation?
+should happen with cowork I guess, not in code
