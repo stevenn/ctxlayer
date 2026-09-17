@@ -1,0 +1,2 @@
+stale branch deleted
+I'll confirm the doc's content once the 08:00Z run lands. Z time is not very handy for this mere human being - what does this mean in local time
