@@ -22,6 +22,22 @@ const NOOP_HANDLER: ExportedHandler<Env> = {
   fetch: () => new Response('not used by admin helpers', { status: 500 })
 }
 
+/**
+ * How long an MCP client's login lasts before the user must re-authorize.
+ * The library stamps this ONCE at the authorization-code exchange and never
+ * slides it on refresh — it is an absolute lifetime, not an idle timeout. The
+ * library default (30 days) forced every client of every user through a
+ * monthly re-login for no security gain: suspend/delete already revoke all
+ * of a user's grants instantly (oauth/revoke-grants.ts) and the session DO
+ * re-checks user status on init. 90 days matches the library's DCR client
+ * registration lifetime (`clientRegistrationTTL` default), which caps a
+ * login anyway — a client record that expires first just turns the final
+ * refresh into `invalid_client` instead of `invalid_grant`; both mean
+ * "log in again". Applies to NEW logins only: existing grants keep the
+ * expiry they were issued with.
+ */
+export const MCP_LOGIN_TTL_SECONDS = 90 * 24 * 60 * 60
+
 export function oauthProviderOptions(
   defaultHandler: ExportedHandler<Env> = NOOP_HANDLER
 ): OAuthProviderOptions<Env> {
@@ -38,6 +54,7 @@ export function oauthProviderOptions(
     authorizeEndpoint: '/oauth/authorize',
     tokenEndpoint: '/oauth/token',
     clientRegistrationEndpoint: '/oauth/register',
+    refreshTokenTTL: MCP_LOGIN_TTL_SECONDS,
     scopesSupported: ['mcp']
   }
 }
