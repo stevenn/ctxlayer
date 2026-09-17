@@ -1,0 +1,8 @@
+/ctxlayer:sk-driver-ai-planning-skill (MCP)       Use when the user asks to plan, design an implementation, or turn research output into an implementation plan for a codebase indexed by Driver MCP.
+                                                    Gathers deep context via request_task_context/poll_task_context plus Driver's code-map, file-doc and source tools, and produces a TDD-ordered plan spec…
+  /ctxlayer:sk-sentry-time-window-queries (MCP)     When querying Sentry through the ctxlayer gateway with a time filter (last 24h, last week, new since X) or multi-value filters via
+                                                    search_issues/search_events — prevents the recurring 400s: "Invalid date: >=-7d" and "Boolean statements containing OR/AND are not supported".
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ /mc
+──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ~/Projects/yuki [claude-opus-5[1m]] ctx:5% (i:2 o:12 c:49k) $0.49                                                                                                                               /rc active
