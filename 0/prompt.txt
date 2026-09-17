@@ -1,0 +1,234 @@
+<task-notification>
+<task-id>a3e123bfe689a50f4</task-id>
+<tool-use-id>toolu_01LLCKDhayK9CZh1hApdUAaH</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/646a3f57-94f5-4525-adc0-4d80ed3d402c/tasks/a3e123bfe689a50f4.output</output-file>
+<status>completed</status>
+<summary>Agent "Gather ctxlayer workshop content" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Perfect! Now I have enough information to compile a comprehensive report. Let me create the final summary:
+
+## ctxlayer User-Facing Concepts: Workshop Summary
+
+Based on thorough exploration of the codebase, here's what practitioners should understand about ctxlayer:
+
+---
+
+### 1. **Main User-Facing Pages/Sections (SPA Routes)**
+
+The React app exposes these core pages under `/app`:
+
+- **`/app/search`** — Semantic search homepage (entry point after login)
+- **`/app/docs`** — Curated docs workspace with tree + list + read-only preview
+- **`/app/docs/:id`** — Deep-link to preview a specific doc in place
+- **`/app/docs/:id/edit`** — Collaborative markdown editor (BlockNote + Yjs + revisions)
+- **`/app/upstreams`** — Self-service upstream connection (paste tokens or OAuth)
+- **`/app/tools`** — Directory of all tools visible to the user (built-ins + proxied upstream tools, with ACL-restricted state)
+- **`/app/mcp-setup`** — Integration guide (MCP endpoint URL + per-client snippets for Claude Desktop, Claude Code, etc.)
+- **`/app/usage`** — Personal usage analytics (calls, tokens, top tools over time)
+- **Admin section** (`/app/admin/*`):
+  - `teams` — Create teams, assign members (IDP sync available)
+  - `products` — Create products, assign teams (soft-ownership)
+  - `roles` — Cross-org roles (engineering, qa, product, etc.)
+  - `upstreams` — Register MCP servers, configure auth (OAuth or shared bearer), set visibility, manage tool ACLs
+  - `git-sources` — Git repos to mirror Markdown from (GitHub / GitLab / Azure DevOps)
+  - `users` — Promote/demote admins, revoke credentials
+  - `invites` / `join-codes` — Access control
+  - `skills` — Edit and publish procedural playbooks
+  - `oauth-clients` — OAuth DCR clients for remote MCP connections
+  - `audit` — Admin action log
+
+---
+
+### 2. **Built-in MCP Tools** (Always Available)
+
+ctxlayer exposes 8 tools natively. These are documented in `packages/shared/src/builtin-tools.ts`:
+
+1. **`whoami`** — Returns user props (teams, products, roles) attached to the session
+2. **`list_my_context`** — User's reachable teams + products + accessible upstream slugs + restricted tools (tools locked by ACL, with what would unlock them)
+3. **`list_upstreams`** — Visible upstreams with cached tool count, connection state, and attached skills/docs per upstream
+4. **`describe_upstream(slug, family?, query?)`** — One upstream's tools by native name, grouped by family prefix, each with its callable mangled name (`&lt;slug&gt;__&lt;tool&gt;`) + one-line summary (cache-only; filters by ACL)
+5. **`get_doc(id)`** — Read a doc by id or slug as rendered Markdown
+6. **`search_docs(query, k?, scope?)`** — Semantic search over the org library (Vectorize-backed); scope narrows to team/product tags
+7. **`list_skills`** — Published procedural playbooks with their attached upstreams/tools
+8. **`get_skill(slug)`** — Fetch a skill's Markdown body (frontmatter + content)
+
+MCP resources also available:
+- **`mcp://ctxlayer/docs/{id}`** — Doc library resource template (discoverable list + per-doc reads)
+- **`mcp://ctxlayer/skills/{slug}`** — Skills resource template (discoverable list + per-skill reads)
+
+---
+
+### 3. **Skills System — Attaching Playbooks to Upstreams**
+
+Skills are **org-curated Markdown playbooks** that encode "how we do X with this service" conventions. They can be attached at two scopes:
+
+**Whole-Upstream Scope** (`tool_name = ''`):
+- Named on the upstream in server instructions (agents read it before their first call)
+- Examples: "linear-practices" (team IDs, status names, label conventions for Linear) attached to the Linear upstream
+- Touches EVERY tool of that upstream
+
+**Per-Tool Scope** (`tool_name = '&lt;native_name&gt;'`):
+- Named in that tool's description on the MCP surface
+- Narrower binding; e.g., "use create_issue, not update_issue for new work" on `linear__create_issue`
+
+**Database model**: `skill_attachments` table joins skills → (upstream, tool_name). Admin SPA (Skills tab) lets admins:
+- Create / edit / publish skills
+- Attach/detach to upstreams or specific tools
+- Only *published* skills surface to agents (drafts are admin-only)
+
+`list_skills` returns `attached_to: [{ upstream_slug, tool_name }]` for discovery.
+
+---
+
+### 4. **Upstream Tool Proxying — How ctxlayer Bridges Tools**
+
+**Per-session registry** (`UpstreamProxyRegistry` in `tools-proxy.ts`):
+
+- On MCP connect, the session discovers upstreams visible to the user (visibility rules: everyone / team / product / role)
+- For each upstream:
+  1. Resolve the user's credential (user bearer, OAuth token, or shared org secret)
+  2. Dial the upstream (HTTP/SSE; stdio via bring-your-own-bridge)
+  3. Fetch/refresh the cached tool catalogue (24h TTL; auto-refresh if stale on first session)
+  4. Apply per-tool ACL (some tools may be hidden from the user by role/team/product rules)
+- Register each allowed tool with a **mangled name**: `&lt;upstream-slug&gt;__&lt;native-tool-name&gt;`
+  - E.g., `linear__search_issues`, `notion__find_databases`
+  - Mangling avoids name collisions and makes the upstream clear
+- Tool calls dispatch through `UpstreamHttpClient` → upstream's `tools/call` RPC
+- **Usage is recorded**: per-user, per-upstream, per-tool (bytes, tokens, latency, ok/error)
+
+**ACL-filtered visibility**:
+- Tools can be gated by role, team, or product
+- `describe_upstream` hides locked tools (ACL-filtered catalog for agents)
+- `/api/tools` SHOWS locked tools with "requires role X" badges (directory for the UI)
+
+---
+
+### 5. **Docs System — How Docs Get In and Are Edited**
+
+**Sources of docs**:
+
+1. **Manual creation** — Click "New" in `/app/docs`, write in the editor
+2. **Markdown import** — Paste or upload `.md` files (with optional YAML frontmatter)
+3. **Git sync** — Register a GitHub/GitLab/Azure DevOps repo:
+   - Admin specifies path glob (e.g., `docs/**/*.md`) and branch
+   - Hourly/daily/weekly cron syncs `.md` files → doc store
+   - Idempotent + conflict-aware: local edits block sync (marked `conflict`)
+   - On edit, proposes a PR back to the repo with refreshed frontmatter
+
+**Editing flow**:
+- Read-only preview in `/app/docs/:id`
+- Edit mode in `/app/docs/:id/edit` opens BlockNote (block-based editor)
+- **Collaborative**: Yjs over WebSocket (Hibernation) + awareness (who's editing)
+- **Auto-save**: Idle debounce (5s) + max coalesce (30s) + REST revision snapshots
+- **Revisions**: Timestamped snapshots in R2 (every save); recover via "Revision History"
+- **Unsaved-changes guard**: `useBlocker` on route nav + `beforeunload` on tab close
+
+**Storage**:
+- Metadata (title, slug, tags, folders) in D1 SQLite
+- Snapshot (BlockNote JSON blocks) in Cloudflare R2 (one per revision)
+- Git-synced docs: raw Markdown in R2 (`source.md`); reindex consumer chunks &amp; embeds
+
+**Frontmatter (OKF)**: The right rail *is* the YAML editor. Supports:
+- **Team tags** — gate visibility (intersected with user's reachable teams)
+- **Product tags** — gate visibility (via team membership)
+- **OKF fields** — `type`, `description`, `resource`, custom `tags` array (free-form search metadata)
+- Unknown fields preserved for round-trip (export/import)
+
+---
+
+### 6. **Organization IA — Teams, Products, Roles &amp; Visibility**
+
+**Teams**:
+- Core org unit (engineering, product management, security, etc.)
+- Can be IDP-managed (SCIM sync) or manual
+- Users belong to teams (m2m)
+- Docs tagged with a team are readable by that team
+- Upstreams can be visible to specific teams
+
+**Products**:
+- Soft-ownership axis (iOS, web, API, etc.)
+- Teams are assigned to products (m2m `team_products`)
+- Docs tagged with a product are readable by users in any team assigned to that product
+- Upstreams can be visible to specific products
+
+**Roles**:
+- Cross-org axis (engineer, QA, product lead, etc.)
+- Orthogonal to teams (a user can be in team "Platform" + role "QA")
+- IDP-managed or manual
+- Used for per-tool ACLs (e.g., "only engineers can call `destroy_database`")
+
+**Upstream Visibility Rules**:
+- Additive: any matching rule grants access
+- Scopes:
+  - `everyone` — public to all signed-in users
+  - `team: &lt;id&gt;` — visible to that team
+  - `product: &lt;id&gt;` — visible to users in teams assigned to that product
+  - `role: &lt;id&gt;` — visible to users with that role
+- Query: single D1 round-trip (subquery resolves user's reachable teams + products + roles)
+
+**Docs Scope &amp; Search**:
+- Docs are readable org-wide by default
+- Tags narrow search (docs tagged "platform" + "team:backend") — tags intersect with user's reachable set
+- `search_docs` defaults to open-read; pass `scope: { teams: [...], products: [...] }` to narrow
+
+---
+
+### 7. **The `/app/tools` Directory**
+
+**What it shows**:
+- **Built-in tools** — ctxlayer's 8 tools (always available, no connection needed)
+- **Per-upstream section** (one card per visible upstream):
+  - Upstream name, connection state (connected / need token / error)
+  - Tools grouped by **family** (first-underscore prefix: `search_*`, `create_*`, etc.)
+  - Each tool shows:
+    - Native name + callable mangled name (`linear__search_issues`)
+    - One-line summary (truncated description)
+    - **`restricted`** badge if user can't call (with "requires role X" reason)
+  - Expandable detail panel (lazy-loaded per upstream):
+    - Full input schema
+    - Per-tool skill/doc attachments (the "read this before calling" playbooks)
+
+**API backing**:
+- `/api/tools` returns `ToolsDirectory` (built-ins + upstream sections)
+- Built-in metadata from `BUILTIN_TOOLS` (single source of truth)
+- Upstream tools from the cached catalogue (no upstream dial)
+- ACL state + locked tools are included (advisory, so the UI can show "requires role X")
+
+---
+
+### 8. **Key Takeaways for Practitioners**
+
+**For end-users (engineers using Claude/agents)**:
+- Connect upstreams on `/app/upstreams` (OAuth or token)
+- Check `/app/tools` to see what's available and what's locked
+- Read attached skills *before* calling upstream tools (they encode org conventions)
+- Search docs semantically via the agent or the search page
+
+**For admins**:
+- Register MCP upstreams on Admin · Upstreams (set transport, auth, visibility)
+- Attach org playbooks (skills) per upstream or per tool
+- Create teams/products/roles and assign users (IDP-managed or manual)
+- Gate tools via ACLs (teams, products, roles)
+- Monitor usage on the dashboard (calls, tokens, top tools)
+
+**For agents (Claude, etc.)**:
+- Call `list_upstreams` once per session (learn what's available + attachments)
+- Call `describe_upstream(slug)` when tool names are opaque
+- Read attached skills via `get_skill` *before* calling the upstream tool
+- Search docs semantically for org context before making decisions
+- Mangled tool names (`&lt;slug&gt;__&lt;tool&gt;`) route to the upstream via the proxy
+
+---
+
+### File References
+
+- **Routes**: `/apps/web/src/app.tsx` (router tree) + `/apps/web/src/routes/*`
+- **Built-in tools**: `/apps/worker/src/mcp/session-do.ts` (registration), `/packages/shared/src/builtin-tools.ts` (metadata)
+- **Skills**: `/apps/worker/src/mcp/skill-mcp.ts` (MCP surface), `/apps/worker/src/db/queries/skill-attachments.ts` (attachment model)
+- **Tool proxying**: `/apps/worker/src/mcp/tools-proxy.ts` (full implementation)
+- **Visibility**: `/apps/worker/src/db/queries/upstreams.ts` (visibility query), `/apps/worker/src/db/queries/tool-access.ts` (ACL)
+- **Docs**: `/apps/web/src/routes/docs-editor/index.tsx` (edit), `/apps/web/src/routes/docs-list/index.tsx` (read)
+- **Git sync**: `/apps/worker/src/git/sync.ts` (inbound mirror logic)
+- **Organization**: `/apps/worker/src/db/queries/{teams,products,roles}.ts`</result>
+<usage><subagent_tokens>72929</subagent_tokens><tool_uses>35</tool_uses><duration_ms>137943</duration_ms></usage>
+</task-notification>
