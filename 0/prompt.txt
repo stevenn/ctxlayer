@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b2c45yb2s</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/d353c8d7-55ec-4d4a-9106-9e9e1efc02e9/tasks/b2c45yb2s.output</output-file>
+<status>failed</status>
+<summary>Background command "Watch repo-yuki for the 06:00Z scheduled sync result" failed with exit code 1</summary>
+</task-notification>
