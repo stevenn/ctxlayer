@@ -1,0 +1,13 @@
+go some invaluable feedback from a naif user testing the auto-discovery of skills through ctxlayer when using driver mcp as an upstream:
+
+The skills are not automatically picked up, you need to tell the agent to use the skill and follow it, the list_skills description is for humans not routing.. it would be more likely picked up if you describe it as a trigger.
+I need to actually prompt something like "Before you start, call list_upstreams, check attached_skills on any
+upstream you're about to use, and get_skill anything relevant.." for it to kick in, I need to add it to my CLAUDE.md for it to not forget and do it across all sessions.
+
+Did you expect people to find it and add it to their prompts and CLAUDE ? Or that it is automatically used ?
+If automatically then CLaude recommends:
+
+
+Ask the owner whether the gateway can append the attached-skill line to tool descriptions. That's the change that would make this automatic rather than advisory — right now it's a discovery problem, not a content problem. Your org already injects the ctxlayer signup blurb into every session — adding "when a request touches an upstream, load its attached_skills first" there would fire org-wide. That's the one that fixes the adoption problem rather than just your own sessions.
+
+research what is happening, differentiating between claude desktop and cli
