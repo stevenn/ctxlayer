@@ -1,0 +1,20 @@
+-- Nightly keep-warm scheduling, decoupled from `updated_at`.
+--
+-- The job selected "oauth credentials whose `updated_at` is ≥14 days old",
+-- oldest first, 25 per night — relying on a successful warm to re-save the
+-- tokens and so move `updated_at` out of the window. But most attempts save
+-- nothing: a token with no expiry and no refresh token (GitHub OAuth apps)
+-- or one whose access token is still valid (Sentry) resolves without a
+-- refresh. Those credentials stayed due FOREVER, were re-selected every
+-- night, and — being the oldest — permanently held the front of the batch
+-- (2026-09 field finding: the same ~20 credentials "warmed" nightly for weeks,
+-- 20 of 25 slots; any growth past 25 would have starved the credentials the
+-- job exists for).
+--
+-- `keep_warm_after` = do not consider this credential again before this unix
+-- time. Every attempt stamps it (a full idle window ahead when there was
+-- nothing to do or the refresh worked; ~a day ahead after a transient
+-- failure), and the due query orders by it, so an attempted credential
+-- always moves to the back of the queue. NULL = never attempted.
+-- Additive nullable column on a child table — no rebuild (G1 not in play).
+ALTER TABLE user_credentials ADD COLUMN keep_warm_after INTEGER;

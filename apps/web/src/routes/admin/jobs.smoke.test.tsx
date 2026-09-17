@@ -23,7 +23,7 @@ vi.mock('../../lib/api', () => ({
         startedAt: Math.floor(Date.now() / 1000) - 3600,
         durationMs: 812,
         status: 'ok',
-        summary: { due: 2, warmed: 2, failed: 0 },
+        summary: { due: 2, refreshed: 1, flagged: 0, failed: 0, idle: 1, backlog: 0 },
         error: null
       },
       {
