@@ -21,6 +21,14 @@ Agent context layer — an MCP service on Cloudflare that:
   collaborative markdown editing, admin upstream management, and usage
   analytics.
 
+**Contents** — [Screenshots](#screenshots) ·
+[What it does](#what-it-does) ·
+[OKF interop](#open-knowledge-format-okf--early-adopter) ·
+[Quickstart](#quickstart-contributors-hacking-on-ctxlayer) ·
+[Deploying to production](#deploying-ctxlayer-to-production) ·
+[Useful scripts](#useful-scripts) ·
+[Layout](#layout)
+
 ## Screenshots
 
 |  |  |
@@ -118,7 +126,7 @@ bun run dev                       # or split-terminals: dev:worker + dev:web (re
 bun run verify                    # typecheck + lint (Biome) + unit + integration tests (all offline)
 ```
 
-#### Filling in `.dev.vars`
+### Filling in `.dev.vars`
 
 To sign in locally you need at least one IdP. The quickest is a **GitHub OAuth
 app** (<https://github.com/settings/developers> → "New OAuth App"):
@@ -471,7 +479,7 @@ A few rules the worker enforces that are operator-visible:
 ## Useful scripts
 
 | Command | What it does |
-|---|---|
+| --- | --- |
 | `bun run dev` | Vite + wrangler dev in one terminal via `concurrently` |
 | `bun run dev:worker` | wrangler dev only (`https://localhost:8787`) |
 | `bun run dev:web` | Vite dev only (`https://localhost:5173`) |
