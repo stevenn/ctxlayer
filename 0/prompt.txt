@@ -1,0 +1,3 @@
+I want the slideout drawer to take 15% more screen real estate - it's too narrow now
+then
+commit push deploy to yukitools
