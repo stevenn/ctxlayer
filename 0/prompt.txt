@@ -1,0 +1,4 @@
+if you go over git history after the last 3-4 weeks, can you pinpoint where this behavior previously was introduced?
+and can you validate that these changes will effectively help?
+
+just the analysis
