@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>bj4uayz3z</task-id>
+<tool-use-id>toolu_01XLgozj4XSrByyCjZXYx4DA</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/d353c8d7-55ec-4d4a-9106-9e9e1efc02e9/tasks/bj4uayz3z.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch for the 08:00Z sync completion (correct trigger)" completed (exit code 0)</summary>
+</task-notification>
