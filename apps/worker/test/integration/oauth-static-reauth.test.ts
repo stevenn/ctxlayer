@@ -121,6 +121,21 @@ describe('static-OAuth reauth short-circuit (resolveUserUpstreamBearer)', () => 
     expect(fetchSpy).toHaveBeenCalledOnce()
   })
 
+  // The DCR (SDK auth()) path shares the short-circuit. It used to retry a
+  // flagged credential on every resolution — and session DOs re-init on each
+  // hibernation wake, so dead grants were re-POSTed thousands of times a day.
+  it('DCR path also skips the refresh when already flagged for reauth', async () => {
+    const dcrRow: UpstreamServerRow = { ...row, auth_config: '{}' }
+    await testEnv.DB.prepare(`UPDATE upstream_servers SET auth_config = '{}' WHERE id = 'ups-1'`).run()
+    await markReauthRequired(testEnv, 'u-1', 'ups-1')
+    const fetchSpy = vi.spyOn(globalThis, 'fetch')
+
+    const token = await resolveUserUpstreamBearer(testEnv, dcrRow, toUpstreamConnection(dcrRow), 'u-1')
+
+    expect(token).toBeNull()
+    expect(fetchSpy).not.toHaveBeenCalled() // no discovery, no refresh_token POST
+  })
+
   it('does NOT flag on a transient 5xx, and keeps retrying', async () => {
     const fetchSpy = vi
       .spyOn(globalThis, 'fetch')

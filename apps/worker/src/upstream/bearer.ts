@@ -113,17 +113,22 @@ export async function resolveUserUpstreamBearer(
       }
     }
 
+    // Once a credential is flagged for reauth its refresh token is dead until
+    // the user reconnects — skip the refresh entirely, on BOTH paths. Only
+    // PERMANENT failures flag (static: invalid_grant; DCR: see
+    // classifyDcrRefreshFailure), so a retry can never self-heal; it only
+    // re-POSTs a dead refresh_token on every stale resolution. Session DOs
+    // re-run init on each hibernation wake, so an unguarded DCR path turned
+    // ~40 flagged credentials into ~2k failing token requests/day against
+    // Linear/Sentry/Datadog (2026-09-17 field finding) — and a lease loser
+    // fell through to the stored EXPIRED access token, registering tools on a
+    // dead bearer. The flag is cleared on reconnect (exchangeCode →
+    // saveTokens → clearReauthRequired), after which refreshes resume.
+    if (hadCreds && (await getUserCredentialStatus(env, userId, row.id)).needsReauth) {
+      return null
+    }
+
     if (staticCfg) {
-      // Once a static credential is flagged for reauth (a prior refresh got
-      // invalid_grant), its refresh token is dead until the user reconnects —
-      // skip the refresh entirely. That avoids re-POSTing to the token endpoint
-      // on every stale resolution and silences the repeat "[oauth-static] token
-      // refresh failed" error log. The flag is cleared on reconnect
-      // (exchangeCode → saveTokens → clearReauthRequired), after which refreshes
-      // resume normally.
-      if (hadCreds && (await getUserCredentialStatus(env, userId, row.id)).needsReauth) {
-        return null
-      }
       // Only the lease winner runs the refresh; capture whether it failed
       // PERMANENTLY (invalid_grant) so we flag reauth only then — a transient
       // network / 5xx failure must keep retrying, not lock the user out.
