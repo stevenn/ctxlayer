@@ -1,0 +1,10 @@
+this is being flagged as well, but can you be very specific about its actual risk, because this is actually the point of a health check
+
+ctxlayer.yukitools.dev/api/health
+Insecure Access policy detected
+
+We detect that you have an Access policy to allow everyone access to your application.
+
+Risk
+Internal application exposed to the public internet
+An Access policy configured to allow everyone access to your application means that your application is exposed to the public Internet.
