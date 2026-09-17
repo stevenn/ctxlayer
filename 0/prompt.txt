@@ -1,0 +1,61 @@
+<bash-stdout>✓ bindings: base ↔ template identical (10 bindings)
+✓ crons: base ↔ template identical (0 * * * * 0 3 * * * )
+  ℹ trigger cron '0 3 * * *' isn't matched explicitly in scheduled() — ensure the default/else branch handles it.
+✅ deploy-scheme checks passed.
+▶ releasing 078f1b9 to: yukitools
+$ bun --filter='@ctxlayer/web' run build
+@ctxlayer/web build: vite v6.4.2 building for production...
+@ctxlayer/web build: transforming...
+@ctxlayer/web build: ✓ 1217 modules transformed.
+@ctxlayer/web build: rendering chunks...
+@ctxlayer/web build: computing gzip size...
+@ctxlayer/web build: dist/index.html                                                0.85 kB │ gzip:   0.51 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-100-BQDzDElq.woff2                16.55 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-regular-YtgfLPRn.woff2            16.71 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-900-CMga-52B.woff2                17.18 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-300-DEbyFmpd.woff2                17.33 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-200-BxfrU12A.woff2                17.34 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-500-DfX5FI9E.woff2                17.55 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-600-BvOeHRLc.woff2                17.66 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-800-Bdy4lAMa.woff2                17.76 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-700-Bj1B9WKG.woff2                17.78 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-100-46Mq0mOp.woff                 21.24 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-regular-CahmJf_6.woff             21.42 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-900-ORHAl5ZU.woff                 21.98 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-300-f7r92Nkj.woff                 22.16 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-200-DXfqWPZg.woff                 22.24 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-500-BQ2gQN_M.woff                 22.52 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-600-D01NXWOK.woff                 22.64 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-700-B5TOIllR.woff                 22.68 kB
+@ctxlayer/web build: dist/assets/inter-v12-latin-800-DFVvDWwT.woff                 22.71 kB
+@ctxlayer/web build: dist/assets/blocknote-editor-BcAC8xoQ.css                    224.01 kB │ gzip:  35.37 kB
+@ctxlayer/web build: dist/assets/index-BNMFgJSX.css                               224.94 kB │ gzip:  33.86 kB
+@ctxlayer/web build: dist/assets/FileButton-DyuCYV6z.js                             0.77 kB │ gzip:   0.49 kB │ map:     2.99 kB
+@ctxlayer/web build: dist/assets/DocPreviewBody-BWc4dbgm.js                         1.05 kB │ gzip:   0.67 kB │ map:     4.56 kB
+@ctxlayer/web build: dist/assets/BundleExportModal-CUZjLBAC.js                      1.16 kB │ gzip:   0.67 kB │ map:     3.30 kB
+@ctxlayer/web build: dist/assets/FloatingComposerController-D-j-wzDn-Bsg-iGQH.js    1.81 kB │ gzip:   0.96 kB │ map:     5.17 kB
+@ctxlayer/web build: dist/assets/ImportDocModal-BbPwumCF.js                         2.01 kB │ gzip:   1.15 kB │ map:     7.38 kB
+@ctxlayer/web build: dist/assets/BundleImportModal-DFS9CuVH.js                      2.29 kB │ gzip:   1.16 kB │ map:     6.98 kB
+@ctxlayer/web build: dist/assets/skill-editor-Dw5Wsv5M.js                           4.92 kB │ gzip:   2.17 kB │ map:    19.40 kB
+@ctxlayer/web build: dist/assets/revision-history-CnTOEjv9.js                       5.24 kB │ gzip:   2.12 kB │ map:    21.29 kB
+@ctxlayer/web build: dist/assets/blocknote-editor-BopOSlQo.js                      40.15 kB │ gzip:  13.29 kB │ map:   378.39 kB
+@ctxlayer/web build: dist/assets/index-DxF39tA1.js                                 46.97 kB │ gzip:  15.73 kB │ map:   188.39 kB
+@ctxlayer/web build: dist/assets/frontmatter-Cg6gor5Q.js                           57.06 kB │ gzip:  17.63 kB │ map:   235.05 kB
+@ctxlayer/web build: dist/assets/module-D8iBLRih.js                                77.33 kB │ gzip:  27.63 kB │ map:   240.33 kB
+@ctxlayer/web build: dist/assets/native-48B9X9Wg.js                               432.80 kB │ gzip:  83.21 kB │ map:     0.10 kB
+@ctxlayer/web build: dist/assets/blocknote-react-DGg8pK2d.js                      788.83 kB │ gzip: 237.81 kB │ map: 8,480.04 kB
+@ctxlayer/web build: dist/assets/index-B38kRz8i.js                                961.06 kB │ gzip: 289.35 kB │ map: 4,458.43 kB
+@ctxlayer/web build: 
+@ctxlayer/web build: (!) Some chunks are larger than 500 kB after minification. Consider:
+@ctxlayer/web build: - Using dynamic import() to code-split the application
+@ctxlayer/web build: - Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+@ctxlayer/web build: - Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+@ctxlayer/web build: ✓ built in 3.75s
+@ctxlayer/web build: Exited with code 0
+── yukitools (ctxlayer.yukitools.dev) +mcp.yukitools.dev [access] ──
+[deploy] injected HSTS into apps/web/dist/_headers
+[deploy] PUBLIC_BASE_URL=https://ctxlayer.yukitools.dev
+[deploy] wrangler deploy -c wrangler.yukitools.toml --var PUBLIC_BASE_URL:https://ctxlayer.yukitools.dev --var GIT_SHA:078f1b9 --var BUILT_AT:2026-09-17T18:07:47Z
+✓ yukitools
+✅ release complete.</bash-stdout><bash-stderr>
+Shell cwd was reset to /Users/stevenn/Projects/satisa/ctxlayer</bash-stderr>
