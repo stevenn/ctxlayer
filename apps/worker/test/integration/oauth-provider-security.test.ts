@@ -2,7 +2,7 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import { describe, expect, it } from 'vitest'
 import type { Env as WorkerEnv } from '../../src/env'
-import { oauthProviderOptions } from '../../src/oauth/provider-config'
+import { MCP_LOGIN_TTL_SECONDS, oauthProviderOptions } from '../../src/oauth/provider-config'
 
 /**
  * Security properties this deployment DELEGATES to
@@ -206,5 +206,32 @@ describe('workers-oauth-provider delegated security properties', () => {
     const code = await issueCode(clientId, { challenge: await s256(verifier) })
     const res = await exchange(clientId, code, { verifier, redirectUri: OTHER_REDIRECT })
     expect(res.status).toBeGreaterThanOrEqual(400)
+  })
+})
+
+/**
+ * Not a delegated property but a CONFIGURED one, asserted through the same
+ * real-provider harness: the library stamps an ABSOLUTE login expiry at the
+ * code exchange and never slides it on refresh. Its 30-day default forced a
+ * monthly re-login on every client (2026-09-17 field finding: both of a
+ * day's rejected refreshes were exact 30-day expiries). Pinned here so a
+ * dropped option — or a library default change — fails CI instead of
+ * silently shortening everyone's login.
+ */
+describe('MCP login lifetime (refreshTokenTTL)', () => {
+  it('a new login expires MCP_LOGIN_TTL_SECONDS (90d) after the code exchange', async () => {
+    expect(MCP_LOGIN_TTL_SECONDS).toBe(90 * 24 * 60 * 60)
+    const clientId = await registerPublicClient()
+    const verifier = 'sec-test-verifier-ttl-0123456789-0123456789-0123'
+    const code = await issueCode(clientId, { challenge: await s256(verifier) })
+    const before = Math.floor(Date.now() / 1000)
+    expect((await exchange(clientId, code, { verifier })).status).toBe(200)
+
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const grants = (await helpers.listUserGrants('u-sec')).items.filter((g) => g.clientId === clientId)
+    expect(grants).toHaveLength(1)
+    const expiresAt = grants[0]?.expiresAt ?? 0
+    expect(expiresAt).toBeGreaterThanOrEqual(before + MCP_LOGIN_TTL_SECONDS)
+    expect(expiresAt).toBeLessThanOrEqual(before + MCP_LOGIN_TTL_SECONDS + 60)
   })
 })
