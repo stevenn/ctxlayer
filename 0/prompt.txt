@@ -1,0 +1,113 @@
+<task-notification>
+<task-id>ace36c4a44dbd4e99</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/d353c8d7-55ec-4d4a-9106-9e9e1efc02e9/tasks/ace36c4a44dbd4e99.output</output-file>
+<status>completed</status>
+<summary>Agent "Research MCP client discovery channels" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>Based on official documentation and open issues, here's a precise factual report on how Claude clients surface MCP server metadata:
+
+---
+
+## 1. MCP Server `instructions` Field
+
+**Claude Code:**
+- ✔ Injects into system prompt with each session
+- ⚠ **~4KB total budget** shared across all connected servers (Issue #43474)
+- ⚠ **Silent truncation**: last servers' instructions cut off mid-sentence with no warning
+- No documented size cap per-server; budget exhaustion depends on server load order
+- Evidence: ctxlayer system-reminder shows truncation: `"...includ… [truncated]"` (Issue #43474)
+
+**Claude Desktop:**
+- Undocumented whether instructions are injected; no official guidance found
+- No evidence of truncation caps in available docs
+- Likely similar to Claude Code but less transparent
+
+**Truncation limit not publicly documented** — reverse-engineered from Issue #43474 as ~4KB total.
+
+---
+
+## 2. Tool Descriptions (200+ Tools)
+
+**Claude Code:**
+- **Models with tool search enabled** (Claude 4.5+, Sonnet 4.5+, Haiku 4.5+, Fable 5, Mythos 5):
+  - Supports deferred loading via `defer_loading: true` on tool definitions
+  - Loads only tool names into context at session start (~0 tokens)
+  - Tool search (ToolSearch variant) loads descriptions on demand when Claude searches for tools
+  - Threshold: accuracy degrades at 30–50 tools without deferral; tool search mitigates this
+  - Docs explicitly recommend deferral for 10+ tools, 10k+ token definitions, or 200+ aggregated tools
+  
+- **Mechanism**: All tool definitions sent to API server-side; only context injection is deferred via `tool_search_tool_regex_20251119` or `tool_search_tool_bm25_20251119`
+
+**Claude Desktop:**
+- **Always loads all tool descriptions eagerly** (~75k tokens for 155 tools per Issue #49073)
+- No tool search equivalent documented or working
+- **Reported bug** (Issue #49073): "Tool access" UI toggle to defer tools has no effect; MCP tools load regardless
+- Desktop does NOT support deferred loading via `defer_loading: true`
+
+**Key distinction**: Tool search is a **Messages API** feature (server-side); Claude Desktop's MCP integration does not surface or use it.
+
+---
+
+## 3. MCP Prompts
+
+**Claude Code:**
+- ✔ Rendered as slash commands: `/mcp__&lt;server&gt;__&lt;prompt&gt;` format
+- Documented in CLAUDE.md system-reminder and MCP reference
+
+**Claude Desktop:**
+- ✗ No evidence of MCP prompt rendering as UI elements or slash commands
+- Not documented in public docs
+
+---
+
+## 4. MCP Resources
+
+**Both clients:**
+- ✗ **Do NOT proactively read** MCP resources
+- Resources only read when:
+  - User explicitly calls `resources/read` tool
+  - User attaches a resource via `@` mention (Claude Code feature)
+- **Documented issue** (typescript-sdk #686): "Claude Desktop doesn't use resources of my MCP server" — Desktop calls `resources/list` but never reads them to answer questions
+
+---
+
+## 5. Anthropic Guidance on Reliable Model Workflows
+
+**No documented best practice** for forcing a model to follow a sequence (e.g., "always fetch playbook before calling tool X").
+
+**Patterns observed in the wild:**
+- **Tool descriptions**: Include routing keywords + context hints (searches on tool name, description, arg names/descriptions)
+- **Server instructions**: Provide high-level workflows, but **truncated silently** when multiple servers exist — unreliable for critical routing
+- **Attached skills/docs** (ctxlayer model): Org-curated playbooks attached to specific upstreams/tools; avoids relying on model memory of instructions
+- **System prompt steering**: Light prompt like "consult the playbook before using tool X" increases likelihood but doesn't guarantee behavior
+
+**No evidence of:**
+- A "skills" or "workflow hints" structure beyond the `instructions` field
+- Anthropic guidance on avoiding Desktop's instruction-truncation problem
+- Detection of prompt injection from tool-description text (Desktop doesn't flag instruction-like descriptions as risky)
+
+---
+
+## Summary Table
+
+| Feature | Claude Code | Claude Desktop | Notes |
+|---------|-------------|----------------|-------|
+| **Server instructions** | ✔ Injected, ~4KB shared budget | Undocumented | Silent truncation (Issue #43474) |
+| **Tool search (deferral)** | ✔ Supported (Opus 4.5+) | ✗ Not supported | Messages API feature, Desktop always eager-loads |
+| **MCP prompts** | ✔ As `/mcp__*` slash commands | ✗ No rendering | |
+| **MCP resources** | On-demand only (via tool or @) | On-demand only | No proactive reading |
+| **200+ tool handling** | Deferred + tool search (efficient) | All eager-loaded (~75k tokens) | Desktop context cost high |
+
+---
+
+## Sources
+
+- [Claude Code MCP instructions truncation (Issue #43474)](https://github.com/anthropics/claude-code/issues/43474)
+- [Claude Code MCP reference documentation](https://code.claude.com/docs/en/mcp)
+- [Tool search tool — Claude Platform Docs](https://platform.claude.com/docs/en/agents-and-tools/tool-use/tool-search-tool)
+- [Claude Desktop tool loading bug (Issue #49073)](https://github.com/anthropics/claude-code/issues/49073)
+- [Claude Desktop MCP resources issue (typescript-sdk #686)](https://github.com/modelcontextprotocol/typescript-sdk/issues/686)
+- [MCP server design guidance — Anthropic skills](https://github.com/anthropics/skills/blob/main/skills/mcp-builder/SKILL.md)</result>
+<usage><subagent_tokens>74012</subagent_tokens><tool_uses>15</tool_uses><duration_ms>104894</duration_ms></usage>
+</task-notification>
