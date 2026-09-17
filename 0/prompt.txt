@@ -1,0 +1,1 @@
+<bash-input>cd ../ctxlayer-ops && set -a && . .tenant-secrets/yukitools-cf.env && set +a && scripts/release-all.sh yukitools</bash-input>
