@@ -1,0 +1,2 @@
+in the DD case when doing a user reconnect I saw a scope change request so that makes kinda sense
+however I don't think that's always the case, so a keep-warm cron could make sense
