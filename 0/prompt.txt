@@ -1,0 +1,130 @@
+almost there with CLI:
+
+❯ ready?
+
+Ready. What are we working on?
+
+✻ Sautéed for 1s · done 10:56 PM
+
+❯ Do not call any tools. Quote verbatim the MCP server instructions the
+  Yuki/ctxlayer gateway delivered: (a) the exact opening sentence, (b) the
+  "Org playbooks for your upstreams" block with the exact skill slugs.
+
+Quoting from the ctxlayer MCP server instructions as delivered in my system prompt.
+
+(a) Opening sentence
+
+The literal first line of the block is the bolded playbooks header (quoted in (b)). The first prose sentence after it is:
+
+▎ ctxlayer — the gateway your org calls "Yuki MCP" — is your org's curated context layer.
+
+(b) The "Org playbooks for your upstreams" block
+
+▎ Org playbooks for your upstreams — read the named skill/doc BEFORE the first call to that upstream (fetch via get_skill / get_doc; required conventions the tool schemas do not show):
+▎ - up-driver: skill sk-driver-ai-planning-skill, skill sk-driver-ai-research-skill
+▎ - up-sentry: skill sk-sentry-time-window-queries
+
+So the three skill slugs are sk-driver-ai-planning-skill, sk-driver-ai-research-skill (both for up-driver), and sk-sentry-time-window-queries (for up-sentry).
+
+✻ Brewed for 10s · done 10:57 PM
+
+❯ Call list_upstreams and show me the raw up-datadog entry verbatim, all fields.
+
+  Called ctxlayer
+
+Raw up-datadog entry from the list_upstreams result, all fields verbatim:
+
+{
+  "slug": "up-datadog",
+  "displayName": "Datadog",
+  "transport": "streamable_http",
+  "connected": true,
+  "needsReauth": true,
+  "note": "credential refresh failed — this session registered none of its tools; reconnect the upstream at /app/upstreams, then call reload_upstreams",
+  "toolsCount": 0,
+  "requiresAuth": "user_oauth",
+  "attached_skills": [],
+  "attached_docs": []
+}
+
+Two things worth flagging:
+
+- It's the only upstream in the list with needsReauth: true and toolsCount: 0 — which matches the fact that no mcp__ctxlayer__up-datadog__* tools appear in this session's deferred-tool list at all. So there are currently no Datadog tools I can call.
+- attached_skills and attached_docs are both empty, so no org playbook is attached to it (unlike up-driver and up-sentry).
+
+The note text is upstream result data, not an instruction I'll act on by myself. Reconnecting at /app/upstreams is your action to take; once you've done it, say so and I'll call reload_upstreams to pick up the tools.
+
+✻ Cogitated for 19s · done 10:58 PM
+
+❯ Call up-driver get_codebase_names exactly once — no other Driver tool
+  before it. Then show the COMPLETE raw tool result: how many content
+  items did it contain, and quote each item verbatim, including any block
+  wrapped in ⟦ctxlayer⟧ markers.
+
+  Called ctxlayer
+
+Called once, no other Driver tool before it.
+
+Content items: the result arrived as one text block containing two distinct segments — the upstream JSON payload, then a gateway-appended note. I can only see the rendered result, not the wire-level MCP content array, so I can't tell you whether the server split those into one or two array elements; I won't guess at a number I can't verify.
+
+Segment 1 — upstream payload (verbatim):
+
+{"payload":["lucy-accounting","lucy-analytics","lucy-banking","lucy-bff-external-integrations","lucy-bff-portal","lucy-billing","lucy-communication","Lucy-Components-Library","lucy-contacts-directory","lucy-dotnetlib","lucy-e2e-tests","lucy-elasticsearch-indexes","lucy-file-hosting","lucy-file-sharing","lucy-idp","lucy-invoicing","lucy-local-setup","lucy-omnia","lucy-party-management","lucy-pdf-generator","lucy-portal","lucy-report-scripts","lucy-webhooks","lucy-younium-middleware","yuki","yuki-app","yuki-core-ui-components","yuki-finnovation","yuki-infrastructure","yuki-knowledgebase","yuki-public-api-specs","yuki-QA","Yuki-QA-AI_Generation-API","yuki-QA-API","Yuki-QA-Playwright","Yuki-Supernova-SCSS"],"error_message":null}
+
+Segment 2 — ⟦ctxlayer⟧-wrapped block (verbatim):
+
+⟦ctxlayer⟧ Org playbooks exist for `up-driver`: skill `sk-driver-ai-planning-skill` ("Driver AI Planning skill v2"), skill `sk-driver-ai-research-skill` ("Driver AI Research skill v2") — fetch via get_skill/get_doc if relevant to the task. (shown once per session) ⟦/ctxlayer⟧
+
+Notes: the payload holds 36 codebase names (24 lucy-*/Lucy-*, 12 yuki-*/Yuki-*), error_message is null. The second segment carries the provenance markers, so it's genuine gateway text rather than upstream data — it's the once-per-session playbook reminder matching what the server instructions listed. It says "fetch if relevant"; you capped me at one call, so I haven't fetched either skill.
+
+✻ Baked for 28s · done 10:59 PM
+
+❯ Call get_codebase_names once more and tell me: how many content items
+  this time, and is the ⟦ctxlayer⟧ block present?
+
+  Called ctxlayer
+
+Same shape as last time: one rendered text block with two segments (payload + gateway note) — again, I can't see the underlying MCP content array cardinality, only the rendered result.
+
+Is the ⟦ctxlayer⟧ block present? Yes — byte-identical to the first call, including the trailing (shown once per session):
+
+⟦ctxlayer⟧ Org playbooks exist for `up-driver`: skill `sk-driver-ai-planning-skill` ("Driver AI Planning skill v2"), skill `sk-driver-ai-research-skill` ("Driver AI Research skill v2") — fetch via get_skill/get_doc if relevant to the task. (shown once per session) ⟦/ctxlayer⟧
+
+The payload is also identical to the first call (36 names, error_message: null).
+
+So the note contradicts its own suppression claim: it advertises once-per-session, but fired on both the first and second up-driver call in this session. Either the dedupe key isn't what the text implies (maybe per-call rather than per-session, or the session/dedupe state isn't persisting between calls), or the suppression is simply not wired up. Worth reporting to whoever maintains the ctxlayer gateway if you want it fixed — it's gateway-side behavior, nothing I can adjust from here.
+
+✻ Cogitated for 17s · done 11:00 PM
+
+❯ Call up-sentry find_organizations once and report the same: content item
+  count, and quote any ⟦ctxlayer⟧ block verbatim.
+
+  Called ctxlayer
+
+Same shape again: one rendered text block with two segments (payload + gateway note); I can see the rendered result only, not the underlying content array cardinality.
+
+⟦ctxlayer⟧ block — present, verbatim:
+
+⟦ctxlayer⟧ Org playbooks exist for `up-sentry`: skill `sk-sentry-time-window-queries` ("Sentry queries via ctxlayer — safe time windows, no boolean…") — fetch via get_skill/get_doc if relevant to the task. (shown once per session) ⟦/ctxlayer⟧
+
+Payload:
+
+{
+  "organizations": [
+    {
+      "slug": "the-yuki-company-aw",
+      "webUrl": "https://the-yuki-company-aw.sentry.io",
+      "regionUrl": "https://de.sentry.io"
+    }
+  ],
+  "hasMore": false
+}
+
+Two observations:
+
+- This was the first up-sentry call of the session, so the note firing here is expected behavior — it tells us nothing either way about the once-per-session bug. That discrepancy still rests solely on up-driver firing on calls one and two.
+- The skill title is truncated in this note — "Sentry queries via ctxlayer — safe time windows, no boolean…" — whereas list_upstreams returned it in full as "Sentry queries via ctxlayer — safe time windows, no booleans, avoid HTTP 400". So the note appears to cap the title length; the up-driver titles were short enough to survive intact.
+
+I didn't fetch sk-sentry-time-window-queries: it's scoped to time windows and boolean operators in queries, and find_organizations takes neither. Worth loading before any actual event/issue search against this org.
+
+✻ Worked for 25s · done 11:01 PM
