@@ -59,6 +59,7 @@ import {
   splitFrontmatter
 } from '@ctxlayer/shared'
 import { errMessage } from '../util/errors'
+import { spaUrl, UPSTREAMS_PAGE } from '../util/spa-url'
 import { errText, safeJson } from './tool-result'
 import { sanitizeUntrustedContent, sanitizeUntrustedText } from './provenance'
 
@@ -310,14 +311,43 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
             sqliteHintLedger(this.ctx.storage.sql)
           )
         }
-        const { added, loaded } = await this.upstreamProxy.refresh(this.server)
+        const { added, recovered, unbound, loaded } = await this.upstreamProxy.refresh(this.server)
+        // Say what actually happened. The old "Nothing new…" branch was wrong
+        // in the one case people call this for: the DO had hibernated, its
+        // wake re-ran init() (which bound the freshly connected upstream),
+        // and the diff against that new instance came back empty.
+        const notes: string[] = []
+        if (added.length > 0) {
+          notes.push(
+            `Registered new upstream tools: ${added.map((a) => `${a.slug} (+${a.tools})`).join(', ')}.`
+          )
+        }
+        if (recovered.length > 0) {
+          notes.push(`Re-bound after re-authorization — callable again: ${recovered.join(', ')}.`)
+        }
+        if (unbound.length > 0) {
+          notes.push(
+            `Still without a usable credential: ${unbound.join(', ')}. Their tools stay listed, ` +
+              `but every call fails until the user re-authorizes them at ` +
+              `${spaUrl(this.env, UPSTREAMS_PAGE)}; after that, just retry the call.`
+          )
+        }
+        if (notes.length === 0) {
+          notes.push(
+            'No change in this call: every upstream this user can use was already bound and ' +
+              'every catalogued tool already listed.'
+          )
+        }
+        notes.push(
+          'Sent tools/list_changed so your client re-reads the tool list (if it does not honor ' +
+            'that, reconnect the connector). list_upstreams has the per-upstream status.'
+        )
         const body = {
           added,
+          recovered,
+          needsReauthorization: unbound,
           loadedUpstreams: loaded,
-          note:
-            added.length > 0
-              ? 'Registered new upstream tools (newly-connected upstreams AND tools that appeared in the catalogue since this session bound) + emitted tools/list_changed. If your client honors it the tools appear now; if not, reconnect the connector.'
-              : 'Nothing new: no upstream connected since this session started and every catalogued tool is already registered. If a tool still is not callable, your client did not pick up an earlier change — reconnect the connector.'
+          note: notes.join(' ')
         }
         return { content: [{ type: 'text', text: JSON.stringify(body, null, 2) }] }
       })

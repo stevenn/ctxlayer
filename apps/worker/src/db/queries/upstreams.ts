@@ -17,14 +17,14 @@ import type {
   UserUpstreamSummary,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
-import type { AuthStrategy, UpstreamAuthConfig } from '@ctxlayer/shared'
+import { grantExpiry, type AuthStrategy, type UpstreamAuthConfig } from '@ctxlayer/shared'
 import { DIALABLE_TRANSPORTS, isDialableTransport } from '../../upstream/upstream-client'
 import { buildPatchUpdate, newId } from './util'
 import { countToolsForUpstream, countToolsForUpstreams, getToolsCachedAt } from './upstream-tools'
 import {
   getUserCredential,
+  getUserCredentialStatuses,
   hasSharedCredential,
-  listUserCredentialedUpstreamIds,
   sharedCredentialUpstreamIds
 } from './upstream-credentials'
 
@@ -418,8 +418,12 @@ export async function listUserUpstreamSummaries(
   const rows = await listUpstreamsVisibleToUser(env, userId)
   if (rows.length === 0) return []
   const sharedIds = rows.filter((r) => r.auth_strategy === 'shared_bearer').map((r) => r.id)
-  const [credIds, sharedSet, counts] = await Promise.all([
-    listUserCredentialedUpstreamIds(env, userId),
+  const userCredIds = rows
+    .filter((r) => r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth')
+    .map((r) => r.id)
+  const nowSec = Math.floor(Date.now() / 1000)
+  const [creds, sharedSet, counts] = await Promise.all([
+    getUserCredentialStatuses(env, userId, userCredIds),
     sharedCredentialUpstreamIds(env, sharedIds),
     countToolsForUpstreams(
       env,
@@ -430,11 +434,14 @@ export async function listUserUpstreamSummaries(
     const requiresCredentials =
       r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth'
     const isShared = r.auth_strategy === 'shared_bearer'
-    const connected = requiresCredentials
-      ? credIds.has(r.id)
-      : isShared
-        ? sharedSet.has(r.id)
-        : true
+    const cred = creds.get(r.id)
+    const connected = requiresCredentials ? !!cred : isShared ? sharedSet.has(r.id) : true
+    const needsReauth = !!cred?.needsReauth
+    // Only a live user_oauth grant has a clock worth showing.
+    const expiry =
+      r.auth_strategy === 'user_oauth' && cred && !needsReauth
+        ? grantExpiry(cred.grantedAt, parseAuthConfig(r.auth_config).grantLifetimeDays, nowSec)
+        : null
     return {
       id: r.id,
       slug: r.slug,
@@ -443,7 +450,9 @@ export async function listUserUpstreamSummaries(
       authStrategy: r.auth_strategy,
       requiresCredentials,
       connected,
-      toolsCount: counts.get(r.id) ?? 0
+      toolsCount: counts.get(r.id) ?? 0,
+      needsReauth,
+      authExpiresAt: expiry?.expiresAt ?? null
     }
   })
 }

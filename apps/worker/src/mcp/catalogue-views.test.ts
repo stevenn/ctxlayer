@@ -9,7 +9,6 @@ import {
   groupToolsByFamily,
   upstreamGuidance,
   upstreamEntry,
-  NEEDS_REAUTH_NOTE,
   firstResultHint,
   type ToolAttachments,
   type UpstreamUserContext
@@ -343,23 +342,114 @@ describe('upstreamEntry', () => {
       auth_strategy: 'user_oauth'
     }) as UpstreamServerRow
 
-  it('reports the cached tool count on a healthy connection', () => {
+  it('ready: reports the callable tool count, no note, no contradiction', () => {
     const e = upstreamEntry(upRow('up-x'), { present: true, needsReauth: false }, 25, [], [])
+    expect(e.status).toBe('ready')
     expect(e.connected).toBe(true)
     expect(e.toolsCount).toBe(25)
+    expect(e.availableTools).toBeUndefined()
     expect(e.needsReauth).toBeUndefined()
     expect(e.note).toBeUndefined()
   })
 
-  it('zeroes toolsCount + explains on needsReauth (surfaces never disagree)', () => {
-    // The session registers NONE of this upstream's tools, so reporting
-    // the cached 25 made agents plan Datadog work they could not execute.
-    const e = upstreamEntry(upRow('up-datadog'), { present: true, needsReauth: true }, 25, [], [])
-    expect(e.connected).toBe(true)
+  it('needs_reauth: never connected:true, zero callable tools, recovery note', () => {
+    // A dead credential row used to read `connected: true, needsReauth: true`
+    // — two fields contradicting each other (2026-09-17 field report).
+    const e = upstreamEntry(upRow('up-datadog'), { present: true, needsReauth: true }, 25, [], [], {
+      upstreamsUrl: 'https://ctx.test/app/upstreams'
+    })
+    expect(e.status).toBe('needs_reauth')
+    expect(e.connected).toBe(false)
     expect(e.needsReauth).toBe(true)
     expect(e.toolsCount).toBe(0)
-    expect(e.note).toBe(NEEDS_REAUTH_NOTE)
+    expect(e.availableTools).toBe(25)
+    expect(e.note).toContain('credential_revoked')
+    expect(e.note).toContain('https://ctx.test/app/upstreams')
+    // The reflex that does NOT help, named so the agent can steer the user.
+    expect(e.note).toContain('reconnecting this MCP connector does not help')
+  })
+
+  it('not_connected: zero callable tools — the catalogue size moves to availableTools', () => {
+    // Was `connected: false, toolsCount: 18`, which reads as 18 usable tools.
+    const e = upstreamEntry(upRow('up-survicate'), { present: false, needsReauth: false }, 18, [], [])
+    expect(e.status).toBe('not_connected')
+    expect(e.connected).toBe(false)
+    expect(e.toolsCount).toBe(0)
+    expect(e.availableTools).toBe(18)
     expect(e.note).toContain('reload_upstreams')
+  })
+
+  describe('absolute grant lifetime (authConfig.grantLifetimeDays)', () => {
+    const DAY = 86400
+    const NOW = 1_800_000_000
+    const withLifetime = (days: number): UpstreamServerRow => ({
+      ...upRow('up-linear'),
+      auth_config: JSON.stringify({ grantLifetimeDays: days })
+    })
+
+    it('reports the expiry but stays quiet while it is far off', () => {
+      const e = upstreamEntry(
+        withLifetime(25),
+        { present: true, needsReauth: false, grantedAt: NOW - 5 * DAY },
+        79,
+        [],
+        [],
+        { nowSec: NOW }
+      )
+      expect(e.authExpiresInDays).toBe(20)
+      expect(e.authExpiresAt).toBe(new Date((NOW + 20 * DAY) * 1000).toISOString())
+      expect(e.note).toBeUndefined()
+      expect(e.toolsCount).toBe(79) // still fully usable
+    })
+
+    it('warns inside the last 3 days, naming the fix', () => {
+      const e = upstreamEntry(
+        withLifetime(25),
+        { present: true, needsReauth: false, grantedAt: NOW - 23 * DAY - 3600 },
+        79,
+        [],
+        [],
+        { nowSec: NOW }
+      )
+      expect(e.authExpiresInDays).toBe(1)
+      expect(e.note).toContain('expires in about 1 day')
+      expect(e.note).toContain('refreshes do not extend')
+    })
+
+    it('says nothing without a configured lifetime or without a grant stamp', () => {
+      const noCfg = upstreamEntry(
+        upRow('up-ado'),
+        { present: true, needsReauth: false, grantedAt: NOW - 400 * DAY },
+        40,
+        [],
+        [],
+        { nowSec: NOW }
+      )
+      expect(noCfg.authExpiresAt).toBeUndefined()
+      expect(noCfg.note).toBeUndefined()
+      const noStamp = upstreamEntry(
+        withLifetime(25),
+        { present: true, needsReauth: false, grantedAt: null },
+        79,
+        [],
+        [],
+        { nowSec: NOW }
+      )
+      expect(noStamp.authExpiresAt).toBeUndefined()
+    })
+
+    it('a dead credential gets the reauth note, not an expiry countdown', () => {
+      const e = upstreamEntry(
+        withLifetime(25),
+        { present: true, needsReauth: true, grantedAt: NOW - 26 * DAY },
+        79,
+        [],
+        [],
+        { nowSec: NOW }
+      )
+      expect(e.status).toBe('needs_reauth')
+      expect(e.authExpiresAt).toBeUndefined()
+    })
   })
 
   it('keeps whole-upstream attachments and drops per-tool rows', () => {

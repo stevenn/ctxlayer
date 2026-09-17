@@ -94,8 +94,30 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
      */
     private readonly returnTo?: OAuthReturnTarget
   ) {
-    if (presetState) this.stateToken = presetState
+    if (presetState) {
+      this.stateToken = presetState
+      this.isCallback = true
+    }
   }
+
+  /**
+   * Renew: report no stored tokens for this one `auth()` run, so the SDK
+   * skips its refresh-first shortcut and starts a real interactive
+   * authorization. A refresh keeps the SAME upstream grant — and the grant's
+   * absolute lifetime keeps counting down — so "Reconnect" on a still-healthy
+   * credential never reset the clock. The stored credential is left intact
+   * until the callback's code exchange overwrites it, so abandoning the
+   * dance half-way costs the user nothing.
+   */
+  forceInteractive = false
+
+  /**
+   * Set on the callback path only, where the one `saveTokens` call is the
+   * authorization-code exchange — a NEW grant at the upstream, which
+   * restarts its absolute lifetime clock (`granted_at`). Every other
+   * `saveTokens` is a refresh of the existing grant and must not.
+   */
+  private isCallback = false
 
   // ----- where the redirect lands ---------------------------------------
 
@@ -179,6 +201,7 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
   // ----- tokens --------------------------------------------------------
 
   async tokens(): Promise<OAuthTokens | undefined> {
+    if (this.forceInteractive) return undefined
     const cred = await getUserCredential(this.env, this.userId, this.upstream.id)
     if (!cred || cred.kind !== 'oauth') return undefined
     return openStoredTokens(
@@ -209,7 +232,8 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
       kind: 'oauth',
       ciphertext: sealed.ciphertext,
       iv: sealed.iv,
-      keyVersion: sealed.keyVersion
+      keyVersion: sealed.keyVersion,
+      newGrant: this.isCallback
     })
     // A fresh token landed — clear any pending re-auth flag (covers refresh
     // success, static refresh, the initial code exchange, and reconnect).

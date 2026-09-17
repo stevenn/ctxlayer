@@ -7,6 +7,7 @@
 
 import {
   isSameOrigin,
+  isStaticOAuthConfig,
   type UpdateUpstreamRequest,
   type UpstreamAuthConfig
 } from '@ctxlayer/shared'
@@ -60,6 +61,44 @@ export async function prepareOAuthSecret(
   }
   oauth.clientSecret = undefined // never persist plaintext (dropped by JSON.stringify)
   return { ...cfg, oauth }
+}
+
+/**
+ * Carry a DCR upstream's client registration across an admin edit.
+ *
+ * `oauth.client_info` (+ `client_id` / `client_secret`) is what ctxlayer got
+ * back from the upstream's Dynamic Client Registration, and EVERY user's
+ * stored refresh token is bound to that client_id. It is server-only: the
+ * admin read path redacts it (`redactOAuthSecrets`), so the drawer can only
+ * ever send the config back WITHOUT it — and PATCH replaces the whole
+ * `auth_config` column. Unguarded, saving any field on a connected DCR
+ * upstream (a timeout, the authorization lifetime) silently dropped the
+ * registration; the next `auth()` run re-registered under a NEW client_id and
+ * every user's refresh then failed as "issued to another client" — a mass
+ * forced re-auth from an innocent edit. (Latent until 2026-09-17: every prod
+ * edit so far happened before the first user connected.)
+ *
+ * Dropped on purpose only when the registration stops being valid: `keep` is
+ * false when the strategy leaves `user_oauth` or the URL changes (a different
+ * server/AS), and a switch to a pre-registered static client wins outright.
+ */
+export function preserveDcrClient(
+  cfg: UpdateUpstreamRequest['authConfig'],
+  current: UpstreamAuthConfig | undefined,
+  keep: boolean
+): UpdateUpstreamRequest['authConfig'] {
+  const dcr = current?.oauth
+  if (!cfg || !keep || !dcr?.client_info) return cfg
+  if (isStaticOAuthConfig(cfg)) return cfg
+  return {
+    ...cfg,
+    oauth: {
+      ...(cfg.oauth ?? {}),
+      client_id: dcr.client_id,
+      client_secret: dcr.client_secret,
+      client_info: dcr.client_info
+    }
+  }
 }
 
 /**

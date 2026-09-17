@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Alert, Badge, Button, Card, Group, PasswordInput, Stack, Text, Title } from '@mantine/core'
 import { Link } from 'react-router-dom'
-import type { UserUpstreamSummary } from '@ctxlayer/shared'
+import { GRANT_EXPIRY_WARN_DAYS, type UserUpstreamSummary } from '@ctxlayer/shared'
 import { deleteUpstreamCredentials, fetchUpstreams, putUpstreamCredentials } from '../lib/api'
 import { explain as explainBase } from '../lib/explain'
 import { useBusyAction } from '../lib/use-busy'
@@ -85,6 +85,7 @@ function UpstreamCard({
 
   const isUserBearer = upstream.authStrategy === 'user_bearer'
   const isOauth = upstream.authStrategy === 'user_oauth'
+  const health = upstreamHealth(upstream, Date.now() / 1000)
   const isShared = upstream.authStrategy === 'shared_bearer'
   const isNone = upstream.authStrategy === 'none'
 
@@ -138,13 +139,29 @@ function UpstreamCard({
               </Text>
             )}
           </div>
-          <Badge
-            color={upstream.connected ? 'green' : 'gray'}
-            variant={upstream.connected ? 'filled' : 'light'}
-          >
-            {upstream.connected ? 'connected' : 'disconnected'}
+          <Badge color={health.color} variant={health.kind === 'disconnected' ? 'light' : 'filled'}>
+            {health.label}
           </Badge>
         </Group>
+
+        {health.kind === 'needs_reauth' && (
+          <Alert color="red" variant="light" p="xs">
+            <Text fz="xs">
+              Your authorization for {upstream.displayName} expired or was revoked, so agents can no
+              longer use its tools — every call fails until you re-authorize here. Reconnecting the
+              MCP connector in your AI client does not fix this.
+            </Text>
+          </Alert>
+        )}
+        {health.kind === 'expiring' && (
+          <Alert color="yellow" variant="light" p="xs">
+            <Text fz="xs">
+              This authorization {health.detail}. {upstream.displayName} limits how long one sign-in
+              lasts, and using it does not extend that — renew now to avoid losing its tools
+              mid-task.
+            </Text>
+          </Alert>
+        )}
 
         {isUserBearer && (
           <Stack gap="xs">
@@ -187,19 +204,29 @@ function UpstreamCard({
               )}
               <Button
                 size="xs"
+                color={health.kind === 'needs_reauth' ? 'red' : undefined}
                 onClick={() => {
                   // Full-page nav: the start endpoint 302s into the
                   // upstream's authorize URL. SPA state is rebuilt on
-                  // return.
+                  // return. `renew=1` forces a real sign-in: a plain
+                  // reconnect of a healthy credential only refreshes the
+                  // token, which does NOT restart a provider's fixed
+                  // authorization lifetime.
+                  const renew = health.renewable ? '?renew=1' : ''
                   window.location.assign(
-                    `/api/upstreams/${encodeURIComponent(upstream.id)}/oauth/start`
+                    `/api/upstreams/${encodeURIComponent(upstream.id)}/oauth/start${renew}`
                   )
                 }}
                 disabled={busy}
               >
-                {upstream.connected ? 'Reconnect' : 'Connect with OAuth'}
+                {health.action}
               </Button>
             </Group>
+            {health.kind === 'connected' && health.detail && (
+              <Text fz="xs" c="dimmed" ta="right">
+                Authorization {health.detail}
+              </Text>
+            )}
           </Stack>
         )}
 
@@ -219,6 +246,71 @@ function UpstreamCard({
       </Stack>
     </Card>
   )
+}
+
+export type UpstreamHealthKind = 'disconnected' | 'needs_reauth' | 'expiring' | 'connected'
+
+export interface UpstreamHealth {
+  kind: UpstreamHealthKind
+  label: string
+  color: string
+  /** OAuth button label for this state. */
+  action: string
+  /** True when the button should force a fresh sign-in (`?renew=1`). */
+  renewable: boolean
+  /** "expires in 2 days" / "expires today" / "valid until 12 Oct" — when known. */
+  detail?: string
+}
+
+/**
+ * The one place the card's badge, alert and OAuth button agree on what state
+ * a connection is in. "A credential is on file" used to be the whole story,
+ * so a dead authorization rendered as a green "connected". Pure + exported
+ * for tests. `nowSec` is injected so the countdown is deterministic.
+ */
+export function upstreamHealth(
+  u: Pick<UserUpstreamSummary, 'connected' | 'needsReauth' | 'authExpiresAt'>,
+  nowSec: number
+): UpstreamHealth {
+  if (!u.connected) {
+    return {
+      kind: 'disconnected',
+      label: 'disconnected',
+      color: 'gray',
+      action: 'Connect with OAuth',
+      renewable: false
+    }
+  }
+  if (u.needsReauth) {
+    return {
+      kind: 'needs_reauth',
+      label: 're-authorize needed',
+      color: 'red',
+      action: 'Re-authorize',
+      renewable: false // the dead credential already forces a real sign-in
+    }
+  }
+  if (u.authExpiresAt == null) {
+    return { kind: 'connected', label: 'connected', color: 'green', action: 'Reconnect', renewable: false }
+  }
+  const daysLeft = Math.floor((u.authExpiresAt - nowSec) / 86400)
+  if (daysLeft < GRANT_EXPIRY_WARN_DAYS) {
+    const detail =
+      daysLeft <= 0 ? 'expires today' : daysLeft === 1 ? 'expires in 1 day' : `expires in ${daysLeft} days`
+    return { kind: 'expiring', label: detail, color: 'yellow', action: 'Renew', renewable: true, detail }
+  }
+  const until = new Date(u.authExpiresAt * 1000).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short'
+  })
+  return {
+    kind: 'connected',
+    label: 'connected',
+    color: 'green',
+    action: 'Renew',
+    renewable: true,
+    detail: `valid until ${until}`
+  }
 }
 
 function explain(err: unknown): string {

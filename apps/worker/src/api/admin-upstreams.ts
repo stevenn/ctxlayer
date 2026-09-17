@@ -42,7 +42,12 @@ import {
 } from '../db/queries/upstream-credentials'
 import { refreshCatalogueForConnection, warmCatalogueAndLog } from '../upstream/catalogue'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
-import { clampTimeouts, oauthEndpointSelfLoop, prepareOAuthSecret } from '../upstream/admin-config'
+import {
+  clampTimeouts,
+  oauthEndpointSelfLoop,
+  prepareOAuthSecret,
+  preserveDcrClient
+} from '../upstream/admin-config'
 import { seal } from '../crypto/aead'
 import { audit } from '../audit/log'
 import { listToolAccessForUpstream, replaceToolAccessForTool } from '../db/queries/tool-access'
@@ -140,12 +145,18 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
       400
     )
   }
+  const currentConfig = parseAuthConfig(current.auth_config)
+  // The DCR registration stays valid only for the same server under the
+  // same strategy — see preserveDcrClient.
+  const keepDcrClient =
+    (parsed.data.authStrategy ?? current.auth_strategy) === 'user_oauth' &&
+    (parsed.data.url === undefined || parsed.data.url === current.url)
   await patchUpstream(c.env, id, {
     ...parsed.data,
-    authConfig: await prepareOAuthSecret(
-      clampTimeouts(parsed.data.authConfig),
-      c.env,
-      parseAuthConfig(current.auth_config)
+    authConfig: preserveDcrClient(
+      await prepareOAuthSecret(clampTimeouts(parsed.data.authConfig), c.env, currentConfig),
+      currentConfig,
+      keepDcrClient
     )
   })
   await audit(c.env, {

@@ -33,7 +33,9 @@ const CODE_LABEL: Record<UsageErrorCode, string> = {
   // (mcp/github-nudges.ts githubOrgAccessNudge) — grouped as one family below.
   saml_sso_required: 'SAML SSO',
   org_ip_allow_list: 'IP allow list',
-  org_oauth_app_restricted: 'OAuth app'
+  org_oauth_app_restricted: 'OAuth app',
+  // The caller's own upstream authorization is dead/removed (A6 gate).
+  credential_revoked: 'Reauth needed'
 }
 
 const CODE_COLOR: Record<UsageErrorCode, string> = {
@@ -47,7 +49,8 @@ const CODE_COLOR: Record<UsageErrorCode, string> = {
   // One shared hue so the org-access family reads as a group at a glance.
   saml_sso_required: 'violet',
   org_ip_allow_list: 'violet',
-  org_oauth_app_restricted: 'violet'
+  org_oauth_app_restricted: 'violet',
+  credential_revoked: 'pink'
 }
 
 function codeLabel(code: string): string {

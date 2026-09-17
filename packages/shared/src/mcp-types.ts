@@ -24,17 +24,34 @@ export const McpUpstreamEntry = z.object({
   slug: z.string(),
   displayName: z.string(),
   transport: SupportedTransport,
+  // The one field to branch on. `ready` = callable now; `needs_reauth` = the
+  // user's authorization died (its refresh was permanently rejected);
+  // `not_connected` = the user never authorized this upstream. Only `ready`
+  // upstreams can be called.
+  status: z.enum(['ready', 'needs_reauth', 'not_connected']),
+  // True ONLY when status is `ready` — never alongside needsReauth (a dead
+  // credential row on file is not a connection).
   connected: z.boolean(),
-  // Set when a stored user_oauth credential exists but its automatic refresh
-  // failed — the upstream is connected-on-paper but its tools won't load until
-  // the user reconnects at /upstreams. Absent/false means healthy.
+  // Kept for clients that keyed on it before `status` existed.
   needsReauth: z.boolean().optional(),
-  // Agent-facing explanation accompanying needsReauth. `toolsCount` is 0 on
-  // such entries (the session registered none of its tools), and this note
-  // says why + how to recover — so an agent can't plan work against a tool
-  // count the session cannot execute (2026-08-27 Datadog field finding).
+  // Agent-facing explanation on every non-ready entry (why + how to recover)
+  // and on a ready entry whose authorization is about to hit the provider's
+  // absolute lifetime.
   note: z.string().optional(),
+  // Tools CALLABLE right now: 0 unless status is `ready`, so an agent can't
+  // plan work against a count it cannot execute (2026-08-27 Datadog field
+  // finding). The catalogue size behind a non-ready upstream is
+  // `availableTools`.
   toolsCount: z.number(),
+  // Present on non-ready entries: how many tools the upstream offers once
+  // the user (re)authorizes it.
+  availableTools: z.number().optional(),
+  // Present when the upstream has a configured absolute grant lifetime:
+  // ISO timestamp the provider is expected to drop this authorization at,
+  // and whole days left. Refreshing does not extend it — only renewing the
+  // authorization at /app/upstreams does.
+  authExpiresAt: z.string().optional(),
+  authExpiresInDays: z.number().optional(),
   requiresAuth: AuthStrategy.optional(),
   // Whole-upstream attachments (curated playbooks / reference docs). Always
   // present (default empty) so clients can rely on the field.

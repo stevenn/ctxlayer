@@ -66,6 +66,13 @@ export interface UpsertCredentialInput {
   ciphertext: Uint8Array
   iv: Uint8Array
   keyVersion: number
+  /**
+   * True when these tokens come from an interactive authorization (OAuth
+   * code exchange) rather than a refresh — restamps `granted_at`, the clock
+   * the upstream's absolute grant lifetime runs from (migration 0036). A
+   * first insert always stamps it; a refresh must leave it alone.
+   */
+  newGrant?: boolean
 }
 
 export async function upsertUserCredential(
@@ -77,16 +84,26 @@ export async function upsertUserCredential(
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
     `INSERT INTO user_credentials
-       (user_id, upstream_id, kind, ciphertext, iv, key_version, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+       (user_id, upstream_id, kind, ciphertext, iv, key_version, created_at, updated_at, granted_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7)
      ON CONFLICT (user_id, upstream_id) DO UPDATE SET
        kind = excluded.kind,
        ciphertext = excluded.ciphertext,
        iv = excluded.iv,
        key_version = excluded.key_version,
-       updated_at = excluded.updated_at`
+       updated_at = excluded.updated_at,
+       granted_at = CASE WHEN ?8 = 1 THEN excluded.updated_at ELSE user_credentials.granted_at END`
   )
-    .bind(userId, upstreamId, input.kind, input.ciphertext, input.iv, input.keyVersion, now)
+    .bind(
+      userId,
+      upstreamId,
+      input.kind,
+      input.ciphertext,
+      input.iv,
+      input.keyVersion,
+      now,
+      input.newGrant ? 1 : 0
+    )
     .run()
 }
 
@@ -98,21 +115,6 @@ export async function deleteUserCredential(
   await env.DB.prepare(`DELETE FROM user_credentials WHERE user_id = ?1 AND upstream_id = ?2`)
     .bind(userId, upstreamId)
     .run()
-}
-
-/**
- * Bulk lookup: which of these upstream_ids does the given user have
- * stored credentials for? Powers the SPA upstreams page (one round-trip)
- * and the MCP tool-proxy registry init.
- */
-export async function listUserCredentialedUpstreamIds(
-  env: Env,
-  userId: string
-): Promise<Set<string>> {
-  const res = await env.DB.prepare(`SELECT upstream_id FROM user_credentials WHERE user_id = ?1`)
-    .bind(userId)
-    .all<{ upstream_id: string }>()
-  return new Set((res.results ?? []).map((r) => r.upstream_id))
 }
 
 // ----- refresh lease + reauth flag ----------------------------------------
@@ -147,43 +149,79 @@ export async function acquireRefreshLease(
 }
 
 /**
- * Batch variant of `getUserCredentialStatus`: presence + re-auth health
- * for many upstreams in one read. Upstreams without a credential row are
- * absent from the map — callers default to `{ present: false,
- * needsReauth: false }`.
+ * Presence + health of one (user, upstream) credential.
+ *  - `updatedAt` moves on every token save, so it doubles as a cheap
+ *    "has the stored credential changed?" stamp (a live MCP session compares
+ *    it to the value it bound its upstream client under).
+ *  - `grantedAt` is when the current grant was authorized — the clock an
+ *    upstream's absolute grant lifetime runs from (migration 0036).
+ * Both are null when no credential row exists.
+ */
+export interface CredentialStatus {
+  present: boolean
+  needsReauth: boolean
+  updatedAt: number | null
+  grantedAt: number | null
+}
+
+export const NO_CREDENTIAL: CredentialStatus = {
+  present: false,
+  needsReauth: false,
+  updatedAt: null,
+  grantedAt: null
+}
+
+interface CredentialStatusRow {
+  reauth_required_at: number | null
+  updated_at: number
+  granted_at: number | null
+}
+
+function toCredentialStatus(row: CredentialStatusRow): CredentialStatus {
+  return {
+    present: true,
+    needsReauth: row.reauth_required_at != null,
+    updatedAt: row.updated_at,
+    grantedAt: row.granted_at
+  }
+}
+
+/**
+ * Batch variant of `getUserCredentialStatus`: presence + health for many
+ * upstreams in one read. Upstreams without a credential row are absent
+ * from the map — callers default to `NO_CREDENTIAL`.
  */
 export async function getUserCredentialStatuses(
   env: Env,
   userId: string,
   upstreamIds: string[]
-): Promise<Map<string, { present: boolean; needsReauth: boolean }>> {
-  const out = new Map<string, { present: boolean; needsReauth: boolean }>()
+): Promise<Map<string, CredentialStatus>> {
+  const out = new Map<string, CredentialStatus>()
   if (upstreamIds.length === 0) return out
   const placeholders = upstreamIds.map((_, i) => `?${i + 2}`).join(', ')
   const res = await env.DB.prepare(
-    `SELECT upstream_id, reauth_required_at FROM user_credentials
+    `SELECT upstream_id, reauth_required_at, updated_at, granted_at FROM user_credentials
      WHERE user_id = ?1 AND upstream_id IN (${placeholders})`
   )
     .bind(userId, ...upstreamIds)
-    .all<{ upstream_id: string; reauth_required_at: number | null }>()
-  for (const row of res.results ?? []) {
-    out.set(row.upstream_id, { present: true, needsReauth: row.reauth_required_at != null })
-  }
+    .all<CredentialStatusRow & { upstream_id: string }>()
+  for (const row of res.results ?? []) out.set(row.upstream_id, toCredentialStatus(row))
   return out
 }
 
-/** Presence + re-auth health of a (user, upstream) credential, in one read. */
+/** Presence + health of a (user, upstream) credential, in one read. */
 export async function getUserCredentialStatus(
   env: Env,
   userId: string,
   upstreamId: string
-): Promise<{ present: boolean; needsReauth: boolean }> {
+): Promise<CredentialStatus> {
   const row = await env.DB.prepare(
-    `SELECT reauth_required_at FROM user_credentials WHERE user_id = ?1 AND upstream_id = ?2`
+    `SELECT reauth_required_at, updated_at, granted_at FROM user_credentials
+     WHERE user_id = ?1 AND upstream_id = ?2`
   )
     .bind(userId, upstreamId)
-    .first<{ reauth_required_at: number | null }>()
-  return { present: row !== null, needsReauth: row?.reauth_required_at != null }
+    .first<CredentialStatusRow>()
+  return row ? toCredentialStatus(row) : NO_CREDENTIAL
 }
 
 /**

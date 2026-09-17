@@ -93,9 +93,13 @@ upstreamOauthStartRoute.get('/:id/oauth/start', async (c) => {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'user_oauth' }, 400)
   }
   const returnTo = parseReturnTo(c.req.query('return_to'))
+  // `?renew=1`: force a fresh interactive authorization even though a working
+  // credential is on file — the only way to restart a provider's absolute
+  // grant lifetime before it runs out (see UpstreamOAuthProvider.forceInteractive).
+  const renew = c.req.query('renew') === '1'
 
   try {
-    return await runStart(c, upstream, userId, returnTo)
+    return await runStart(c, upstream, userId, returnTo, true, renew)
   } catch (err) {
     // OAuth error during the refresh attempt — most commonly Notion (or
     // any upstream) rotating / revoking / expiring our stored
@@ -143,9 +147,13 @@ async function runStart(
   // When true (the normal entry), an AUTHORIZED token that turns out to be
   // dead at the upstream's MCP layer triggers a wipe + a forced interactive
   // re-auth. The recursive call passes false to stop after one heal.
-  selfHeal = true
+  selfHeal = true,
+  // Skip the refresh-first shortcut and go straight to the provider's
+  // authorize page (renewing a still-healthy grant).
+  renew = false
 ) {
   const provider = new UpstreamOAuthProvider(c.env, upstream, userId, undefined, returnTo)
+  provider.forceInteractive = renew
 
   // Resolve a usable access token (`access`) via one of two paths, or 302 to
   // the IdP when an interactive authorization is needed.
@@ -153,8 +161,9 @@ async function runStart(
   const staticCfg = staticOAuth(parseAuthConfig(upstream.auth_config))
   if (staticCfg) {
     // Pre-registered (Entra) client — no SDK discovery/DCR. Try a refresh;
-    // if there's nothing usable, bounce to the authorize endpoint.
-    access = await refreshStatic(c.env, provider, staticCfg)
+    // if there's nothing usable (or this is a renew), bounce to the
+    // authorize endpoint.
+    access = renew ? null : await refreshStatic(c.env, provider, staticCfg)
     if (!access) {
       return c.redirect(await buildAuthorizeRedirect(provider, staticCfg), 302)
     }

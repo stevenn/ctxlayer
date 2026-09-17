@@ -11,6 +11,7 @@ import type { Env } from '../env'
 import {
   getUpstreamVisibleToUser,
   listUpstreamsVisibleToUser,
+  parseAuthConfig,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
 import {
@@ -19,7 +20,7 @@ import {
   listCachedToolsForUpstreams,
   type UpstreamToolRow
 } from '../db/queries/upstream-tools'
-import { getUserCredentialStatuses } from '../db/queries/upstream-credentials'
+import { getUserCredentialStatuses, NO_CREDENTIAL } from '../db/queries/upstream-credentials'
 import {
   listSkillsForUpstream,
   listSkillsForUpstreams,
@@ -39,6 +40,7 @@ import {
 } from '../db/queries/tool-access'
 import { isDialableTransport } from '../upstream/upstream-client'
 import {
+  grantExpiry,
   isToolAllowed,
   requiresFromRules,
   type McpAttachedDocRef,
@@ -52,6 +54,7 @@ import {
 } from '@ctxlayer/shared'
 import { mangleToolName, toolFamily } from './tool-name'
 import { firstParty, sanitizeUntrustedText } from './provenance'
+import { spaUrl, UPSTREAMS_PAGE } from '../util/spa-url'
 
 // The `list_upstreams` entry shape is the shared MCP output contract; the
 // builder below is typed against it so it can't drift from the schema.
@@ -261,45 +264,93 @@ export async function listUpstreamsForUser(env: Env, userId: string): Promise<Li
       toolCounts.set(id, visibleTools(id, cached, acl, principals).length)
     }
   }
+  const upstreamsUrl = spaUrl(env, UPSTREAMS_PAGE)
+  const nowSec = Math.floor(Date.now() / 1000)
   return rows.map((row) => {
     const requiresCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
     const cred = requiresCred
-      ? (credStatuses.get(row.id) ?? { present: false, needsReauth: false })
+      ? (credStatuses.get(row.id) ?? NO_CREDENTIAL)
       : { present: true, needsReauth: false }
     return upstreamEntry(
       row,
       cred,
       toolCounts.get(row.id) ?? 0,
       skillsByUpstream.get(row.id) ?? [],
-      docsByUpstream.get(row.id) ?? []
+      docsByUpstream.get(row.id) ?? [],
+      { nowSec, upstreamsUrl }
     )
   })
 }
 
 /**
- * Agent-facing recovery note on needsReauth entries — paired with the
- * zeroed toolsCount below so the two signals can't be read apart.
+ * Agent-facing notes on `list_upstreams` entries. First-party text (no
+ * upstream input). Each says what the state means for THIS session and what
+ * the user — not the agent — has to do, because the recovery is a browser
+ * step the agent can only relay.
  */
-export const NEEDS_REAUTH_NOTE =
-  'credential refresh failed — this session registered none of its tools; ' +
-  'reconnect the upstream at /app/upstreams, then call reload_upstreams'
+export function needsReauthNote(upstreamsUrl: string): string {
+  return (
+    `authorization expired or was revoked — its tools stay listed but every call fails ` +
+    `with credential_revoked until the user re-authorizes it at ${upstreamsUrl}. ` +
+    `After that, just retry the call; reconnecting this MCP connector does not help.`
+  )
+}
+
+export function notConnectedNote(upstreamsUrl: string): string {
+  return (
+    `not authorized by this user yet — they connect it at ${upstreamsUrl}, ` +
+    `then call reload_upstreams to load its tools into this session.`
+  )
+}
+
+export function expiringSoonNote(daysLeft: number, upstreamsUrl: string): string {
+  const when =
+    daysLeft <= 0 ? 'within a day' : daysLeft === 1 ? 'in about 1 day' : `in about ${daysLeft} days`
+  return (
+    `authorization expires ${when} — a fixed limit set by this provider that token ` +
+    `refreshes do not extend. The user can renew it now at ${upstreamsUrl} to avoid ` +
+    `losing these tools mid-task.`
+  )
+}
 
 /**
- * One `list_upstreams` entry. Pure (exported for tests). On needsReauth
- * the reported toolsCount is 0 with an explanatory `note`: the session
- * registers NONE of the upstream's tools (credential-freshness gate), and
- * reporting the cached catalogue count made an agent plan work it could
- * not execute — "connected, 25 tools, needsReauth:true" reads as usable
- * (2026-08-27 Datadog field finding). Same surfaces-never-disagree rule
- * as the ACL-aligned counts above.
+ * One `list_upstreams` entry. Pure (exported for tests).
+ *
+ * `status` is the single field to branch on, and the other fields can never
+ * contradict it: `connected` is true only when `ready` (it used to mirror
+ * "a credential row exists", so a dead credential read `connected: true,
+ * needsReauth: true`), and `toolsCount` is the number CALLABLE now — 0
+ * unless `ready` — with the catalogue size moved to `availableTools`.
+ * Reporting the catalogue count on an unusable upstream made agents plan
+ * work they could not execute (2026-08-27 Datadog field finding); the same
+ * rule now covers never-connected upstreams (2026-09-17: `connected: false,
+ * toolsCount: 18`). Same surfaces-never-disagree rule as the ACL-aligned
+ * counts above.
  */
 export function upstreamEntry(
   row: UpstreamServerRow,
-  cred: { present: boolean; needsReauth: boolean },
+  cred: { present: boolean; needsReauth: boolean; grantedAt?: number | null },
   toolsCount: number,
   skills: SkillForUpstreamRow[],
-  docs: DocForUpstreamRow[]
+  docs: DocForUpstreamRow[],
+  opts: { nowSec?: number; upstreamsUrl?: string } = {}
 ): ListUpstreamsEntry {
+  const nowSec = opts.nowSec ?? Math.floor(Date.now() / 1000)
+  const upstreamsUrl = opts.upstreamsUrl ?? UPSTREAMS_PAGE
+  const status = !cred.present ? 'not_connected' : cred.needsReauth ? 'needs_reauth' : 'ready'
+  // Only a live user_oauth grant has a clock worth reporting.
+  const expiry =
+    status === 'ready' && row.auth_strategy === 'user_oauth'
+      ? grantExpiry(cred.grantedAt, parseAuthConfig(row.auth_config).grantLifetimeDays, nowSec)
+      : null
+  const note =
+    status === 'needs_reauth'
+      ? needsReauthNote(upstreamsUrl)
+      : status === 'not_connected'
+        ? notConnectedNote(upstreamsUrl)
+        : expiry?.expiringSoon
+          ? expiringSoonNote(expiry.daysLeft, upstreamsUrl)
+          : undefined
   // Whole-upstream attachments only (tool_name = ''); per-tool
   // attachments surface via /api/upstreams/:id/tools.
   const attached_skills = skills
@@ -312,9 +363,18 @@ export function upstreamEntry(
     slug: row.slug,
     displayName: row.display_name,
     transport: row.transport as SupportedTransport,
-    connected: cred.present,
-    ...(cred.needsReauth ? { needsReauth: true, note: NEEDS_REAUTH_NOTE } : {}),
-    toolsCount: cred.needsReauth ? 0 : toolsCount,
+    status,
+    connected: status === 'ready',
+    ...(status === 'needs_reauth' ? { needsReauth: true } : {}),
+    ...(note ? { note } : {}),
+    toolsCount: status === 'ready' ? toolsCount : 0,
+    ...(status === 'ready' ? {} : { availableTools: toolsCount }),
+    ...(expiry
+      ? {
+          authExpiresAt: new Date(expiry.expiresAt * 1000).toISOString(),
+          authExpiresInDays: expiry.daysLeft
+        }
+      : {}),
     requiresAuth: row.auth_strategy,
     attached_skills,
     attached_docs
