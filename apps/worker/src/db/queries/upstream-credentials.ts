@@ -358,35 +358,83 @@ export async function deleteSharedCredential(env: Env, upstreamId: string): Prom
     .run()
 }
 
-/**
- * user_oauth credentials due for the nightly keep-warm refresh
- * (upstream/keep-warm.ts): oauth-kind, not flagged for reauth, on an
- * enabled upstream, and untouched for at least `idleSeconds` —
- * `updated_at` moves on every token save, so normal session traffic
- * naturally exempts active credentials. Oldest first, capped at `limit`
- * per run to bound refresh-token rotation spend.
- */
-export async function listKeepWarmDueCredentials(
-  env: Env,
-  nowSec: number,
-  idleSeconds: number,
-  limit: number
-): Promise<Array<{ userId: string; upstream: UpstreamServerRow }>> {
-  const res = await env.DB.prepare(
-    `SELECT uc.user_id AS cred_user_id, us.*
+// ----- nightly keep-warm selection (upstream/keep-warm.ts) -----------------
+
+// Shared by the batch select and the backlog count so they can't disagree.
+// ?1 = now, ?2 = idle seconds.
+const KEEP_WARM_DUE = `
      FROM user_credentials uc
      JOIN upstream_servers us ON us.id = uc.upstream_id
      WHERE uc.kind = 'oauth'
        AND uc.reauth_required_at IS NULL
        AND us.enabled = 1
        AND uc.updated_at <= ?1 - ?2
-     ORDER BY uc.updated_at ASC
+       AND COALESCE(uc.keep_warm_after, 0) <= ?1`
+
+export interface KeepWarmDue {
+  userId: string
+  upstream: UpstreamServerRow
+  /** The credential's `updated_at` at selection — compare after the attempt to tell a real refresh (tokens re-saved) from a no-op. */
+  credUpdatedAt: number
+}
+
+/**
+ * user_oauth credentials due for the nightly keep-warm: oauth-kind, not
+ * flagged for reauth, on an enabled upstream, untouched for at least
+ * `idleSeconds` (`updated_at` moves on every token save, so normal session
+ * traffic exempts active credentials), AND not attempted recently
+ * (`keep_warm_after`, migration 0037).
+ *
+ * Ordered least-recently-attempted first (never-attempted = 0), then
+ * oldest: every attempt stamps `keep_warm_after`, so an attempted
+ * credential moves to the BACK of the queue. Ordering by `updated_at`
+ * alone let credentials that can never re-save (no refresh token, or an
+ * access token that is still valid) hold the front of the batch every
+ * night. Capped at `limit` per run to bound refresh-token rotation spend.
+ */
+export async function listKeepWarmDueCredentials(
+  env: Env,
+  nowSec: number,
+  idleSeconds: number,
+  limit: number
+): Promise<KeepWarmDue[]> {
+  const res = await env.DB.prepare(
+    `SELECT uc.user_id AS cred_user_id, uc.updated_at AS cred_updated_at, us.*
+     ${KEEP_WARM_DUE}
+     ORDER BY COALESCE(uc.keep_warm_after, 0) ASC, uc.updated_at ASC
      LIMIT ?3`
   )
     .bind(nowSec, idleSeconds, limit)
-    .all<UpstreamServerRow & { cred_user_id: string }>()
-  return (res.results ?? []).map(({ cred_user_id, ...upstream }) => ({
+    .all<UpstreamServerRow & { cred_user_id: string; cred_updated_at: number }>()
+  return (res.results ?? []).map(({ cred_user_id, cred_updated_at, ...upstream }) => ({
     userId: cred_user_id,
+    credUpdatedAt: cred_updated_at,
     upstream: upstream as UpstreamServerRow
   }))
+}
+
+/** How many credentials are due in total — the run reports what it could not reach. */
+export async function countKeepWarmDueCredentials(
+  env: Env,
+  nowSec: number,
+  idleSeconds: number
+): Promise<number> {
+  const row = await env.DB.prepare(`SELECT COUNT(*) AS n ${KEEP_WARM_DUE}`)
+    .bind(nowSec, idleSeconds)
+    .first<{ n: number }>()
+  return row?.n ?? 0
+}
+
+/** Stamp the earliest time keep-warm may look at this credential again. */
+export async function setKeepWarmAfter(
+  env: Env,
+  userId: string,
+  upstreamId: string,
+  notBefore: number
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE user_credentials SET keep_warm_after = ?3 WHERE user_id = ?1 AND upstream_id = ?2`
+  )
+    .bind(userId, upstreamId, notBefore)
+    .run()
 }

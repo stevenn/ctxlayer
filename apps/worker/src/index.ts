@@ -214,8 +214,14 @@ const worker: ExportedHandler<Env> = {
             const nowSec = Math.floor(controller.scheduledTime / 1000)
             const r = await keepWarmUserCredentials(env, nowSec)
             if (r.due > 0) {
-              console.log(`[cron] keep-warm: ${r.warmed}/${r.due} refreshed, ${r.failed} failed`)
+              console.log(
+                `[cron] keep-warm: ${r.due} attempted — ${r.refreshed} refreshed, ` +
+                  `${r.flagged} flagged for reauth, ${r.idle} nothing to do, ${r.failed} failed` +
+                  (r.backlog > 0 ? `; ${r.backlog} due but not reached` : '')
+              )
             }
+            // Only a transient failure makes the run partial. A flagged
+            // credential is a death DETECTED — the job doing its job.
             return { status: r.failed > 0 ? ('partial' as const) : ('ok' as const), summary: r }
           })
         } catch (err) {

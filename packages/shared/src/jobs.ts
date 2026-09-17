@@ -3,10 +3,11 @@ import { UsageRange } from './usage'
 
 // ----- Admin · Jobs: recurring-batch-job run ledger ------------------------
 // One row per execution of a cron task or git-sync run (worker table
-// `job_runs`). `summary` is task-specific counts (e.g. {warmed: 3, due: 5}
+// `job_runs`). `summary` is task-specific counts (e.g. {due: 5, refreshed: 3, …}
 // for keep-warm, {created, updated, …} for git-sync); `error` is the
 // scrubbed failure detail. 'partial' = ran but some units failed
-// (git-sync conflicts, keep-warm failures).
+// (git-sync conflicts, keep-warm TRANSIENT failures — a credential keep-warm
+// flags for reauth is a detected death, not a failure, and stays 'ok').
 export const JobRunStatus = z.enum(['ok', 'partial', 'error'])
 export type JobRunStatus = z.infer<typeof JobRunStatus>
 
