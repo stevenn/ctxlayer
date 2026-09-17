@@ -1,0 +1,3 @@
+commit all three as separate commits
+then push and create PRs
+then deploy
