@@ -1,0 +1,7 @@
+<task-notification>
+<task-id>b7kb71fey</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/d353c8d7-55ec-4d4a-9106-9e9e1efc02e9/tasks/b7kb71fey.output</output-file>
+<status>completed</status>
+<summary>Background command "Watch repo-yuki for the 06:00Z scheduled sync result" completed (exit code 0)</summary>
+</task-notification>
