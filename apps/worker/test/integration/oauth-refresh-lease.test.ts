@@ -77,7 +77,9 @@ describe('re-auth flag', () => {
 
   it('starts healthy', async () => {
     const st = await getUserCredentialStatus(testEnv, 'u-1', 'ups-1')
-    expect(st).toEqual({ present: true, needsReauth: false })
+    expect(st).toMatchObject({ present: true, needsReauth: false })
+    // The stamps ride the same read (migration 0036).
+    expect(st.updatedAt).toEqual(expect.any(Number))
   })
 
   it('marks once (clear→set transition) and is then idempotent', async () => {
@@ -99,7 +101,9 @@ describe('re-auth flag', () => {
   it('reports present:false when there is no credential row', async () => {
     expect(await getUserCredentialStatus(testEnv, 'u-1', 'ups-missing')).toEqual({
       present: false,
-      needsReauth: false
+      needsReauth: false,
+      updatedAt: null,
+      grantedAt: null
     })
   })
 })

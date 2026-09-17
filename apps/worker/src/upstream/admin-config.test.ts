@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest'
 import type { Env } from '../env'
 import { open, sealedFromString } from '../crypto/aead'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from './http-client'
-import { clampTimeouts, oauthEndpointSelfLoop, prepareOAuthSecret } from './admin-config'
+import {
+  clampTimeouts,
+  oauthEndpointSelfLoop,
+  prepareOAuthSecret,
+  preserveDcrClient
+} from './admin-config'
 
 // 32 random bytes, base64-encoded. Fixed value so the test is deterministic.
 const KEY = 'JxQK0aw3pPRtKwhsoa3J9wQVcYAvkjbqcCpPjC4Sh7M='
@@ -85,5 +90,51 @@ describe('oauthEndpointSelfLoop', () => {
         env
       )
     ).toBe(false)
+  })
+})
+
+describe('preserveDcrClient', () => {
+  // What D1 holds for a connected DCR upstream…
+  const clientInfo = { client_id: 'dcr-123', redirect_uris: ['https://ctx.test/cb'] }
+  const current = {
+    timeouts: { callMs: 1000 },
+    oauth: { client_id: 'dcr-123', client_secret: 'dcr-secret', client_info: clientInfo }
+  }
+  // …and what the drawer can send back: the read path redacted client_info +
+  // client_secret, so an edit never carries them.
+  const fromForm = { timeouts: { callMs: 2000 }, grantLifetimeDays: 25, oauth: { client_id: 'dcr-123' } }
+
+  it('re-attaches the registration an ordinary edit cannot round-trip', () => {
+    // Without this, saving ANY field re-registered ctxlayer under a new
+    // client_id and every user's refresh token died as "issued to another client".
+    const out = preserveDcrClient(fromForm, current, true)
+    expect(out?.oauth).toEqual(current.oauth)
+    expect(out?.grantLifetimeDays).toBe(25) // the edit itself still lands
+    expect(out?.timeouts).toEqual({ callMs: 2000 })
+  })
+
+  it('also when the form dropped the oauth block entirely', () => {
+    const out = preserveDcrClient({ grantLifetimeDays: 14 }, current, true)
+    expect(out?.oauth).toEqual(current.oauth)
+  })
+
+  it('drops it when the registration stops being valid (URL / strategy change)', () => {
+    expect(preserveDcrClient(fromForm, current, false)).toBe(fromForm)
+  })
+
+  it('a switch to a pre-registered static client wins', () => {
+    const toStatic = {
+      oauth: {
+        clientId: 'app-1',
+        authorizeUrl: 'https://idp.example/authorize',
+        tokenUrl: 'https://idp.example/token'
+      }
+    }
+    expect(preserveDcrClient(toStatic, current, true)).toBe(toStatic)
+  })
+
+  it('is a no-op with nothing to preserve or no config in the patch', () => {
+    expect(preserveDcrClient(fromForm, { timeouts: { callMs: 1 } }, true)).toBe(fromForm)
+    expect(preserveDcrClient(undefined, current, true)).toBeUndefined()
   })
 })

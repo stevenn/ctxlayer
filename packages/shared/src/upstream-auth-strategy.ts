@@ -80,9 +80,46 @@ export const UpstreamAuthConfig = z.object({
   // client request caps (Claude Desktop ~180s); listing it here makes the
   // proxy enqueue a job + return a token, and the ctxlayer-jobs consumer runs
   // the real call. See docs/plan/I-upstream-resilience.md §I9.
-  asyncTools: z.array(z.string()).optional()
+  asyncTools: z.array(z.string()).optional(),
+  // user_oauth only. How many days this provider lets one authorization
+  // live, counted from the moment the user authorized — an ABSOLUTE cap that
+  // token refreshes do not extend (observed 2026-09: Datadog 14, Linear ~25,
+  // Sentry 30; both of the latter run workers-oauth-provider, whose
+  // refresh-token TTL is stamped once at the code exchange). Drives the
+  // "expires in N days" warning on list_upstreams + /app/upstreams so users
+  // renew before the cliff. Leave unset for providers without a hard cap.
+  grantLifetimeDays: z.number().int().min(1).max(365).optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>
+
+/** Warn this many days before an upstream authorization's absolute expiry. */
+export const GRANT_EXPIRY_WARN_DAYS = 3
+
+export interface GrantExpiry {
+  /** Unix seconds at which the provider is expected to drop the grant. */
+  expiresAt: number
+  /** Whole days left, floored; 0 on the last day, negative once past. */
+  daysLeft: number
+  /** Within GRANT_EXPIRY_WARN_DAYS of expiry (or already past it). */
+  expiringSoon: boolean
+}
+
+/**
+ * Predicted absolute expiry of one user's upstream authorization, or null
+ * when it can't be known (no configured lifetime, or no grant stamp). Pure —
+ * shared so the agent-facing `list_upstreams` and the SPA Upstreams page
+ * compute the same answer from the same two inputs.
+ */
+export function grantExpiry(
+  grantedAt: number | null | undefined,
+  grantLifetimeDays: number | null | undefined,
+  nowSec: number
+): GrantExpiry | null {
+  if (!grantedAt || !grantLifetimeDays) return null
+  const expiresAt = grantedAt + grantLifetimeDays * 86400
+  const daysLeft = Math.floor((expiresAt - nowSec) / 86400)
+  return { expiresAt, daysLeft, expiringSoon: daysLeft < GRANT_EXPIRY_WARN_DAYS }
+}
 
 /**
  * A `user_oauth` upstream runs in "pre-registered / static" mode — skip RFC

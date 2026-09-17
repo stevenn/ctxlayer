@@ -49,7 +49,7 @@ export const BUILTIN_TOOLS: BuiltinTool[] = [
     name: 'reload_upstreams',
     title: 'Reload upstreams',
     description:
-      'Re-scans your upstream MCP servers and registers the tools of any upstream connected AFTER this session started (ctxlayer binds upstream tools at session init, so a mid-session connect is otherwise invisible). Emits tools/list_changed so a client that honors it surfaces the new tools without reconnecting. Call this after connecting a new upstream in /app/upstreams if its tools list but are not yet callable.'
+      'Re-scans your upstream MCP servers: registers the tools of any upstream connected AFTER this session started, re-binds upstreams the user has just re-authorized, and reports which upstreams still lack a usable credential. Always emits tools/list_changed so a client that honors it re-reads the tool list without reconnecting. Call this after the user connects a NEW upstream in /app/upstreams. (After re-authorizing an EXISTING upstream a plain retry of the failed call is enough.)'
   },
   {
     name: 'get_doc',

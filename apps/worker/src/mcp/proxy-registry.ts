@@ -11,6 +11,16 @@
  *   - Tool handlers dispatch through the cached `UpstreamClient` via
  *     `upstream-call-runner.ts`, or through `async-submit.ts` for
  *     tools on the upstream's `authConfig.asyncTools`.
+ *   - An upstream whose per-user credential is on file but unusable (dead
+ *     = reauth-required, or a refresh that failed just now) is LISTED
+ *     anyway, from the cached catalogue, with no client bound. Its calls
+ *     fail loudly with first-party recovery text instead of the tools
+ *     silently vanishing — an agent with no tools improvises, an agent
+ *     with a failing tool reports why (2026-09-17 field finding). The
+ *     handler binds a client on demand (`ensureBound`), so once the user
+ *     re-authorizes in the browser the very next call works: the tool
+ *     list never changed, so no `tools/list_changed` round-trip and no
+ *     client reconnect is involved.
  *   - There is no teardown: sessions are short-lived and the workerd
  *     isolate frees Client state on its own when the DO dies.
  *
@@ -43,6 +53,11 @@ import { createUpstreamClient } from '../upstream/create-client'
 import type { UpstreamClient } from '../upstream/upstream-client'
 import { isToolAllowed } from '@ctxlayer/shared'
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
+import {
+  getUserCredentialStatus,
+  getUserCredentialStatuses,
+  type CredentialStatus
+} from '../db/queries/upstream-credentials'
 import { mangleToolName, unmangleToolName } from './tool-name'
 import { firstParty, sanitizeUntrustedText } from './provenance'
 import { jsonSchemaToZod } from './json-schema-to-zod'
@@ -64,14 +79,47 @@ import {
 } from './upstream-call-runner'
 import { inMemoryHintLedger, type HintLedger } from './hint-ledger'
 import { isAsyncTool, submitAsyncJob } from './async-submit'
-import { credentialFreshnessError } from './credential-freshness'
+import { checkCredentialFreshness } from './credential-freshness'
+import { spaUrl, UPSTREAMS_PAGE } from '../util/spa-url'
 
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
 
+/** Strategies whose bearer is a per-user credential row (can die / change). */
+function isUserScoped(conn: { authStrategy: string }): boolean {
+  return conn.authStrategy === 'user_bearer' || conn.authStrategy === 'user_oauth'
+}
+
+export interface RefreshSummary {
+  /** Upstreams that grew this session's tool list, with how many tools. */
+  added: { slug: string; tools: number }[]
+  /** Listed-but-unbound upstreams that got a working client in this call. */
+  recovered: string[]
+  /** Upstreams still listed without a usable credential (calls will fail). */
+  unbound: string[]
+  /** Upstreams with a live client. */
+  loaded: number
+}
+
 export class UpstreamProxyRegistry {
   /** upstream_id → live MCP Client */
   private clients = new Map<string, UpstreamClient>()
+  /** upstream_id → its row, kept so `bind` can re-resolve the bearer later. */
+  private rows = new Map<string, UpstreamServerRow>()
+  /**
+   * upstream_id → the credential `updated_at` its client was bound under
+   * (user-scoped strategies only). The bearer is baked into the client at
+   * bind time, so when the stored credential changes underneath a live
+   * session — the user renewed/reconnected it, or another session refreshed
+   * it — the handler's per-call status read sees a different stamp and
+   * rebinds, instead of calling on with a superseded (possibly revoked)
+   * token until the session dies.
+   */
+  private boundStamp = new Map<string, number | null>()
+  /** Upstreams whose tools are listed but that have no client bound. */
+  private unbound = new Map<string, string>() // upstream_id → slug
+  /** upstream_id → in-flight (re)bind, so concurrent calls share one. */
+  private binding = new Map<string, Promise<UpstreamClient | null>>()
   /**
    * `accessKey(upstream_id, tool_name)` for every tool this session is
    * allowed to call. Populated at `init()` from the per-tool ACL; also
@@ -139,14 +187,13 @@ export class UpstreamProxyRegistry {
    * a client that honors it surfaces the tools without a reconnect.
    * Returns a summary of what was added on either path.
    */
-  async refresh(
-    server: McpServer
-  ): Promise<{ added: { slug: string; tools: number }[]; loaded: number }> {
+  async refresh(server: McpServer): Promise<RefreshSummary> {
     const { rows, skillsByUpstream, docsByUpstream } = await loadUserContext(this.env, this.userId)
+    // "Fresh" = no live client: never-seen upstreams AND listed-but-unbound
+    // ones (re-prepared here so a re-authorized credential binds now).
     const fresh = rows.filter((r) => !this.clients.has(r.id))
-    const added = (
-      await this.registerUpstreams(server, fresh, skillsByUpstream, docsByUpstream)
-    ).filter((a) => a.tools > 0)
+    const reg = await this.registerUpstreams(server, fresh, skillsByUpstream, docsByUpstream)
+    const added = reg.added.filter((a) => a.tools > 0)
     added.push(
       ...(await this.reconcileConnected(
         server,
@@ -155,18 +202,25 @@ export class UpstreamProxyRegistry {
         docsByUpstream
       ))
     )
-    if (added.length > 0) {
-      // The live session's tool set grew — tell the client to re-read.
-      // Belt-and-suspenders: the SDK also emits on `registerTool` when the
-      // server is connected, but an explicit send is harmless (an
-      // idempotent re-fetch) and covers SDK versions that don't auto-notify.
-      try {
-        server.server.sendToolListChanged()
-      } catch (err) {
-        console.error('[upstream-proxy] sendToolListChanged failed:', err)
-      }
+    // ALWAYS tell the client to re-read, not only when this call registered
+    // something. The session DO hibernates; each wake rebuilds this registry
+    // and re-runs init(), which silently registers whatever connected since —
+    // so by the time the agent calls reload_upstreams the diff against THIS
+    // instance is empty even though the client's tool list is stale
+    // (2026-09-17 field report: an upstream went 0 → 79 tools, reload said
+    // "nothing new", the tools surfaced only later). reload_upstreams is the
+    // explicit "sync me" action; the notification is an idempotent re-fetch.
+    try {
+      server.server.sendToolListChanged()
+    } catch (err) {
+      console.error('[upstream-proxy] sendToolListChanged failed:', err)
     }
-    return { added, loaded: this.clients.size }
+    return {
+      added,
+      recovered: reg.recovered,
+      unbound: [...this.unbound.values()],
+      loaded: this.clients.size
+    }
   }
 
   /**
@@ -243,8 +297,8 @@ export class UpstreamProxyRegistry {
     rows: UpstreamServerRow[],
     skillsByUpstream: Map<string, SkillForUpstreamRow[]>,
     docsByUpstream: Map<string, DocForUpstreamRow[]>
-  ): Promise<{ slug: string; tools: number }[]> {
-    if (rows.length === 0) return []
+  ): Promise<{ added: { slug: string; tools: number }[]; recovered: string[] }> {
+    if (rows.length === 0) return { added: [], recovered: [] }
     // Resolve the caller's principals + the per-tool ACL + the cached
     // catalogues for every visible upstream once, up front. A tool with
     // no ACL rows inherits the upstream's visibility; a locked tool the
@@ -275,11 +329,26 @@ export class UpstreamProxyRegistry {
         })
       )
     )
+    // One batched read of the credential stamps the freshly-bound clients
+    // were resolved under (see `boundStamp`).
+    const stampIds = prepped.flatMap((p) => (p?.client && isUserScoped(p.conn) ? [p.conn.id] : []))
+    const stamps =
+      stampIds.length > 0
+        ? await getUserCredentialStatuses(this.env, this.userId, stampIds)
+        : new Map<string, CredentialStatus>()
     const added: { slug: string; tools: number }[] = []
+    const recovered: string[] = []
     for (const prep of prepped) {
       if (!prep) continue
-      const { conn, client, tools } = prep
-      this.clients.set(conn.id, client)
+      const { conn, row, client, tools } = prep
+      this.rows.set(conn.id, row)
+      if (client) {
+        this.clients.set(conn.id, client)
+        this.boundStamp.set(conn.id, stamps.get(conn.id)?.updatedAt ?? null)
+        if (this.unbound.delete(conn.id)) recovered.push(conn.slug)
+      } else {
+        this.unbound.set(conn.id, conn.slug)
+      }
       const skills = skillsByUpstream.get(conn.id) ?? []
       const docs = docsByUpstream.get(conn.id) ?? []
       this.armFirstResultHint(conn.id, conn.slug, skills, docs)
@@ -294,6 +363,9 @@ export class UpstreamProxyRegistry {
       let count = 0
       for (const t of tools) {
         const key = accessKey(conn.id, t.tool_name)
+        // Already listed: an unbound upstream re-prepared by refresh().
+        // Registering a duplicate name would throw.
+        if (this.allowedToolKeys.has(key)) continue
         if (!isToolAllowed(acl.get(key), principals)) continue // hidden by ACL
         this.allowedToolKeys.add(key)
         this.registerTool(server, conn, t, perTool.get(t.tool_name) ?? [])
@@ -301,7 +373,7 @@ export class UpstreamProxyRegistry {
       }
       added.push({ slug: conn.slug, tools: count })
     }
-    return added
+    return { added, recovered }
   }
 
   // ----- internals ------------------------------------------------------
@@ -361,18 +433,34 @@ export class UpstreamProxyRegistry {
 
   /**
    * Resolve credentials, dial the upstream, and ensure its catalogue is
-   * fresh. Returns null to skip the upstream (bad row, missing creds,
+   * fresh. Returns null to skip the upstream (bad row, never-connected,
    * empty catalogue); throws propagate to the per-upstream catch in
    * `init` so one upstream's failure degrades only that upstream.
+   *
+   * `client: null` = list the tools without a client: the user HAS a
+   * credential for this upstream but it yielded no bearer (flagged
+   * reauth-required, or its refresh failed transiently just now). Skipping
+   * it, as this used to, made the tools silently disappear. A user who
+   * never connected the upstream still gets nothing listed — those tools
+   * were never theirs to call.
    */
   private async prepareUpstream(
     row: UpstreamServerRow,
     cached: UpstreamToolRow[]
-  ): Promise<{ conn: UpstreamConnection; client: UpstreamClient; tools: UpstreamToolRow[] } | null> {
+  ): Promise<{
+    conn: UpstreamConnection
+    row: UpstreamServerRow
+    client: UpstreamClient | null
+    tools: UpstreamToolRow[]
+  } | null> {
     const conn = safeConnection(row)
     if (!conn) return null
     const bearer = await this.resolveBearer(row, conn)
-    if (conn.authStrategy !== 'none' && bearer === null) return null
+    if (conn.authStrategy !== 'none' && bearer === null) {
+      if (!isUserScoped(conn) || cached.length === 0) return null
+      const cred = await getUserCredentialStatus(this.env, this.userId, conn.id)
+      return cred.present ? { conn, row, client: null, tools: cached } : null
+    }
 
     const client = this.makeClient(conn, bearer)
     const tools = await this.ensureCatalogue(conn, client, cached)
@@ -382,7 +470,57 @@ export class UpstreamProxyRegistry {
       await client.close()
       return null
     }
-    return { conn, client, tools }
+    return { conn, row, client, tools }
+  }
+
+  /**
+   * The client to call through, binding or REbinding it when needed:
+   *   - no client yet (a listed-but-unbound upstream) → try to bind now, so a
+   *     credential the user just re-authorized works on the very next call;
+   *   - the stored credential changed since this client was bound (`cred`
+   *     is the handler's per-call status read) → rebind onto the new token.
+   * `cred` is null for shared/none strategies: nothing per-user to go stale.
+   * A failed rebind falls back to the existing client rather than failing a
+   * call that might still succeed. Concurrent calls share one in-flight bind.
+   */
+  private async ensureBound(
+    conn: UpstreamConnection,
+    cred: CredentialStatus | null
+  ): Promise<UpstreamClient | null> {
+    const current = this.clients.get(conn.id)
+    if (current && (cred === null || cred.updatedAt === this.boundStamp.get(conn.id))) {
+      return current
+    }
+    let inflight = this.binding.get(conn.id)
+    if (!inflight) {
+      inflight = this.bind(conn).finally(() => this.binding.delete(conn.id))
+      this.binding.set(conn.id, inflight)
+    }
+    return (await inflight) ?? current ?? null
+  }
+
+  private async bind(conn: UpstreamConnection): Promise<UpstreamClient | null> {
+    const row = this.rows.get(conn.id)
+    if (!row) return null
+    try {
+      const bearer = await this.resolveBearer(row, conn)
+      if (conn.authStrategy !== 'none' && bearer === null) return null
+      // Stamp AFTER resolving: the resolve itself may refresh + save.
+      const stamp = isUserScoped(conn)
+        ? (await getUserCredentialStatus(this.env, this.userId, conn.id)).updatedAt
+        : null
+      const client = this.makeClient(conn, bearer)
+      // A superseded client is dropped, not closed: another in-flight call
+      // may still be on it, and clients connect lazily / hold no socket
+      // (same no-teardown stance as the class doc).
+      this.clients.set(conn.id, client)
+      this.boundStamp.set(conn.id, stamp)
+      this.unbound.delete(conn.id)
+      return client
+    } catch (err) {
+      console.error(`[upstream-proxy] ${conn.slug}: bind failed: ${errMessage(err)}`)
+      return null
+    }
   }
 
   private async ensureCatalogue(
@@ -473,18 +611,6 @@ export class UpstreamProxyRegistry {
         console.warn(`[tool-acl] blocked ${conn.slug}.${upstreamToolName} for user ${this.userId}`)
         return errText('access_denied: tool restricted')
       }
-      const client = this.clients.get(conn.id)
-      if (!client) return errText(`upstream ${conn.slug} not connected`)
-      // A6: user-scoped creds were bound at session init — one point-read
-      // per call so a mid-session disconnect / reauth flag blocks now, not
-      // when the session dies. Also gates async SUBMITs (below).
-      const staleCred = await credentialFreshnessError(this.env, this.userId, conn)
-      if (staleCred) {
-        console.warn(
-          `[cred-freshness] blocked ${conn.slug}.${upstreamToolName} for user ${this.userId}`
-        )
-        return errText(staleCred)
-      }
       const t0 = Date.now()
       const reqJson = safeJson(args)
       let status: 'ok' | 'error' | 'timeout' = 'ok'
@@ -495,6 +621,22 @@ export class UpstreamProxyRegistry {
       let errorCode: string | undefined
       let errorDetail: string | undefined
       try {
+        // A6: user-scoped creds are baked into the client at bind time — one
+        // point-read per call so a mid-session disconnect / reauth flag
+        // blocks now, not when the session dies. Also gates async SUBMITs
+        // (below). Inside the try so the block is RECORDED: these calls used
+        // to return before any usage row was staged, which kept the people
+        // who most needed to re-authorize out of the Errors table.
+        const fresh = await checkCredentialFreshness(this.env, this.userId, conn)
+        if (fresh.error) {
+          console.warn(
+            `[cred-freshness] blocked ${conn.slug}.${upstreamToolName} for user ${this.userId}`
+          )
+          status = 'error'
+          errorCode = 'credential_revoked'
+          errorDetail = fresh.error
+          return errText(fresh.error)
+        }
         // Async-eligible tools (per `authConfig.asyncTools`) can run far
         // longer than an interactive client's request timeout — Claude
         // Desktop hard-caps at ~180s and does not reset on progress, so no
@@ -523,6 +665,21 @@ export class UpstreamProxyRegistry {
             errorCode = classifyUpstreamError('error', errorDetail)
             throw err
           }
+        }
+        const client = await this.ensureBound(conn, fresh.status)
+        if (!client) {
+          // Credential on file and not flagged, yet no bearer came out of it:
+          // its refresh failed for a (so far) transient reason. Say so — a
+          // bare "not connected" reads as "reconnect the connector".
+          const msg =
+            `upstream_unavailable: could not establish your ${conn.slug} connection — ` +
+            `refreshing its token failed just now, which is usually temporary. Nothing was ` +
+            `sent to ${conn.slug}. Retry in a minute; if it keeps failing, the user should ` +
+            `re-authorize it at ${spaUrl(this.env, UPSTREAMS_PAGE)}.`
+          status = 'error'
+          errorCode = 'upstream_auth'
+          errorDetail = msg
+          return errText(msg)
         }
         const outcome = await runUpstreamCall({
           slug: conn.slug,

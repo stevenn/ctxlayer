@@ -145,8 +145,19 @@ export const UserUpstreamSummary = z.object({
   transport: SupportedTransport,
   authStrategy: AuthStrategy,
   requiresCredentials: z.boolean(),
+  // "A credential is on file" — NOT "it works": pair with `needsReauth`.
   connected: z.boolean(),
-  toolsCount: z.number().int().min(0)
+  toolsCount: z.number().int().min(0),
+  // The stored user_oauth authorization is dead (its refresh was permanently
+  // rejected): agents' calls fail until the user re-authorizes. The page used
+  // to render this as a green "connected" (2026-09-17 field report).
+  needsReauth: z.boolean().default(false),
+  // Unix seconds the provider is expected to drop this authorization at, when
+  // the upstream has a configured absolute grant lifetime
+  // (`authConfig.grantLifetimeDays`); null otherwise. Refreshing does not
+  // extend it — only a renew (`oauth/start?renew=1`) restarts the clock.
+  // Both default so an older worker's response still parses on a newer SPA.
+  authExpiresAt: z.number().int().nullable().default(null)
 })
 export type UserUpstreamSummary = z.infer<typeof UserUpstreamSummary>
 

@@ -121,7 +121,12 @@ export const USAGE_ERROR_CODES = [
   // Errors table doubles as the "who is blocked on what" list.
   'saml_sso_required',
   'org_ip_allow_list',
-  'org_oauth_app_restricted'
+  'org_oauth_app_restricted',
+  // ctxlayer blocked the call before it left: the caller's own credential for
+  // this upstream is dead (reauth-required) or was disconnected. Recorded so
+  // the Errors table doubles as the "who needs to re-authorize what" list —
+  // these calls used to return before any usage row was staged.
+  'credential_revoked'
 ] as const
 export type UsageErrorCode = (typeof USAGE_ERROR_CODES)[number]
 

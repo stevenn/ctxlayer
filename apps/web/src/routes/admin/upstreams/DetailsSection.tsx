@@ -134,6 +134,7 @@ export function DetailsSection({
     bytesToKb(row.authConfig.maxResponseBytes)
   )
   const [asyncToolsText, setAsyncToolsText] = useState(asyncToolsToText(row.authConfig.asyncTools))
+  const [grantDays, setGrantDays] = useState<number | ''>(row.authConfig.grantLifetimeDays ?? '')
   // Auth headers. Invisible here until now: an upstream could be carrying a
   // renamed credential header, or a second static one, with nothing on screen
   // to say so — which is precisely what you want to look at when tools/list
@@ -158,6 +159,7 @@ export function DetailsSection({
     setListSec(msToSec(t?.listMs))
     setMaxRespKb(bytesToKb(row.authConfig.maxResponseBytes))
     setAsyncToolsText(asyncToolsToText(row.authConfig.asyncTools))
+    setGrantDays(row.authConfig.grantLifetimeDays ?? '')
     setHeaderName(row.authConfig.http?.headerName ?? '')
     setHeaderPrefix(row.authConfig.http?.headerPrefix ?? '')
     setExtraHeadersText(extraHeadersToText(row.authConfig.http?.extraHeaders))
@@ -177,6 +179,8 @@ export function DetailsSection({
     }
   }
 
+  const isUserOauth = authStrategy === 'user_oauth' || authStrategy === OAUTH_STATIC
+
   function buildAuthConfig(): UpstreamAuthConfig {
     const timeouts = {
       callMs: secToMs(callSec),
@@ -192,7 +196,10 @@ export function DetailsSection({
       http: buildHttpConfig(),
       timeouts: hasTimeout ? timeouts : undefined,
       maxResponseBytes: kbToBytes(maxRespKb),
-      asyncTools: textToAsyncTools(asyncToolsText)
+      asyncTools: textToAsyncTools(asyncToolsText),
+      // Only meaningful for per-user OAuth; cleared when the strategy moves
+      // off it so a stale value can't produce bogus expiry warnings later.
+      grantLifetimeDays: isUserOauth && grantDays !== '' && grantDays > 0 ? grantDays : undefined
     }
     if (authStrategy === OAUTH_STATIC) {
       // Pre-registered client: emit the static block from the form. The server
@@ -299,6 +306,18 @@ export function DetailsSection({
             description="One Name: value per line, sent on every call to this upstream. For auth that is not a single header — a Cloudflare Access service token needs CF-Access-Client-Id here and its secret under the credential header above. NOT encrypted: identifiers only, never a secret."
           />
         </Stack>
+        {isUserOauth && (
+          <NumberInput
+            label="Authorization lifetime (days)"
+            placeholder="none"
+            min={1}
+            max={365}
+            allowDecimal={false}
+            value={grantDays}
+            onChange={(v) => setGrantDays(typeof v === 'number' ? v : '')}
+            description="Set this when the provider drops a user's authorization a fixed number of days after they signed in, no matter how often it is used (seen: Datadog 14, Linear 25, Sentry 30 — check the Audit log's upstream.reauth_required entries for a repeating interval). Users then see an expiry date and a Renew button on their Upstreams page, and agents get a warning in list_upstreams during the last 3 days. Leave blank if authorizations only die when unused or revoked."
+          />
+        )}
         <Switch
           label="Enabled"
           checked={enabled}
