@@ -1,0 +1,3 @@
+ok, can we use /draft-skill to build a small skill to fix this recurring issue when calling the Sentry search_events tool:
+
+**Input Error** It looks like there was a problem with the input you provided. Search validation failed: Validation Result: invalid Validated Order By: - INVALID -timestamp — Orderby must also be a selected field You may be able to resolve the issue by addressing the concern and trying again.
