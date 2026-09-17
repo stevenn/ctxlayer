@@ -1,0 +1,12 @@
+i want to build an intro presentation about the ctxlayer project and how it is deployed for yuki (using the yukitools tenant)
+it should be the basis for a workshop, not so much for setting it up, but rather how to use it from an admin and most importantly practitioner side
+it should explain the main concepts
+
+* context docs, locally managed and via git sources
+* upstreams
+* how it interacts with MCP tool calling
+* its skills mechanism
+
+I want the presentation to be as visual as possible and also explain the fundamental benefits against individually managed MCP connections
+
+you can switch to co-work to actually build the presentation layout, but first let's focus on the content
