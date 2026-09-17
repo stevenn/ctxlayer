@@ -1,0 +1,1 @@
+i want to understand the nature of the upstream oauth renewal flow - i have the impression remote expiries happen but tokens are not automatically refreshed even if they could
