@@ -1,0 +1,4 @@
+seems OK now however:
+
+* does the session ledger DB requires maintenance i.e. how will it grow
+* in clade desktop no skills are surfacing via the + icon
