@@ -1,0 +1,1 @@
+fix the planning skill table via save_draft_skill
