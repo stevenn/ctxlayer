@@ -1,0 +1,11 @@
+when signing out I just land on /sign-in on yukitools:
+
+"ctxlayer
+The agent context layer for your org.
+
+No identity providers are configured for this deployment. Ask an admin to set up Google or GitHub sign-in.
+
+Only members of the configured org can sign in."
+
+sign-in happens there through cloudflare access so this is incorrect
+also a proper re-sign-in link would be nice
