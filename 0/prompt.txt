@@ -1,0 +1,8 @@
+**Org playbooks for your upstreams — read the named skill/doc BEFORE the first call to that upstream (required conventions the tool schemas do not show):**
+- `up-driver`: skill `sk-driver-ai-planning-skill` (get_skill), skill `sk-driver-ai-research-skill` (get_skill)
+- `up-sentry`: skill `sk-sentry-time-window-queries` (get_skill)
+
+
+this is very specific to the (few) available upstream-attached skills and will grow with additional skills being added - hitting the 2048 limit at some point
+should we not find a more conversational way to make the playbooks available, perhaps as a second step
+or, would this need to become a skill by itself, which is automaintained by the registry?
