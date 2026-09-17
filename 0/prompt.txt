@@ -1,0 +1,18 @@
+is remote up to date and prs merged
+
+---
+
+yes
+
+---
+
+what's the uncommitted settings.json change
+
+---
+
+and .gitignore?
+
+---
+
+it's fine
+do a cosmetic update of the readme and commit push
