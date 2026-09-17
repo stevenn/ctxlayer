@@ -1,0 +1,1 @@
+i meant this: Remaining on the thread: your per-tool re-attach test on request_task_context, the naive user's behavioral re-test, and design note O awaiting a go to build.
