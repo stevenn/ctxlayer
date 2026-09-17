@@ -1,0 +1,34 @@
+coming back to the auto-discovery challenge we recently made changes for, I am still talking to my naief user and she reports te following:
+
+I see the v2s and sentry skill
+
+Descriptions are good triggers, deprecated tool is gone.
+
+Cosmetic:
+Planning skill, "Explicit Constraints": the good/bad table collapsed onto one line — | Good Constraint | Bad Constraint | | --- | --- | | "Follow error handling..." — so it won't render as a table.
+
+
+
+Claude:
+Runtime pickup is unchanged. I re-tested after your reconnect — refreshed the tool cache, re-read the schemas, called get_codebase_names fresh. Still no skill hint in the tool descriptions (just the [Driver] prefix), still bare {payload, error_message} in the results.
+The content problem is solved and the discovery problem isn't. Better descriptions do help — they make me much more likely to load the right skill once I've looked — but nothing yet makes me look. That still needs either the prompt/CLAUDE.md habit (on each local machine) or the author adding the discovery instruction org-wide.
+
+I checked whether calling a Driver tool actually causes an agent to pick them up:
+- Called get_codebase_names and grep_source on up-driver, and inspected the raw responses. Results are bare {payload, error_message} — no skill hint.
+- Re-read the proxied tool schemas. ctxlayer prepends "[Driver]" to the description and nothing else — no reference to the attached skill.
+- Repeated after a reconnect and a tool-cache refresh. Same result.
+
+So the attachment is advisory only: it works if the agent happens to call list_upstreams and get_skill first, and nothing prompts it to. That's my best explanation for why Driver usage is low despite the playbooks existing.
+
+Also worth knowing: all three published skills are attached at upstream level (tool_name: null). Per-tool attachment exists in the data model — every tool in describe_upstream has its own attached_skills array — but nobody has used it. That matters for ask #2.
+
+1. One line in the org instructions (no build) - We already inject the "check out our Yuki MCP gateway" text into every session org-wide. Please append: "When a request touches a ctxlayer upstream, call list_upstreams first and load any attached_skills with get_skill before calling upstream tools." Nudge rather than guarantee, but it's the difference between nothing telling the agent to look and something doing so.
+
+2. Append the skill pointer to tool descriptions, for per-tool attachments only The gateway already rewrites descriptions. For a tool that has a per-tool attached_skills entry, also append something like: 'Org playbook applies — call get_skill("<slug>") and follow it before using this tool.' Only on per-tool attachments, so we don't bloat all 20 Driver descriptions. I'll re-attach the two Driver skills to request_task_context specifically so you have a live case to test against. This is the highest-value change: the hint arrives in the same context as the call, with no extra round-trip.
+
+3. Skill hint on the first result per upstream per session - Add a _ctxlayer_skills field to the response envelope alongside payload / error_message on the first call to an upstream in a session, listing {slug, description} for its attached skills. Arrives one call late, but these are workflow skills — the first Driver call is nearly always get_codebase_names and the playbook governs everything after. Helps every upstream at once with no per-tool config.
+
+4. Expose published skills as MCP prompts - The way /draft-skill already is, so /sk-driver-ai-research-skill appears in people's slash-command list. Solves deliberate invocation without anyone memorising slugs.
+
+
+Make a deep analysis how this aligns with what we recently did.
