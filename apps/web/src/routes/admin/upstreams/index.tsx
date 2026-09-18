@@ -1,9 +1,11 @@
 import { Fragment, useCallback, useState } from 'react'
 import { Alert, Badge, Button, Group, Text, Title } from '@mantine/core'
+import { SortTh } from '../../../components/admin-bits'
 import { clickableRow } from '../../../lib/a11y'
 import { fetchAdminUpstreams, fetchAdminUpstreamTools } from '../../../lib/api'
 import { useLoad } from '../../../lib/use-load'
 import { useOAuthFlashBanner } from '../../../lib/use-oauth-banner'
+import { useTableSort } from '../../../lib/use-table-sort'
 import { explain, type ToolsState } from './helpers'
 import { CreateUpstreamModal } from './CreateUpstreamModal'
 import { ExpandChevron } from './ExpandChevron'
@@ -21,6 +23,23 @@ export function AdminUpstreams() {
   // OAuth callbacks bounced via `return_to=admin` flash a slug or an error
   // code on the URL; surface it and clean the URL.
   const { banner: oauthBanner, clear: clearOauthBanner } = useOAuthFlashBanner()
+
+  // Column sort. Defaults to display name ascending — the order the API
+  // already returns, so the first paint is unchanged. Expanded rows are
+  // tracked by id, so they follow their row through a re-sort.
+  const sort = useTableSort(
+    items,
+    {
+      displayName: (u) => u.displayName.toLowerCase(),
+      slug: (u) => u.slug,
+      transport: (u) => u.transport,
+      authStrategy: (u) => u.authStrategy,
+      toolsCount: (u) => u.toolsCount,
+      enabled: (u) => u.enabled
+    },
+    { key: 'displayName', descFirst: ['toolsCount', 'enabled'] }
+  )
+  const rows = sort.sorted
 
   // Toggle expand for a row. First time a row is expanded, lazy-fetch
   // its tool cache; subsequent toggles reuse the cached state.
@@ -98,21 +117,21 @@ export function AdminUpstreams() {
         </Text>
       )}
 
-      {items && items.length > 0 && (
+      {rows && rows.length > 0 && (
         <table className="data-table">
           <thead>
             <tr>
               <th style={{ width: 32 }} aria-label="Expand" />
-              <th>Display name</th>
-              <th>Slug</th>
-              <th>Transport</th>
-              <th>Auth</th>
-              <th>Tools</th>
-              <th>Enabled</th>
+              <SortTh sort={sort} column="displayName" label="Display name" />
+              <SortTh sort={sort} column="slug" label="Slug" />
+              <SortTh sort={sort} column="transport" label="Transport" />
+              <SortTh sort={sort} column="authStrategy" label="Auth" />
+              <SortTh sort={sort} column="toolsCount" label="Tools" />
+              <SortTh sort={sort} column="enabled" label="Enabled" />
             </tr>
           </thead>
           <tbody>
-            {items.map((u) => {
+            {rows.map((u) => {
               const open = expandedIds.has(u.id)
               const tools = toolsByUpstream.get(u.id)
               return (

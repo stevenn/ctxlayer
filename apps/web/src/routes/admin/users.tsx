@@ -25,12 +25,13 @@ import {
   fetchRoles,
   putUserRoles
 } from '../../lib/api'
-import { KV, Section } from '../../components/admin-bits'
+import { KV, Section, SortTh } from '../../components/admin-bits'
 import { clickableRow } from '../../lib/a11y'
 import { bodyMessage, explain as explainBase } from '../../lib/explain'
 import { absDateTime, relativeTime } from '../../lib/time'
 import { useBusyAction } from '../../lib/use-busy'
 import { useLoad } from '../../lib/use-load'
+import { useTableSort } from '../../lib/use-table-sort'
 import { useDrawerConfirm } from '../../lib/dialogs'
 
 type StatusFilter = 'all' | UserStatus
@@ -56,6 +57,25 @@ export function AdminUsers() {
       return u.email.toLowerCase().includes(q) || (u.name ?? '').toLowerCase().includes(q)
     })
   }, [items, query, statusFilter])
+
+  // Sorted view of the filtered rows. Defaults to email ascending, which
+  // is the order the API already returns — so the first paint is unchanged.
+  const sort = useTableSort(
+    filtered,
+    {
+      email: (u) => u.email.toLowerCase(),
+      name: (u) => u.name?.toLowerCase(),
+      idp: (u) => u.idp,
+      role: (u) => u.role,
+      status: (u) => u.status,
+      // Teamless users sink to the bottom rather than sorting as "".
+      teams: (u) => teamLabel(u) || null,
+      credentialCount: (u) => u.credentialCount,
+      lastSeenAt: (u) => u.lastSeenAt
+    },
+    { key: 'email', descFirst: ['credentialCount', 'lastSeenAt'] }
+  )
+  const rows = sort.sorted
 
   const editing = items?.find((u) => u.id === editingId) ?? null
 
@@ -106,26 +126,26 @@ export function AdminUsers() {
         <Text c="dimmed">No users yet — sign in once to create the first row.</Text>
       )}
 
-      {filtered && filtered.length === 0 && items && items.length > 0 && (
+      {rows && rows.length === 0 && items && items.length > 0 && (
         <Text c="dimmed">No users match the current filter.</Text>
       )}
 
-      {filtered && filtered.length > 0 && (
+      {rows && rows.length > 0 && (
         <table className="data-table">
           <thead>
             <tr>
-              <th>Email</th>
-              <th>Name</th>
-              <th>IdP</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Teams</th>
-              <th>Creds</th>
-              <th>Last seen</th>
+              <SortTh sort={sort} column="email" label="Email" />
+              <SortTh sort={sort} column="name" label="Name" />
+              <SortTh sort={sort} column="idp" label="IdP" />
+              <SortTh sort={sort} column="role" label="Role" />
+              <SortTh sort={sort} column="status" label="Status" />
+              <SortTh sort={sort} column="teams" label="Teams" />
+              <SortTh sort={sort} column="credentialCount" label="Creds" />
+              <SortTh sort={sort} column="lastSeenAt" label="Last seen" />
             </tr>
           </thead>
           <tbody>
-            {filtered.map((u) => (
+            {rows.map((u) => (
               <tr key={u.id} {...clickableRow(() => setEditingId(u.id))}>
                 <td style={{ fontWeight: 500 }}>{u.email}</td>
                 <td className="text-muted">{u.name ?? '—'}</td>
@@ -141,9 +161,7 @@ export function AdminUsers() {
                 <td>
                   <StatusBadge status={u.status} />
                 </td>
-                <td className="text-muted">
-                  {u.teams.length === 0 ? '—' : u.teams.map((t) => t.slug).join(', ')}
-                </td>
+                <td className="text-muted">{teamLabel(u) || '—'}</td>
                 <td className="text-muted">{u.credentialCount}</td>
                 <td className="text-muted">{relativeTime(u.lastSeenAt)}</td>
               </tr>
@@ -475,6 +493,11 @@ function UserDrawer({
 }
 
 // ----- helpers -----------------------------------------------------------
+
+/** Comma-joined team slugs — the Teams cell and its sort key share it. */
+function teamLabel(u: AdminUserRow): string {
+  return u.teams.map((t) => t.slug).join(', ')
+}
 
 function TeamPill({ team }: { team: AdminUserTeam }) {
   return (

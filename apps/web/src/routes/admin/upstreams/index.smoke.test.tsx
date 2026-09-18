@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { MantineProvider } from '@mantine/core'
 import { RouterProvider, createMemoryRouter } from 'react-router-dom'
 import type { AdminUpstreamRow } from '@ctxlayer/shared'
@@ -27,6 +27,24 @@ const { upstreams } = vi.hoisted(() => {
       toolsCount: 7,
       toolsCachedAt: 1_700_000_000,
       currentUserConnected: true,
+      sharedCredentialConfigured: false,
+      clientSecretConfigured: false,
+      createdAt: 1_700_000_000,
+      updatedAt: 1_700_000_500
+    },
+    {
+      id: 'up_2',
+      slug: 'ado',
+      displayName: 'Azure DevOps',
+      transport: 'streamable_http',
+      url: 'https://mcp.ado.example/mcp',
+      authStrategy: 'user_oauth',
+      authConfig: {},
+      enabled: false,
+      visibility: [],
+      toolsCount: 42,
+      toolsCachedAt: 1_700_000_000,
+      currentUserConnected: false,
       sharedCredentialConfigured: false,
       clientSecretConfigured: false,
       createdAt: 1_700_000_000,
@@ -75,4 +93,32 @@ describe('AdminUpstreams (render smoke)', () => {
     renderScreen()
     expect(await screen.findByText(/No upstreams yet/)).toBeInTheDocument()
   })
+
+  it('sorts on a column header click', async () => {
+    renderScreen()
+    await screen.findByText('Notion')
+    // Default is display name ascending — the API's own order.
+    expect(nameOrder()).toEqual(['Azure DevOps', 'Notion'])
+
+    // Tools is a count column: first click is most-first.
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }))
+    expect(nameOrder()).toEqual(['Azure DevOps', 'Notion'])
+    fireEvent.click(screen.getByRole('button', { name: 'Tools' }))
+    expect(nameOrder()).toEqual(['Notion', 'Azure DevOps'])
+    expect(screen.getByRole('columnheader', { name: 'Tools' })).toHaveAttribute(
+      'aria-sort',
+      'ascending'
+    )
+  })
 })
+
+/**
+ * Display names in render order. Queried through the DOM rather than
+ * `getAllByRole('row')` because `clickableRow` gives each body row
+ * `role="button"`, which shadows the implicit row role.
+ */
+function nameOrder(): string[] {
+  return [...document.querySelectorAll('.data-table tbody tr')].map(
+    (row) => row.querySelectorAll('td')[1]?.textContent ?? ''
+  )
+}

@@ -1,4 +1,5 @@
 import { Group, Text } from '@mantine/core'
+import type { TableSort } from '../lib/use-table-sort'
 
 /**
  * Micro-components shared across the admin drawers/pages (and a few
@@ -60,5 +61,38 @@ export function KV({
         {v}
       </Text>
     </Group>
+  )
+}
+
+/**
+ * Sortable `.data-table` header cell. The whole cell is the hit target
+ * (the button fills it), the arrow shows for the active column and
+ * faintly on hover elsewhere. Drive it with `useTableSort`:
+ *
+ *   const sort = useTableSort(filtered, { email: (u) => u.email, … }, …)
+ *   <SortTh sort={sort} column="email" label="Email" />
+ */
+export function SortTh<K extends string>({
+  sort,
+  column,
+  label
+}: {
+  sort: TableSort<K>
+  column: K
+  label: string
+}) {
+  const active = sort.key === column
+  return (
+    <th
+      className="th-sortable"
+      aria-sort={active ? (sort.dir === 'asc' ? 'ascending' : 'descending') : 'none'}
+    >
+      <button type="button" onClick={() => sort.toggle(column)}>
+        {label}
+        <span className={active ? 'th-arrow is-active' : 'th-arrow'} aria-hidden="true">
+          {active ? (sort.dir === 'asc' ? '↑' : '↓') : '↕'}
+        </span>
+      </button>
+    </th>
   )
 }

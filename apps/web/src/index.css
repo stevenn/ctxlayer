@@ -280,6 +280,48 @@ a:hover {
   background: var(--bg-elevated);
   border-bottom: 1px solid var(--border);
 }
+/* Sortable header: the button fills the cell so the whole header is the
+   hit target, and inherits the th typography. The arrow is reserved
+   space — it fades in on hover and stays lit for the active column, so
+   toggling a sort never reflows the column widths. */
+.data-table th.th-sortable {
+  padding: 0;
+}
+.data-table th.th-sortable > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  width: 100%;
+  padding: 10px 14px;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  color: inherit;
+  text-align: left;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.data-table th.th-sortable > button:hover {
+  color: var(--text);
+}
+.data-table th.th-sortable > button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.data-table th.th-sortable .th-arrow {
+  font-size: 10px;
+  opacity: 0;
+  transition: opacity 0.1s ease;
+}
+.data-table th.th-sortable > button:hover .th-arrow {
+  opacity: 0.5;
+}
+.data-table th.th-sortable .th-arrow.is-active {
+  opacity: 1;
+}
+
 .data-table td {
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
