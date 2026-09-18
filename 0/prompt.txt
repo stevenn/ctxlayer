@@ -1,0 +1,9 @@
+can we make the app/admin/users table sortable (especially on date last seen)
+
+---
+
+now do the same for the upstreams and audit tables
+
+---
+
+upstreams ok, but audit table is chronological
