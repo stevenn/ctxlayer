@@ -269,7 +269,10 @@ export interface UpstreamHealth {
  * for tests. `nowSec` is injected so the countdown is deterministic.
  */
 export function upstreamHealth(
-  u: Pick<UserUpstreamSummary, 'connected' | 'needsReauth' | 'authExpiresAt'>,
+  u: Pick<
+    UserUpstreamSummary,
+    'connected' | 'needsReauth' | 'authExpiresAt' | 'authExpiresSource'
+  >,
   nowSec: number
 ): UpstreamHealth {
   if (!u.connected) {
@@ -294,9 +297,18 @@ export function upstreamHealth(
     return { kind: 'connected', label: 'connected', color: 'green', action: 'Reconnect', renewable: false }
   }
   const daysLeft = Math.floor((u.authExpiresAt - nowSec) / 86400)
+  // Only the provider's own number is stated flatly. Anything ctxlayer worked
+  // out — measured from past deaths, or an admin's configured lifetime — is
+  // an estimate, and saying so is the difference between a countdown people
+  // trust and one they learn to ignore.
+  const hedge = u.authExpiresSource === 'provider' ? '' : 'about '
   if (daysLeft < GRANT_EXPIRY_WARN_DAYS) {
     const detail =
-      daysLeft <= 0 ? 'expires today' : daysLeft === 1 ? 'expires in 1 day' : `expires in ${daysLeft} days`
+      daysLeft <= 0
+        ? `expires ${hedge ? 'today or so' : 'today'}`
+        : daysLeft === 1
+          ? `expires in ${hedge}1 day`
+          : `expires in ${hedge}${daysLeft} days`
     return { kind: 'expiring', label: detail, color: 'yellow', action: 'Renew', renewable: true, detail }
   }
   const until = new Date(u.authExpiresAt * 1000).toLocaleDateString(undefined, {
@@ -309,7 +321,7 @@ export function upstreamHealth(
     color: 'green',
     action: 'Renew',
     renewable: true,
-    detail: `valid until ${until}`
+    detail: `valid until ${hedge ? '~' : ''}${until}`
   }
 }
 

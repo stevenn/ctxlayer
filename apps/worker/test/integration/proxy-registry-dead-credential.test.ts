@@ -51,7 +51,8 @@ const row: UpstreamServerRow = {
   auth_config: '{}', // DCR path
   enabled: 1,
   created_at: 0,
-  updated_at: 0
+  updated_at: 0,
+  observed_grant_days: null
 }
 
 type Handler = (args: unknown, extra?: unknown) => Promise<{ isError?: boolean; content: { text: string }[] }>

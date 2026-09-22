@@ -13,6 +13,7 @@ function baseRow(overrides: Partial<UpstreamServerRow> = {}): UpstreamServerRow 
     enabled: 1,
     created_at: 1700000000,
     updated_at: 1700000000,
+    observed_grant_days: null,
     ...overrides
   }
 }

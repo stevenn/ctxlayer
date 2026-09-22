@@ -17,6 +17,7 @@
 import type { OAuthTokens } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { UpstreamAuthConfig } from '@ctxlayer/shared'
 import type { Env } from '../env'
+import { parseRefreshExpiry } from './token-expiry'
 import { open as openSecret, sealedFromString } from '../crypto/aead'
 import { assertSafeFetchUrl } from '../util/safe-fetch'
 import { pkceChallenge, pkceVerifier } from '../util/pkce'
@@ -68,6 +69,13 @@ export interface StaticFlowProvider {
   codeVerifier(): Promise<string>
   tokens(): Promise<OAuthTokens | undefined>
   saveTokens(tokens: OAuthTokens): Promise<void>
+  /**
+   * Hand over an absolute refresh expiry the provider reported, for the next
+   * `saveTokens` to persist. Optional so test fakes can ignore it. On the DCR
+   * path the same value arrives through a fetch wrapper; here we own the POST
+   * and read the raw body directly (see upstream/token-expiry.ts).
+   */
+  noteReportedExpiry?(expiresAt: number | null): void
 }
 
 /**
@@ -114,6 +122,7 @@ export async function exchangeCode(
   const scope = scopeString(oauth)
   if (scope) body.set('scope', scope)
   const json = await postToken(env, oauth, body, 'exchange')
+  provider.noteReportedExpiry?.(parseRefreshExpiry(json, Math.floor(Date.now() / 1000)))
   await provider.saveTokens(toOAuthTokens(json))
 }
 
@@ -185,6 +194,7 @@ export async function refreshStaticDetailed(
     }
     return { token: null, reauth: false }
   }
+  provider.noteReportedExpiry?.(parseRefreshExpiry(json, Math.floor(Date.now() / 1000)))
   await provider.saveTokens(toOAuthTokens(json))
   return { token: typeof json.access_token === 'string' ? json.access_token : null, reauth: false }
 }

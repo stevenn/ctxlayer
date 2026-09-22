@@ -40,6 +40,7 @@ import type {
 } from '@modelcontextprotocol/sdk/shared/auth.js'
 import type { Env } from '../env'
 import { openStoredTokens, prepareStoredTokens } from './oauth-tokens'
+import { captureRefreshExpiry } from './token-expiry'
 import { patchUpstream, type UpstreamServerRow } from '../db/queries/upstreams'
 import {
   clearReauthRequired,
@@ -74,6 +75,25 @@ interface OAuthAuthConfig {
 export class UpstreamOAuthProvider implements OAuthClientProvider {
   private stateToken: string | null = null
   capturedRedirect: URL | null = null
+  /**
+   * Absolute refresh-token expiry the provider reported on the token response
+   * this exchange is processing, picked up by the `captureRefreshExpiry` fetch
+   * wrapper (see upstream/token-expiry.ts). Request-scoped: a provider is
+   * constructed per resolution, and the SDK calls fetch then `saveTokens`
+   * within that one call — never persisted on anything that outlives it.
+   */
+  private reportedAuthExpiresAt: number | null = null
+
+  /** Fetch to hand the SDK so a reported refresh expiry is not lost. */
+  readonly capturingFetch = captureRefreshExpiry((expiresAt) => {
+    this.noteReportedExpiry(expiresAt)
+  })
+
+  /** Static path's equivalent of the fetch wrapper — it owns its own POST. */
+  noteReportedExpiry(expiresAt: number | null): void {
+    if (expiresAt) this.reportedAuthExpiresAt = expiresAt
+  }
+
   constructor(
     private readonly env: Env,
     private readonly upstream: UpstreamServerRow,
@@ -235,7 +255,12 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
       ciphertext: sealed.ciphertext,
       iv: sealed.iv,
       keyVersion: sealed.keyVersion,
-      newGrant: this.isCallback
+      newGrant: this.isCallback,
+      // Only ever narrows or refreshes what the provider itself said. Absent
+      // on this response ≠ "no expiry": an absolute deadline reported once
+      // still holds, so the stored value is left alone unless this is a NEW
+      // authorization, which resets the clock (see `upsertUserCredential`).
+      authExpiresAt: this.reportedAuthExpiresAt
     })
     // A fresh token landed — clear any pending re-auth flag (covers refresh
     // success, static refresh, the initial code exchange, and reconnect).

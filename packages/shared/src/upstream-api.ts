@@ -12,7 +12,7 @@
  * stdio transport.
  */
 import { z } from 'zod'
-import { AuthStrategy, UpstreamAuthConfig } from './upstream-auth-strategy'
+import { AuthStrategy, GrantExpirySource, UpstreamAuthConfig } from './upstream-auth-strategy'
 import { VisibilityScopeKind } from './org-ia'
 import { prefixedSlug } from './slug'
 import { isHttpsOrLoopback } from './url-trust'
@@ -129,6 +129,11 @@ export const AdminUpstreamRow = z.object({
   // secret itself is never returned; this flag drives the "secret set"
   // placeholder in the OAuth-client form. False for DCR / public clients.
   clientSecretConfigured: z.boolean().default(false),
+  // Median lifetime ctxlayer has MEASURED for this upstream's authorizations,
+  // whole days, or null before enough have died here. Shown beside the
+  // admin's `grantLifetimeDays` field, which it outranks — so an admin who
+  // typed 30 against a measured 14 can see the disagreement.
+  observedGrantDays: z.number().int().nullable().default(null),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })
@@ -153,12 +158,15 @@ export const UserUpstreamSummary = z.object({
   // rejected): agents' calls fail until the user re-authorizes. The page used
   // to render this as a green "connected" (2026-09-17 field report).
   needsReauth: z.boolean().default(false),
-  // Unix seconds the provider is expected to drop this authorization at, when
-  // the upstream has a configured absolute grant lifetime
-  // (`authConfig.grantLifetimeDays`); null otherwise. Refreshing does not
-  // extend it — only a renew (`oauth/start?renew=1`) restarts the clock.
-  // Both default so an older worker's response still parses on a newer SPA.
-  authExpiresAt: z.number().int().nullable().default(null)
+  // Unix seconds the provider is expected to drop this authorization at, or
+  // null when nothing can say. Refreshing does not extend it — only a renew
+  // (`oauth/start?renew=1`) restarts the clock.
+  authExpiresAt: z.number().int().nullable().default(null),
+  // How that date was arrived at — the provider reported it, ctxlayer
+  // measured this upstream's deaths, or an admin typed a lifetime. Drives
+  // whether the page states the date or hedges it. Defaults (like the date)
+  // so an older worker's response still parses on a newer SPA.
+  authExpiresSource: GrantExpirySource.nullable().default(null)
 })
 export type UserUpstreamSummary = z.infer<typeof UserUpstreamSummary>
 

@@ -86,19 +86,32 @@ export const UpstreamAuthConfig = z.object({
   // proxy enqueue a job + return a token, and the ctxlayer-jobs consumer runs
   // the real call. See docs/plan/I-upstream-resilience.md §I9.
   asyncTools: z.array(z.string()).optional(),
-  // user_oauth only. How many days this provider lets one authorization
-  // live, counted from the moment the user authorized — an ABSOLUTE cap that
-  // token refreshes do not extend (observed 2026-09: Datadog 14, Linear ~25,
-  // Sentry 30; both of the latter run workers-oauth-provider, whose
-  // refresh-token TTL is stamped once at the code exchange). Drives the
-  // "expires in N days" warning on list_upstreams + /app/upstreams so users
-  // renew before the cliff. Leave unset for providers without a hard cap.
+  // user_oauth only, and the LAST resort of three (see `resolveGrantExpiry`):
+  // what an admin believes this provider's absolute authorization lifetime is,
+  // counted from the moment the user authorized and not extended by refreshes
+  // (observed 2026-09: Datadog 14, Linear ~25, Sentry 30). A provider that
+  // reports its own expiry wins, then ctxlayer's own measurements; this is the
+  // bootstrap for upstreams that do neither, and the seed before enough
+  // deaths have been observed. Leave unset for providers without a hard cap.
   grantLifetimeDays: z.number().int().min(1).max(365).optional()
 })
 export type UpstreamAuthConfig = z.infer<typeof UpstreamAuthConfig>
 
 /** Warn this many days before an upstream authorization's absolute expiry. */
 export const GRANT_EXPIRY_WARN_DAYS = 3
+
+/**
+ * Where the expiry number came from, worst-to-best:
+ *  - `configured`: an admin typed `grantLifetimeDays`. A guess by a human.
+ *  - `observed`: ctxlayer measured it — the median lifetime of this
+ *    upstream's grants that have actually died here.
+ *  - `provider`: the upstream itself said so (`refresh_token_expires_in` on
+ *    a token response). Authoritative; nothing overrides it.
+ * Surfaced so the countdown can say "expires" when we were told and
+ * "expires about" when we inferred.
+ */
+export const GrantExpirySource = z.enum(['provider', 'observed', 'configured'])
+export type GrantExpirySource = z.infer<typeof GrantExpirySource>
 
 export interface GrantExpiry {
   /** Unix seconds at which the provider is expected to drop the grant. */
@@ -107,23 +120,76 @@ export interface GrantExpiry {
   daysLeft: number
   /** Within GRANT_EXPIRY_WARN_DAYS of expiry (or already past it). */
   expiringSoon: boolean
+  source: GrantExpirySource
+}
+
+export interface GrantExpiryInputs {
+  /** Absolute expiry the provider reported, unix seconds. Wins outright. */
+  providerExpiresAt?: number | null
+  /** When the current authorization was granted (migration 0036). */
+  grantedAt?: number | null
+  /** Median measured lifetime for this upstream, whole days. */
+  observedDays?: number | null
+  /** Admin-configured `authConfig.grantLifetimeDays`. */
+  configuredDays?: number | null
 }
 
 /**
  * Predicted absolute expiry of one user's upstream authorization, or null
- * when it can't be known (no configured lifetime, or no grant stamp). Pure —
- * shared so the agent-facing `list_upstreams` and the SPA Upstreams page
- * compute the same answer from the same two inputs.
+ * when nothing can say. Pure — shared so the agent-facing `list_upstreams`
+ * and the SPA Upstreams page compute the same answer the same way.
+ *
+ * Precedence is provider → observed → configured, because that is the order
+ * of how much the number is worth. OAuth has no standard field for "when
+ * does this authorization die" (RFC 6749 never defines a refresh-token
+ * lifetime), so most providers cannot tell us even when they know — the
+ * `workers-oauth-provider` servers behind several upstreams hold an exact
+ * `expiresAt` and put nothing about it on the wire. Hence the fallbacks.
+ *
+ * A provider that slides its window reports a constant remaining lifetime,
+ * which correctly reads as "no cliff"; one with an absolute cap reports a
+ * shrinking one. Both are handled by taking it at face value.
  */
-export function grantExpiry(
-  grantedAt: number | null | undefined,
-  grantLifetimeDays: number | null | undefined,
+export function resolveGrantExpiry(
+  inputs: GrantExpiryInputs,
   nowSec: number
 ): GrantExpiry | null {
-  if (!grantedAt || !grantLifetimeDays) return null
-  const expiresAt = grantedAt + grantLifetimeDays * 86400
-  const daysLeft = Math.floor((expiresAt - nowSec) / 86400)
-  return { expiresAt, daysLeft, expiringSoon: daysLeft < GRANT_EXPIRY_WARN_DAYS }
+  const at = (expiresAt: number, source: GrantExpirySource): GrantExpiry => ({
+    expiresAt,
+    daysLeft: Math.floor((expiresAt - nowSec) / 86400),
+    expiringSoon: Math.floor((expiresAt - nowSec) / 86400) < GRANT_EXPIRY_WARN_DAYS,
+    source
+  })
+  if (inputs.providerExpiresAt) return at(inputs.providerExpiresAt, 'provider')
+  if (!inputs.grantedAt) return null
+  if (inputs.observedDays) return at(inputs.grantedAt + inputs.observedDays * 86400, 'observed')
+  if (inputs.configuredDays) return at(inputs.grantedAt + inputs.configuredDays * 86400, 'configured')
+  return null
+}
+
+/** Below this many measured deaths, an upstream's own history says nothing. */
+export const MIN_GRANT_OBSERVATIONS = 3
+
+/**
+ * The measured lifetime of an upstream's authorizations, in whole days, from
+ * however many deaths we have on record — or null while that is too few to
+ * mean anything.
+ *
+ * Median, not min: a user who disconnects an upstream by hand on day 2 logs a
+ * 2-day "lifetime", and a minimum would then warn everybody every day
+ * forever. Floored, so the warning fires a little early rather than a little
+ * late. Real providers cluster tightly enough for this to be precise (field
+ * data 2026-09: 14.1–14.8d, 24.94–25.02d, 30.0d), and a policy change shows
+ * up as the new deaths outvote the old ones.
+ */
+export function observedGrantDays(lifetimeDays: readonly number[]): number | null {
+  if (lifetimeDays.length < MIN_GRANT_OBSERVATIONS) return null
+  const sorted = [...lifetimeDays].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  const median =
+    sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2 : (sorted[mid] ?? 0)
+  const days = Math.floor(median)
+  return days >= 1 ? days : null
 }
 
 /**

@@ -103,7 +103,8 @@ describe('re-auth flag', () => {
       present: false,
       needsReauth: false,
       updatedAt: null,
-      grantedAt: null
+      grantedAt: null,
+      authExpiresAt: null
     })
   })
 })

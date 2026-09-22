@@ -309,7 +309,11 @@ export function DetailsSection({
           <NumberInput
             label="Authorization lifetime (days)"
             placeholder="none"
-            description="Set this when the provider drops a user's authorization a fixed number of days after they signed in, no matter how often it is used (seen: Datadog 14, Linear 25, Sentry 30 — check the Audit log's upstream.reauth_required entries for a repeating interval). Users then see an expiry date and a Renew button on their Upstreams page, and agents get a warning in list_upstreams during the last 3 days. Leave blank if authorizations only die when unused or revoked."
+            description={
+              row.observedGrantDays != null
+                ? `ctxlayer has measured ~${row.observedGrantDays} days from this upstream's expired authorizations, and uses that over this field. A lifetime the provider reports itself beats both. Set this for when neither applies: a provider that drops an authorization a fixed number of days after sign-in, however often it is used.`
+                : "Fallback for a provider that drops an authorization a fixed number of days after sign-in, however often it is used (seen: Datadog 14, Linear 25, Sentry 30). Used until ctxlayer has measured enough expired authorizations here, and ignored entirely when the provider reports its own expiry. Users then see an expiry date and a Renew button on their Upstreams page, and agents get a warning in list_upstreams during the last 3 days."
+            }
             min={1}
             max={365}
             allowDecimal={false}

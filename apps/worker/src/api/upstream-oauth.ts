@@ -168,7 +168,10 @@ async function runStart(
       return c.redirect(await buildAuthorizeRedirect(provider, staticCfg), 302)
     }
   } else {
-    const result = await mcpAuth(provider, { serverUrl: upstream.url ?? '' })
+    const result = await mcpAuth(provider, {
+      serverUrl: upstream.url ?? '',
+      fetchFn: provider.capturingFetch
+    })
     if (result !== 'AUTHORIZED') {
       if (!provider.capturedRedirect) {
         // SDK returned 'REDIRECT' but didn't hand us a URL. Defensive: bail.
@@ -267,7 +270,8 @@ upstreamOauthCallbackRoute.get('/callback', async (c) => {
     } else {
       const result = await mcpAuth(provider, {
         serverUrl: upstream.url ?? '',
-        authorizationCode: code
+        authorizationCode: code,
+        fetchFn: provider.capturingFetch
       })
       if (result !== 'AUTHORIZED') {
         return c.json({ error: 'oauth_exchange_did_not_authorize' }, 502)

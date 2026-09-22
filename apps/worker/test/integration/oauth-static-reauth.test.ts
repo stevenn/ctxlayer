@@ -46,7 +46,8 @@ const row: UpstreamServerRow = {
   auth_config: AUTH_CONFIG,
   enabled: 1,
   created_at: 0,
-  updated_at: 0
+  updated_at: 0,
+  observed_grant_days: null
 }
 const conn = toUpstreamConnection(row)
 

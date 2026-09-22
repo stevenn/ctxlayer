@@ -40,7 +40,7 @@ import {
 } from '../db/queries/tool-access'
 import { isDialableTransport } from '../upstream/upstream-client'
 import {
-  grantExpiry,
+  resolveGrantExpiry,
   isToolAllowed,
   requiresFromRules,
   type McpAttachedDocRef,
@@ -329,7 +329,12 @@ export function expiringSoonNote(daysLeft: number, upstreamsUrl: string): string
  */
 export function upstreamEntry(
   row: UpstreamServerRow,
-  cred: { present: boolean; needsReauth: boolean; grantedAt?: number | null },
+  cred: {
+    present: boolean
+    needsReauth: boolean
+    grantedAt?: number | null
+    authExpiresAt?: number | null
+  },
   toolsCount: number,
   skills: SkillForUpstreamRow[],
   docs: DocForUpstreamRow[],
@@ -341,7 +346,15 @@ export function upstreamEntry(
   // Only a live user_oauth grant has a clock worth reporting.
   const expiry =
     status === 'ready' && row.auth_strategy === 'user_oauth'
-      ? grantExpiry(cred.grantedAt, parseAuthConfig(row.auth_config).grantLifetimeDays, nowSec)
+      ? resolveGrantExpiry(
+          {
+            providerExpiresAt: cred.authExpiresAt,
+            grantedAt: cred.grantedAt,
+            observedDays: row.observed_grant_days,
+            configuredDays: parseAuthConfig(row.auth_config).grantLifetimeDays
+          },
+          nowSec
+        )
       : null
   const note =
     status === 'needs_reauth'

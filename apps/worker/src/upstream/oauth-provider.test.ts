@@ -51,7 +51,8 @@ function makeUpstream(): MutableUpstream {
     auth_config: '{}',
     enabled: 1,
     created_at: 1700000000,
-    updated_at: 1700000000
+    updated_at: 1700000000,
+    observed_grant_days: null
   }
   return { row, credByUser: new Map() }
 }

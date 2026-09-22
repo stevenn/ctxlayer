@@ -39,6 +39,7 @@ import {
   getUserCredentialStatus,
   markReauthRequired
 } from '../db/queries/upstream-credentials'
+import { recordGrantDeath } from '../db/queries/grant-observations'
 import { UpstreamOAuthProvider } from './oauth-provider'
 import { singleFlightRefresh } from './oauth-refresh'
 import { refreshStaticDetailed, staticOAuth } from './oauth-static'
@@ -110,6 +111,25 @@ export async function resolveUserUpstreamBearer(
             ...(reason ? { reason: scrubErrorForStorage(reason) } : {})
           }
         })
+        // This is the only moment an authorization's real lifetime is
+        // knowable: `granted_at` still holds the stamp of the grant that just
+        // died (a later re-auth overwrites it), and "now" is its death. The
+        // median of these is what the expiry countdown falls back on when the
+        // provider won't say — see db/queries/grant-observations.ts.
+        // Best-effort: a statistic must never fail a credential flag.
+        try {
+          const { grantedAt } = await getUserCredentialStatus(env, userId, row.id)
+          if (grantedAt) {
+            await recordGrantDeath(env, {
+              upstreamId: row.id,
+              userId,
+              grantedAt,
+              diedAt: Math.floor(Date.now() / 1000)
+            })
+          }
+        } catch (err) {
+          console.warn(`[oauth] ${conn.slug}: grant-lifetime observation failed:`, errMessage(err))
+        }
       }
     }
 
@@ -205,7 +225,13 @@ async function refreshViaSdk(
   hadRefreshToken: boolean
 ): Promise<{ token: string | null; permanent: boolean; failure?: string }> {
   try {
-    const result = await mcpAuth(provider, { serverUrl: conn.url })
+    // `fetchFn` is the only seam where a provider-reported refresh expiry is
+    // still on the response — the SDK's token schema strips it (see
+    // upstream/token-expiry.ts).
+    const result = await mcpAuth(provider, {
+      serverUrl: conn.url,
+      fetchFn: provider.capturingFetch
+    })
     if (result === 'AUTHORIZED') {
       return { token: (await provider.tokens())?.access_token ?? null, permanent: false }
     }

@@ -17,7 +17,7 @@ import type {
   UserUpstreamSummary,
   VisibilityRulePayload
 } from '@ctxlayer/shared'
-import { grantExpiry, type AuthStrategy, type UpstreamAuthConfig } from '@ctxlayer/shared'
+import { resolveGrantExpiry, type AuthStrategy, type UpstreamAuthConfig } from '@ctxlayer/shared'
 import { DIALABLE_TRANSPORTS, isDialableTransport } from '../../upstream/upstream-client'
 import { buildPatchUpdate, newId } from './util'
 import { countToolsForUpstream, countToolsForUpstreams, getToolsCachedAt } from './upstream-tools'
@@ -41,6 +41,13 @@ export interface UpstreamServerRow {
   enabled: number
   created_at: number
   updated_at: number
+  /**
+   * Median measured lifetime of this upstream's authorizations, whole days,
+   * or null until enough have died here to mean anything (migration 0039).
+   * Beats the admin-configured guess, loses to a provider-reported expiry —
+   * `resolveGrantExpiry` owns that order.
+   */
+  observed_grant_days: number | null
 }
 
 export interface UpstreamConnection {
@@ -101,7 +108,7 @@ export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection
 export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
   const res = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
-            enabled, created_at, updated_at
+            enabled, created_at, updated_at, observed_grant_days
      FROM upstream_servers ORDER BY display_name`
   ).all<UpstreamServerRow>()
   return res.results ?? []
@@ -117,7 +124,7 @@ export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
 export async function getUpstreamById(env: Env, id: string): Promise<UpstreamServerRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
-            enabled, created_at, updated_at
+            enabled, created_at, updated_at, observed_grant_days
      FROM upstream_servers WHERE id = ?1`
   )
     .bind(id)
@@ -276,7 +283,7 @@ function visibleUpstreamsStmt(env: Env, userId: string, extraPredicate: string, 
      )
      SELECT DISTINCT u.id, u.slug, u.display_name, u.transport, u.url,
                      u.auth_strategy, u.auth_config, u.enabled,
-                     u.created_at, u.updated_at
+                     u.created_at, u.updated_at, u.observed_grant_days
      FROM upstream_servers u
      JOIN upstream_visibility v ON v.upstream_id = u.id
      WHERE u.enabled = 1
@@ -402,6 +409,7 @@ export async function adminRowFor(
     currentUserConnected: connectedForCaller,
     sharedCredentialConfigured: sharedConfigured,
     clientSecretConfigured: Boolean(fullConfig.oauth?.clientSecretCiphertext),
+    observedGrantDays: row.observed_grant_days,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }
@@ -442,7 +450,15 @@ export async function listUserUpstreamSummaries(
     // Only a live user_oauth grant has a clock worth showing.
     const expiry =
       r.auth_strategy === 'user_oauth' && cred && !needsReauth
-        ? grantExpiry(cred.grantedAt, parseAuthConfig(r.auth_config).grantLifetimeDays, nowSec)
+        ? resolveGrantExpiry(
+            {
+              providerExpiresAt: cred.authExpiresAt,
+              grantedAt: cred.grantedAt,
+              observedDays: r.observed_grant_days,
+              configuredDays: parseAuthConfig(r.auth_config).grantLifetimeDays
+            },
+            nowSec
+          )
         : null
     return {
       id: r.id,
@@ -453,7 +469,8 @@ export async function listUserUpstreamSummaries(
       connected,
       toolsCount: counts.get(r.id) ?? 0,
       needsReauth,
-      authExpiresAt: expiry?.expiresAt ?? null
+      authExpiresAt: expiry?.expiresAt ?? null,
+      authExpiresSource: expiry?.source ?? null
     }
   })
 }

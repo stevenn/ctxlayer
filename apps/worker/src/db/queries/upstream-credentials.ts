@@ -73,6 +73,15 @@ export interface UpsertCredentialInput {
    * first insert always stamps it; a refresh must leave it alone.
    */
   newGrant?: boolean
+  /**
+   * Absolute expiry the PROVIDER reported for this authorization, unix
+   * seconds (migration 0039) — the authoritative source in
+   * `resolveGrantExpiry`. Null means "this response said nothing", which is
+   * not the same as "no expiry": a deadline reported once still stands, so
+   * the stored value survives. A NEW grant resets it, because the old
+   * deadline belonged to the authorization that was just replaced.
+   */
+  authExpiresAt?: number | null
 }
 
 export async function upsertUserCredential(
@@ -84,15 +93,21 @@ export async function upsertUserCredential(
   const now = Math.floor(Date.now() / 1000)
   await env.DB.prepare(
     `INSERT INTO user_credentials
-       (user_id, upstream_id, kind, ciphertext, iv, key_version, created_at, updated_at, granted_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7)
+       (user_id, upstream_id, kind, ciphertext, iv, key_version, created_at, updated_at,
+        granted_at, auth_expires_at)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7, ?7, ?9)
      ON CONFLICT (user_id, upstream_id) DO UPDATE SET
        kind = excluded.kind,
        ciphertext = excluded.ciphertext,
        iv = excluded.iv,
        key_version = excluded.key_version,
        updated_at = excluded.updated_at,
-       granted_at = CASE WHEN ?8 = 1 THEN excluded.updated_at ELSE user_credentials.granted_at END`
+       granted_at = CASE WHEN ?8 = 1 THEN excluded.updated_at ELSE user_credentials.granted_at END,
+       auth_expires_at = CASE
+         WHEN ?9 IS NOT NULL THEN ?9
+         WHEN ?8 = 1 THEN NULL
+         ELSE user_credentials.auth_expires_at
+       END`
   )
     .bind(
       userId,
@@ -102,7 +117,8 @@ export async function upsertUserCredential(
       input.iv,
       input.keyVersion,
       now,
-      input.newGrant ? 1 : 0
+      input.newGrant ? 1 : 0,
+      input.authExpiresAt ?? null
     )
     .run()
 }
@@ -162,19 +178,23 @@ export interface CredentialStatus {
   needsReauth: boolean
   updatedAt: number | null
   grantedAt: number | null
+  /** Provider-reported absolute expiry, unix seconds; null when unreported. */
+  authExpiresAt: number | null
 }
 
 export const NO_CREDENTIAL: CredentialStatus = {
   present: false,
   needsReauth: false,
   updatedAt: null,
-  grantedAt: null
+  grantedAt: null,
+  authExpiresAt: null
 }
 
 interface CredentialStatusRow {
   reauth_required_at: number | null
   updated_at: number
   granted_at: number | null
+  auth_expires_at: number | null
 }
 
 function toCredentialStatus(row: CredentialStatusRow): CredentialStatus {
@@ -182,7 +202,8 @@ function toCredentialStatus(row: CredentialStatusRow): CredentialStatus {
     present: true,
     needsReauth: row.reauth_required_at != null,
     updatedAt: row.updated_at,
-    grantedAt: row.granted_at
+    grantedAt: row.granted_at,
+    authExpiresAt: row.auth_expires_at
   }
 }
 
@@ -200,7 +221,8 @@ export async function getUserCredentialStatuses(
   if (upstreamIds.length === 0) return out
   const placeholders = upstreamIds.map((_, i) => `?${i + 2}`).join(', ')
   const res = await env.DB.prepare(
-    `SELECT upstream_id, reauth_required_at, updated_at, granted_at FROM user_credentials
+    `SELECT upstream_id, reauth_required_at, updated_at, granted_at, auth_expires_at
+     FROM user_credentials
      WHERE user_id = ?1 AND upstream_id IN (${placeholders})`
   )
     .bind(userId, ...upstreamIds)
@@ -216,7 +238,7 @@ export async function getUserCredentialStatus(
   upstreamId: string
 ): Promise<CredentialStatus> {
   const row = await env.DB.prepare(
-    `SELECT reauth_required_at, updated_at, granted_at FROM user_credentials
+    `SELECT reauth_required_at, updated_at, granted_at, auth_expires_at FROM user_credentials
      WHERE user_id = ?1 AND upstream_id = ?2`
   )
     .bind(userId, upstreamId)
