@@ -203,8 +203,14 @@ describe('UpstreamOAuthProvider', () => {
       client_secret: 'csec',
       redirect_uris: ['https://ctxlayer.example/api/upstreams/oauth/callback']
     })
-    const cfg = JSON.parse(up.row.auth_config) as { oauth?: { client_id?: string } }
-    expect(cfg.oauth?.client_id).toBe('cid')
+    // The whole registration lands under `client_info` and nowhere else —
+    // the flat client_id/client_secret mirror was write-only and is gone.
+    const cfg = JSON.parse(up.row.auth_config) as {
+      oauth?: { client_id?: string; client_secret?: string; client_info?: { client_id?: string } }
+    }
+    expect(cfg.oauth?.client_info?.client_id).toBe('cid')
+    expect(cfg.oauth?.client_id).toBeUndefined()
+    expect(cfg.oauth?.client_secret).toBeUndefined()
     // And clientInformation() reads it back.
     const info = await provider.clientInformation()
     expect(info?.client_id).toBe('cid')

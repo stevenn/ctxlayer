@@ -23,7 +23,7 @@ import { usePagedLoad } from '../../lib/use-paged-load'
 import { useDialogs } from '../../lib/dialogs'
 
 /**
- * Admin · OAuth clients (M5 phase 4).
+ * Admin · OAuth clients.
  *
  * Read-only view of every client registered against the MCP server.
  * Clients land here automatically when an MCP host does Dynamic Client

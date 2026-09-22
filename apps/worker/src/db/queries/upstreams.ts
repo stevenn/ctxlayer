@@ -431,11 +431,13 @@ export async function listUserUpstreamSummaries(
     )
   ])
   return rows.map((r) => {
-    const requiresCredentials =
+    // Per-user credential strategies. Local only: the page branches on
+    // `authStrategy` + `connected`, so this never went on the wire.
+    const perUserCredential =
       r.auth_strategy === 'user_bearer' || r.auth_strategy === 'user_oauth'
     const isShared = r.auth_strategy === 'shared_bearer'
     const cred = creds.get(r.id)
-    const connected = requiresCredentials ? !!cred : isShared ? sharedSet.has(r.id) : true
+    const connected = perUserCredential ? !!cred : isShared ? sharedSet.has(r.id) : true
     const needsReauth = !!cred?.needsReauth
     // Only a live user_oauth grant has a clock worth showing.
     const expiry =
@@ -448,7 +450,6 @@ export async function listUserUpstreamSummaries(
       displayName: r.display_name,
       transport: r.transport as SupportedTransport,
       authStrategy: r.auth_strategy,
-      requiresCredentials,
       connected,
       toolsCount: counts.get(r.id) ?? 0,
       needsReauth,

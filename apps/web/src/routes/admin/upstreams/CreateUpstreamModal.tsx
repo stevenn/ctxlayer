@@ -93,8 +93,7 @@ export function CreateUpstreamModal({
         label="Auth strategy"
         data={AUTH_OPTIONS.map((o) => ({
           value: o.value,
-          label: o.enabled ? o.label : `${o.label} (M5)`,
-          disabled: !o.enabled
+          label: o.label
         }))}
         value={authStrategy}
         onChange={(v) => v && setAuthStrategy(v as FormAuthStrategy)}

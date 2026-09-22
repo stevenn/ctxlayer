@@ -67,8 +67,6 @@ interface StoredVerifier {
 }
 
 interface OAuthAuthConfig {
-  client_id?: string
-  client_secret?: string
   /** Persisted full DCR response so re-running auth() restores all metadata. */
   client_info?: OAuthClientInformationFull
 }
@@ -76,7 +74,6 @@ interface OAuthAuthConfig {
 export class UpstreamOAuthProvider implements OAuthClientProvider {
   private stateToken: string | null = null
   capturedRedirect: URL | null = null
-
   constructor(
     private readonly env: Env,
     private readonly upstream: UpstreamServerRow,
@@ -177,11 +174,16 @@ export class UpstreamOAuthProvider implements OAuthClientProvider {
 
   async saveClientInformation(info: OAuthClientInformationFull): Promise<void> {
     const cfg = parseAuthConfig(this.upstream.auth_config)
+    // `client_info` is the whole registration and the ONLY thing read back
+    // (`clientInformation` above). We used to mirror `client_id` +
+    // `client_secret` beside it; nothing ever read those, and the secret copy
+    // put a plaintext credential in a second slot of an unencrypted column
+    // for no reader. They are dropped here rather than spread through, so a
+    // row that still carries them is cleaned up by its next registration.
+    const { client_id: _staleId, client_secret: _staleSecret, ...priorOauth } = cfg.oauth ?? {}
     const nextOauth: OAuthAuthConfig = {
-      ...(cfg.oauth ?? {}),
-      client_info: info,
-      client_id: info.client_id,
-      client_secret: info.client_secret
+      ...priorOauth,
+      client_info: info
     }
     const nextConfig: UpstreamAuthConfig = {
       ...cfg,

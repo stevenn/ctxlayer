@@ -48,39 +48,33 @@ export const AUTH_OPTIONS: {
   value: FormAuthStrategy
   label: string
   description: string
-  enabled: boolean
 }[] = [
   {
     value: 'none',
     label: 'None',
-    description: 'Upstream needs no credentials. Admin can refresh tools immediately.',
-    enabled: true
+    description: 'Upstream needs no credentials. Admin can refresh tools immediately.'
   },
   {
     value: 'user_bearer',
     label: 'User bearer (personal token)',
-    description: 'Each user pastes their own token on /upstreams.',
-    enabled: true
+    description: 'Each user pastes their own token on /upstreams.'
   },
   {
     value: 'shared_bearer',
     label: 'Shared bearer',
-    description: 'One token used for all users. Admin sets it here; users see no per-user setup.',
-    enabled: true
+    description: 'One token used for all users. Admin sets it here; users see no per-user setup.'
   },
   {
     value: 'user_oauth',
     label: 'User OAuth — DCR (auto-register)',
     description:
-      'Each user authorises at the upstream; ctxlayer auto-registers via dynamic client registration (RFC 7591) and refreshes transparently. For modern MCP servers that support DCR.',
-    enabled: true
+      'Each user authorises at the upstream; ctxlayer auto-registers via dynamic client registration (RFC 7591) and refreshes transparently. For modern MCP servers that support DCR.'
   },
   {
     value: 'user_oauth_static',
     label: 'User OAuth — pre-registered (non-DCR)',
     description:
-      "For IdPs that don't support dynamic client registration: you register one app in the IdP and supply its client id/secret + endpoints. Each user still authorises individually.",
-    enabled: true
+      "For IdPs that don't support dynamic client registration: you register one app in the IdP and supply its client id/secret + endpoints. Each user still authorises individually."
   }
 ]
 

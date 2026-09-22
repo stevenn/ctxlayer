@@ -44,6 +44,7 @@ import { refreshCatalogueForConnection, warmCatalogueAndLog } from '../upstream/
 import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import {
   clampTimeouts,
+  dropLegacyDcrMirror,
   oauthEndpointSelfLoop,
   prepareOAuthSecret,
   preserveDcrClient
@@ -97,7 +98,12 @@ adminUpstreamsRoute.post('/', async (c) => {
       transport: input.transport,
       url: input.url,
       authStrategy: input.authStrategy,
-      authConfig: (await prepareOAuthSecret(clampTimeouts(input.authConfig), c.env, undefined)) ?? {},
+      authConfig:
+        (await prepareOAuthSecret(
+          dropLegacyDcrMirror(clampTimeouts(input.authConfig)),
+          c.env,
+          undefined
+        )) ?? {},
       enabled: input.enabled ?? true
     })
     // For unauth (`none`) upstreams there's nothing to wait for —
@@ -154,7 +160,11 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
   await patchUpstream(c.env, id, {
     ...parsed.data,
     authConfig: preserveDcrClient(
-      await prepareOAuthSecret(clampTimeouts(parsed.data.authConfig), c.env, currentConfig),
+      await prepareOAuthSecret(
+        dropLegacyDcrMirror(clampTimeouts(parsed.data.authConfig)),
+        c.env,
+        currentConfig
+      ),
       currentConfig,
       keepDcrClient
     )

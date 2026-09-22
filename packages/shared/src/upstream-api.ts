@@ -134,17 +134,18 @@ export const AdminUpstreamRow = z.object({
 })
 export type AdminUpstreamRow = z.infer<typeof AdminUpstreamRow>
 
-// User-facing summary: what /upstreams page renders.
-// `requiresCredentials` drives the SPA into "paste bearer" vs
-// "no setup needed" branches; `connected` reflects whether the caller
-// has stored credentials (always true for `none`/`shared_bearer`).
+// User-facing summary: what the /upstreams page renders. The page branches
+// on `authStrategy` ("paste bearer" vs "authorize" vs "no setup needed") and
+// `connected` reflects whether the caller has stored credentials (always
+// true for `none`/`shared_bearer`). A `requiresCredentials` boolean used to
+// ride along for that branch; the page stopped reading it, so it is gone —
+// the worker still derives the same thing locally to compute `connected`.
 export const UserUpstreamSummary = z.object({
   id: z.string(),
   slug: UpstreamSlug,
   displayName: z.string(),
   transport: SupportedTransport,
   authStrategy: AuthStrategy,
-  requiresCredentials: z.boolean(),
   // "A credential is on file" — NOT "it works": pair with `needsReauth`.
   connected: z.boolean(),
   toolsCount: z.number().int().min(0),

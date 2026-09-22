@@ -20,7 +20,7 @@ import { absDateTime, relativeTime } from '../../lib/time'
 import { usePagedLoad } from '../../lib/use-paged-load'
 
 /**
- * Admin · Audit log viewer (M5 phase 3).
+ * Admin · Audit log viewer.
  *
  * Newest-first cursor-paginated table. Filters are applied server-side
  * (action prefix + actor id) and are debounced so each keystroke

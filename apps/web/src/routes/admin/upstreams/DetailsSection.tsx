@@ -247,8 +247,7 @@ export function DetailsSection({
           label="Auth strategy"
           data={AUTH_OPTIONS.map((o) => ({
             value: o.value,
-            label: o.enabled ? o.label : `${o.label} (M5)`,
-            disabled: !o.enabled
+            label: o.label
           }))}
           value={authStrategy}
           onChange={(v) => v && setAuthStrategy(v as FormAuthStrategy)}
@@ -310,12 +309,12 @@ export function DetailsSection({
           <NumberInput
             label="Authorization lifetime (days)"
             placeholder="none"
+            description="Set this when the provider drops a user's authorization a fixed number of days after they signed in, no matter how often it is used (seen: Datadog 14, Linear 25, Sentry 30 — check the Audit log's upstream.reauth_required entries for a repeating interval). Users then see an expiry date and a Renew button on their Upstreams page, and agents get a warning in list_upstreams during the last 3 days. Leave blank if authorizations only die when unused or revoked."
             min={1}
             max={365}
             allowDecimal={false}
             value={grantDays}
             onChange={(v) => setGrantDays(typeof v === 'number' ? v : '')}
-            description="Set this when the provider drops a user's authorization a fixed number of days after they signed in, no matter how often it is used (seen: Datadog 14, Linear 25, Sentry 30 — check the Audit log's upstream.reauth_required entries for a repeating interval). Users then see an expiry date and a Renew button on their Upstreams page, and agents get a warning in list_upstreams during the last 3 days. Leave blank if authorizations only die when unused or revoked."
           />
         )}
         <Switch

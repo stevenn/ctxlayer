@@ -14,7 +14,7 @@ import {
 import { z } from 'zod'
 import { request } from './core'
 
-// ----- skills (M7a) -------------------------------------------------------
+// ----- skills -------------------------------------------------------------
 
 const SkillList = z.array(SkillSummary)
 const CreateSkillResult = z.object({ id: z.string(), slug: z.string() })
@@ -126,7 +126,7 @@ export function fetchSkillRevisionContent(
   )
 }
 
-// ----- attachments (M7a) --------------------------------------------------
+// ----- attachments --------------------------------------------------------
 
 export function attachSkill(input: AttachSkillRequest): Promise<void> {
   return request('/api/skill-attachments', () => undefined, {

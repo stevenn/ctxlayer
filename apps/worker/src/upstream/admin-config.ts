@@ -64,11 +64,36 @@ export async function prepareOAuthSecret(
 }
 
 /**
+ * Drop the legacy flat DCR mirror (`oauth.client_id` / `oauth.client_secret`)
+ * from admin-supplied config.
+ *
+ * ctxlayer used to persist those beside `client_info` on every dynamic client
+ * registration. Nothing ever read them — `UpstreamOAuthProvider` answers from
+ * `client_info`, and the static/pre-registered path uses camelCase `clientId`
+ * — and the secret copy put a plaintext credential in a second slot of an
+ * unencrypted column. The write is gone; this closes the other way they
+ * persist: the read path does not redact `client_id` (it is an identifier,
+ * not a secret), so the drawer round-trips it straight back on every save.
+ * Stripping it here means one admin edit cleans a legacy row, instead of it
+ * surviving until the upstream happens to re-register.
+ *
+ * Strategy-agnostic on purpose: the snake_case pair is never valid input
+ * on any path, so there is no branch to get wrong.
+ */
+export function dropLegacyDcrMirror(
+  cfg: UpdateUpstreamRequest['authConfig']
+): UpdateUpstreamRequest['authConfig'] {
+  if (!cfg?.oauth) return cfg
+  const { client_id: _legacyId, client_secret: _legacySecret, ...oauth } = cfg.oauth
+  return { ...cfg, oauth }
+}
+
+/**
  * Carry a DCR upstream's client registration across an admin edit.
  *
- * `oauth.client_info` (+ `client_id` / `client_secret`) is what ctxlayer got
- * back from the upstream's Dynamic Client Registration, and EVERY user's
- * stored refresh token is bound to that client_id. It is server-only: the
+ * `oauth.client_info` is what ctxlayer got back from the upstream's Dynamic
+ * Client Registration, and EVERY user's stored refresh token is bound to the
+ * client_id inside it. It is server-only: the
  * admin read path redacts it (`redactOAuthSecrets`), so the drawer can only
  * ever send the config back WITHOUT it — and PATCH replaces the whole
  * `auth_config` column. Unguarded, saving any field on a connected DCR
@@ -94,8 +119,6 @@ export function preserveDcrClient(
     ...cfg,
     oauth: {
       ...(cfg.oauth ?? {}),
-      client_id: dcr.client_id,
-      client_secret: dcr.client_secret,
       client_info: dcr.client_info
     }
   }

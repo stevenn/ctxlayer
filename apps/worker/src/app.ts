@@ -79,7 +79,7 @@ app.route('/api/bundles', bundlesRoute)
 // Semantic search over the doc library (RAG). Shares its core with the
 // MCP `search_docs` tool via rag/search.ts.
 app.route('/api/search', searchRoute)
-// Skills + attachments (M7a). Reads follow the two-axis visibility model
+// Skills + attachments. Reads follow the two-axis visibility model
 // (owner-or-org-published); writes are owner-or-admin (gated inside the
 // router). Skill DRAFTING is an in-app MCP flow (`/draft-skill` prompt),
 // not a REST endpoint.

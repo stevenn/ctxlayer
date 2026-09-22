@@ -46,8 +46,13 @@ const OauthAuthConfig = z
     // never stored plaintext and never returned on read. Present in the
     // schema only so the form's PATCH/POST body validates.
     clientSecret: z.string().optional(),
-    client_id: z.string().optional(),
-    client_secret: z.string().optional(),
+    // NOTE: `client_id` / `client_secret` used to be declared here too, as a
+    // flat mirror of what DCR returned. Nothing read them and the secret copy
+    // duplicated a plaintext credential, so the write is gone
+    // (`upstream/oauth-provider.ts`). This stays a loose object, so rows that
+    // still carry the pair parse fine — and `redactOAuthSecrets` still strips
+    // it — until their next registration rewrites them away. Don't add them
+    // back: `client_info` is the whole registration.
     client_info: z.record(z.string(), z.unknown()).optional()
   })
 

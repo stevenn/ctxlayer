@@ -538,7 +538,7 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
       })
     )
 
-    // ----- skill MCP surface (M7a) -----
+    // ----- skill MCP surface -----
     // list_skills + get_skill tools + mcp://ctxlayer/skills/{slug}
     // resource template. Extracted to mcp/skill-mcp.ts to keep this
     // file focused on session lifecycle.

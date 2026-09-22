@@ -4,6 +4,7 @@ import { open, sealedFromString } from '../crypto/aead'
 import { UPSTREAM_TIMEOUT_CLAMP_MS } from './http-client'
 import {
   clampTimeouts,
+  dropLegacyDcrMirror,
   oauthEndpointSelfLoop,
   prepareOAuthSecret,
   preserveDcrClient
@@ -108,14 +109,22 @@ describe('preserveDcrClient', () => {
     // Without this, saving ANY field re-registered ctxlayer under a new
     // client_id and every user's refresh token died as "issued to another client".
     const out = preserveDcrClient(fromForm, current, true)
-    expect(out?.oauth).toEqual(current.oauth)
+    expect(out?.oauth?.client_info).toEqual(clientInfo)
     expect(out?.grantLifetimeDays).toBe(25) // the edit itself still lands
     expect(out?.timeouts).toEqual({ callMs: 2000 })
   })
 
+  it('carries the registration only, not the legacy flat secret mirror', () => {
+    // `current` is shaped like a row written before the flat client_id /
+    // client_secret mirror was dropped: nothing reads it, and everything the
+    // SDK needs is inside client_info, so an edit sheds it.
+    const out = preserveDcrClient(fromForm, current, true)
+    expect(out?.oauth?.client_secret).toBeUndefined()
+  })
+
   it('also when the form dropped the oauth block entirely', () => {
     const out = preserveDcrClient({ grantLifetimeDays: 14 }, current, true)
-    expect(out?.oauth).toEqual(current.oauth)
+    expect(out?.oauth).toEqual({ client_info: clientInfo })
   })
 
   it('drops it when the registration stops being valid (URL / strategy change)', () => {
@@ -136,5 +145,44 @@ describe('preserveDcrClient', () => {
   it('is a no-op with nothing to preserve or no config in the patch', () => {
     expect(preserveDcrClient(fromForm, { timeouts: { callMs: 1 } }, true)).toBe(fromForm)
     expect(preserveDcrClient(undefined, current, true)).toBeUndefined()
+  })
+})
+
+describe('dropLegacyDcrMirror', () => {
+  // `oauth.client_id` is not a secret, so the admin read path does not redact
+  // it: a drawer save on a row written before the mirror was removed sends it
+  // straight back. Stripping it on the write path is what actually retires it.
+  it('strips the legacy flat pair a drawer save round-trips back', () => {
+    const out = dropLegacyDcrMirror({
+      grantLifetimeDays: 25,
+      oauth: { client_id: 'dcr-123', client_secret: 'dcr-secret' }
+    })
+    expect(out?.oauth).toEqual({})
+    expect(out?.grantLifetimeDays).toBe(25)
+  })
+
+  it('leaves the static/pre-registered camelCase fields alone', () => {
+    const cfg = {
+      oauth: {
+        clientId: 'app-1',
+        clientSecret: 'plaintext-from-form',
+        authorizeUrl: 'https://idp.example/authorize',
+        tokenUrl: 'https://idp.example/token'
+      }
+    }
+    expect(dropLegacyDcrMirror(cfg)).toEqual(cfg)
+  })
+
+  it('keeps the registration itself — only the mirror goes', () => {
+    const clientInfo = { client_id: 'dcr-123', redirect_uris: ['https://ctx.test/cb'] }
+    const out = dropLegacyDcrMirror({ oauth: { client_id: 'dcr-123', client_info: clientInfo } })
+    expect(out?.oauth?.client_info).toEqual(clientInfo)
+    expect(out?.oauth?.client_id).toBeUndefined()
+  })
+
+  it('is a no-op without an oauth block', () => {
+    const cfg = { timeouts: { callMs: 1000 } }
+    expect(dropLegacyDcrMirror(cfg)).toBe(cfg)
+    expect(dropLegacyDcrMirror(undefined)).toBeUndefined()
   })
 })
