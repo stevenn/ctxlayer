@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M343754PE86RTV0QM0QP1YDR",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/worker/src/db/migrations/0038_oauth_grant_activity.sql",
+    "apps/worker/src/db/queries/oauth-grant-activity.ts",
+    "apps/worker/src/index.ts",
+    "apps/worker/src/oauth/client-grants.ts",
+    "apps/worker/src/oauth/grant-sweep.test.ts",
+    "apps/worker/src/oauth/grant-sweep.ts",
+    "apps/worker/src/oauth/login-activity.ts",
+    "apps/worker/src/oauth/provider-config.ts",
+    "apps/worker/src/oauth/revoke-grants.ts",
+    "apps/worker/test/integration/grant-idle-sweep.test.ts",
+    "apps/worker/test/integration/oauth-provider-security.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 24,
+    "cache_creation_tokens": 69541,
+    "cache_read_tokens": 867289,
+    "output_tokens": 13028,
+    "api_call_count": 12
+  }
+}
