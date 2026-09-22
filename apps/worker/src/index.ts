@@ -10,6 +10,8 @@ import { jobsConsumer } from './queues/jobs-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
 import { clearAsyncJobResults, pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
+import { sweepIdleGrants } from './oauth/grant-sweep'
+import { MCP_LOGIN_IDLE_DAYS } from './oauth/login-activity'
 import { listDueGitSyncs } from './git/sync'
 import { audit } from './audit/log'
 import { notify } from './ops/alert'
@@ -34,9 +36,15 @@ export { DocRoomDO } from './collab/doc-room-do'
 // to the Hono app (default handler). Provider options live in
 // `oauth/provider-config.ts` so admin tooling can construct a
 // read-only `OAuthHelpers` against the identical config.
-const oauthProvider = new OAuthProvider<Env>(
-  oauthProviderOptions({ fetch: app.fetch as ExportedHandler<Env>['fetch'] })
-)
+// Built per request rather than at module scope because the options now
+// carry a `tokenExchangeCallback` that writes the login-activity ledger, and
+// that callback needs `env` — which only exists per invocation. The
+// constructor just validates options and builds a capabilities object (all
+// real state is in KV), so this is not a per-request cost worth avoiding.
+const buildOAuthProvider = (env: Env) =>
+  new OAuthProvider<Env>(
+    oauthProviderOptions({ fetch: app.fetch as ExportedHandler<Env>['fetch'] }, env)
+  )
 
 const worker: ExportedHandler<Env> = {
   // HSTS on every worker-served response (asset responses get it from
@@ -50,7 +58,7 @@ const worker: ExportedHandler<Env> = {
     if (isMcpPathOnWrongHost(req, env)) {
       return withHsts(req, Response.json({ error: 'not_found' }, { status: 404 }))
     }
-    return withHsts(req, await oauthProvider.fetch(req, env, ctx))
+    return withHsts(req, await buildOAuthProvider(env).fetch(req, env, ctx))
   },
   async queue(batch, env, ctx) {
     // Match on the type SUFFIX, not an exact name: queue names are
@@ -232,7 +240,62 @@ const worker: ExportedHandler<Env> = {
       })()
     )
 
-    // 4. Prune the job-runs ledger itself (90d) — recorded like any task.
+    // 4. Expire MCP logins that went quiet. Grants and DCR client records
+    // carry no KV expiration any more (oauth/provider-config.ts), so a login
+    // lives as long as its client keeps refreshing — this is the other half:
+    // revoke the ones silent for MCP_LOGIN_IDLE_DAYS, and keep the activity
+    // ledger in step with KV. Fail-closed on an incomplete grant read.
+    ctx.waitUntil(
+      (async () => {
+        try {
+          await recordJobRun(env, 'grant-idle-prune', async () => {
+            const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+            const nowSec = Math.floor(controller.scheduledTime / 1000)
+            const r = await sweepIdleGrants(env, helpers, {
+              idleDays: MCP_LOGIN_IDLE_DAYS,
+              now: nowSec
+            })
+            if (r.skippedIncompleteIndex) {
+              console.warn('[cron] grant-idle-prune skipped: grant read incomplete')
+              return { status: 'partial' as const, summary: { skipped: 'incomplete_grant_index' } }
+            }
+            if (r.revoked > 0 || r.seeded > 0 || r.pruned > 0) {
+              console.log(
+                `[cron] grant-idle-prune: ${r.grants} grants, ${r.tracked} tracked — ` +
+                  `${r.seeded} seeded, ${r.revoked} revoked as idle (>${MCP_LOGIN_IDLE_DAYS}d), ` +
+                  `${r.pruned} stale rows dropped, ${r.failed} revoke failures`
+              )
+            }
+            // An idle revocation is a policy decision about someone's
+            // access — audited like the admin-initiated ones.
+            if (r.revoked > 0) {
+              await audit(env, {
+                actorId: 'cron',
+                action: 'oauth_grant.idle_revoke',
+                meta: { revoked: r.revoked, idleDays: MCP_LOGIN_IDLE_DAYS, failed: r.failed }
+              })
+            }
+            return {
+              status: r.failed > 0 ? ('partial' as const) : ('ok' as const),
+              summary: {
+                grants: r.grants,
+                tracked: r.tracked,
+                seeded: r.seeded,
+                revoked: r.revoked,
+                pruned: r.pruned,
+                failed: r.failed
+              }
+            }
+          })
+        } catch (err) {
+          const m = errMessage(err)
+          console.error(`[cron] grant-idle-prune failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.grant_idle_prune_failed', detail: m })
+        }
+      })()
+    )
+
+    // 5. Prune the job-runs ledger itself (90d) — recorded like any task.
     ctx.waitUntil(
       (async () => {
         try {

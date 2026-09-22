@@ -39,12 +39,31 @@ export interface UserGrantIndex {
   complete: boolean
 }
 
-export async function buildUserGrantIndex(
-  env: Env,
-  helpers: OAuthHelpers
-): Promise<UserGrantIndex> {
+/** One live grant, flattened with the user who holds it. */
+export interface GrantRef {
+  id: string
+  userId: string
+  clientId: string
+  createdAt: number
+  user: { id: string; email: string; name: string | null }
+}
+
+export interface AllGrants {
+  grants: GrantRef[]
+  /** False if any per-user listUserGrants read failed (the list undercounts). */
+  complete: boolean
+}
+
+/**
+ * Every grant ctxlayer holds, by fanning `listUserGrants` over every user.
+ * The SDK has no "list all grants", so this is the only enumeration there
+ * is — shared by the client index below and the nightly idle sweep
+ * (grant-sweep.ts), both of which must treat an incomplete read as "do not
+ * act", hence the flag rather than a throw.
+ */
+export async function listAllGrants(env: Env, helpers: OAuthHelpers): Promise<AllGrants> {
   const users = await listUserRefs(env)
-  if (users.length === 0) return { index: new Map(), complete: true }
+  if (users.length === 0) return { grants: [], complete: true }
   const perUser = await Promise.all(
     users.map(async (u) => {
       try {
@@ -62,25 +81,41 @@ export async function buildUserGrantIndex(
       }
     })
   )
-
-  const complete = perUser.every((r) => r.ok)
-  const index = new Map<string, OAuthClientUserRef[]>()
-  for (const { user, grants } of perUser) {
-    for (const g of grants) {
-      const list = index.get(g.clientId) ?? []
-      const existing = list.find((ref) => ref.userId === user.id)
-      if (existing) {
-        if (g.createdAt < existing.grantedAt) existing.grantedAt = g.createdAt
-      } else {
-        list.push({
-          userId: user.id,
-          email: user.email,
-          name: user.name,
-          grantedAt: g.createdAt
-        })
-      }
-      index.set(g.clientId, list)
+  const grants: GrantRef[] = []
+  for (const { user, grants: items } of perUser) {
+    for (const g of items) {
+      grants.push({
+        id: g.id,
+        userId: user.id,
+        clientId: g.clientId,
+        createdAt: g.createdAt,
+        user
+      })
     }
+  }
+  return { grants, complete: perUser.every((r) => r.ok) }
+}
+
+export async function buildUserGrantIndex(
+  env: Env,
+  helpers: OAuthHelpers
+): Promise<UserGrantIndex> {
+  const { grants, complete } = await listAllGrants(env, helpers)
+  const index = new Map<string, OAuthClientUserRef[]>()
+  for (const g of grants) {
+    const list = index.get(g.clientId) ?? []
+    const existing = list.find((ref) => ref.userId === g.userId)
+    if (existing) {
+      if (g.createdAt < existing.grantedAt) existing.grantedAt = g.createdAt
+    } else {
+      list.push({
+        userId: g.userId,
+        email: g.user.email,
+        name: g.user.name,
+        grantedAt: g.createdAt
+      })
+    }
+    index.set(g.clientId, list)
   }
   // Stable ordering per client — earliest grant first.
   for (const list of index.values()) list.sort((a, b) => a.grantedAt - b.grantedAt)

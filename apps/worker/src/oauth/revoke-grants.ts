@@ -18,6 +18,7 @@
 
 import { getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import type { Env } from '../env'
+import { deleteGrantActivityForUser } from '../db/queries/oauth-grant-activity'
 import { errMessage } from '../util/errors'
 
 export async function revokeAllUserGrants(
@@ -54,6 +55,17 @@ export async function revokeAllUserGrants(
     complete = false
     console.warn(
       `[revoke-grants] listUserGrants(${userId}) failed:`,
+      errMessage(err)
+    )
+  }
+  // Drop the login-activity rows for those grants now rather than waiting for
+  // the nightly sweep to notice they are gone. Best-effort like the rest of
+  // this function: the ledger is bookkeeping, the revocation is the lockout.
+  try {
+    await deleteGrantActivityForUser(env, userId)
+  } catch (err) {
+    console.warn(
+      `[revoke-grants] clearing login activity for ${userId} failed:`,
       errMessage(err)
     )
   }

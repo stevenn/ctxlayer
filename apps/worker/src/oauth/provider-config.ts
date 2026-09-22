@@ -14,32 +14,45 @@
  */
 
 import type { ExportedHandler } from '@cloudflare/workers-types'
-import type { OAuthProviderOptions } from '@cloudflare/workers-oauth-provider'
+import type {
+  OAuthProviderOptions,
+  TokenExchangeCallbackOptions
+} from '@cloudflare/workers-oauth-provider'
 import { McpSessionDO } from '../mcp/session-do'
 import type { Env } from '../env'
+import { stampTokenExchange } from './login-activity'
 
 const NOOP_HANDLER: ExportedHandler<Env> = {
   fetch: () => new Response('not used by admin helpers', { status: 500 })
 }
 
 /**
- * How long an MCP client's login lasts before the user must re-authorize.
- * The library stamps this ONCE at the authorization-code exchange and never
- * slides it on refresh — it is an absolute lifetime, not an idle timeout. The
- * library default (30 days) forced every client of every user through a
- * monthly re-login for no security gain: suspend/delete already revoke all
- * of a user's grants instantly (oauth/revoke-grants.ts) and the session DO
- * re-checks user status on init. 90 days matches the library's DCR client
- * registration lifetime (`clientRegistrationTTL` default), which caps a
- * login anyway — a client record that expires first just turns the final
- * refresh into `invalid_client` instead of `invalid_grant`; both mean
- * "log in again". Applies to NEW logins only: existing grants keep the
- * expiry they were issued with.
+ * A login lasts as long as it keeps refreshing (see oauth/login-activity.ts).
+ *
+ * Both TTLs below are passed as `undefined` on purpose — the library then
+ * writes the grant and the DCR client record to KV with NO expiration, and
+ * expiry becomes ours to decide. That is the only way to get a sliding
+ * session out of this library: `refreshTokenTTL` is stamped once, at the
+ * authorization-code exchange, and the refresh path re-saves the same
+ * absolute instant (it even refuses a `refreshTokenTTL` returned from the
+ * token-exchange callback). `clientRegistrationTTL` behaves the same way
+ * from the registration moment, so leaving it at its 90 d default would cap
+ * the login independently — the final refresh would just fail
+ * `invalid_client` instead of `invalid_grant`.
+ *
+ * What replaces them: `tokenExchangeCallback` stamps every exchange into
+ * `oauth_grant_activity`, and the nightly `grant-idle-prune` job revokes
+ * grants that have been silent for `MCP_LOGIN_IDLE_DAYS`. Instant lockout is
+ * unaffected — suspend/delete still calls `revokeAllUserGrants`, and the
+ * session DO re-checks user status on init.
+ *
+ * `env` is optional because admin tooling builds `OAuthHelpers` from these
+ * same options (see the module header) and never exchanges a token; without
+ * it the callback is simply not installed.
  */
-export const MCP_LOGIN_TTL_SECONDS = 90 * 24 * 60 * 60
-
 export function oauthProviderOptions(
-  defaultHandler: ExportedHandler<Env> = NOOP_HANDLER
+  defaultHandler: ExportedHandler<Env> = NOOP_HANDLER,
+  env?: Env
 ): OAuthProviderOptions<Env> {
   // apiHandlers requires ExportedHandlerWithFetch (Required fetch);
   // our handlers carry `fetch` at the value level but their declared
@@ -54,7 +67,17 @@ export function oauthProviderOptions(
     authorizeEndpoint: '/oauth/authorize',
     tokenEndpoint: '/oauth/token',
     clientRegistrationEndpoint: '/oauth/register',
-    refreshTokenTTL: MCP_LOGIN_TTL_SECONDS,
+    // Explicit `undefined` — it overrides the library defaults (30 d / 90 d)
+    // through the options spread, and is what makes the KV records
+    // expiration-less. See the note above before "simplifying" these away.
+    refreshTokenTTL: undefined,
+    clientRegistrationTTL: undefined,
+    ...(env
+      ? {
+          tokenExchangeCallback: (opts: TokenExchangeCallbackOptions) =>
+            stampTokenExchange(env, opts)
+        }
+      : {}),
     scopesSupported: ['mcp']
   }
 }

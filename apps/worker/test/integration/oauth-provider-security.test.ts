@@ -2,7 +2,8 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import { describe, expect, it } from 'vitest'
 import type { Env as WorkerEnv } from '../../src/env'
-import { MCP_LOGIN_TTL_SECONDS, oauthProviderOptions } from '../../src/oauth/provider-config'
+import { oauthProviderOptions } from '../../src/oauth/provider-config'
+import { MCP_LOGIN_IDLE_DAYS, stampTokenExchange } from '../../src/oauth/login-activity'
 
 /**
  * Security properties this deployment DELEGATES to
@@ -28,10 +29,15 @@ const testEnv = env as unknown as WorkerEnv
 
 // Stub default handler: these tests only exercise the provider's own
 // endpoints, so the fallthrough should never be reached.
+// Built WITH `testEnv`, exactly as index.ts does per request, so the token
+// endpoint also runs the login-activity `tokenExchangeCallback` here.
 const provider = new OAuthProvider<WorkerEnv>(
-  oauthProviderOptions({
-    fetch: () => Promise.resolve(new Response('unexpected fallthrough', { status: 500 }))
-  })
+  oauthProviderOptions(
+    {
+      fetch: () => Promise.resolve(new Response('unexpected fallthrough', { status: 500 }))
+    },
+    testEnv
+  )
 )
 
 async function pfetch(input: string, init?: RequestInit): Promise<Response> {
@@ -211,27 +217,109 @@ describe('workers-oauth-provider delegated security properties', () => {
 
 /**
  * Not a delegated property but a CONFIGURED one, asserted through the same
- * real-provider harness: the library stamps an ABSOLUTE login expiry at the
- * code exchange and never slides it on refresh. Its 30-day default forced a
- * monthly re-login on every client (2026-09-17 field finding: both of a
- * day's rejected refreshes were exact 30-day expiries). Pinned here so a
- * dropped option — or a library default change — fails CI instead of
- * silently shortening everyone's login.
+ * real-provider harness: this deployment turns the library's ABSOLUTE login
+ * expiry OFF and runs a sliding session instead.
+ *
+ * The library stamps `grant.expiresAt` once, at the code exchange, and never
+ * slides it on refresh (its 30-day default forced a monthly re-login on
+ * every client — 2026-09-17 field finding: both of a day's rejected
+ * refreshes were exact 30-day expiries); `clientRegistrationTTL` capped the
+ * login the same way from the registration moment. Passing both as
+ * `undefined` is what removes the cliff, and it is a silent, invisible
+ * setting — dropping it (or a library default change) would quietly put
+ * every user back on a fixed re-login clock, so it is pinned here.
+ *
+ * What replaces it — the idle sweep — is covered by grant-idle-sweep.test.ts.
  */
-describe('MCP login lifetime (refreshTokenTTL)', () => {
-  it('a new login expires MCP_LOGIN_TTL_SECONDS (90d) after the code exchange', async () => {
-    expect(MCP_LOGIN_TTL_SECONDS).toBe(90 * 24 * 60 * 60)
+describe('MCP login lifetime (sliding, not absolute)', () => {
+  it('a new login carries no absolute expiry', async () => {
     const clientId = await registerPublicClient()
     const verifier = 'sec-test-verifier-ttl-0123456789-0123456789-0123'
     const code = await issueCode(clientId, { challenge: await s256(verifier) })
-    const before = Math.floor(Date.now() / 1000)
     expect((await exchange(clientId, code, { verifier })).status).toBe(200)
 
     const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
-    const grants = (await helpers.listUserGrants('u-sec')).items.filter((g) => g.clientId === clientId)
+    const grants = (await helpers.listUserGrants('u-sec')).items.filter(
+      (g) => g.clientId === clientId
+    )
     expect(grants).toHaveLength(1)
-    const expiresAt = grants[0]?.expiresAt ?? 0
-    expect(expiresAt).toBeGreaterThanOrEqual(before + MCP_LOGIN_TTL_SECONDS)
-    expect(expiresAt).toBeLessThanOrEqual(before + MCP_LOGIN_TTL_SECONDS + 60)
+    expect(grants[0]?.expiresAt).toBeUndefined()
+  })
+
+  it('neither the grant nor the client record is written with a KV expiration', async () => {
+    const clientId = await registerPublicClient()
+    const verifier = 'sec-test-verifier-kvttl-0123456789-0123456789-01'
+    const code = await issueCode(clientId, { challenge: await s256(verifier) })
+    expect((await exchange(clientId, code, { verifier })).status).toBe(200)
+
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const grantId = (await helpers.listUserGrants('u-sec')).items.find(
+      (g) => g.clientId === clientId
+    )?.id
+    expect(grantId).toBeTruthy()
+
+    // Scoped to THIS login's two records: other tests in this file leave
+    // behind never-exchanged grants, which legitimately still carry the
+    // authorization code's short TTL. A key stored without a TTL lists with
+    // no expiration (null here, undefined on the platform); the 1-hour
+    // access-token key is the contrast.
+    for (const prefix of [`grant:u-sec:${grantId}`, `client:${clientId}`]) {
+      const { keys } = await testEnv.OAUTH_KV.list({ prefix })
+      expect(keys).toHaveLength(1)
+      expect(keys[0]?.expiration ?? null).toBeNull()
+    }
+  })
+
+  it('every token exchange stamps the login-activity ledger, once per grant', async () => {
+    const clientId = await registerPublicClient()
+    const verifier = 'sec-test-verifier-stamp-0123456789-0123456789-01'
+    const code = await issueCode(clientId, { challenge: await s256(verifier) })
+    const tokens = (await (await exchange(clientId, code, { verifier })).json()) as {
+      refresh_token: string
+    }
+
+    const read = async () =>
+      (
+        await testEnv.DB.prepare(
+          `SELECT grant_id, user_id, created_at, last_refresh_at FROM oauth_grant_activity
+            WHERE client_id = ?1`
+        )
+          .bind(clientId)
+          .all<{ grant_id: string; user_id: string; created_at: number; last_refresh_at: number }>()
+      ).results ?? []
+
+    const afterExchange = await read()
+    expect(afterExchange).toHaveLength(1)
+    expect(afterExchange[0]?.user_id).toBe('u-sec')
+    const grantId = afterExchange[0]!.grant_id
+
+    const refreshed = await pfetch(`${BASE}/oauth/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: tokens.refresh_token,
+        client_id: clientId
+      }).toString()
+    })
+    expect(refreshed.status).toBe(200)
+
+    // Still ONE row — the stamp is an upsert keyed on the grant, not a log.
+    const afterRefresh = await read()
+    expect(afterRefresh).toHaveLength(1)
+    expect(afterRefresh[0]?.grant_id).toBe(grantId)
+
+    // And a later exchange moves the idle clock without rewriting the
+    // original authorization moment — the whole basis of the sweep.
+    const later = afterRefresh[0]!.created_at + 3600
+    await stampTokenExchange(testEnv, { grantId, userId: 'u-sec', clientId }, later)
+    const afterStamp = await read()
+    expect(afterStamp[0]?.last_refresh_at).toBe(later)
+    expect(afterStamp[0]?.created_at).toBe(afterRefresh[0]?.created_at)
+  })
+
+  it('the idle window is a policy constant, not a library default', () => {
+    expect(MCP_LOGIN_IDLE_DAYS).toBe(90)
   })
 })
+
