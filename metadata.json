@@ -5,10 +5,7 @@
   "branch": "main",
   "checkpoints_count": 11,
   "files_touched": [
-    "apps/web/src/routes/admin/upstreams/DetailsSection.tsx",
-    "apps/worker/src/mcp/catalogue-views.ts",
-    "apps/worker/src/upstream/oauth-provider.ts",
-    "packages/shared/src/upstream-auth-strategy.ts"
+    "apps/worker/src/mcp/catalogue-views.ts"
   ],
   "sessions": [
     {
@@ -20,10 +17,10 @@
     }
   ],
   "token_usage": {
-    "input_tokens": 510,
-    "cache_creation_tokens": 539119,
-    "cache_read_tokens": 77798920,
-    "output_tokens": 219235,
-    "api_call_count": 256
+    "input_tokens": 512,
+    "cache_creation_tokens": 540460,
+    "cache_read_tokens": 78297975,
+    "output_tokens": 220211,
+    "api_call_count": 257
   }
 }
