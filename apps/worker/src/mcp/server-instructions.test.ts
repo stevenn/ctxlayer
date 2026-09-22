@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import {
   SERVER_INSTRUCTIONS,
+  alertBudget,
   composeInstructions,
   staticInstructions,
   guidanceBudget,
@@ -9,7 +10,7 @@ import {
   GUIDANCE_BUDGET,
   MAX_GATEWAY_ALIAS
 } from './server-instructions'
-import { upstreamGuidance, type UpstreamUserContext } from './catalogue-views'
+import { connectionAlert, upstreamGuidance, type UpstreamUserContext } from './catalogue-views'
 import type { UpstreamServerRow } from '../db/queries/upstreams'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 
@@ -37,7 +38,7 @@ describe('server instructions size budget', () => {
   })
 
   it('fits guidance + static under the client truncation cap', () => {
-    const composed = composeInstructions(realisticGuidance())
+    const composed = composeInstructions({ guidance: realisticGuidance() })
     expect(composed.length).toBeLessThanOrEqual(INSTRUCTIONS_CLIENT_CAP)
   })
 
@@ -54,7 +55,7 @@ describe('server instructions size budget', () => {
       { rows, skillsByUpstream, docsByUpstream: new Map() },
       GUIDANCE_BUDGET
     )
-    const composed = composeInstructions(guidance)
+    const composed = composeInstructions({ guidance })
     expect(composed.length).toBeLessThanOrEqual(INSTRUCTIONS_CLIENT_CAP)
     // Some upstreams are named, the rest collapse to the structured pointer.
     expect(guidance).toContain('- `up-server-number-0`:')
@@ -90,7 +91,7 @@ describe('gateway alias', () => {
       docsByUpstream: new Map()
     }
     const guidance = upstreamGuidance(ctx, guidanceBudget(alias))
-    expect(composeInstructions(guidance, alias).length).toBeLessThanOrEqual(
+    expect(composeInstructions({ guidance, alias }).length).toBeLessThanOrEqual(
       INSTRUCTIONS_CLIENT_CAP
     )
   })
@@ -98,12 +99,12 @@ describe('gateway alias', () => {
 
 describe('composeInstructions', () => {
   it('is the bare static block when the user has no attachments', () => {
-    expect(composeInstructions('')).toBe(SERVER_INSTRUCTIONS)
+    expect(composeInstructions({})).toBe(SERVER_INSTRUCTIONS)
   })
 
   it('puts guidance BEFORE the static block', () => {
     const guidance = realisticGuidance()
-    const composed = composeInstructions(guidance)
+    const composed = composeInstructions({ guidance })
     expect(composed.startsWith(guidance)).toBe(true)
     expect(composed.endsWith(SERVER_INSTRUCTIONS)).toBe(true)
     // The playbook lines must sit inside the client-visible window even
@@ -111,5 +112,57 @@ describe('composeInstructions', () => {
     expect(composed.indexOf('sk-driver-ai-planning-skill')).toBeLessThan(
       INSTRUCTIONS_CLIENT_CAP
     )
+  })
+})
+
+describe('connection alert in the instructions', () => {
+  const dead = (ids: string[]) =>
+    new Map(ids.map((id) => [id, { present: true, needsReauth: true }]))
+
+  it('leads the block, ahead of the playbook guidance', () => {
+    const rows = [row('u1', 'up-driver'), row('u2', 'up-sentry')]
+    const alert = connectionAlert(
+      { rows, creds: dead(['u2']), upstreamsUrl: 'https://x.test/app/upstreams' },
+      alertBudget()
+    )
+    const guidance = realisticGuidance()
+    const composed = composeInstructions({ alert, guidance })
+    expect(composed.startsWith(alert)).toBe(true)
+    expect(composed.indexOf(alert)).toBeLessThan(composed.indexOf(guidance))
+    expect(alert).toContain('up-sentry')
+    expect(alert).toContain('https://x.test/app/upstreams')
+  })
+
+  it('still fits alert + guidance + static under the client cap', () => {
+    // 12 dead upstreams and a full playbook set — the worst realistic case.
+    const rows = Array.from({ length: 12 }, (_, i) => row(`u${i}`, `up-server-number-${i}`))
+    const alert = connectionAlert(
+      {
+        rows,
+        creds: dead(rows.map((r) => r.id)),
+        upstreamsUrl: 'https://ctxlayer.example.com/app/upstreams'
+      },
+      alertBudget()
+    )
+    const guidance = upstreamGuidance(
+      {
+        rows,
+        skillsByUpstream: new Map(rows.map((r) => [r.id, [skill(`sk-${r.slug}-playbook`)]])),
+        docsByUpstream: new Map()
+      },
+      guidanceBudget(undefined, alert.length)
+    )
+    expect(alert.length).toBeLessThanOrEqual(alertBudget())
+    expect(composeInstructions({ alert, guidance }).length).toBeLessThanOrEqual(
+      INSTRUCTIONS_CLIENT_CAP
+    )
+  })
+
+  it('is empty when every connected upstream is healthy', () => {
+    const rows = [row('u1', 'up-driver')]
+    const creds = new Map([['u1', { present: true, needsReauth: false }]])
+    expect(
+      connectionAlert({ rows, creds, upstreamsUrl: 'https://x.test/app/upstreams' }, alertBudget())
+    ).toBe('')
   })
 })

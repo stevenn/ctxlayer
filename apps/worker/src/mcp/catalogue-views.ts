@@ -47,6 +47,7 @@ import {
   type McpAttachedSkillRef,
   type McpRestrictedTool,
   type McpUpstreamEntry,
+  type GrantExpirySource,
   type McpUpstreamToolGroup,
   type McpUpstreamTools,
   type SupportedTransport,
@@ -303,9 +304,121 @@ export function notConnectedNote(upstreamsUrl: string): string {
   )
 }
 
-export function expiringSoonNote(daysLeft: number, upstreamsUrl: string): string {
+/** Upstreams named in the connection alert before it collapses to a count. */
+const ALERT_MAX_SLUGS = 3
+
+export interface ConnectionAlertInput {
+  rows: readonly UpstreamServerRow[]
+  /** Credential health per upstream id; absent = never connected. */
+  creds: ReadonlyMap<
+    string,
+    { present: boolean; needsReauth: boolean; grantedAt?: number | null; authExpiresAt?: number | null }
+  >
+  upstreamsUrl: string
+  nowSec?: number
+}
+
+/**
+ * The LEADING line of the MCP server `instructions` when something about
+ * this user's connections needs a human: an upstream whose auto-refresh has
+ * stopped (dead grant), or one about to hit its provider's absolute limit.
+ *
+ * Why it exists at all: a dead upstream is silent by construction. Its tools
+ * still register from the catalogue but every call fails, and the one place
+ * that says so — the `note` on a `list_upstreams` entry — is PULL-only: the
+ * agent has to think to look. Until now a monthly forced re-login dragged
+ * people through the SPA often enough to notice; with logins sliding
+ * (oauth/login-activity.ts) that accident is gone, so the signal has to be
+ * pushed. Server `instructions` are the only channel a client reads without
+ * being asked, so the alert goes there, FIRST, ahead of the playbook
+ * guidance — a dead connection outranks a reading suggestion, and the
+ * guidance degrades gracefully when it loses the room.
+ *
+ * Never-connected upstreams are deliberately NOT alerted: nothing broke,
+ * and an org with optional upstreams would carry a permanent banner.
+ *
+ * `budget` (chars) bounds the whole block: past it the alert collapses to a
+ * count + URL, and if even that will not fit it returns '' rather than push
+ * the static base past the client cap. Slugs are org-curated first-party
+ * text (no upstream input), so no sanitisation.
+ */
+export function connectionAlert(input: ConnectionAlertInput, budget: number): string {
+  const nowSec = input.nowSec ?? Math.floor(Date.now() / 1000)
+  const dead: string[] = []
+  const expiring: Array<{ slug: string; daysLeft: number }> = []
+  for (const row of input.rows) {
+    const cred = input.creds.get(row.id)
+    if (!cred?.present) continue
+    if (cred.needsReauth) {
+      dead.push(row.slug)
+      continue
+    }
+    if (row.auth_strategy !== 'user_oauth') continue
+    const expiry = resolveGrantExpiry(
+      {
+        providerExpiresAt: cred.authExpiresAt,
+        grantedAt: cred.grantedAt,
+        observedDays: row.observed_grant_days,
+        configuredDays: parseAuthConfig(row.auth_config).grantLifetimeDays
+      },
+      nowSec
+    )
+    if (expiry?.expiringSoon) expiring.push({ slug: row.slug, daysLeft: expiry.daysLeft })
+  }
+  if (dead.length === 0 && expiring.length === 0) return ''
+
+  const url = input.upstreamsUrl
+  const sentences: string[] = []
+  if (dead.length > 0) {
+    sentences.push(
+      `Action needed — auto-refresh has STOPPED for ${countedSlugs(dead, 'upstream')}: ` +
+        `every call to their tools fails with credential_revoked until the user ` +
+        `re-authorizes at ${url}. Tell the user; retrying or reconnecting this ` +
+        `connector does not fix it.`
+    )
+  }
+  if (expiring.length > 0) {
+    const named = expiring
+      .slice(0, ALERT_MAX_SLUGS)
+      .map((e) => `${e.slug} (${e.daysLeft <= 0 ? '<1' : e.daysLeft}d)`)
+      .join(', ')
+    const extra = expiring.length - Math.min(expiring.length, ALERT_MAX_SLUGS)
+    sentences.push(
+      `Expiring soon — ${named}${extra > 0 ? ` +${extra} more` : ''}: a provider limit ` +
+        `that refreshes do not extend. The user can renew at ${url}.`
+    )
+  }
+  const full = firstParty(sentences.join(' '))
+  if (full.length + 2 <= budget) return `${full}\n\n`
+
+  const total = dead.length + expiring.length
+  const short = firstParty(
+    `Action needed — ${total} upstream authorization${total === 1 ? '' : 's'} need the ` +
+      `user's attention at ${url}; \`list_upstreams\` shows which (status field).`
+  )
+  return short.length + 2 <= budget ? `${short}\n\n` : ''
+}
+
+/** "2 upstreams (up-a, up-b)" / "4 upstreams (up-a, up-b, up-c +1 more)". */
+function countedSlugs(slugs: readonly string[], noun: string): string {
+  const named = slugs.slice(0, ALERT_MAX_SLUGS).join(', ')
+  const extra = slugs.length - Math.min(slugs.length, ALERT_MAX_SLUGS)
+  return (
+    `${slugs.length} ${noun}${slugs.length === 1 ? '' : 's'} ` +
+    `(${named}${extra > 0 ? ` +${extra} more` : ''})`
+  )
+}
+
+export function expiringSoonNote(
+  daysLeft: number,
+  upstreamsUrl: string,
+  source: GrantExpirySource = 'configured'
+): string {
+  // Only say it plainly when the provider told us; otherwise the number is
+  // ctxlayer's own estimate and the agent should relay it as one.
+  const hedge = source === 'provider' ? '' : 'about '
   const when =
-    daysLeft <= 0 ? 'within a day' : daysLeft === 1 ? 'in about 1 day' : `in about ${daysLeft} days`
+    daysLeft <= 0 ? `within ${hedge}a day` : daysLeft === 1 ? `in ${hedge}1 day` : `in ${hedge}${daysLeft} days`
   return (
     `authorization expires ${when} — a fixed limit set by this provider that token ` +
     `refreshes do not extend. The user can renew it now at ${upstreamsUrl} to avoid ` +
@@ -362,7 +475,7 @@ export function upstreamEntry(
       : status === 'not_connected'
         ? notConnectedNote(upstreamsUrl)
         : expiry?.expiringSoon
-          ? expiringSoonNote(expiry.daysLeft, upstreamsUrl)
+          ? expiringSoonNote(expiry.daysLeft, upstreamsUrl, expiry.source)
           : undefined
   // Whole-upstream attachments only (tool_name = ''); per-tool
   // attachments surface via /api/upstreams/:id/tools.

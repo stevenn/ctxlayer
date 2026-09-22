@@ -24,6 +24,7 @@ import { renderBlocksToMarkdown } from '../rag/markdown'
 import { searchDocs, effectiveScope, availableScopeFor, SEARCH_K_DEFAULT } from '../rag/search'
 import { UpstreamProxyRegistry } from './proxy-registry'
 import {
+  connectionAlert,
   describeUpstreamForUser,
   listUpstreamsForUser,
   loadUserContext,
@@ -32,8 +33,14 @@ import {
   type UpstreamUserContext
 } from './catalogue-views'
 import { BUILTIN_INPUT_SHAPES } from './builtin-schemas'
-import { SERVER_INSTRUCTIONS, composeInstructions, guidanceBudget } from './server-instructions'
+import {
+  SERVER_INSTRUCTIONS,
+  alertBudget,
+  composeInstructions,
+  guidanceBudget
+} from './server-instructions'
 import { listUpstreamsVisibleToUser } from '../db/queries/upstreams'
+import { getUserCredentialStatuses } from '../db/queries/upstream-credentials'
 import { findJobById, listJobsForUser } from '../db/queries/async-jobs'
 import { listUserRoleIds } from '../db/queries/roles'
 import { activeUsers, parseActiveUsersWindow } from '../db/queries/usage-read'
@@ -109,9 +116,11 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
     // conventions the upstream tool schemas don't show; naming them
     // here means the agent sees the obligation on connect instead of
     // having to discover it via `list_upstreams` + a follow-up fetch.
-    // Guidance comes first because clients truncate long instructions
-    // (size-budget note in server-instructions.ts) — as a trailing tail
-    // it was precisely the part that got cut.
+    // Order is connection alert → guidance → static base, because clients
+    // truncate long instructions (size-budget note in
+    // server-instructions.ts) and a trailing tail is precisely the part
+    // that gets cut: a stopped upstream outranks a playbook pointer, which
+    // outranks the standing description of the surface.
     // Per-tool attachments ride on the individual tool's description
     // instead (see `UpstreamProxyRegistry.registerTool`). Built before
     // any tool registers because the SDK reads `instructions` when it
@@ -130,11 +139,28 @@ export class McpSessionDO extends McpAgent<Env, undefined, McpProps> {
         // client-side ("Yuki MCP") to the "ctxlayer" self-identification,
         // so client-side org instructions referencing the alias bind.
         const alias = this.env.GATEWAY_ALIAS
-        const guidance = upstreamGuidance(upstreamCtx, guidanceBudget(alias))
-        if (guidance || (alias ?? '').trim()) {
+        // Connection health leads (see `connectionAlert`): an upstream whose
+        // auto-refresh has stopped is otherwise silent — its tools register
+        // from the catalogue and only fail when called — and instructions are
+        // the only channel a client reads unprompted.
+        const creds = await getUserCredentialStatuses(
+          this.env,
+          userId,
+          upstreamCtx.rows.map((r) => r.id)
+        )
+        const alert = connectionAlert(
+          {
+            rows: upstreamCtx.rows,
+            creds,
+            upstreamsUrl: spaUrl(this.env, UPSTREAMS_PAGE)
+          },
+          alertBudget(alias)
+        )
+        const guidance = upstreamGuidance(upstreamCtx, guidanceBudget(alias, alert.length))
+        if (alert || guidance || (alias ?? '').trim()) {
           this.server = new McpServer(
             { name: 'ctxlayer', version: '0.1.0' },
-            { instructions: composeInstructions(guidance, alias) }
+            { instructions: composeInstructions({ alert, guidance, alias }) }
           )
         }
       } catch (err) {
