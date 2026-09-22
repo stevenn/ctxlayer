@@ -3,7 +3,7 @@
   "checkpoint_id": "01M34367DEP53NSNPRPXQXVKXP",
   "session_id": "c021a470-7022-42f1-a3bf-1f23a19e6b11",
   "strategy": "manual-commit",
-  "created_at": "2026-09-22T08:19:49.158551Z",
+  "created_at": "2026-09-22T08:20:03.444345Z",
   "branch": "main",
   "checkpoints_count": 11,
   "save_step_count": 1,
@@ -18,25 +18,25 @@
   "turn_id": "249ffdb8df0e",
   "compact_transcript_start": 0,
   "token_usage": {
-    "input_tokens": 502,
-    "cache_creation_tokens": 534996,
-    "cache_read_tokens": 75813113,
-    "output_tokens": 215623,
-    "api_call_count": 252
+    "input_tokens": 504,
+    "cache_creation_tokens": 536021,
+    "cache_read_tokens": 76308045,
+    "output_tokens": 216427,
+    "api_call_count": 253
   },
   "session_metrics": {
     "turn_count": 11
   },
   "initial_attribution": {
-    "calculated_at": "2026-09-22T08:19:49.034237Z",
+    "calculated_at": "2026-09-22T08:20:03.316669Z",
     "agent_lines": 0,
-    "agent_removed": 15,
+    "agent_removed": 0,
     "human_added": 0,
-    "human_modified": 147,
-    "human_removed": 0,
-    "total_committed": 55,
-    "total_lines_changed": 200,
-    "agent_percentage": 7.5,
+    "human_modified": 145,
+    "human_removed": 2,
+    "total_committed": 145,
+    "total_lines_changed": 184,
+    "agent_percentage": 0,
     "metric_version": 2
   }
 }
