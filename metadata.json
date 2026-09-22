@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M342Z1FHNAXR4R1NZY8KQM40",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "apps/web/src/lib/api/skills.ts",
+    "apps/web/src/routes/admin/audit.tsx",
+    "apps/web/src/routes/admin/oauth-clients.tsx",
+    "apps/web/src/routes/admin/upstreams/CreateUpstreamModal.tsx",
+    "apps/web/src/routes/admin/upstreams/DetailsSection.tsx",
+    "apps/web/src/routes/admin/upstreams/helpers.tsx",
+    "apps/worker/src/api/admin-upstreams.ts",
+    "apps/worker/src/app.ts",
+    "apps/worker/src/db/queries/upstreams.ts",
+    "apps/worker/src/mcp/session-do.ts",
+    "apps/worker/src/upstream/admin-config.test.ts",
+    "apps/worker/src/upstream/admin-config.ts",
+    "apps/worker/src/upstream/oauth-provider.test.ts",
+    "apps/worker/src/upstream/oauth-provider.ts",
+    "packages/shared/src/upstream-api.ts",
+    "packages/shared/src/upstream-auth-strategy.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 464,
+    "cache_creation_tokens": 508602,
+    "cache_read_tokens": 66671262,
+    "output_tokens": 198532,
+    "api_call_count": 233
+  }
+}
