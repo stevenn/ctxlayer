@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M3431PZRYAV997409FKS0526",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "apps/web/src/routes/admin/upstreams/DetailsSection.tsx",
+    "apps/web/src/routes/admin/upstreams/index.smoke.test.tsx",
+    "apps/web/src/routes/upstreams.test.ts",
+    "apps/web/src/routes/upstreams.tsx",
+    "apps/worker/src/api/upstream-oauth.ts",
+    "apps/worker/src/db/migrations/0039_grant_expiry_sources.sql",
+    "apps/worker/src/db/queries/grant-observations.ts",
+    "apps/worker/src/db/queries/upstream-credentials.ts",
+    "apps/worker/src/db/queries/upstreams.test.ts",
+    "apps/worker/src/db/queries/upstreams.ts",
+    "apps/worker/src/mcp/catalogue-views.ts",
+    "apps/worker/src/upstream/bearer.ts",
+    "apps/worker/src/upstream/grant-expiry.test.ts",
+    "apps/worker/src/upstream/oauth-provider.ts",
+    "apps/worker/src/upstream/oauth-static.ts",
+    "apps/worker/src/upstream/token-expiry.ts",
+    "apps/worker/test/integration/credential-granted-at.test.ts",
+    "apps/worker/test/integration/grant-observations.test.ts",
+    "apps/worker/test/integration/oauth-refresh-lease.test.ts",
+    "apps/worker/test/integration/oauth-static-reauth.test.ts",
+    "apps/worker/test/integration/proxy-registry-dead-credential.test.ts",
+    "packages/shared/src/upstream-api.ts",
+    "packages/shared/src/upstream-auth-strategy.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 478,
+    "cache_creation_tokens": 517004,
+    "cache_read_tokens": 69977349,
+    "output_tokens": 204838,
+    "api_call_count": 240
+  }
+}
