@@ -1,0 +1,1948 @@
+no response?
+
+---
+
+<pasted_content id="fc6e">
+[
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T06:13:26.296Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "7fc701f6e0ad6f5231241d8d81aea6e126fd7bdf6dd97c40925180a3f7a0e420",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33VYV4R00000000000000G1",
+      "requestId": "71801f48e7c179a8ba10bed3b4de07e3",
+      "traceId": "fb36eb0980a495aa250901b5e3c3cf78",
+      "spanId": "60d034607f8bd511",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T04:49:52.704Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "3eff87b8f7ad20c77653082876dbc2ef16413f8657966edc4566bfbc3066b18e",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33Q5V2000000000000000BH",
+      "requestId": "ccccb7233321b85001d59671c145e3e7",
+      "traceId": "3973703004a89aaa11d550bb92ceb997",
+      "spanId": "08e6c9dce507a3b5",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5394"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T03:17:05.018Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "d0a67f3a194e0bb46c1db6d2053713bc2c6a9b2e918dda41e2652d3b872442c7",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33HVXVT000000000000009J",
+      "requestId": "cbfe42463300c0e4079432190910fe35",
+      "traceId": "a45cda6b295f2038b5668e1757342c17",
+      "spanId": "77e2204a547bd105",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5394",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3926"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T03:10:11.697Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "1af6f0c3bd6ad792a6e0402269d626431b421d5563fb29874be67d2c6c5b62cf",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33HFA7H0000000000000088",
+      "requestId": "4fc8b3ccdf57d5e1b5dbf8d48cc70b0f",
+      "traceId": "37959371ea5c642dd3ea135afc93a5e4",
+      "spanId": "40532f762a0be645",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3926",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T03:00:38.677Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "eventType": "scheduled",
+      "executionModel": "stateless",
+      "event": {
+        "cron": "0 3 * * *",
+        "scheduledTime": 1790046011
+      }
+    },
+    "$metadata": {
+      "id": "01M33GXTMN000000000000024M",
+      "requestId": "b0949fd6b0846b4fd8b4b5f6a87e1f0f",
+      "traceId": "38ed778538f640fb495fd333664f4b42",
+      "spanId": "ead1b57d7fab8be1",
+      "trigger": "0 3 * * *",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "scheduled"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T01:43:39.920Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "3eff87b8f7ad20c77653082876dbc2ef16413f8657966edc4566bfbc3066b18e",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33CGW4G00000000000000AG",
+      "requestId": "cd3e83f43ead5d7223ae2cfce1980114",
+      "traceId": "c5edf38c50ddaa01c40c456b5fe3a970",
+      "spanId": "06eff6c4b10fa43b",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T01:43:39.863Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "3eff87b8f7ad20c77653082876dbc2ef16413f8657966edc4566bfbc3066b18e",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M33CGW2Q000000000000009N",
+      "requestId": "cd3e83f43ead5d7223ae2cfce1980114",
+      "traceId": "c5edf38c50ddaa01c40c456b5fe3a970",
+      "spanId": "06eff6c4b10fa43b",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-22T00:02:56.713Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "3eff87b8f7ad20c77653082876dbc2ef16413f8657966edc4566bfbc3066b18e",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M336REJ9000000000000009H",
+      "requestId": "041940272bdd92598db3fc6292a44c3b",
+      "traceId": "5ba0ff18d7e55ad6d0f4c9fdf32ee3a8",
+      "spanId": "db6d35b3ed6b5549",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4275"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T23:09:52.197Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "d0a67f3a194e0bb46c1db6d2053713bc2c6a9b2e918dda41e2652d3b872442c7",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M333Q8P5000000000000008E",
+      "requestId": "ca9e269fd46bfafad9b42d531d2fc6fc",
+      "traceId": "03f71ead9daedbeb39d2897bd8665b5e",
+      "spanId": "1cf27bdb81dc235c",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4275",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "level": "error",
+      "message": "[oauth] up-datadog: auth() threw: The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client. The refresh token expired."
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T22:13:28.926Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "6adf70d7b6a09e372aff1e0ab39ac751809128d6a8d22537d49955edf31b1ac2",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M330G0PY00000000000000AH",
+      "requestId": "bb69511b60a58f612511f2052f2a40b6",
+      "traceId": "2d73899ed44c991aca68d00c0c5734c0",
+      "spanId": "bf13f1523e835b98",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "level": "error",
+      "error": "[oauth] up-datadog: auth() threw: The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client. The refresh token expired.",
+      "message": "[oauth] up-datadog: auth() threw: The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client. The refresh token expired.",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4687"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T19:17:46.768Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "aa48d9391a8f6ab77f51d63b32cd1c026938d8a01e0c17dfa8d299e4cb8e5624",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32PE9MG0000000000000080",
+      "requestId": "b2ec065e9b98b1cbf8945700624ec021",
+      "traceId": "b14d258771e5f1656c9633397784b1f6",
+      "spanId": "a85b1f5683ff6d4e",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4687",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T18:54:36.555Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "e60c794f94460b484e659e3702d184f5da9dd43930616555c20baaa6e233e0fe",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32N3W0B000000000000009V",
+      "requestId": "7e15fd07b041f90ce10ad4a1c887dc83",
+      "traceId": "0ee1db4c6fdecdf914f4448ef12ab223",
+      "spanId": "1bc80eeea37a8627",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T17:59:18.481Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "e60c794f94460b484e659e3702d184f5da9dd43930616555c20baaa6e233e0fe",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32HYKPH00000000000000CN",
+      "requestId": "e1cd30a953e0b6498128a91a3651786b",
+      "traceId": "bb748937bccb21e795f232f0aee938c4",
+      "spanId": "7b9d2269e512c46d",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T17:11:54.582Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "d8f5b47cdd06982b04d11847c2c22d2c23ddd76285bf9eab3630255987faf363",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32F7TEP000000000000007G",
+      "requestId": "313bf36ac6a44a2ab13073a24c6dc334",
+      "traceId": "eb09b3da13fcc6b6cabe18dcf82d9eeb",
+      "spanId": "bf236e40d7e63fe7",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3691"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T17:00:44.294Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "0315203719ccfa6eae9114034dfe9b20b999712950086d7d00ff48633735d292",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32EKBW6000000000000007G",
+      "requestId": "2562d78190fc798a3d60163e6f1653bc",
+      "traceId": "99ecfb7f789366f96df1e1b0923867dd",
+      "spanId": "71986e3373ff3ae3",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3691",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T16:33:17.941Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "ff3685faa8c14e422bcda1539aa153cbbe7ea39ed408c8fae7a5421ada207317",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32D143N0000000000000088",
+      "requestId": "ac82bb44596f157cc071820b693f443d",
+      "traceId": "040468893f1b5347481af464e00df17b",
+      "spanId": "abb4d0a47aafcb25",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3659"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T16:10:29.099Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "d7df0410d890fd562299b5be202398053b593b568777e530864968f3ca95060d",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32BQBBB0000000000000088",
+      "requestId": "7dc74d37e8b6b87351ef4fc902c0d1f3",
+      "traceId": "295842f7ac6a6c93e9dbb4596c54a8cc",
+      "spanId": "ab1b2f8cf7a76742",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3659",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T16:01:58.234Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "8ae1b2d8ac2b6efb19af2ae4846b910f88fab7fccd78723383921e19fb663668",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32B7RET00000000000000CN",
+      "requestId": "8509713729221116acbfcb017b478cc0",
+      "traceId": "feae18f0eac92afd0aa5b3aeed24e66d",
+      "spanId": "ae01670b9a013d41",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T13:41:25.363Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "3beace020b86d41d74374c32446a3abfe45325c5610cf32822bcc615de3bcd6b",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M3236D7K00000000000000FH",
+      "requestId": "8e3e9eb6129a6777f014f85e4506303c",
+      "traceId": "30a684404d10fec5c7056e1efe40b893",
+      "spanId": "b3dd8a53cedfe1d6",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-linear saveTokens: has_refresh=true kept_prior_refresh=false expires_in=86100"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T13:41:01.234Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "93c7c88e6bd485cde90e4998f477d360b816f760b0fe2e184e43de793a92abae",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M3235NNJ00000000000000F2",
+      "requestId": "5ebfdcf5b4dc27f962e431753a8df54e",
+      "traceId": "304cffdf30122e68c2d0c21ca9ee0981",
+      "spanId": "aaf15ae5d4a2047d",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-linear saveTokens: has_refresh=true kept_prior_refresh=false expires_in=86100",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T13:38:30.825Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "b36c62e8552c8568785788c51f0bae8f9ad9ab9b62330d973d58b8bda352d1ab",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M32312S900000000000000ET",
+      "requestId": "d5197422a0c2282f04be80aecbfb6760",
+      "traceId": "d2a5f1e2ea5e2144ba96a190bbd2995d",
+      "spanId": "59036fdafa34cc5f",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T12:18:16.531Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "89b91a0c70a23e775f377a16b8f111173385b44ad3c0fe02609999739f680fe3",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31YE5AK00000000000000EW",
+      "requestId": "fd019b191540b9564044796cfccf556c",
+      "traceId": "fc31c60524ba41edaf7e359171d726d8",
+      "spanId": "c4ee979d2b7336fe",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-linear saveTokens: has_refresh=true kept_prior_refresh=false expires_in=86100"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T12:08:58.525Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "eventType": "fetch",
+      "executionModel": "stateless",
+      "event": {
+        "request": {
+          "method": "GET",
+          "url": "https://ctxlayer.yukitools.dev/api/upstreams/oauth/callback?code=REDACTED%3Ahr9uPjAozWs6ubCQ%25REDACTED&state=REDACTED",
+          "path": "/api/upstreams/oauth/callback",
+          "search": {
+            "code": "REDACTED:hr9uPjAozWs6ubCQ%REDACTED",
+            "state": "REDACTED"
+          }
+        }
+      }
+    },
+    "$metadata": {
+      "id": "01M31XX4CX0000000000000018",
+      "requestId": "9527b3e25c9a7f128c76fc0add2ca3a3",
+      "rayId": "a3e8f5533e850359",
+      "traceId": "7099060c1a2c0e4da18892acd26127f4",
+      "spanId": "56d39ebd5eb2b89e",
+      "trigger": "GET /api/upstreams/oauth/callback",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-linear saveTokens: has_refresh=true kept_prior_refresh=false expires_in=86100",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "fetch"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T11:39:09.713Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "86a2c1c37107e87911cd6e4c6f4b0898ec863eccedd60f1bbce8fa0784e37800",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31W6HGH000000000000008N",
+      "requestId": "c066f68d125a54eb37b5d49d53172595",
+      "traceId": "3c4b23f1288dbd5bdaa0568626d5a6a1",
+      "spanId": "8761c387d2f2fe9d",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4543"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T10:52:28.287Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "2545a04a3fb3421c1e4268a76cd2a1612dd69193d74be319915f9c3d50392ea5",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31SH1QZ00000000000000CE",
+      "requestId": "395e0c8fb8b49b2297690209a113c7ae",
+      "traceId": "f67c160d365a5dd89bfd9ec440c080a6",
+      "spanId": "01d2facf91433966",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4543",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T10:41:09.978Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "8d4b92d7f62f57ab1fc2739a867e864ddf91a35f8d524d108460878de9a73385",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31RWBAT00000000000000D0",
+      "requestId": "b89fc4e774eedc0f1d0dbaef99e898b1",
+      "traceId": "ca8df940524a53604352c5e95390c4a1",
+      "spanId": "b1b6e0b6142685ba",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T10:41:09.934Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "8d4b92d7f62f57ab1fc2739a867e864ddf91a35f8d524d108460878de9a73385",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31RWB9E00000000000000CF",
+      "requestId": "b89fc4e774eedc0f1d0dbaef99e898b1",
+      "traceId": "ca8df940524a53604352c5e95390c4a1",
+      "spanId": "b1b6e0b6142685ba",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3662"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T10:34:43.195Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "917e0eb139201134b0eff3dfc655ca26ce254bef041d0ca22194bdbfec8c2d65",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31RGHKV000000000000009S",
+      "requestId": "39752a9268ce987d591b3da9c5fc37bf",
+      "traceId": "0c21c7cfe5685ff10b49637e0fc37ccb",
+      "spanId": "e3bbb8c56ff841fc",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3662",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T09:43:40.408Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "b31317a2131bb99edd8c1346ed7efeb6e23c050bbca9c0cc3d42f55c9998155b",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31NK2KR00000000000000CT",
+      "requestId": "b177d842d37f8aac595eb9c750c8cabe",
+      "traceId": "e79c587af6b1630d239553cadc4e56c7",
+      "spanId": "f59bf884397a17f4",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4614"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T09:35:56.126Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "7a401a33301dc58feb947780f0d798cfb512707434522b2a0b93db6bd5900203",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31N4X6Y000000000000007T",
+      "requestId": "b89ffbf0272de04d038a86b3dfeb8759",
+      "traceId": "bf2494252fab9f59f02314302669bbc6",
+      "spanId": "55088d828e96dc8a",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4614",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5056"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T08:58:45.486Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "c9bad750a992649f582a49e2a22e6b97248d96f0847eddcaf29808f06f62cb96",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31K0TVE00000000000000E2",
+      "requestId": "d39a32b29a37155b565e4b0c00f7a0f4",
+      "traceId": "e450371f169aa341ff33920b0ac4a07b",
+      "spanId": "c24d312fa1ef8171",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5056",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T08:43:32.303Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "79496d7c2f7788230686934b50f564e5a58ebb4321ed41aa00b189d90077709f",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31J4Z2F000000000000008G",
+      "requestId": "1bd42b1ef97de532d47b7fbda6e89a4b",
+      "traceId": "1c67090f05daf5844e3d1b318ccb3a30",
+      "spanId": "d59558390b4371be",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4370"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T08:32:53.844Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "f5c7e183774a09c5137081d398568b3eea50afbadc8023dc5c680f7884c413bc",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31HHFJM00000000000000EM",
+      "requestId": "fe40a1ef8e665231912c6ae023b69b85",
+      "traceId": "11a5cde16451a2d0fd113e39e9d17dc5",
+      "spanId": "fd2665076428b462",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4370",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3999"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T07:22:07.761Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "f21e34fb087b6dfdf4f8eab97fc060d1b822c6add6cbf279f8dcad50b22472e1",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31DFX0H00000000000000FD",
+      "requestId": "5b1f295d2105675554d75125e021e704",
+      "traceId": "5caf6b6490ded6dc8f69beaeb562d84b",
+      "spanId": "002dfb7e13386bb4",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3999",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T07:04:51.806Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "fa07df8a0ae24d8a0cac456e92f011e7a85a3d03f0c4599b43e355204d9afb3f",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31CG9AY00000000000000F8",
+      "requestId": "db31ca90380fd92a3bd7e60f41e790ce",
+      "traceId": "ef2020d2524806e549b3427fa18075df",
+      "spanId": "7e6808589b94f8db",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T07:04:08.063Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "decf5ea2defc14cc6e21b2ae9ebfcc64601c67a1381ad3d52ce4e11ae8a1d8be",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31CEYKZ00000000000000GC",
+      "requestId": "a8b848a9a06503d734fe4e588cccda32",
+      "traceId": "fb3022fa5eaa7049b2dbc61194dd3719",
+      "spanId": "deee6b5973b5942e",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4382"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T06:56:27.641Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "f2b2c8a6d0dbdfedb4a6ae231792bafe430cf0c12509a714d441b0cc18b6bdad",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31C0WZS00000000000000BX",
+      "requestId": "807022b4ef8ced33053c0c345630959f",
+      "traceId": "0198de8294a5d3ccd16c7564164ee831",
+      "spanId": "94a967cc225f3f04",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4382",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4826"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T06:09:09.317Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "d634e897286091024d24834676e9ff6abf456462c35e2937ddefe2f886a585ba",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M319A965000000000000007P",
+      "requestId": "96de972c869a4d791f08916dffab73e8",
+      "traceId": "0ecb7dd7685904924e9b2f1b0356a468",
+      "spanId": "55b1e6f1402128c3",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4826",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4551"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T06:06:01.291Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "60ccff10075ebcd15eebcac59af0fdc3d239fb09280ae63073dd0ba2e558550e",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M3194HJB00000000000000CZ",
+      "requestId": "1e799874c2208f47b0138a3678fcbd5b",
+      "traceId": "a2a08dd2d6aab18186a684ac90520113",
+      "spanId": "5cbf486e402ccff5",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4551",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4345"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T06:05:27.654Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "0b8d706cdc4b27ef7ade616cd50b625db928cdfb9cd63444a0170d406fdc5c92",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M3193GQ600000000000000DK",
+      "requestId": "33d37e9f3cfffa8919227ee6859ac143",
+      "traceId": "5ea6328c007ea47c526d3e70e8a25389",
+      "spanId": "24561e1e5dd5f9fa",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4345",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T05:30:19.645Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "f87223c4bb0d7df149a458d801565eb44fda5bb617aa4c89877f38bfe7531b26",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M317363X0000000000000094",
+      "requestId": "f176db7f06089eafa1da6bbf5fe13733",
+      "traceId": "18defc60b20cc30f1f5d909a49559193",
+      "spanId": "715b7b2328441272",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4712"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T05:30:19.377Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "f87223c4bb0d7df149a458d801565eb44fda5bb617aa4c89877f38bfe7531b26",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M31735VH000000000000007T",
+      "requestId": "f176db7f06089eafa1da6bbf5fe13733",
+      "traceId": "18defc60b20cc30f1f5d909a49559193",
+      "spanId": "715b7b2328441272",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4712",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T04:50:16.211Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "e59e3148c0838f17cff26724869042b01a3572fda11ac4c88682034a249ea9b5",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M314SV0K00000000000000AG",
+      "requestId": "00365cacfdbc43b68545e041f11af4a4",
+      "traceId": "4e9721b3a57d3d2955a53afbba138e36",
+      "spanId": "6ebdd454a46749b0",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T04:50:16.096Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "e59e3148c0838f17cff26724869042b01a3572fda11ac4c88682034a249ea9b5",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M314STX0000000000000009N",
+      "requestId": "00365cacfdbc43b68545e041f11af4a4",
+      "traceId": "4e9721b3a57d3d2955a53afbba138e36",
+      "spanId": "6ebdd454a46749b0",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3922"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-21T01:17:55.306Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "636f19eab3700c8d23e536d416f105e22897e20e6046c050b9eff0b1f10cc3b6",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M30RN0QA00000000000000CM",
+      "requestId": "c1a8e76f693256026fc5003d36205194",
+      "traceId": "1813242bcff7c1fbd5f3f7075a501d53",
+      "spanId": "c1e7e2154c76028f",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3922",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4382"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T19:05:30.996Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "e4cb5d7939355a7de821d3e2538338c25578312badb9cb8a375b0a02b229d2a8",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M303B43M000000000000009K",
+      "requestId": "9e56baace7cb3b770546d49524a7962e",
+      "traceId": "c4f236e37f5a0218bcda5b308fa80a9a",
+      "spanId": "b8d59bf8b1df9740",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4382",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4061"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T18:03:55.715Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "8f0143ffd41908998759c72be20b699e1486cb841acfac9b174d78f26a42f7f2",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2ZZTBE3000000000000007A",
+      "requestId": "e78676852ae9f54ca071a48203eb45c8",
+      "traceId": "14769076765ed1b589a1f124af22d2c1",
+      "spanId": "015191c476afb146",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4061",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4542"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T15:01:54.111Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "81ff18f29fe184781f7cecf96e1b6e2ea68ed1c801dd8738e7a8fe6c36121463",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2ZND1SZ00000000000000DX",
+      "requestId": "74bde8eff9926f6fa9ecbfd137e46f88",
+      "traceId": "031e8f543ce138fb93243a191cc6d041",
+      "spanId": "c0f244867400f6ca",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4542",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4418"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T11:14:44.125Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "035f09ad87c1c2485b936ab45cbe9f50455e8ac9837e9877b866b643c50ab629",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2Z8D38X000000000000007P",
+      "requestId": "1dfdcd1866c501f7779d2021be46150b",
+      "traceId": "c710d000946b0943923941003e7a762e",
+      "spanId": "3b56e4d664340aca",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4418",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T10:43:54.387Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "38ee59bf6353935028a08ef727505eb1e3d0845f9b52b74249305a6bbf9c82ab",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2Z6MMWK00000000000000FC",
+      "requestId": "cfc3516cb33bff83a170b4b185224d3c",
+      "traceId": "db3302cbad9a89920795acdfb37a868c",
+      "spanId": "03f8473cfbd54637",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T04:48:17.910Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "7cf49e22dfc1fbb07de7e8134826a35b7714a0a98d26b8d3ef06fc5f76ce55c3",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2YJ9GFP000000000000008S",
+      "requestId": "b27507eb20f0a1c2adeb40c299824055",
+      "traceId": "b01683423721cf0653514e6499098223",
+      "spanId": "506d27ffc2b49bf4",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T03:44:10.986Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "7cf49e22dfc1fbb07de7e8134826a35b7714a0a98d26b8d3ef06fc5f76ce55c3",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2YEM3QA0000000000000090",
+      "requestId": "9ad45fa63ce8c55c85712d1c0bc66a5d",
+      "traceId": "13444dae0147536f3db559cc8d5a038a",
+      "spanId": "54b3d52c23cec654",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3599",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T03:44:10.980Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "7cf49e22dfc1fbb07de7e8134826a35b7714a0a98d26b8d3ef06fc5f76ce55c3",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2YEM3Q4000000000000008V",
+      "requestId": "9ad45fa63ce8c55c85712d1c0bc66a5d",
+      "traceId": "13444dae0147536f3db559cc8d5a038a",
+      "spanId": "54b3d52c23cec654",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3918"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-20T01:44:01.328Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "5db826b854de728fa32246ea9521582cf8ad81317d3842a073364921789d5576",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2Y7R31G00000000000000CR",
+      "requestId": "d229e612752e6d7e11fef0357477eca7",
+      "traceId": "4036e0d1ca4b3756105abb41b38f6140",
+      "spanId": "f9ac347193ee780f",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3918",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T23:38:36.829Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "ad1b16020a5a6554a76677a4315b542a93675e4d6cdb2c07a2f66d9723459a4c",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2Y0JEWX000000000000008N",
+      "requestId": "50b3b9da2cf82c49bde46b5cd4804c42",
+      "traceId": "d0cc44e2186bc2ea12b941e1783fe140",
+      "spanId": "5dd3b516839073fd",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-datadog saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5074"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T20:30:22.071Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "fcd06904231811918cd29522e39f5716d75c6da6907dda5bd3fb290c3ddad06c",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2XNSRVQ0000000000000088",
+      "requestId": "59954ed5638eda4a6ee44633422f9c2b",
+      "traceId": "58a6f8e5c60110a8534ec9895804f3c5",
+      "spanId": "8af7c649c3befe91",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=5074",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4932"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T20:13:52.630Z",
+    "$workers": {
+      "truncated": false,
+      "event": {
+        "wasClean": false,
+        "webSocketType": "close",
+        "code": 1006
+      },
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "fe22ea1bd5acefc098faf9d3865220f330cef0a6b370a9fca103ae49a2282908",
+      "eventType": "hibernatableWebSocket",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2XMVJKP000000000000007M",
+      "requestId": "30e07fca27ba5aff6c51f7769275722d",
+      "traceId": "a63f57b023458fb32777bddef51ebe60",
+      "spanId": "e9e8f559261e609f",
+      "trigger": "ctxlayer-yukitools",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4932",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "hibernatableWebSocket"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T17:22:31.835Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "605e702cc497b953805869613a3884cb0d618dee89b7a9da12f813d0bf95f321",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2XB1TRV000000000000009G",
+      "requestId": "34fe79c6c931f1fea0b9e868c5ab4563",
+      "traceId": "b9ed69a3586e99e96ab6494b60050806",
+      "spanId": "e119f8d402142e5b",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-yuki-ia-nl saveTokens: has_refresh=true kept_prior_refresh=false expires_in=3600",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4139"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T13:28:20.230Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "4d6b6c858286ce32d5e1abad46528053ef675ccf373e2d47795aae584740d892",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2WXN0G600000000000000BY",
+      "requestId": "598142f8cda9160be259a6d5d16241f5",
+      "traceId": "cc2fc40a3b2b3c242e02101b987a18b2",
+      "spanId": "11ab21b29063d57d",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4139",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T10:22:29.830Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "842722dab865d16374e4c9ebd5eef8764bad143eedb19d48b7be1a605ff58b77",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2WK0QE600000000000000FY",
+      "requestId": "c2ffc3ffea4345a0192faf19a0d9aebb",
+      "traceId": "262fd7ba975c8f7bf97d1510c43020c0",
+      "spanId": "7f1b909664952ef9",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-notion saveTokens: has_refresh=true kept_prior_refresh=false expires_in=28800",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  },
+  {
+    "source": {
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4372"
+    },
+    "dataset": "cloudflare-workers",
+    "timestamp": "2026-09-19T08:33:27.072Z",
+    "$workers": {
+      "truncated": false,
+      "scriptName": "ctxlayer-yukitools",
+      "scriptVersion": {
+        "id": "51545e69-6b8c-44fb-90fb-8e005c626ce5"
+      },
+      "durableObjectId": "b9fc6378ad27cc20a787002d6de4fa17a105e22cae941357f66e3957bcc42526",
+      "eventType": "jsrpc",
+      "entrypoint": "McpSessionDO",
+      "executionModel": "durableObject"
+    },
+    "$metadata": {
+      "id": "01M2WCS2100000000000000088",
+      "requestId": "e725c56282f799d85b2d03da0433ff2e",
+      "traceId": "74696cd94ac0b232d48328fb05ac56ef",
+      "spanId": "abf28c4e1cd467c2",
+      "trigger": "McpSessionDO.jsrpc",
+      "service": "ctxlayer-yukitools",
+      "message": "[oauth] up-ado saveTokens: has_refresh=true kept_prior_refresh=false expires_in=4372",
+      "account": "a94cb5880b72350ddbc9b930b374e83c",
+      "type": "cf-worker",
+      "origin": "jsrpc"
+    }
+  }
+]
+</pasted_content id="fc6e">
+
+---
+
+do the recent changes mean that even when refresh token renewal works, clients still need to re-auth after a fixed time? ideally they should stay signed in for as long as refresh tokens can be refreshed
+
+---
+
+build the sliding version as long as it also gives the loud feedback for people to go to app/upstreams when auto-refresh is not happening anymore
+
+---
+
+did we check upstream config and settings UI for any stray or unused fields?
+
+---
+
+yes, apply all four
+
+---
+
+strip it on the PATCH path too
+
+---
+
+how should i inform the users about the changes (succint!)
+
+---
+
+about this:
+
+
+
+<pasted_content id="fc6e">
+Connections to Linear / Datadog / Sentry / etc. — these still expire on their clock, not ours: Datadog every 14 days, Linear ~25, Sentry 30. Refreshing can't extend them — only you re-authorizing can.
+</pasted_content id="fc6e">
+
+ 
+
+the time is set by us based on heuristics, not as the upstream reports: are we sure we can not just rely on the upstream info instead?
+
+---
+
+think we need to do 2 > 1 > 3
+
+---
+
+ok, let's re-summarize changes for the (naif) users - how this will impact them, what they should watch for
+don't focus on the internals, just the user surface
+
+---
+
+commit all of this as separate commits and deploy on yukitools
+
+---
+
+(so push as well)
