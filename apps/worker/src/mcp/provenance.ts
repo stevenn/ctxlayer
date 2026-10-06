@@ -50,8 +50,9 @@ export function defangProvenance(s: string): string {
 
 /**
  * Apply the full untrusted-text gate to every content item in an upstream tool
- * RESULT before it is forwarded to the agent. Non-text items pass through
- * untouched.
+ * RESULT before it is forwarded to the agent: top-level `text`, plus the
+ * `resource.text` of an embedded text resource (a file read, for example —
+ * model input just the same). Other items pass through untouched.
  *
  * Results get the same treatment as descriptions. An upstream reports failure
  * the MCP-idiomatic way — `{ content, isError: true }` — rather than by
@@ -62,9 +63,20 @@ export function defangProvenance(s: string): string {
 export function sanitizeUntrustedContent<T extends { type: string; text?: string }>(
   content: T[]
 ): T[] {
-  return content.map((c) =>
-    typeof c.text === 'string' ? { ...c, text: sanitizeUntrustedText(c.text) } : c
-  )
+  return content.map((c) => {
+    if (typeof c.text === 'string') return { ...c, text: sanitizeUntrustedText(c.text) }
+    const resource = (c as { resource?: unknown }).resource
+    if (
+      c.type === 'resource' &&
+      resource !== null &&
+      typeof resource === 'object' &&
+      typeof (resource as { text?: unknown }).text === 'string'
+    ) {
+      const text = sanitizeUntrustedText((resource as { text: string }).text)
+      return { ...c, resource: { ...resource, text } }
+    }
+    return c
+  })
 }
 
 /**
