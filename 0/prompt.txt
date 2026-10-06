@@ -1,0 +1,143 @@
+Carles found an issue in ctxlayer:
+
+
+
+<pasted_content id="c95b">
+# ctxlayer: `up-ado__repo_file` `get_content` always fails with MCP error -32602
+
+**Reported by:** Carles Molina
+**Date:** 2026-10-06
+**Upstream:** `up-ado` (Azure DevOps), through the ctxlayer gateway ("Yuki MCP")
+**Tool:** `up-ado__repo_file` with `action: "get_content"`
+**Client:** Claude Code (desktop app), MCP SDK with strict result validation
+
+## Summary
+
+Every `get_content` call fails on the client side with
+`MCP error -32602: Invalid tools/call result`. The call reaches the upstream and a
+response comes back, but the response does not match the MCP `CallToolResult` schema,
+so the client rejects it.
+
+The file's size does not matter: a small README fails exactly like a large source file.
+Other actions of the same tool work. For example, `list_directory` on the same folder
+returns a normal result.
+
+## How to reproduce
+
+The file read fails:
+
+```json
+{
+  "tool": "up-ado__repo_file",
+  "arguments": {
+    "action": "get_content",
+    "project": "yuki",
+    "repositoryId": "f43ad247-ab64-4815-85ed-763ff160712a",
+    "path": "/ProcessSalesInvoices.exe/README.md"
+  }
+}
+```
+
+It also fails for `/Yuki.Contacts/Contact.cs` in the same repository.
+
+A directory listing of the same folder works:
+
+```json
+{
+  "tool": "up-ado__repo_file",
+  "arguments": {
+    "action": "list_directory",
+    "project": "yuki",
+    "repositoryId": "f43ad247-ab64-4815-85ed-763ff160712a",
+    "path": "/ProcessSalesInvoices.exe"
+  }
+}
+```
+
+## The error
+
+Error code `-32602`. The validation error points at `content[0]`, which matches none of
+the allowed content types. Abridged:
+
+```text
+path: ["content", 0]  code: invalid_union
+  text           -> type is not "text"; "text" is undefined
+  image          -> type is not "image"; "data" and "mimeType" are undefined
+  audio          -> type is not "audio"; "data" and "mimeType" are undefined
+  resource_link  -> type is not "resource_link"; "name" and "uri" are undefined
+  resource       -> nested invalid_union at path ["resource"]:
+                      TextResourceContents: "_meta" expected record, received null; "text" is undefined
+                      BlobResourceContents: "_meta" expected record, received null; "blob" is undefined
+```
+
+## What is wrong in the response
+
+`content[0]` is closest to an **embedded resource** (`type: "resource"`). This is the
+usual way to return a file's contents. The embedded `resource` object breaks the schema
+in two ways:
+
+1. **`resource._meta` is `null`.** In the MCP schema, `_meta` is optional. When it is
+   present, it must be an object. `null` is not allowed.
+2. **`resource` has neither `text` nor `blob`.** One of them is required, and it should
+   hold the file's contents. Either the contents are missing, or they are in a field
+   with a different name.
+
+Point 2 could be partly a side effect of the union reporting. However, both branches
+report the missing field, so the field really is absent under the expected name.
+
+## Who causes it
+
+**Confirmed:** the client raises the error while validating the result. The payload is
+malformed before it reaches the client.
+
+**Not yet known:** which layer produces the malformed payload. Two options:
+
+- **The Azure DevOps MCP server (upstream).** It may serialize `_meta: null` and put the
+  contents under a non-standard field. The tool description also warns that
+  `get_content` "may be unavailable in agency mode", so this path may already be
+  fragile upstream.
+- **ctxlayer.** The gateway rewrites upstream results (for example, it strips its
+  ⟦ctxlayer⟧ markers from text). If it rebuilds `resource` content items, it could set
+  `_meta` to `null` or drop `text`/`blob` along the way.
+
+## What to check on the ctxlayer side
+
+1. Capture the **raw upstream response** for the call above, before ctxlayer touches it,
+   and compare it with what ctxlayer sends to the client.
+   - If the raw response already has `_meta: null` or no `text`/`blob`, the bug is
+     upstream.
+   - If not, the bug is in ctxlayer's rewriting of `resource` content items.
+2. Whichever layer is at fault, the gateway could **sanitize** content items before
+   returning them:
+   - remove `_meta` keys whose value is `null`, at both the item level and the
+     `resource` level;
+   - if the upstream puts the contents under a different field, map it to `text`
+     (or `blob` for binary files);
+   - or turn the embedded resource into a plain `{ "type": "text", "text": "..." }` item.
+3. Add a regression test that runs `get_content` on a small text file and validates the
+   result against the MCP `CallToolResult` schema.
+
+## Impact
+
+You cannot read file contents from ADO through the gateway. As a workaround, find files
+with `up-ado__search_code` and read them from a local clone.
+</pasted_content id="c95b">
+
+
+verify his assumptions and discuss if this needs a fix
+
+---
+
+yes, fix the resource.text gap
+
+---
+
+how would the base64 blobs affect Carles' observations?
+
+---
+
+check if there are any dependency updates which could have an impact here or which are fixing a related issue
+
+---
+
+give the full link to the claude bug
