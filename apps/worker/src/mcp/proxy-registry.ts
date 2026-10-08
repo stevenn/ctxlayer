@@ -85,6 +85,18 @@ import { spaUrl, UPSTREAMS_PAGE } from '../util/spa-url'
 // 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
 const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
 
+/**
+ * How long a stale-catalogue refresh may hold up registration before the
+ * cached catalogue is served instead. Session `init()` runs inside the DO's
+ * `blockConcurrencyWhile`, which the runtime cancels at ~30 s and answers by
+ * RESETTING the object — so one hung upstream used to take the whole session
+ * down with it (2026-10-06: 22 resets in a day while the ADO MCP was taking
+ * minutes per call). The per-call listTools timeout (60 s) is far past that
+ * window, hence a separate, much tighter budget here. The refresh is not
+ * abandoned: it keeps running and heals the cache for the next session.
+ */
+export const CATALOGUE_REFRESH_BUDGET_MS = 10_000
+
 /** Strategies whose bearer is a per-user credential row (can die / change). */
 function isUserScoped(conn: { authStrategy: string }): boolean {
   return conn.authStrategy === 'user_bearer' || conn.authStrategy === 'user_oauth'
@@ -150,7 +162,9 @@ export class UpstreamProxyRegistry {
     private readonly makeClient: typeof createUpstreamClient = createUpstreamClient,
     // Durable once-per-session hint state (session-do passes the SQLite
     // ledger; the in-memory default backs tests). See hint-ledger.ts.
-    private readonly hintLedger: HintLedger = inMemoryHintLedger()
+    private readonly hintLedger: HintLedger = inMemoryHintLedger(),
+    // Injectable so tests need not wait out the real budget.
+    private readonly catalogueBudgetMs: number = CATALOGUE_REFRESH_BUDGET_MS
   ) {}
 
   /**
@@ -533,6 +547,25 @@ export class UpstreamProxyRegistry {
     const cachedAt = cached.length === 0 ? null : Math.max(...cached.map((t) => t.cached_at))
     const stale = cachedAt === null || Date.now() / 1000 - cachedAt > CATALOGUE_TTL_SECONDS
     if (!stale) return cached
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const outOfBudget = new Promise<'timeout'>((resolve) => {
+      timer = setTimeout(() => resolve('timeout'), this.catalogueBudgetMs)
+    })
+    const outcome = await Promise.race([this.refreshCatalogue(conn, client), outOfBudget])
+    clearTimeout(timer)
+    if (outcome === 'timeout') {
+      console.warn(
+        `[catalogue] ${conn.slug}: tools/list still running after ${this.catalogueBudgetMs}ms — ` +
+          'serving the cached catalogue; the refresh continues in the background'
+      )
+    }
+    // Whatever the refresh did (or has not done yet), serve the cache —
+    // stale beats nothing, and beats a reset session.
+    return listCachedTools(this.env, conn.id)
+  }
+
+  /** Fetch and store a fresh catalogue. Never throws: failures are logged. */
+  private async refreshCatalogue(conn: UpstreamConnection, client: UpstreamClient): Promise<'done'> {
     try {
       // Reuse the persistent client this registry already opened — avoids
       // a second handshake just to fetch the catalogue.
@@ -547,9 +580,8 @@ export class UpstreamProxyRegistry {
     } catch (err) {
       const msg = errMessage(err)
       console.error(`[catalogue] ${conn.slug}: tools/list failed: ${msg}`)
-      // Fall back to whatever cache we have, even if stale.
     }
-    return listCachedTools(this.env, conn.id)
+    return 'done'
   }
 
   private registerTool(
