@@ -30,6 +30,7 @@ const { upstreams } = vi.hoisted(() => {
       sharedCredentialConfigured: false,
       clientSecretConfigured: false,
     observedGrantDays: null,
+    private: false,
       createdAt: 1_700_000_000,
       updatedAt: 1_700_000_500
     },
@@ -49,6 +50,7 @@ const { upstreams } = vi.hoisted(() => {
       sharedCredentialConfigured: false,
       clientSecretConfigured: false,
     observedGrantDays: null,
+    private: false,
       createdAt: 1_700_000_000,
       updatedAt: 1_700_000_500
     }

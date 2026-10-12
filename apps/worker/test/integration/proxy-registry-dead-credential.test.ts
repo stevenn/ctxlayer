@@ -52,7 +52,8 @@ const row: UpstreamServerRow = {
   enabled: 1,
   created_at: 0,
   updated_at: 0,
-  observed_grant_days: null
+  observed_grant_days: null,
+  owner_user_id: null
 }
 
 type Handler = (args: unknown, extra?: unknown) => Promise<{ isError?: boolean; content: { text: string }[] }>

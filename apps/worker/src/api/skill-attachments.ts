@@ -10,7 +10,7 @@ import { requireAdmin, requireUser, type AuthedVariables } from '../auth/middlew
 import { requireCsrf } from '../auth/csrf'
 import { attachSkill, detachSkill, listAttachmentsForSkill } from '../db/queries/skill-attachments'
 import { getSkillById } from '../db/queries/skills'
-import { getUpstreamById } from '../db/queries/upstreams'
+import { getUpstreamForAdmin } from '../db/queries/upstreams'
 import { audit } from '../audit/log'
 import { notFound, parseJsonBody } from './respond'
 
@@ -43,9 +43,17 @@ skillAttachmentsRoute.post('/', requireAdmin, async (c) => {
   // (single 'not_found' code).
   const [skill, upstream] = await Promise.all([
     getSkillById(c.env, skillId),
-    getUpstreamById(c.env, upstreamId)
+    getUpstreamForAdmin(c.env, upstreamId, c.get('user').userId)
   ])
   if (!skill || !upstream) return notFound(c)
+  // Attachment reads are open to every signed-in user, so an attachment on
+  // a private upstream would leak its slug org-wide.
+  if (upstream.owner_user_id !== null) {
+    return c.json(
+      { error: 'private_upstream', message: 'Private upstream — share it with the org first' },
+      409
+    )
+  }
   const actor = c.get('user')
   await attachSkill(c.env, { skillId, upstreamId, toolName, createdBy: actor.userId })
   await audit(c.env, {

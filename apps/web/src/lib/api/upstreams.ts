@@ -60,6 +60,15 @@ export function adminPutUpstreamVisibility(
   })
 }
 
+// "Share with org": the one-way exit from private. Returns the updated row.
+export function adminShareUpstream(id: string): Promise<AdminUpstreamRow> {
+  return request(
+    `/api/admin/upstreams/${encodeURIComponent(id)}/share`,
+    (b) => AdminUpstreamRow.parse(b),
+    { method: 'POST' }
+  )
+}
+
 export function adminRefreshUpstreamTools(id: string): Promise<RefreshToolsResponse> {
   return request(
     `/api/admin/upstreams/${encodeURIComponent(id)}/refresh-tools`,

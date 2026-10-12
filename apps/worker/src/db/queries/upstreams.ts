@@ -48,6 +48,12 @@ export interface UpstreamServerRow {
    * `resolveGrantExpiry` owns that order.
    */
   observed_grant_days: number | null
+  /**
+   * Set = a user-private upstream (migration 0040): visible to this one user
+   * only, on every path including the admin page. NULL = an org upstream
+   * gated by `upstream_visibility`.
+   */
+  owner_user_id: string | null
 }
 
 export interface UpstreamConnection {
@@ -105,18 +111,47 @@ export function toUpstreamConnection(row: UpstreamServerRow): UpstreamConnection
   }
 }
 
-export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
+/**
+ * The admin page's list: every org upstream plus the caller's OWN private
+ * ones. Another admin's private upstream is left out — it must be as
+ * invisible on the admin surface as on the agent one.
+ */
+export async function listUpstreamsForAdmin(
+  env: Env,
+  callerUserId: string
+): Promise<UpstreamServerRow[]> {
   const res = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
-            enabled, created_at, updated_at, observed_grant_days
-     FROM upstream_servers ORDER BY display_name`
-  ).all<UpstreamServerRow>()
+            enabled, created_at, updated_at, observed_grant_days, owner_user_id
+     FROM upstream_servers
+     WHERE owner_user_id IS NULL OR owner_user_id = ?1
+     ORDER BY display_name`
+  )
+    .bind(callerUserId)
+    .all<UpstreamServerRow>()
   return res.results ?? []
 }
 
 /**
- * Bare row fetch with NO visibility gate. Admin routes and system paths
- * (queue consumers, catalogue refresh) only. Anything user- or
+ * Single-row resolve for admin routes: `getUpstreamById` minus other users'
+ * private upstreams, which come back null so the route 404s exactly as for
+ * a nonexistent id.
+ */
+export async function getUpstreamForAdmin(
+  env: Env,
+  id: string,
+  callerUserId: string
+): Promise<UpstreamServerRow | null> {
+  const row = await getUpstreamById(env, id)
+  if (!row) return null
+  if (row.owner_user_id !== null && row.owner_user_id !== callerUserId) return null
+  return row
+}
+
+/**
+ * Bare row fetch with NO visibility gate. System paths (queue consumers,
+ * catalogue refresh) only — admin routes use `getUpstreamForAdmin`, which
+ * also hides other users' private upstreams. Anything user- or
  * agent-facing must resolve through `getUpstreamVisibleToUser` /
  * `listUpstreamsVisibleToUser*` instead — an ungranted upstream must be
  * indistinguishable from a nonexistent one (CLAUDE.md security gotcha).
@@ -124,7 +159,7 @@ export async function listUpstreams(env: Env): Promise<UpstreamServerRow[]> {
 export async function getUpstreamById(env: Env, id: string): Promise<UpstreamServerRow | null> {
   const row = await env.DB.prepare(
     `SELECT id, slug, display_name, transport, url, auth_strategy, auth_config,
-            enabled, created_at, updated_at, observed_grant_days
+            enabled, created_at, updated_at, observed_grant_days, owner_user_id
      FROM upstream_servers WHERE id = ?1`
   )
     .bind(id)
@@ -140,6 +175,8 @@ export interface CreateUpstreamInput {
   authStrategy: AuthStrategy
   authConfig: UpstreamAuthConfig
   enabled: boolean
+  /** Set to create a user-private upstream owned by this user. */
+  ownerUserId?: string | null
 }
 
 export async function createUpstream(
@@ -151,8 +188,8 @@ export async function createUpstream(
   await env.DB.prepare(
     `INSERT INTO upstream_servers
        (id, slug, display_name, transport, url, auth_strategy, auth_config,
-        enabled, created_at, updated_at)
-     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9)`
+        enabled, created_at, updated_at, owner_user_id)
+     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?9, ?10)`
   )
     .bind(
       id,
@@ -163,7 +200,8 @@ export async function createUpstream(
       input.authStrategy,
       JSON.stringify(input.authConfig),
       input.enabled ? 1 : 0,
-      now
+      now,
+      input.ownerUserId ?? null
     )
     .run()
   const row = await getUpstreamById(env, id)
@@ -201,6 +239,26 @@ export async function patchUpstream(
   await env.DB.prepare(update.sql)
     .bind(...update.binds)
     .run()
+}
+
+/**
+ * "Share with org": turn the caller's private upstream into an org one by
+ * clearing the owner. One way. It arrives with no grants (none can exist on
+ * a private upstream), so it stays invisible to everyone else until an admin
+ * grants visibility. Returns false unless `ownerUserId` owned it.
+ */
+export async function shareUpstreamWithOrg(
+  env: Env,
+  id: string,
+  ownerUserId: string
+): Promise<boolean> {
+  const res = await env.DB.prepare(
+    `UPDATE upstream_servers SET owner_user_id = NULL, updated_at = ?3
+     WHERE id = ?1 AND owner_user_id = ?2`
+  )
+    .bind(id, ownerUserId, Math.floor(Date.now() / 1000))
+    .run()
+  return (res.meta.changes ?? 0) > 0
 }
 
 export async function deleteUpstream(env: Env, id: string): Promise<void> {
@@ -262,7 +320,10 @@ const VISIBLE_EXTRA_IDX = 2 + DIALABLE_TRANSPORTS.length
 /**
  * Shared core of every visible-to-user upstream read: the user's
  * reachable teams / products / roles as CTEs, joined against
- * `upstream_visibility`, restricted to enabled + dialable rows.
+ * `upstream_visibility`, restricted to enabled + dialable rows. A private
+ * upstream (`owner_user_id` set) matches its owner and nobody else — any
+ * grant row on it is ignored. LEFT JOIN because a private upstream has no
+ * grant rows at all.
  * `extraPredicate` (an `AND ...` clause using `?${VISIBLE_EXTRA_IDX}`
  * onward) narrows to one row / a slug set; the visibility, enabled and
  * transport filters can never be skipped by a caller.
@@ -283,16 +344,20 @@ function visibleUpstreamsStmt(env: Env, userId: string, extraPredicate: string, 
      )
      SELECT DISTINCT u.id, u.slug, u.display_name, u.transport, u.url,
                      u.auth_strategy, u.auth_config, u.enabled,
-                     u.created_at, u.updated_at, u.observed_grant_days
+                     u.created_at, u.updated_at, u.observed_grant_days,
+                     u.owner_user_id
      FROM upstream_servers u
-     JOIN upstream_visibility v ON v.upstream_id = u.id
+     LEFT JOIN upstream_visibility v ON v.upstream_id = u.id
      WHERE u.enabled = 1
        AND u.transport IN (${transportIn})
        AND (
-         v.scope_kind = 'everyone'
-         OR (v.scope_kind = 'team'    AND v.scope_id IN (SELECT team_id FROM user_teams))
-         OR (v.scope_kind = 'product' AND v.scope_id IN (SELECT product_id FROM user_products))
-         OR (v.scope_kind = 'role'    AND v.scope_id IN (SELECT role_id FROM user_roles_cte))
+         u.owner_user_id = ?1
+         OR (u.owner_user_id IS NULL AND (
+           v.scope_kind = 'everyone'
+           OR (v.scope_kind = 'team'    AND v.scope_id IN (SELECT team_id FROM user_teams))
+           OR (v.scope_kind = 'product' AND v.scope_id IN (SELECT product_id FROM user_products))
+           OR (v.scope_kind = 'role'    AND v.scope_id IN (SELECT role_id FROM user_roles_cte))
+         ))
        )
        ${extraPredicate}
      ORDER BY u.display_name`
@@ -303,7 +368,7 @@ function visibleUpstreamsStmt(env: Env, userId: string, extraPredicate: string, 
  * Return only the upstreams whose visibility rules admit `userId`.
  * "everyone" rows match unconditionally; team / product rows match if
  * the user is in that team or has access to that product (transitively
- * through their teams).
+ * through their teams). Plus the user's own private upstreams.
  */
 export async function listUpstreamsVisibleToUser(
   env: Env,
@@ -360,8 +425,8 @@ export async function listUpstreamsVisibleToUserBySlugs(
 /**
  * Hydrate an `AdminUpstreamRow` from an upstream id. Joins visibility +
  * cached tool count + cached_at + the calling admin's connection
- * status. Returns null when the row is missing or carries an
- * unsupported (non-http/sse) transport.
+ * status. Returns null when the row is missing, is another user's private
+ * upstream, or carries an unsupported (non-http/sse) transport.
  *
  * `currentUserConnected` lets the admin drawer show "you are
  * connected" / "you are not connected" badges and gate the Refresh
@@ -373,7 +438,7 @@ export async function adminRowFor(
   upstreamId: string,
   callerUserId: string
 ): Promise<AdminUpstreamRow | null> {
-  const row = await getUpstreamById(env, upstreamId)
+  const row = await getUpstreamForAdmin(env, upstreamId, callerUserId)
   if (!row) return null
   if (!isDialableTransport(row.transport)) return null
   const requiresUserCred = row.auth_strategy === 'user_bearer' || row.auth_strategy === 'user_oauth'
@@ -410,6 +475,7 @@ export async function adminRowFor(
     sharedCredentialConfigured: sharedConfigured,
     clientSecretConfigured: Boolean(fullConfig.oauth?.clientSecretCiphertext),
     observedGrantDays: row.observed_grant_days,
+    private: row.owner_user_id !== null,
     createdAt: row.created_at,
     updatedAt: row.updated_at
   }

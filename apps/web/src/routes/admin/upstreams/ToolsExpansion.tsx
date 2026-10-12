@@ -19,11 +19,15 @@ export function ToolsExpansion({
   upstreamId,
   slug,
   state,
+  canAttach,
   onAttachmentsChanged
 }: {
   upstreamId: string
   slug: string
   state: ToolsState | undefined
+  // False for a private upstream: attachments are org-readable, so the
+  // worker refuses them until it is shared.
+  canAttach: boolean
   onAttachmentsChanged: () => void
 }) {
   const [attachOpen, setAttachOpen] = useState<{ toolName: string } | null>(null)
@@ -81,9 +85,11 @@ export function ToolsExpansion({
             </Group>
           )}
         </div>
-        <Button size="xs" variant="default" onClick={() => setAttachOpen({ toolName: '' })}>
-          Attach skill
-        </Button>
+        {canAttach && (
+          <Button size="xs" variant="default" onClick={() => setAttachOpen({ toolName: '' })}>
+            Attach skill
+          </Button>
+        )}
       </Group>
 
       {state.tools.length === 0 ? (
@@ -159,13 +165,15 @@ export function ToolsExpansion({
                   </Stack>
                 </td>
                 <td>
-                  <Button
-                    size="xs"
-                    variant="subtle"
-                    onClick={() => setAttachOpen({ toolName: t.toolName })}
-                  >
-                    Attach
-                  </Button>
+                  {canAttach && (
+                    <Button
+                      size="xs"
+                      variant="subtle"
+                      onClick={() => setAttachOpen({ toolName: t.toolName })}
+                    >
+                      Attach
+                    </Button>
+                  )}
                 </td>
               </tr>
             ))}

@@ -67,7 +67,11 @@ export const CreateUpstreamRequest = z.object({
   url: UpstreamUrl,
   authStrategy: AuthStrategy,
   authConfig: UpstreamAuthConfig.optional(),
-  enabled: z.boolean().optional()
+  enabled: z.boolean().optional(),
+  // Private to the creating admin: visible to them alone, everywhere
+  // (including other admins' Upstreams page). Fixed at creation except for a
+  // one-way "share with org" (`POST /api/admin/upstreams/:id/share`).
+  private: z.boolean().optional()
 })
 export type CreateUpstreamRequest = z.infer<typeof CreateUpstreamRequest>
 
@@ -134,6 +138,10 @@ export const AdminUpstreamRow = z.object({
   // admin's `grantLifetimeDays` field, which it outranks — so an admin who
   // typed 30 against a measured 14 can see the disagreement.
   observedGrantDays: z.number().int().nullable().default(null),
+  // Owned by the calling admin and visible to them alone (another admin's
+  // private upstream is never returned at all). Grants, tool-access rules and
+  // skill/doc attachments are refused on it.
+  private: z.boolean().default(false),
   createdAt: z.number().int(),
   updatedAt: z.number().int()
 })

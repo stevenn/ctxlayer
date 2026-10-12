@@ -8,7 +8,7 @@
  * sneak an unsupported transport into the CHECK constraint.
  */
 
-import { Hono } from 'hono'
+import { Hono, type Context } from 'hono'
 import {
   CreateUpstreamRequest,
   PasteBearerRequest,
@@ -28,11 +28,12 @@ import {
   adminRowFor,
   createUpstream,
   deleteUpstream,
-  getUpstreamById,
-  listUpstreams,
+  getUpstreamForAdmin,
+  listUpstreamsForAdmin,
   parseAuthConfig,
   patchUpstream,
   replaceVisibility,
+  shareUpstreamWithOrg,
   toUpstreamConnection
 } from '../db/queries/upstreams'
 import { listCachedTools } from '../db/queries/upstream-tools'
@@ -60,9 +61,18 @@ export const adminUpstreamsRoute = new Hono<{ Bindings: Env; Variables: AuthedVa
 adminUpstreamsRoute.use('*', requireAdmin)
 adminUpstreamsRoute.use('*', requireCsrf)
 
+// Refusal for org-scoping writes (grants, per-tool ACL) on a private
+// upstream: its owner is its whole audience, so a rule could only widen it.
+// "Share with org" first.
+const privateUpstream = (c: Context) =>
+  c.json(
+    { error: 'private_upstream', message: 'Private upstream — share it with the org first' },
+    409
+  )
+
 adminUpstreamsRoute.get('/', async (c) => {
   const userId = c.get('user').userId
-  const rows = await listUpstreams(c.env)
+  const rows = await listUpstreamsForAdmin(c.env, userId)
   const hydrated = await Promise.all(rows.map((r) => adminRowFor(c.env, r.id, userId)))
   return c.json(hydrated.filter((x) => x !== null))
 })
@@ -104,7 +114,8 @@ adminUpstreamsRoute.post('/', async (c) => {
           c.env,
           undefined
         )) ?? {},
-      enabled: input.enabled ?? true
+      enabled: input.enabled ?? true,
+      ownerUserId: input.private ? c.get('user').userId : null
     })
     // For unauth (`none`) upstreams there's nothing to wait for —
     // warm the catalogue immediately so the admin sees a real tool
@@ -127,7 +138,7 @@ adminUpstreamsRoute.post('/', async (c) => {
       actorId: c.get('user').userId,
       action: 'upstream.create',
       target: row.id,
-      meta: { slug: row.slug }
+      meta: { slug: row.slug, private: row.owner_user_id !== null }
     })
     return c.json(hydrated, 201)
   } catch (err) {
@@ -138,7 +149,7 @@ adminUpstreamsRoute.post('/', async (c) => {
 
 adminUpstreamsRoute.patch('/:id', async (c) => {
   const id = c.req.param('id')
-  const current = await getUpstreamById(c.env, id)
+  const current = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
   if (!current) return notFound(c)
   const parsed = await parseJsonBody(c, UpdateUpstreamRequest)
   if (!parsed.ok) return parsed.res
@@ -180,23 +191,48 @@ adminUpstreamsRoute.patch('/:id', async (c) => {
 
 adminUpstreamsRoute.delete('/:id', async (c) => {
   const id = c.req.param('id')
-  const row = await getUpstreamById(c.env, id)
+  // Resolve first: the DELETE must not reach another user's private
+  // upstream by id. A miss stays a 204 (idempotent, as before).
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
+  if (!row) return new Response(null, { status: 204 })
   await deleteUpstream(c.env, id)
-  if (row) {
-    await audit(c.env, {
-      actorId: c.get('user').userId,
-      action: 'upstream.delete',
-      target: id,
-      meta: { slug: row.slug }
-    })
-  }
+  await audit(c.env, {
+    actorId: c.get('user').userId,
+    action: 'upstream.delete',
+    target: id,
+    meta: { slug: row.slug }
+  })
   return new Response(null, { status: 204 })
+})
+
+/**
+ * "Share with org" — the one way out of private. Only the owner can (nobody
+ * else can even see it). The upstream arrives with no grants, so it stays
+ * invisible to everyone else until visibility is granted; credentials stay
+ * per-user as before.
+ */
+adminUpstreamsRoute.post('/:id/share', async (c) => {
+  const id = c.req.param('id')
+  const userId = c.get('user').userId
+  const row = await getUpstreamForAdmin(c.env, id, userId)
+  if (!row) return notFound(c)
+  if (row.owner_user_id === null) return c.json({ error: 'not_private' }, 409)
+  if (!(await shareUpstreamWithOrg(c.env, id, userId))) return notFound(c)
+  await audit(c.env, {
+    actorId: userId,
+    action: 'upstream.share',
+    target: id,
+    meta: { slug: row.slug }
+  })
+  return c.json(await adminRowFor(c.env, id, userId))
 })
 
 // Replace the visibility rule-set for one upstream in a single batch.
 adminUpstreamsRoute.put('/:id/visibility', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return notFound(c)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
+  if (!row) return notFound(c)
+  if (row.owner_user_id !== null) return privateUpstream(c)
   const parsed = await parseJsonBody(c, ReplaceVisibilityRequest)
   if (!parsed.ok) return parsed.res
   await replaceVisibility(c.env, id, parsed.data.rules)
@@ -219,7 +255,7 @@ adminUpstreamsRoute.put('/:id/visibility', async (c) => {
  */
 adminUpstreamsRoute.get('/:id/tool-access', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return notFound(c)
+  if (!(await getUpstreamForAdmin(c.env, id, c.get('user').userId))) return notFound(c)
   const [rows, tools] = await Promise.all([
     listToolAccessForUpstream(c.env, id),
     listCachedTools(c.env, id)
@@ -247,7 +283,9 @@ adminUpstreamsRoute.get('/:id/tool-access', async (c) => {
 // tool to inherit (open).
 adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
   const id = c.req.param('id')
-  if (!(await getUpstreamById(c.env, id))) return notFound(c)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
+  if (!row) return notFound(c)
+  if (row.owner_user_id !== null) return privateUpstream(c)
   const parsed = await parseJsonBody(c, ReplaceToolAccessRequest)
   if (!parsed.ok) return parsed.res
   await replaceToolAccessForTool(c.env, id, parsed.data.toolName, parsed.data.rules)
@@ -269,7 +307,7 @@ adminUpstreamsRoute.put('/:id/tool-access', async (c) => {
  */
 adminUpstreamsRoute.get('/:id/tools', async (c) => {
   const id = c.req.param('id')
-  const row = await getUpstreamById(c.env, id)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
   if (!row) return notFound(c)
   // Admin view sees drafts as well as published; non-admin user route
   // (api/upstreams.ts) only sees published.
@@ -289,7 +327,7 @@ adminUpstreamsRoute.get('/:id/tools', async (c) => {
  */
 adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
   const id = c.req.param('id')
-  const row = await getUpstreamById(c.env, id)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
   if (!row) return notFound(c)
   let conn: ReturnType<typeof toUpstreamConnection>
   try {
@@ -332,7 +370,7 @@ adminUpstreamsRoute.post('/:id/refresh-tools', async (c) => {
  */
 adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
-  const row = await getUpstreamById(c.env, id)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
   if (!row) return notFound(c)
   if (row.auth_strategy !== 'shared_bearer') {
     return c.json({ error: 'auth_strategy_mismatch', expected: 'shared_bearer' }, 400)
@@ -370,7 +408,7 @@ adminUpstreamsRoute.put('/:id/shared-credentials', async (c) => {
 
 adminUpstreamsRoute.delete('/:id/shared-credentials', async (c) => {
   const id = c.req.param('id')
-  const row = await getUpstreamById(c.env, id)
+  const row = await getUpstreamForAdmin(c.env, id, c.get('user').userId)
   if (!row) return notFound(c)
   const actor = c.get('user')
   await deleteSharedCredential(c.env, id)

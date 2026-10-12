@@ -91,7 +91,11 @@ export type ToolsState =
 export function explain(err: unknown): string {
   return explainBase(err, {
     403: 'Admin permission required.',
-    409: 'That slug is already taken.',
+    // slug_taken carries no message; private_upstream / not_private do.
+    409: (e) =>
+      (e.body as { error?: string } | null)?.error === 'slug_taken'
+        ? 'That slug is already taken.'
+        : (bodyMessage(e) ?? 'Conflict.'),
     502: (e) => bodyMessage(e) ?? 'Upstream is unreachable or returned an error.',
     400: (e) => bodyMessage(e) ?? 'Server rejected the request.'
   })

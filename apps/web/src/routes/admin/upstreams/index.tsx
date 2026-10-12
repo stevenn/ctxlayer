@@ -157,7 +157,14 @@ export function AdminUpstreams() {
                         <ExpandChevron open={open} />
                       </button>
                     </td>
-                    <td style={{ fontWeight: 500 }}>{u.displayName}</td>
+                    <td style={{ fontWeight: 500 }}>
+                      {u.displayName}
+                      {u.private && (
+                        <Badge color="violet" variant="light" ml={6}>
+                          private
+                        </Badge>
+                      )}
+                    </td>
                     <td className="text-muted">
                       <code>{u.slug}</code>
                     </td>
@@ -178,6 +185,7 @@ export function AdminUpstreams() {
                           upstreamId={u.id}
                           slug={u.slug}
                           state={tools}
+                          canAttach={!u.private}
                           onAttachmentsChanged={() => {
                             void fetchAdminUpstreamTools(u.id).then(
                               (resp) =>

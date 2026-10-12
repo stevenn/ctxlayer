@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Select, TextInput } from '@mantine/core'
+import { Select, Switch, TextInput } from '@mantine/core'
 import type { SupportedTransport } from '@ctxlayer/shared'
 import { FormModalShell } from '../../../components/form-modal-shell'
 import { adminCreateUpstream } from '../../../lib/api'
@@ -35,6 +35,7 @@ export function CreateUpstreamModal({
   const [url, setUrl] = useState('')
   const [authStrategy, setAuthStrategy] = useState<FormAuthStrategy>('user_bearer')
   const [oauthFields, setOauthFields] = useState<OAuthClientFieldValues>(EMPTY_OAUTH_FIELDS)
+  const [isPrivate, setIsPrivate] = useState(false)
   const { busy, error, run: withBusy } = useBusyAction({ explain })
 
   const submit = () =>
@@ -47,7 +48,8 @@ export function CreateUpstreamModal({
         url: url.trim(),
         authStrategy: persistedStrategy(authStrategy),
         authConfig: oauth ? { oauth } : undefined,
-        enabled: true
+        enabled: true,
+        private: isPrivate
       })
       onCreated(created.id)
     }, 'Create')
@@ -106,6 +108,12 @@ export function CreateUpstreamModal({
           onChange={(patch) => setOauthFields((v) => ({ ...v, ...patch }))}
         />
       )}
+      <Switch
+        label="Private — only visible to me"
+        description="Nobody else sees it: not in their agents, not on their Upstreams page, not on other admins' pages. You can share it with the org later; that can't be undone."
+        checked={isPrivate}
+        onChange={(e) => setIsPrivate(e.currentTarget.checked)}
+      />
     </FormModalShell>
   )
 }

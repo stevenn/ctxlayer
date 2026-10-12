@@ -8,6 +8,7 @@ import {
   adminPutSharedCredentials,
   adminPutUpstreamVisibility,
   adminRefreshUpstreamTools,
+  adminShareUpstream,
   deleteUpstreamCredentials,
   fetchAdminUpstream,
   fetchProducts,
@@ -20,6 +21,7 @@ import { useDrawerConfirm } from '../../../lib/dialogs'
 import { explain } from './helpers'
 import { ConnectionSection } from './ConnectionSection'
 import { DetailsSection } from './DetailsSection'
+import { PrivateSection } from './PrivateSection'
 import { ToolsCacheSection } from './ToolsCacheSection'
 import { ToolAccessSection } from './ToolAccessSection'
 import { VisibilitySection } from './VisibilitySection'
@@ -136,20 +138,38 @@ export function UpstreamDrawer({
           }
         />
 
-        <VisibilitySection
-          row={row}
-          teams={teams}
-          products={products}
-          roles={roles}
-          busy={busy}
-          onSave={(rules) =>
-            withBusy(async () => {
-              await adminPutUpstreamVisibility(upstreamId, { rules })
-              await reload()
-              onChanged()
-            }, 'Save visibility')
-          }
-        />
+        {row.private ? (
+          <PrivateSection
+            busy={busy}
+            onShare={() =>
+              withBusy(async () => {
+                const ok = await confirm({
+                  title: 'Share with org?',
+                  message: `Make "${row.displayName}" an org upstream? Other admins will see and manage it, and you can grant it to teams, products or roles. It stays invisible to other users until you do. This can't be undone.`,
+                  confirmLabel: 'Share'
+                })
+                if (!ok) return
+                setRow(await adminShareUpstream(upstreamId))
+                onChanged()
+              }, 'Share with org')
+            }
+          />
+        ) : (
+          <VisibilitySection
+            row={row}
+            teams={teams}
+            products={products}
+            roles={roles}
+            busy={busy}
+            onSave={(rules) =>
+              withBusy(async () => {
+                await adminPutUpstreamVisibility(upstreamId, { rules })
+                await reload()
+                onChanged()
+              }, 'Save visibility')
+            }
+          />
+        )}
 
         <ConnectionSection
           row={row}
@@ -212,12 +232,14 @@ export function UpstreamDrawer({
           }
         />
 
-        <ToolAccessSection
-          upstreamId={upstreamId}
-          teams={teams}
-          products={products}
-          roles={roles}
-        />
+        {!row.private && (
+          <ToolAccessSection
+            upstreamId={upstreamId}
+            teams={teams}
+            products={products}
+            roles={roles}
+          />
+        )}
       </Stack>
     </Drawer>
   )
