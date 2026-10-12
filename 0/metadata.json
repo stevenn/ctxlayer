@@ -1,0 +1,89 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M4RNPEXBMZ0ZBQP58GRKR38Z",
+  "session_id": "4a03dff8-14a7-47a9-8bd9-4e4eaac90291",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-12T18:23:46.041176Z",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "save_step_count": 1,
+  "files_touched": [
+    "apps/web/src/lib/api/upstreams.ts",
+    "apps/web/src/routes/admin/upstreams/CreateUpstreamModal.tsx",
+    "apps/web/src/routes/admin/upstreams/PrivateSection.tsx",
+    "apps/web/src/routes/admin/upstreams/ToolsExpansion.tsx",
+    "apps/web/src/routes/admin/upstreams/UpstreamDrawer.tsx",
+    "apps/web/src/routes/admin/upstreams/helpers.tsx",
+    "apps/web/src/routes/admin/upstreams/index.smoke.test.tsx",
+    "apps/web/src/routes/admin/upstreams/index.tsx",
+    "apps/worker/src/api/admin-upstreams.ts",
+    "apps/worker/src/api/doc-attachments.ts",
+    "apps/worker/src/api/skill-attachments.ts",
+    "apps/worker/src/db/migrations/0040_upstream_owner.sql",
+    "apps/worker/src/db/queries/upstreams.test.ts",
+    "apps/worker/src/db/queries/upstreams.ts",
+    "apps/worker/src/upstream/oauth-provider.test.ts",
+    "apps/worker/test/integration/credential-granted-at.test.ts",
+    "apps/worker/test/integration/csrf-gates.test.ts",
+    "apps/worker/test/integration/oauth-static-reauth.test.ts",
+    "apps/worker/test/integration/private-upstreams.test.ts",
+    "apps/worker/test/integration/proxy-registry-dead-credential.test.ts",
+    "packages/shared/src/upstream-api.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-opus-5-5",
+  "turn_id": "0e4a5e39694f",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 218,
+    "cache_creation_tokens": 528031,
+    "cache_read_tokens": 14935918,
+    "output_tokens": 67658,
+    "api_call_count": 108
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-12T18:23:45.984024Z",
+    "agent_lines": 542,
+    "agent_removed": 87,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 542,
+    "total_lines_changed": 629,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 542,
+      "agent_lines_removed": 87,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    }
+  ]
+}

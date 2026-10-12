@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M4RNPEXBMZ0ZBQP58GRKR38Z",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "apps/web/src/lib/api/upstreams.ts",
+    "apps/web/src/routes/admin/upstreams/CreateUpstreamModal.tsx",
+    "apps/web/src/routes/admin/upstreams/PrivateSection.tsx",
+    "apps/web/src/routes/admin/upstreams/ToolsExpansion.tsx",
+    "apps/web/src/routes/admin/upstreams/UpstreamDrawer.tsx",
+    "apps/web/src/routes/admin/upstreams/helpers.tsx",
+    "apps/web/src/routes/admin/upstreams/index.smoke.test.tsx",
+    "apps/web/src/routes/admin/upstreams/index.tsx",
+    "apps/worker/src/api/admin-upstreams.ts",
+    "apps/worker/src/api/doc-attachments.ts",
+    "apps/worker/src/api/skill-attachments.ts",
+    "apps/worker/src/db/migrations/0040_upstream_owner.sql",
+    "apps/worker/src/db/queries/upstreams.test.ts",
+    "apps/worker/src/db/queries/upstreams.ts",
+    "apps/worker/src/upstream/oauth-provider.test.ts",
+    "apps/worker/test/integration/credential-granted-at.test.ts",
+    "apps/worker/test/integration/csrf-gates.test.ts",
+    "apps/worker/test/integration/oauth-static-reauth.test.ts",
+    "apps/worker/test/integration/private-upstreams.test.ts",
+    "apps/worker/test/integration/proxy-registry-dead-credential.test.ts",
+    "packages/shared/src/upstream-api.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 218,
+    "cache_creation_tokens": 528031,
+    "cache_read_tokens": 14935918,
+    "output_tokens": 67658,
+    "api_call_count": 108
+  }
+}
