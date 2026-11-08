@@ -15,7 +15,13 @@ import type { UpstreamClient } from '../../src/upstream/upstream-client'
 
 const testEnv = env as unknown as WorkerEnv
 const UPS = 'ups-budget'
+// Short budget for the cases that must time out (hung / slow upstream).
 const BUDGET_MS = 50
+// Generous budget for the case that must land INSIDE it: its refresh includes
+// a real D1 batch write, which under full-suite load can exceed 50 ms. If it
+// did, the registry would (correctly) serve the cache and finish the write in
+// the background, after this test, leaking rows into the next one.
+const ROOMY_BUDGET_MS = 10_000
 
 function fakeServer() {
   return {
@@ -28,7 +34,7 @@ function clientWith(listTools: UpstreamClient['listTools']): UpstreamClient {
   return { listTools, callTool: vi.fn(async () => ({ content: [] })), close: async () => {} }
 }
 
-function registry(client: UpstreamClient): UpstreamProxyRegistry {
+function registry(client: UpstreamClient, budgetMs = BUDGET_MS): UpstreamProxyRegistry {
   return new UpstreamProxyRegistry(
     testEnv,
     'u-1',
@@ -36,7 +42,7 @@ function registry(client: UpstreamClient): UpstreamProxyRegistry {
     'sess-1',
     () => client,
     inMemoryHintLedger(),
-    BUDGET_MS
+    budgetMs
   )
 }
 
@@ -111,7 +117,7 @@ describe('UpstreamProxyRegistry stale-catalogue budget (real D1)', () => {
     )
     const server = fakeServer()
 
-    await registry(quick).init(server as unknown as McpServer)
+    await registry(quick, ROOMY_BUDGET_MS).init(server as unknown as McpServer)
 
     expect(registeredNames(server)).toEqual(['up-budget__alpha', 'up-budget__gamma'])
   })
