@@ -27,6 +27,25 @@ const NOOP_HANDLER: ExportedHandler<Env> = {
 }
 
 /**
+ * Access-token lifetime: 7 days, not the library's 1 h default.
+ *
+ * Claude's hosted connector (Desktop / claude.ai) does not refresh when an
+ * expired access token gets a 401 on /mcp — it shows the user a "Reconnect"
+ * prompt, and that click is what runs the (succeeding) refresh_token grant.
+ * With 1 h tokens every idle gap longer than an hour cost a prompt (2026-11
+ * field finding: 401 bursts on /mcp, each followed only by a refresh after
+ * the user acted, never a server-side rejection). A longer token makes the
+ * prompt roughly weekly at worst.
+ *
+ * Why this is safe here: access tokens live in KV, so suspend/delete
+ * (`revokeAllUserGrants`) still kills them instantly, and the session DO
+ * re-checks user status on init. The cost is a longer useful life for a
+ * leaked bearer. Must stay well below `MCP_LOGIN_IDLE_DAYS` so an active
+ * client always refreshes inside the idle window.
+ */
+export const MCP_ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
+
+/**
  * A login lasts as long as it keeps refreshing (see oauth/login-activity.ts).
  *
  * Both TTLs below are passed as `undefined` on purpose — the library then
@@ -72,6 +91,7 @@ export function oauthProviderOptions(
     // expiration-less. See the note above before "simplifying" these away.
     refreshTokenTTL: undefined,
     clientRegistrationTTL: undefined,
+    accessTokenTTL: MCP_ACCESS_TOKEN_TTL_SECONDS,
     ...(env
       ? {
           tokenExchangeCallback: (opts: TokenExchangeCallbackOptions) =>

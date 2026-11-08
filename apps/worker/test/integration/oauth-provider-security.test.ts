@@ -2,7 +2,10 @@ import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:
 import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
 import { describe, expect, it } from 'vitest'
 import type { Env as WorkerEnv } from '../../src/env'
-import { oauthProviderOptions } from '../../src/oauth/provider-config'
+import {
+  MCP_ACCESS_TOKEN_TTL_SECONDS,
+  oauthProviderOptions
+} from '../../src/oauth/provider-config'
 import { MCP_LOGIN_IDLE_DAYS, stampTokenExchange } from '../../src/oauth/login-activity'
 
 /**
@@ -261,7 +264,7 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
     // Scoped to THIS login's two records: other tests in this file leave
     // behind never-exchanged grants, which legitimately still carry the
     // authorization code's short TTL. A key stored without a TTL lists with
-    // no expiration (null here, undefined on the platform); the 1-hour
+    // no expiration (null here, undefined on the platform); the 7-day
     // access-token key is the contrast.
     for (const prefix of [`grant:u-sec:${grantId}`, `client:${clientId}`]) {
       const { keys } = await testEnv.OAUTH_KV.list({ prefix })
@@ -320,6 +323,48 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
 
   it('the idle window is a policy constant, not a library default', () => {
     expect(MCP_LOGIN_IDLE_DAYS).toBe(90)
+  })
+
+  it('access tokens last 7 days on both the code exchange and a refresh', async () => {
+    expect(MCP_ACCESS_TOKEN_TTL_SECONDS).toBe(7 * 24 * 60 * 60)
+    // An active client must always get to refresh before the idle sweep.
+    expect(MCP_ACCESS_TOKEN_TTL_SECONDS).toBeLessThan(MCP_LOGIN_IDLE_DAYS * 86400)
+
+    const clientId = await registerPublicClient()
+    const verifier = 'sec-test-verifier-atttl-0123456789-0123456789-01'
+    const code = await issueCode(clientId, { challenge: await s256(verifier) })
+    const first = (await (await exchange(clientId, code, { verifier })).json()) as {
+      access_token: string
+      refresh_token: string
+      expires_in: number
+    }
+    expect(first.expires_in).toBe(MCP_ACCESS_TOKEN_TTL_SECONDS)
+
+    const refreshed = await pfetch(`${BASE}/oauth/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: first.refresh_token,
+        client_id: clientId
+      }).toString()
+    })
+    expect(refreshed.status).toBe(200)
+    const second = (await refreshed.json()) as { expires_in: number }
+    expect(second.expires_in).toBe(MCP_ACCESS_TOKEN_TTL_SECONDS)
+
+    // The KV record carries the same lifetime (the library stores the token
+    // with expirationTtl = accessTokenTTL), scoped to this login's grant.
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const grantId = (await helpers.listUserGrants('u-sec')).items.find(
+      (g) => g.clientId === clientId
+    )?.id
+    const { keys } = await testEnv.OAUTH_KV.list({ prefix: `token:u-sec:${grantId}:` })
+    expect(keys.length).toBeGreaterThan(0)
+    const nowSec = Math.floor(Date.now() / 1000)
+    for (const k of keys) {
+      expect(k.expiration).toBeGreaterThan(nowSec + MCP_ACCESS_TOKEN_TTL_SECONDS - 120)
+    }
   })
 })
 

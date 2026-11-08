@@ -21,8 +21,9 @@ import { errMessage } from '../util/errors'
 
 /**
  * How long a login may go without a token exchange before the nightly sweep
- * revokes it. A connected client refreshes roughly hourly (1 h access
- * tokens), so this is "the user has not opened this client in 90 days", not
+ * revokes it. A connected client refreshes at least weekly (7 d access
+ * tokens, `MCP_ACCESS_TOKEN_TTL_SECONDS` in provider-config.ts), so this is
+ * "the user has not opened this client in 90 days", not
  * a countdown anyone hits while working.
  */
 export const MCP_LOGIN_IDLE_DAYS = 90
@@ -32,7 +33,7 @@ export const MCP_LOGIN_IDLE_DAYS = 90
  * it must be cheap (one indexed UPSERT) and it must NEVER throw: a ledger
  * write is observability for the sweep, and failing the exchange over it
  * would turn a D1 hiccup into "everyone is logged out". A dropped stamp
- * costs nothing — the next refresh an hour later writes it again, and a
+ * costs nothing — the next refresh (within days) writes it again, and a
  * grant with no row at all is *seeded* by the sweep rather than revoked.
  *
  * Returns nothing: the callback may rewrite props/TTLs, and we deliberately
