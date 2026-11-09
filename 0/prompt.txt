@@ -1,0 +1,12 @@
+deploy to yukitools
+
+---
+
+Running a quick `whoami` on Yuki MCP.
+
+Yuki MCP is connected. You're signed in as **steven.noels@yuki.be**, role **admin**, user ID `ba4b75d6…`.
+
+---
+
+push it
+then oauth
