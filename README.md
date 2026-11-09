@@ -51,7 +51,7 @@ architecture & data-model reference, **[`CLAUDE.md`](CLAUDE.md)** /
 `docs/plan/G-conventions.md` for conventions and gotchas.
 
 > **Integration surfaces.** The supported, stable contract for external
-> clients is the **MCP** surface (`/mcp`, `/sse`) plus the OAuth provider.
+> clients is the **MCP** surface (`/mcp`) plus the OAuth provider.
 > The `/api/*` REST endpoints are an **internal contract for the bundled
 > SPA** — not versioned and subject to change between releases. Build agents
 > and scripts against MCP, not `/api`.
@@ -66,7 +66,7 @@ architecture & data-model reference, **[`CLAUDE.md`](CLAUDE.md)** /
   locks, team/product/free-form tags; open-read org-wide.
 - **RAG search** — hybrid retrieval (dense + lexical over Vectorize, LLM query
   rewrite, cross-encoder rerank) behind the `search_docs` tool and `/api/search`.
-- **MCP server** (`/mcp`, `/sse`) — built-ins (`search_docs`, `get_doc`,
+- **MCP server** (`/mcp`, Streamable HTTP) — built-ins (`search_docs`, `get_doc`,
   `list_upstreams`, `describe_upstream`, `list_skills` / `get_skill`,
   `draft_skill`, `poll_task` / `list_tasks`, `reload_upstreams`, …), doc +
   skill resources, and an OAuth provider for MCP clients.

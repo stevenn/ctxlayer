@@ -31,7 +31,6 @@ export default defineConfig(({ command }) => {
         '/oauth': proxyEntry,
         '/idp': proxyEntry,
         '/mcp': proxyEntry,
-        '/sse': proxyEntry,
         '/collab': wsProxyEntry,
         '/.well-known': proxyEntry
       }

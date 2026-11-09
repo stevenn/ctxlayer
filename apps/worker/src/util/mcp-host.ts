@@ -24,14 +24,24 @@ function hostOf(url: string): string | null {
   }
 }
 
-/** The bearer-gated machine paths (OAuth provider `apiHandlers`). */
+/** The bearer-gated machine path (the OAuth provider's only `apiHandlers` key). */
 function isMcpSurfacePath(pathname: string): boolean {
-  return (
-    pathname === '/mcp' ||
-    pathname.startsWith('/mcp/') ||
-    pathname === '/sse' ||
-    pathname.startsWith('/sse/')
-  )
+  return pathname === '/mcp' || pathname.startsWith('/mcp/')
+}
+
+/**
+ * The canonical OAuth protected resource: the URL MCP clients connect to, and
+ * the audience every grant and access token is bound to (workers-oauth-provider
+ * 1.x compares it EXACTLY on every API call and refresh).
+ *
+ * It must equal what the 0.x provider advertised per request, which was
+ * `<origin the client called>/mcp` — and clients reach MCP on the same base
+ * the SPA's setup page shows (`api/config.ts` `mcpBaseUrl`). Changing this
+ * value signs every user out (`token_audience_unbound` / `grant_audience_unbound`).
+ */
+export function mcpResourceUrl(env: Pick<Env, 'MCP_PUBLIC_URL' | 'PUBLIC_BASE_URL'>): string {
+  const base = (env.MCP_PUBLIC_URL || env.PUBLIC_BASE_URL).replace(/\/+$/, '')
+  return `${base}/mcp`
 }
 
 /**

@@ -19,7 +19,6 @@
 /idp/github/callback        -> GitHub OAuth callback
 /oauth/*                    -> workers-oauth-provider (DCR, authorize, token, revoke)
 /mcp                        -> Streamable HTTP MCP endpoint
-/sse                        -> SSE MCP endpoint
 /collab/:docId              -> WebSocket upgrade for Yjs
 /api/*                      -> REST (see D5)
 

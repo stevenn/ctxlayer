@@ -40,7 +40,7 @@ affected section. Trust the code first._
                 +-----------------------------------------------------+
                 |           Cloudflare edge (single Worker)           |
                 |                                                     |
-  MCP client -->|  /mcp, /sse  -> OAuthProvider -> McpSessionDO       |
+  MCP client -->|  /mcp        -> OAuthProvider -> McpSessionDO       |
   (Claude,      |                                  - props {user,role}|
    Cursor)      |                                  - tool registry    |
                 |                                  - upstream Clients |

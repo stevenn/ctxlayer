@@ -30,7 +30,7 @@ export async function revokeAllUserGrants(
   // at module scope; the composed app (src/app.ts) imports this module via
   // admin-users.ts and must stay importable by the integration suite.
   const { oauthProviderOptions } = await import('./provider-config')
-  const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+  const helpers = getOAuthApi<Env>(oauthProviderOptions(env), env)
   let revoked = 0
   let complete = true
   try {

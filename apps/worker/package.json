@@ -19,7 +19,7 @@
     "test:int": "vitest run --config vitest.integration.config.ts"
   },
   "dependencies": {
-    "@cloudflare/workers-oauth-provider": "^0.10.3",
+    "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@ctxlayer/shared": "workspace:*",
     "@modelcontextprotocol/sdk": "1.32.2",
     "agents": "0.33.0",

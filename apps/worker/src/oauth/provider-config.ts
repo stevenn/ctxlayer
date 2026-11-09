@@ -20,6 +20,7 @@ import type {
 } from '@cloudflare/workers-oauth-provider'
 import { McpSessionDO } from '../mcp/session-do'
 import type { Env } from '../env'
+import { mcpResourceUrl } from '../util/mcp-host'
 import { stampTokenExchange } from './login-activity'
 
 const NOOP_HANDLER: ExportedHandler<Env> = {
@@ -65,24 +66,32 @@ export const MCP_ACCESS_TOKEN_TTL_SECONDS = 7 * 24 * 60 * 60
  * unaffected — suspend/delete still calls `revokeAllUserGrants`, and the
  * session DO re-checks user status on init.
  *
- * `env` is optional because admin tooling builds `OAuthHelpers` from these
- * same options (see the module header) and never exchanges a token; without
- * it the callback is simply not installed.
+ * `env` is required: the canonical resource (below) is derived from it, and
+ * admin tooling building `OAuthHelpers` from these same options (see the
+ * module header) must name the identical resource. Those helpers never
+ * exchange a token, so the callback being installed there is inert.
+ *
+ * Resource (workers-oauth-provider 1.x): every grant and access token is
+ * bound to exactly one resource, compared exactly — see `mcpResourceUrl`.
+ * Only `/mcp` is served. The legacy HTTP+SSE endpoint (`/sse`) was dropped
+ * at the 1.x upgrade: 1.x cannot cover two sibling paths with one resource,
+ * the SSE transport is deprecated in MCP, and no stored grant was bound to
+ * it (2026-11 KV scan of the largest deployment: 0 of 444).
  */
 export function oauthProviderOptions(
-  defaultHandler: ExportedHandler<Env> = NOOP_HANDLER,
-  env?: Env
+  env: Env,
+  defaultHandler: ExportedHandler<Env> = NOOP_HANDLER
 ): OAuthProviderOptions<Env> {
   // apiHandlers requires ExportedHandlerWithFetch (Required fetch);
-  // our handlers carry `fetch` at the value level but their declared
-  // types don't line up exactly, so the whole map is cast once.
+  // our handler carries `fetch` at the value level but its declared
+  // type doesn't line up exactly, so the map is cast once.
   const apiHandlers = {
-    '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }),
-    '/sse': McpSessionDO.serveSSE('/sse', { binding: 'MCP_SESSION_DO' })
+    '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' })
   } as OAuthProviderOptions<Env>['apiHandlers']
   return {
     apiHandlers,
     defaultHandler,
+    resourceMetadata: { resource: mcpResourceUrl(env) },
     authorizeEndpoint: '/oauth/authorize',
     tokenEndpoint: '/oauth/token',
     clientRegistrationEndpoint: '/oauth/register',
@@ -92,12 +101,7 @@ export function oauthProviderOptions(
     refreshTokenTTL: undefined,
     clientRegistrationTTL: undefined,
     accessTokenTTL: MCP_ACCESS_TOKEN_TTL_SECONDS,
-    ...(env
-      ? {
-          tokenExchangeCallback: (opts: TokenExchangeCallbackOptions) =>
-            stampTokenExchange(env, opts)
-        }
-      : {}),
+    tokenExchangeCallback: (opts: TokenExchangeCallbackOptions) => stampTokenExchange(env, opts),
     scopesSupported: ['mcp']
   }
 }

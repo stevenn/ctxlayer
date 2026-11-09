@@ -7,6 +7,7 @@ import {
   oauthProviderOptions
 } from '../../src/oauth/provider-config'
 import { MCP_LOGIN_IDLE_DAYS, stampTokenExchange } from '../../src/oauth/login-activity'
+import { mcpResourceUrl } from '../../src/util/mcp-host'
 
 /**
  * Security properties this deployment DELEGATES to
@@ -28,19 +29,21 @@ const BASE = 'https://ctxlayer-oauth-sec.test'
 const REDIRECT = 'https://client.example/callback'
 const OTHER_REDIRECT = 'https://evil.example/steal'
 
-const testEnv = env as unknown as WorkerEnv
+// PUBLIC_BASE_URL = the origin these tests call, so the provider's canonical
+// resource (`mcpResourceUrl`) is `${BASE}/mcp` — as in a single-host deploy.
+const testEnv = {
+  ...(env as unknown as Record<string, unknown>),
+  PUBLIC_BASE_URL: BASE
+} as unknown as WorkerEnv
 
 // Stub default handler: these tests only exercise the provider's own
 // endpoints, so the fallthrough should never be reached.
 // Built WITH `testEnv`, exactly as index.ts does per request, so the token
 // endpoint also runs the login-activity `tokenExchangeCallback` here.
 const provider = new OAuthProvider<WorkerEnv>(
-  oauthProviderOptions(
-    {
-      fetch: () => Promise.resolve(new Response('unexpected fallthrough', { status: 500 }))
-    },
-    testEnv
-  )
+  oauthProviderOptions(testEnv, {
+    fetch: () => Promise.resolve(new Response('unexpected fallthrough', { status: 500 }))
+  })
 )
 
 async function pfetch(input: string, init?: RequestInit): Promise<Response> {
@@ -104,7 +107,7 @@ async function issueCode(
   clientId: string,
   opts: { challenge?: string; redirectUri?: string } = {}
 ): Promise<string> {
-  const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+  const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
   const authReq = await helpers.parseAuthRequest(new Request(authorizeUrl(clientId, opts)))
   const { redirectTo } = await helpers.completeAuthorization({
     request: authReq,
@@ -241,7 +244,7 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
     const code = await issueCode(clientId, { challenge: await s256(verifier) })
     expect((await exchange(clientId, code, { verifier })).status).toBe(200)
 
-    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
     const grants = (await helpers.listUserGrants('u-sec')).items.filter(
       (g) => g.clientId === clientId
     )
@@ -255,7 +258,7 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
     const code = await issueCode(clientId, { challenge: await s256(verifier) })
     expect((await exchange(clientId, code, { verifier })).status).toBe(200)
 
-    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
     const grantId = (await helpers.listUserGrants('u-sec')).items.find(
       (g) => g.clientId === clientId
     )?.id
@@ -355,7 +358,7 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
 
     // The KV record carries the same lifetime (the library stores the token
     // with expirationTtl = accessTokenTTL), scoped to this login's grant.
-    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(), testEnv)
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
     const grantId = (await helpers.listUserGrants('u-sec')).items.find(
       (g) => g.clientId === clientId
     )?.id
@@ -368,3 +371,38 @@ describe('MCP login lifetime (sliding, not absolute)', () => {
   })
 })
 
+describe('canonical resource (workers-oauth-provider 1.x)', () => {
+  // 1.x binds every grant and token to ONE resource and compares it exactly;
+  // a drift here signs every user out. Pin the value and its derivation.
+  it('advertises `<mcp base>/mcp` as the protected resource', async () => {
+    expect(mcpResourceUrl(testEnv)).toBe(`${BASE}/mcp`)
+    const res = await pfetch(`${BASE}/.well-known/oauth-protected-resource/mcp`)
+    expect(res.status).toBe(200)
+    const meta = (await res.json()) as { resource: string }
+    expect(meta.resource).toBe(`${BASE}/mcp`)
+  })
+
+  it('the 401 on /mcp points clients at that resource metadata', async () => {
+    const res = await pfetch(`${BASE}/mcp`, { method: 'POST' })
+    expect(res.status).toBe(401)
+    expect(res.headers.get('www-authenticate') ?? '').toContain(
+      `${BASE}/.well-known/oauth-protected-resource/mcp`
+    )
+  })
+
+  it('refuses an authorization request that names a different resource', async () => {
+    const clientId = await registerPublicClient()
+    const url = new URL(authorizeUrl(clientId, { challenge: await s256('v'.repeat(48)) }))
+    url.searchParams.set('resource', 'https://elsewhere.example/mcp')
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
+    await expect(helpers.parseAuthRequest(new Request(url))).rejects.toThrow()
+  })
+
+  it('no longer serves the legacy /sse endpoint as a protected API route', async () => {
+    const res = await pfetch(`${BASE}/sse`, { method: 'POST' })
+    // Falls through to the default handler (this file's stub) instead of
+    // getting the provider's Bearer challenge.
+    expect(res.status).not.toBe(401)
+    expect(res.headers.get('www-authenticate')).toBeNull()
+  })
+})

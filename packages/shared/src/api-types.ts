@@ -3,7 +3,7 @@
  *
  * SCOPE: `/api/*` is an INTERNAL contract for the bundled React SPA — it is
  * not a versioned, stable public API, and may change without notice between
- * releases. External integrators should use the MCP surface (`/mcp`, `/sse`)
+ * releases. External integrators should use the MCP surface (`/mcp`)
  * and the OAuth provider, which are the supported, discoverable contracts.
  */
 import { z } from 'zod'

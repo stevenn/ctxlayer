@@ -17,7 +17,8 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
 ## What runs where
 
 - **Cloudflare Worker** (`apps/worker/`) is the single deployable unit. It
-  hosts: the MCP server (`/mcp`, `/sse`), the OAuth provider (`/oauth/*`,
+  hosts: the MCP server (`/mcp`; the legacy `/sse` endpoint was dropped at
+  the oauth-provider 1.x upgrade), the OAuth provider (`/oauth/*`,
   `/.well-known/oauth-authorization-server`), REST endpoints for the SPA
   (`/api/*`), IdP callbacks (`/idp/*`), the realtime collab endpoint
   (`/collab/:id`), and the React SPA via Workers Assets.

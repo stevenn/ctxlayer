@@ -32,6 +32,8 @@ run_worker_first = [
   "/api/*",
   "/mcp",
   "/mcp/*",
+  # /sse: the legacy SSE endpoint was removed (oauth-provider 1.x upgrade);
+  # kept worker-first so stale clients get the JSON 404, not the SPA shell.
   "/sse",
   "/sse/*",
   "/oauth/*",

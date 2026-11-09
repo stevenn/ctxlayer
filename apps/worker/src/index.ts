@@ -32,7 +32,7 @@ export { DocRoomDO } from './collab/doc-room-do'
 
 // OAuthProvider wraps the worker's fetch. It implements /oauth/token,
 // /oauth/register, /.well-known/oauth-authorization-server, and gates
-// /mcp + /sse on a valid bearer token. Everything else falls through
+// /mcp on a valid bearer token. Everything else falls through
 // to the Hono app (default handler). Provider options live in
 // `oauth/provider-config.ts` so admin tooling can construct a
 // read-only `OAuthHelpers` against the identical config.
@@ -43,7 +43,7 @@ export { DocRoomDO } from './collab/doc-room-do'
 // real state is in KV), so this is not a per-request cost worth avoiding.
 const buildOAuthProvider = (env: Env) =>
   new OAuthProvider<Env>(
-    oauthProviderOptions({ fetch: app.fetch as ExportedHandler<Env>['fetch'] }, env)
+    oauthProviderOptions(env, { fetch: app.fetch as ExportedHandler<Env>['fetch'] })
   )
 
 const worker: ExportedHandler<Env> = {
@@ -52,7 +52,7 @@ const worker: ExportedHandler<Env> = {
   // dev doesn't pin the browser's whole `localhost` to HTTPS.
   fetch: async (req, env, ctx) => {
     // Host-scope the machine MCP surface: when a dedicated MCP host is
-    // configured, the browser host 404s /mcp,/sse,/cli instead of answering
+    // configured, the browser host 404s /mcp instead of answering
     // with a confusing `invalid_token` (a past-Access user has no MCP bearer).
     // No-op for single-host deployments. See util/mcp-host.ts.
     if (isMcpPathOnWrongHost(req, env)) {
@@ -172,7 +172,7 @@ const worker: ExportedHandler<Env> = {
       (async () => {
         try {
           await recordJobRun(env, 'oauth-client-prune', async () => {
-            const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+            const helpers = getOAuthApi<Env>(oauthProviderOptions(env), env)
             const r = await pruneOrphanOAuthClients(env, helpers, { olderThanDays: 1 })
             if (r.skippedIncompleteIndex) {
               console.warn('[cron] oauth-client prune skipped: grant index incomplete')
@@ -249,7 +249,7 @@ const worker: ExportedHandler<Env> = {
       (async () => {
         try {
           await recordJobRun(env, 'grant-idle-prune', async () => {
-            const helpers = getOAuthApi<Env>(oauthProviderOptions(), env)
+            const helpers = getOAuthApi<Env>(oauthProviderOptions(env), env)
             const nowSec = Math.floor(controller.scheduledTime / 1000)
             const r = await sweepIdleGrants(env, helpers, {
               idleDays: MCP_LOGIN_IDLE_DAYS,
