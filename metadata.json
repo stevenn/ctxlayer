@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M7CXACDSVAC7FMSGQFJPM2ZS",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "apps/worker/src/index.ts",
+    "apps/worker/src/oauth/default-endpoints.test.ts",
+    "apps/worker/src/oauth/default-endpoints.ts",
+    "apps/worker/test/integration/oauth-provider-security.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/0/metadata.json",
+      "transcript": "/0/full.jsonl",
+      "compact_transcript": "/0/transcript.jsonl",
+      "content_hash": "/0/content_hash.txt",
+      "prompt": "/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 18,
+    "cache_creation_tokens": 13717,
+    "cache_read_tokens": 2395368,
+    "output_tokens": 6792,
+    "api_call_count": 8
+  }
+}
