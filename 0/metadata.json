@@ -1,0 +1,77 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M7CX4CADY3HCA3ZZ9322V0Q5",
+  "session_id": "4e4de319-72bf-4be9-82f6-2bf86f23f5bf",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-14T11:29:54.552076Z",
+  "branch": "main",
+  "checkpoints_count": 4,
+  "save_step_count": 1,
+  "files_touched": [
+    "apps/worker/src/api/admin-oauth-clients.ts",
+    "apps/worker/src/idp/complete-mcp.ts",
+    "apps/worker/src/index.ts",
+    "apps/worker/src/oauth/cimd.ts",
+    "apps/worker/src/oauth/default-endpoints.test.ts",
+    "apps/worker/src/oauth/default-endpoints.ts",
+    "apps/worker/src/oauth/provider-config.ts",
+    "apps/worker/test/integration/oauth-provider-security.test.ts",
+    "wrangler.toml"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "383d457cbf8a",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 98,
+    "cache_creation_tokens": 244572,
+    "cache_read_tokens": 10096567,
+    "output_tokens": 45400,
+    "api_call_count": 46
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-14T11:29:54.485932Z",
+    "agent_lines": 315,
+    "agent_removed": 3,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 315,
+    "total_lines_changed": 318,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 315,
+      "agent_lines_removed": 3,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    }
+  ]
+}
