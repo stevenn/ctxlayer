@@ -62,6 +62,7 @@ const worker: ExportedHandler<Env> = {
     // Default-endpoint fallbacks (`/token`, `/register`, `/authorize`) are
     // served as the advertised `/oauth/*` endpoints — see default-endpoints.ts.
     const oauthReq = aliasDefaultOAuthEndpoint(req)
+    if (oauthReq instanceof Response) return withHsts(req, oauthReq)
     return withHsts(req, await buildOAuthProvider(env).fetch(oauthReq, env, ctx))
   },
   async queue(batch, env, ctx) {

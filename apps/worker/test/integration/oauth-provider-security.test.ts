@@ -414,8 +414,11 @@ describe('default-endpoint fallbacks (/token, /register, /authorize)', () => {
   // discovery/refresh and never re-discovers (anthropics/claude-ai-mcp#1169).
   // index.ts runs every request through `aliasDefaultOAuthEndpoint` first.
   const viaAlias = (input: string, init?: RequestInit) =>
-    provider
-      .fetch(aliasDefaultOAuthEndpoint(new Request(input, init)), testEnv, createExecutionContext())
+    provider.fetch(
+      aliasDefaultOAuthEndpoint(new Request(input, init)) as Request,
+      testEnv,
+      createExecutionContext()
+    )
 
   it('POST /register registers a client like /oauth/register', async () => {
     const res = await viaAlias(`${BASE}/register`, {

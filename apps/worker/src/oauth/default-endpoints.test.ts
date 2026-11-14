@@ -5,14 +5,28 @@ import { isCimdClientId } from './cimd'
 describe('aliasDefaultOAuthEndpoint', () => {
   it.each([
     ['/token', '/oauth/token'],
-    ['/register', '/oauth/register'],
-    ['/authorize', '/oauth/authorize']
-  ])('re-addresses %s to %s', (from, to) => {
+    ['/register', '/oauth/register']
+  ])('re-addresses %s to %s in place', (from, to) => {
     const out = aliasDefaultOAuthEndpoint(new Request(`https://mcp.example${from}?a=1&b=2`))
-    const url = new URL(out.url)
+    expect(out).toBeInstanceOf(Request)
+    const url = new URL((out as Request).url)
     expect(url.pathname).toBe(to)
     expect(url.search).toBe('?a=1&b=2')
     expect(url.host).toBe('mcp.example')
+  })
+
+  it('redirects /authorize to /oauth/authorize, query intact', () => {
+    // A redirect, not an in-place rewrite: an edge gate on /oauth/authorize
+    // (Cloudflare Access) must still see the browser.
+    const out = aliasDefaultOAuthEndpoint(
+      new Request('https://mcp.example/authorize?client_id=c&state=s%20t')
+    )
+    expect(out).toBeInstanceOf(Response)
+    const res = out as Response
+    expect(res.status).toBe(302)
+    expect(res.headers.get('location')).toBe(
+      'https://mcp.example/oauth/authorize?client_id=c&state=s%20t'
+    )
   })
 
   it('keeps method, headers and body of a token POST', async () => {
@@ -22,7 +36,7 @@ describe('aliasDefaultOAuthEndpoint', () => {
         headers: { 'content-type': 'application/x-www-form-urlencoded' },
         body: 'grant_type=refresh_token&refresh_token=abc'
       })
-    )
+    ) as Request
     expect(out.method).toBe('POST')
     expect(out.headers.get('content-type')).toBe('application/x-www-form-urlencoded')
     expect(await out.text()).toBe('grant_type=refresh_token&refresh_token=abc')
