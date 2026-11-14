@@ -1,6 +1,6 @@
 import { createExecutionContext, env, waitOnExecutionContext } from 'cloudflare:test'
 import { OAuthProvider, getOAuthApi } from '@cloudflare/workers-oauth-provider'
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Env as WorkerEnv } from '../../src/env'
 import {
   MCP_ACCESS_TOKEN_TTL_SECONDS,
@@ -8,6 +8,8 @@ import {
 } from '../../src/oauth/provider-config'
 import { MCP_LOGIN_IDLE_DAYS, stampTokenExchange } from '../../src/oauth/login-activity'
 import { mcpResourceUrl } from '../../src/util/mcp-host'
+import { aliasDefaultOAuthEndpoint } from '../../src/oauth/default-endpoints'
+import { isCimdClientId } from '../../src/oauth/cimd'
 
 /**
  * Security properties this deployment DELEGATES to
@@ -404,5 +406,139 @@ describe('canonical resource (workers-oauth-provider 1.x)', () => {
     // getting the provider's Bearer challenge.
     expect(res.status).not.toBe(401)
     expect(res.headers.get('www-authenticate')).toBeNull()
+  })
+})
+
+describe('default-endpoint fallbacks (/token, /register, /authorize)', () => {
+  // Claude's hosted connector falls back to these root paths after one failed
+  // discovery/refresh and never re-discovers (anthropics/claude-ai-mcp#1169).
+  // index.ts runs every request through `aliasDefaultOAuthEndpoint` first.
+  const viaAlias = (input: string, init?: RequestInit) =>
+    provider
+      .fetch(aliasDefaultOAuthEndpoint(new Request(input, init)), testEnv, createExecutionContext())
+
+  it('POST /register registers a client like /oauth/register', async () => {
+    const res = await viaAlias(`${BASE}/register`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        client_name: 'fallback-client',
+        redirect_uris: [REDIRECT],
+        token_endpoint_auth_method: 'none'
+      })
+    })
+    expect(res.status).toBe(201)
+  })
+
+  it('POST /token exchanges a code and refreshes like /oauth/token', async () => {
+    const clientId = await registerPublicClient()
+    const verifier = 'fallback-verifier-0123456789-0123456789-0123456789'
+    const code = await issueCode(clientId, { challenge: await s256(verifier) })
+    const post = (body: Record<string, string>) =>
+      viaAlias(`${BASE}/token`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams(body).toString()
+      })
+
+    const first = await post({
+      grant_type: 'authorization_code',
+      code,
+      redirect_uri: REDIRECT,
+      client_id: clientId,
+      code_verifier: verifier
+    })
+    expect(first.status).toBe(200)
+    const { refresh_token } = (await first.json()) as { refresh_token: string }
+
+    const refreshed = await post({ grant_type: 'refresh_token', refresh_token, client_id: clientId })
+    expect(refreshed.status).toBe(200)
+  })
+})
+
+describe('Client ID Metadata Documents (CIMD)', () => {
+  const CIMD_ID = 'https://client.example/oauth/client-metadata.json'
+  const CIMD_DOC = {
+    client_id: CIMD_ID,
+    client_name: 'CIMD test client',
+    redirect_uris: [REDIRECT],
+    token_endpoint_auth_method: 'none',
+    grant_types: ['authorization_code', 'refresh_token'],
+    response_types: ['code']
+  }
+
+  afterEach(() => vi.restoreAllMocks())
+
+  /** Serve the client's metadata document for any outbound fetch of its URL. */
+  function serveCimdDocument() {
+    return vi.spyOn(globalThis, 'fetch').mockImplementation((input) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      if (url !== CIMD_ID) return Promise.resolve(new Response('not found', { status: 404 }))
+      return Promise.resolve(Response.json(CIMD_DOC))
+    })
+  }
+
+  it('is advertised in the authorization-server metadata', async () => {
+    const res = await pfetch(`${BASE}/.well-known/oauth-authorization-server`)
+    const meta = (await res.json()) as Record<string, unknown>
+    expect(meta.client_id_metadata_document_supported).toBe(true)
+    // DCR stays available for clients that do not publish a document.
+    expect(meta.registration_endpoint).toBe(`${BASE}/oauth/register`)
+  })
+
+  it('a client signs in and refreshes with its document URL as client_id, unregistered', async () => {
+    const fetchSpy = serveCimdDocument()
+    const verifier = 'cimd-verifier-0123456789-0123456789-0123456789-01'
+    const code = await issueCode(CIMD_ID, { challenge: await s256(verifier) })
+    const res = await exchange(CIMD_ID, code, { verifier })
+    expect(res.status).toBe(200)
+    const { refresh_token } = (await res.json()) as { refresh_token: string }
+
+    const refreshed = await pfetch(`${BASE}/oauth/token`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token,
+        client_id: CIMD_ID
+      }).toString()
+    })
+    expect(refreshed.status).toBe(200)
+    expect(fetchSpy).toHaveBeenCalled()
+
+    // Nothing was written to the client store: there is no registration to lose.
+    expect(await testEnv.OAUTH_KV.get(`client:${CIMD_ID}`)).toBeNull()
+  })
+
+  it('a redirect URI the document does not list never receives a code', async () => {
+    serveCimdDocument()
+    await expect(
+      issueCode(CIMD_ID, { challenge: await s256('v'.repeat(48)), redirectUri: OTHER_REDIRECT })
+    ).rejects.toThrow()
+  })
+
+  it('a second sign-in keeps the first grant alive (shared client_id)', async () => {
+    // idp/complete-mcp.ts passes `revokeExistingGrants: !isCimdClientId(...)`:
+    // every surface of a CIMD client signs in as the same client_id, so the
+    // library default would sign the other surfaces out.
+    serveCimdDocument()
+    expect(isCimdClientId(CIMD_ID)).toBe(true)
+    const helpers = getOAuthApi<WorkerEnv>(oauthProviderOptions(testEnv), testEnv)
+    const userId = 'u-cimd-two-surfaces'
+    for (let i = 0; i < 2; i++) {
+      const authReq = await helpers.parseAuthRequest(
+        new Request(authorizeUrl(CIMD_ID, { challenge: await s256(`v${i}`.repeat(24)) }))
+      )
+      await helpers.completeAuthorization({
+        request: authReq,
+        userId,
+        metadata: {},
+        scope: ['mcp'],
+        props: { userId, email: 'cimd@test.example', role: 'member' },
+        revokeExistingGrants: !isCimdClientId(authReq.clientId)
+      })
+    }
+    const grants = await helpers.listUserGrants(userId)
+    expect(grants.items.filter((g) => g.clientId === CIMD_ID)).toHaveLength(2)
   })
 })

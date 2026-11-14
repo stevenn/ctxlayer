@@ -3,6 +3,7 @@ import type { Env } from './env'
 import { queueKind } from './queues/route'
 import { app } from './app'
 import { oauthProviderOptions } from './oauth/provider-config'
+import { aliasDefaultOAuthEndpoint } from './oauth/default-endpoints'
 import { usageConsumer } from './queues/usage-consumer'
 import { reindexConsumer } from './queues/reindex-consumer'
 import { gitSyncConsumer } from './queues/git-sync-consumer'
@@ -58,7 +59,10 @@ const worker: ExportedHandler<Env> = {
     if (isMcpPathOnWrongHost(req, env)) {
       return withHsts(req, Response.json({ error: 'not_found' }, { status: 404 }))
     }
-    return withHsts(req, await buildOAuthProvider(env).fetch(req, env, ctx))
+    // Default-endpoint fallbacks (`/token`, `/register`, `/authorize`) are
+    // served as the advertised `/oauth/*` endpoints — see default-endpoints.ts.
+    const oauthReq = aliasDefaultOAuthEndpoint(req)
+    return withHsts(req, await buildOAuthProvider(env).fetch(oauthReq, env, ctx))
   },
   async queue(batch, env, ctx) {
     // Match on the type SUFFIX, not an exact name: queue names are

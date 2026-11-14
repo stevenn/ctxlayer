@@ -16,6 +16,7 @@
 
 import { clearStateCookie } from './common'
 import { consumeAuthRequest } from '../oauth/authorize-page'
+import { isCimdClientId } from '../oauth/cimd'
 import type { Env, McpProps } from '../env'
 import type { UserRow } from '../db/queries/users'
 
@@ -51,7 +52,16 @@ export async function completeMcpAuthorization(
     userId: user.id,
     metadata: { idp: user.idp, email: user.email },
     scope: ['mcp'],
-    props
+    props,
+    // A DCR client_id is one installation, so replacing its earlier grant is
+    // right (the library default). A CIMD client_id is shared by every
+    // surface of that client — the user's Desktop, web and mobile sessions
+    // all sign in as the same URL and redirect URI — so revoking "the
+    // existing grant" would sign the other surfaces out on each new sign-in.
+    // Keep them; the nightly idle sweep retires the ones nothing refreshes.
+    revokeExistingGrants: !isCimdClientId(
+      String((authReq as { clientId?: unknown }).clientId ?? '')
+    )
   })
 
   const headers = new Headers()

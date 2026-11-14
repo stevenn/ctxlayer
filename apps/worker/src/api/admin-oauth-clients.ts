@@ -28,6 +28,7 @@ import { requireAdmin, type AuthedVariables } from '../auth/middleware'
 import { requireCsrf } from '../auth/csrf'
 import { buildUserGrantIndex } from '../oauth/client-grants'
 import { pruneOrphanOAuthClients } from '../oauth/prune-clients'
+import { isCimdClientId } from '../oauth/cimd'
 
 /**
  * Handler-time import of the provider options: `provider-config.ts`
@@ -39,6 +40,25 @@ import { pruneOrphanOAuthClients } from '../oauth/prune-clients'
 async function providerOptions(env: Env) {
   const { oauthProviderOptions } = await import('../oauth/provider-config')
   return oauthProviderOptions(env)
+}
+
+/** Viewer row for a CIMD client: identified by its document URL, nothing stored. */
+function cimdClientRow(clientId: string, users: OAuthClientRow['users']): OAuthClientRow {
+  return {
+    clientId,
+    clientName: `${new URL(clientId).host} (metadata document)`,
+    redirectUris: [],
+    registrationDate: null,
+    tokenEndpointAuthMethod: 'none',
+    grantTypes: null,
+    responseTypes: null,
+    clientUri: clientId,
+    logoUri: null,
+    policyUri: null,
+    tosUri: null,
+    contacts: null,
+    users
+  }
 }
 
 export const adminOAuthClientsRoute = new Hono<{
@@ -80,6 +100,16 @@ adminOAuthClientsRoute.get('/', async (c) => {
     contacts: ci.contacts ?? null,
     users: userGrantIndex.get(ci.clientId) ?? []
   }))
+
+  // CIMD clients have no KV record, so `listClients` never returns them —
+  // without this the hosted-connector logins would vanish from the viewer.
+  // Synthesise one row per CIMD client_id that holds a grant, on the first
+  // page only (they are a handful: one per client product, not per user).
+  if (!cursor) {
+    for (const [clientId, users] of userGrantIndex) {
+      if (isCimdClientId(clientId)) clients.unshift(cimdClientRow(clientId, users))
+    }
+  }
 
   const body: OAuthClientsResponse = {
     clients,

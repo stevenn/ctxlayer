@@ -101,6 +101,17 @@ export function oauthProviderOptions(
     refreshTokenTTL: undefined,
     clientRegistrationTTL: undefined,
     accessTokenTTL: MCP_ACCESS_TOKEN_TTL_SECONDS,
+    // Client ID Metadata Documents: a client may present an https URL as its
+    // client_id instead of registering (DCR stays available). Claude's hosted
+    // connector re-registers a brand-new DCR client on every reconnect —
+    // 1,169 registrations for 80 users in the 2026-11 scan — and loses the
+    // login with it; its published CIMD identity gives it one stable
+    // client_id with nothing stored here to lose. Needs the
+    // `global_fetch_strictly_public` compat flag (wrangler.toml), which also
+    // keeps the document fetch off internal addresses. A CIMD client_id is
+    // shared by all users, so grants are NOT revoked per client at sign-in
+    // (idp/complete-mcp.ts) and such clients have no KV record to prune.
+    clientIdMetadataDocumentEnabled: true,
     tokenExchangeCallback: (opts: TokenExchangeCallbackOptions) => stampTokenExchange(env, opts),
     scopesSupported: ['mcp']
   }
