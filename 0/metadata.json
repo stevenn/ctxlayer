@@ -1,0 +1,106 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M7FZRFSNR4TQ2T7S6G3QRZ38",
+  "session_id": "4e4de319-72bf-4be9-82f6-2bf86f23f5bf",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-15T16:13:33.890616Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "save_step_count": 1,
+  "files_touched": [
+    ".gitignore"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "4a370feb5f54",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 480,
+    "cache_creation_tokens": 1436155,
+    "cache_read_tokens": 84560774,
+    "output_tokens": 248387,
+    "api_call_count": 214,
+    "subagent_tokens": {
+      "input_tokens": 144,
+      "cache_creation_tokens": 429888,
+      "cache_read_tokens": 11080171,
+      "output_tokens": 42774,
+      "api_call_count": 71
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Rbbo8j4vMnVSGRe1cAZifL",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "anthropic-skills:yuki-writing-style"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "4a370feb5f54",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1834,
+        "end": 1835,
+        "entry_ids": [
+          "cc9366c9-9f9b-4449-a7b3-7a244c93c424"
+        ],
+        "tool_use_id": "toolu_01Rbbo8j4vMnVSGRe1cAZifL"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Rbbo8j4vMnVSGRe1cAZifL"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: anthropic-skills:yuki-writing-style",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-15T16:13:33.649128Z",
+    "agent_lines": 2,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2,
+    "total_lines_changed": 2,
+    "agent_percentage": 100,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 95,
+      "user_lines_removed": 0,
+      "agent_lines_added": 2,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.local.json": 95
+      }
+    }
+  ]
+}
