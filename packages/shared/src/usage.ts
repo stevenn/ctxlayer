@@ -152,9 +152,56 @@ export const UsageErrorRow = z.object({
   code: z.string(),
   message: z.string().nullable(),
   userId: z.string().nullable().default(null),
-  userEmail: z.string().nullable().default(null)
+  userEmail: z.string().nullable().default(null),
+  // Which MCP lane served the failed call; null for rows that predate lane
+  // tracking. Loose string so a lane added later can't fail an older SPA.
+  lane: z.string().nullable().default(null),
+  clientName: z.string().nullable().default(null)
 })
 export type UsageErrorRow = z.infer<typeof UsageErrorRow>
+
+// ---- Protocol lanes -------------------------------------------------------
+// /mcp is served by two coexisting lanes. `session` = McpAgent (a Durable
+// Object per MCP session; protocol revisions up to 2025-11-25). `stateless` =
+// a fresh server per request (revision 2026-07-28). THE single source for the
+// lane set: the worker's usage message, the D1 CHECK (migration 0041) and the
+// SPA's labels all follow this list.
+export const USAGE_LANES = ['session', 'stateless'] as const
+export type UsageLane = (typeof USAGE_LANES)[number]
+
+export const USAGE_LANE_LABEL: Record<UsageLane, string> = {
+  session: 'Session (2025-era)',
+  stateless: 'Stateless (2026-07-28)'
+}
+
+// One client (its self-reported name) within a lane. `clientName` is null for
+// calls whose client never identified itself.
+export const UsageLaneClient = z.object({
+  clientName: z.string().nullable(),
+  calls: z.number().int().min(0),
+  users: z.number().int().min(0),
+  lastSeen: z.number().int() // unix seconds
+})
+export type UsageLaneClient = z.infer<typeof UsageLaneClient>
+
+// Per-lane health over the window. Sourced from raw `usage_events` (30-day
+// retention), so it never reaches further back than that whatever the range.
+// `lane` is null for events recorded before lanes were tracked. Latencies are
+// null when the lane has no calls. `protocolVersions` lists the revisions
+// seen, most-used first.
+export const UsageLaneStats = z.object({
+  lane: z.enum(USAGE_LANES).nullable(),
+  calls: z.number().int().min(0),
+  errors: z.number().int().min(0),
+  timeouts: z.number().int().min(0),
+  users: z.number().int().min(0),
+  p50LatencyMs: z.number().int().min(0).nullable(),
+  p95LatencyMs: z.number().int().min(0).nullable(),
+  lastSeen: z.number().int().nullable(),
+  protocolVersions: z.array(z.string()),
+  clients: z.array(UsageLaneClient)
+})
+export type UsageLaneStats = z.infer<typeof UsageLaneStats>
 
 // Async submit→poll analytics (WI-6). Sourced from the `async_jobs` table,
 // whose rows are retained 30 days (matching usage_events; only the heavy
@@ -224,7 +271,11 @@ export const UsageErrorsResponse = z.object({
 })
 export type UsageErrorsResponse = z.infer<typeof UsageErrorsResponse>
 
+// `lanes` is admin-only: it is an operator's view of the protocol migration,
+// not something a member acts on. Defaulted so a response from a worker that
+// predates lane tracking still parses.
 export const AdminUsageResponse = UsageResponse.extend({
-  topUsers: z.array(UsageTopUser)
+  topUsers: z.array(UsageTopUser),
+  lanes: z.array(UsageLaneStats).default([])
 })
 export type AdminUsageResponse = z.infer<typeof AdminUsageResponse>

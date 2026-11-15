@@ -25,7 +25,9 @@ const errorRow: UsageErrorRow = {
   code: 'upstream_5xx',
   message: '500 internal server error',
   userId: 'u-alice',
-  userEmail: 'alice@example.test'
+  userEmail: 'alice@example.test',
+  lane: 'session',
+  clientName: 'claude-code'
 }
 
 const summary: UsageAsyncSummary = {

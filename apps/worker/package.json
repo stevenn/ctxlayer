@@ -21,7 +21,9 @@
   "dependencies": {
     "@cloudflare/workers-oauth-provider": "^1.2.4",
     "@ctxlayer/shared": "workspace:*",
+    "@modelcontextprotocol/client": "2.4.0",
     "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server": "2.4.0",
     "agents": "0.33.0",
     "fflate": "^0.8.2",
     "hono": "^4.6.0",
@@ -29,7 +31,7 @@
     "lib0": "^0.2.117",
     "y-protocols": "^1.0.7",
     "yjs": "^13.6.30",
-    "zod": "^4.0.0"
+    "zod": "^4.2.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250101.0",

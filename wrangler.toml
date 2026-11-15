@@ -208,6 +208,10 @@ BUILT_AT = ""
 # instructions so agents know the alias and "ctxlayer" are the same gateway.
 # Empty ⇒ no alias clause.
 GATEWAY_ALIAS = ""
+# Kill switch for the stateless MCP lane (protocol revision 2026-07-28).
+# Empty ⇒ ON: 2026-07-28 clients are served statelessly, 2025-era clients by
+# the session lane (McpSessionDO). "off" ⇒ everything on the session lane.
+MCP_STATELESS_LANE = ""
 # Google sign-in is enabled if EITHER allowlist is set. A user passes
 # the allowlist when their id_token.hd matches ALLOWED_GOOGLE_HD OR
 # their email is in ALLOWED_GOOGLE_EMAILS. Both empty disables Google.

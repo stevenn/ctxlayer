@@ -18,6 +18,7 @@ import {
 } from '../../components/usage/summary'
 import { ToolTable, UpstreamTable } from '../../components/usage/tables'
 import { AsyncJobsTable } from '../../components/usage/async-jobs-table'
+import { LanesTable } from '../../components/usage/lanes-table'
 import { useUsageRange } from '../../lib/use-usage-range'
 
 /**
@@ -243,6 +244,13 @@ function AdminUsageBody({
         ) : (
           <DailyBars rows={data.dailyTotals} daysBack={chartDays} offsetSec={offsetSec} />
         )}
+      </Panel>
+
+      <Panel
+        title="Protocol lanes"
+        subtitle="Which MCP lane served each tool call: the session lane (2025-era clients) or the stateless lane (protocol 2026-07-28). Last 30 days at most. Hover a client for its users and last call."
+      >
+        <LanesTable lanes={data.lanes} />
       </Panel>
 
       <Panel

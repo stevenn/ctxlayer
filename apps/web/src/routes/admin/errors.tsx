@@ -9,6 +9,7 @@ export function AdminErrors() {
       subtitle="Individual failed tool calls — credential-scrubbed root detail (host/IP/URL kept)."
       scope="admin"
       showUser
+      showLane
       fetchErrors={fetchAdminUsageErrors}
     />
   )

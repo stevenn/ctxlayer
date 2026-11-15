@@ -41,6 +41,11 @@ export interface Env {
   // gateway (client-side org instructions reference the alias). Truncated to
   // MAX_GATEWAY_ALIAS chars; empty/unset ⇒ no alias clause. Not a secret.
   GATEWAY_ALIAS?: string
+  // Kill switch for the stateless MCP lane (protocol revision 2026-07-28;
+  // mcp/stateless/handler.ts). Unset/empty ⇒ ON. 'off' / '0' / 'false' ⇒
+  // every /mcp request is served by the session lane (McpSessionDO), as
+  // before the stateless lane existed. Not a secret.
+  MCP_STATELESS_LANE?: string
   // Build provenance, injected by the `deploy` script via `--var`.
   // Empty in local dev / a bare `wrangler deploy`.
   GIT_SHA: string

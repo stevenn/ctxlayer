@@ -29,8 +29,25 @@ but trust the code first; these docs are reference, not kept in lockstep with ev
 
 ## Architecture pointers
 
-- MCP per-session state → Durable Object `McpSessionDO`
-  (`apps/worker/src/mcp/session-do.ts`).
+- `/mcp` is ONE endpoint served by TWO coexisting lanes, routed per request
+  by protocol era (`apps/worker/src/mcp/stateless/handler.ts`, using the MCP
+  SDK's `isLegacyRequest`):
+  - **session lane** — 2025-era clients (`initialize`, `Mcp-Session-Id`).
+    Durable Object `McpSessionDO` (`apps/worker/src/mcp/session-do.ts`) on
+    MCP SDK v1; per-session state (usage outbox, hint ledger, upstream
+    registry) lives in the DO.
+  - **stateless lane** — protocol revision 2026-07-28. A fresh MCP SDK v2
+    server per request (`apps/worker/src/mcp/stateless/`), no DO, no session;
+    it builds only what the request addresses and resolves the account,
+    catalogue and credentials fresh each time.
+  Both are permanent: do not assume 2025-era clients work on the stateless
+  lane. Anything agent-facing must behave the same on both — built-in tools
+  are lane-neutral definitions in `mcp/builtins/`, prompts/resources are
+  written once against `mcp/surface.ts`, and proxied-tool presentation is in
+  `mcp/proxied-tool.ts`. A new upstream-proxy behaviour has to be added to
+  BOTH orchestrations (`mcp/proxy-registry.ts` and
+  `mcp/stateless/upstream-tools.ts`). Usage events record the lane, so the
+  admin Usage + Errors pages can compare them.
 - Per-doc realtime collab → Durable Object `DocRoomDO`
   (`apps/worker/src/collab/doc-room-do.ts`).
 - HTTP/SSE upstreams are proxied directly through the generic

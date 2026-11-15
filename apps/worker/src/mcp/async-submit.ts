@@ -15,6 +15,7 @@ import {
   supersedeRunningJob
 } from '../db/queries/async-jobs'
 import { errMessage } from '../util/errors'
+import type { UsageOrigin } from '../usage/event'
 import { safeJson } from './tool-result'
 
 /**
@@ -83,7 +84,7 @@ export async function hashJobKey(
  */
 export async function submitAsyncJob(
   env: Env,
-  ids: { userId: string; sessionId: string },
+  ids: { userId: string; sessionId: string; origin?: UsageOrigin },
   conn: UpstreamConnection,
   upstreamToolName: string,
   args: unknown
@@ -150,7 +151,10 @@ export async function submitAsyncJob(
     upstreamId: conn.id,
     tool: upstreamToolName,
     argsJson,
-    sessionId: ids.sessionId
+    sessionId: ids.sessionId,
+    // The consumer records the real call's usage; it has no session to ask,
+    // so the submitter's lane + client identity ride the message.
+    origin: ids.origin
   })
   return asyncSurface(
     `Task started (job ${jobId}). This tool runs in the background (~2-3 min) because it exceeds interactive client request timeouts. Call poll_task with job_id "${jobId}" to fetch the result, or just re-run this exact call — it returns the cached result once ready.`

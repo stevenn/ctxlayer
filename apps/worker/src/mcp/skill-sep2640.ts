@@ -13,13 +13,12 @@
  * Spec: https://github.com/modelcontextprotocol/modelcontextprotocol/pull/2640
  */
 
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { Env } from '../env'
 import { listPublishedSkills } from '../db/queries/skills'
 import { loadPublishedSkillMarkdown } from './skill-render'
+import { firstVar, type McpSurface } from './surface'
 
-const SKILLS_EXTENSION_ID = 'io.modelcontextprotocol/skills'
+export const SKILLS_EXTENSION_ID = 'io.modelcontextprotocol/skills'
 const DISCOVERY_SCHEMA = 'https://schemas.agentskills.io/discovery/0.2.0/schema.json'
 
 export interface SkillIndexEntry {
@@ -53,59 +52,49 @@ export function buildSkillIndex(
   }
 }
 
-export function registerSkillSep2640(server: McpServer, env: Env): void {
-  // Advertise the extension at initialize (empty object = supported, no
-  // settings). registerCapabilities merges by top-level key, so this does
-  // not disturb the tools/resources capabilities McpServer derives from
-  // the registrations below. Runs before the transport connects.
-  server.server.registerCapabilities({
-    extensions: { [SKILLS_EXTENSION_ID]: {} }
-  })
+export function registerSkillSep2640(surface: McpSurface, env: Env): void {
+  // Advertise the extension (empty object = supported, no settings).
+  // Capabilities merge by top-level key, so this does not disturb the
+  // tools/resources capabilities derived from the registrations below.
+  surface.registerExtension(SKILLS_EXTENSION_ID)
 
   // skill://{slug}/SKILL.md — the body, per the SEP `skill://<path>/<file>`
   // layout. ctxlayer skills are flat, so <path> is the single-segment slug
   // and <file> is always SKILL.md.
-  const bodyTemplate = new ResourceTemplate('skill://{slug}/SKILL.md', {
-    list: async () => {
-      const rows = await listPublishedSkills(env)
-      return {
-        resources: rows.map((r) => ({
-          uri: `skill://${r.slug}/SKILL.md`,
-          name: r.title,
-          description: r.description,
-          mimeType: 'text/markdown'
-        }))
-      }
+  const bodyTemplate = surface.resourceTemplate('skill://{slug}/SKILL.md', async () => {
+    const rows = await listPublishedSkills(env)
+    return {
+      resources: rows.map((r) => ({
+        uri: `skill://${r.slug}/SKILL.md`,
+        name: r.title,
+        description: r.description,
+        mimeType: 'text/markdown'
+      }))
     }
   })
 
-  server.registerResource(
+  surface.registerResource(
     'skill-sep2640',
     bodyTemplate,
     {
       title: 'Skills (skill:// — SEP-2640)',
       description: 'Curated skills over the standard skill:// URI scheme.'
     },
-    async (uri: URL, variables: { slug?: string | string[] }) => {
-      const slugVar = variables.slug
-      const slug = Array.isArray(slugVar) ? slugVar[0] : slugVar
-      if (!slug) {
-        return { contents: [{ uri: uri.toString(), text: 'missing skill slug' }] }
-      }
+    async (uri, variables) => {
+      const slug = firstVar(variables.slug)
+      if (!slug) return { contents: [{ uri: uri.toString(), text: 'missing skill slug' }] }
       const md = await loadPublishedSkillMarkdown(env, slug)
       if (md == null) {
         return { contents: [{ uri: uri.toString(), text: `skill not found: ${slug}` }] }
       }
-      return {
-        contents: [{ uri: uri.toString(), mimeType: 'text/markdown', text: md }]
-      }
+      return { contents: [{ uri: uri.toString(), mimeType: 'text/markdown', text: md }] }
     }
   )
 
   // skill://index.json — the discovery document. The body template above
   // does not match this URI (its trailing literal is /SKILL.md), so the
   // exact-match static resource and the template never collide on read.
-  server.registerResource(
+  surface.registerResource(
     'skill-index',
     'skill://index.json',
     {
@@ -113,16 +102,12 @@ export function registerSkillSep2640(server: McpServer, env: Env): void {
       description: 'skill:// discovery document listing published skills.',
       mimeType: 'application/json'
     },
-    async (uri: URL) => {
+    async (uri) => {
       const rows = await listPublishedSkills(env)
       const index = buildSkillIndex(rows)
       return {
         contents: [
-          {
-            uri: uri.toString(),
-            mimeType: 'application/json',
-            text: JSON.stringify(index, null, 2)
-          }
+          { uri: uri.toString(), mimeType: 'application/json', text: JSON.stringify(index, null, 2) }
         ]
       }
     }

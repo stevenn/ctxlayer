@@ -1,9 +1,12 @@
 import type { Env } from '../../env'
 import {
+  USAGE_LANES,
   USAGE_RANGE_DAYS,
   localDayIndex,
   type UsageAsyncJobRow,
   type UsageAsyncSummary,
+  type UsageLane,
+  type UsageLaneStats,
   type UsageRange,
   type UsageTopTool,
   type UsageTopUpstream,
@@ -57,6 +60,8 @@ export interface RecentErrorRow {
   message: string | null
   userId: string
   userEmail: string | null // null for a hard-deleted user
+  lane: string | null // null for rows that predate lane tracking
+  clientName: string | null
 }
 
 export interface ActiveUserRow {
@@ -72,6 +77,8 @@ export interface ActiveUserRow {
 // for more, so we clamp the lower bound to the retention floor.
 const RAW_RETENTION_DAYS = 30
 const RECENT_ERRORS_LIMIT = 200
+// Client rows returned across all lanes for the lanes panel (most calls first).
+const LANE_CLIENTS_LIMIT = 40
 
 /**
  * Lower-bound cutoff (UTC epoch, not necessarily day-aligned) for a named
@@ -313,7 +320,8 @@ export async function recentErrors(
   }
   const sql = `
     SELECT e.ts, e.tool, e.upstream_id, us.slug AS upstream_slug,
-           e.error_code, e.error_message, e.user_id, u.email AS user_email
+           e.error_code, e.error_message, e.user_id, u.email AS user_email,
+           e.lane, e.client_name
     FROM usage_events e
     LEFT JOIN upstream_servers us ON us.id = e.upstream_id
     LEFT JOIN users u ON u.id = e.user_id
@@ -332,6 +340,8 @@ export async function recentErrors(
       error_message: string | null
       user_id: string
       user_email: string | null
+      lane: string | null
+      client_name: string | null
     }>()
   return (results ?? []).map((r) => {
     const upstreamId = r.upstream_id ?? ''
@@ -345,7 +355,9 @@ export async function recentErrors(
       code: r.error_code ?? (upstreamId ? 'upstream_error' : 'local_error'),
       message: r.error_message ?? null,
       userId: r.user_id,
-      userEmail: r.user_email ?? null
+      userEmail: r.user_email ?? null,
+      lane: r.lane ?? null,
+      clientName: r.client_name ?? null
     }
   })
 }
@@ -556,4 +568,126 @@ export async function asyncJobStats(
   }))
 
   return { summary, jobs }
+}
+
+/**
+ * Per-lane health for the admin usage dashboard: how much traffic each MCP
+ * lane (`session` / `stateless`, see migration 0041) carries, how it performs
+ * and which clients are on it.
+ *
+ * Reads the RAW `usage_events` rows — lanes are not in the daily rollups, and
+ * adding them there would mean rebuilding the rollup primary key — so the
+ * lower bound is clamped to the 30-day raw-retention floor whatever the
+ * requested range. Honours the same user / upstream scope as the other
+ * panels. Rows from before lane tracking group under a null lane.
+ *
+ * Percentiles are computed in SQL with a window rank per lane, so the rows
+ * never leave D1; `p50`/`p95` are the nearest-rank values.
+ */
+export async function laneStats(env: Env, scope: UsageScope): Promise<UsageLaneStats[]> {
+  const retentionFloor = Math.floor(Date.now() / 1000) - RAW_RETENTION_DAYS * SECONDS_PER_DAY
+  const since = scope.sinceDay == null ? retentionFloor : Math.max(scope.sinceDay, retentionFloor)
+  const where: string[] = ['e.ts >= ?']
+  const binds: unknown[] = [since]
+  if (scope.userId) {
+    where.push('e.user_id = ?')
+    binds.push(scope.userId)
+  }
+  if (scope.upstreamId != null) {
+    where.push('e.upstream_id = ?')
+    binds.push(scope.upstreamId)
+  }
+  const whereSql = where.join(' AND ')
+
+  const [totals, clients, versions] = await Promise.all([
+    env.DB.prepare(
+      `WITH ranked AS (
+         SELECT e.lane, e.latency_ms, e.status, e.user_id, e.ts,
+                ROW_NUMBER() OVER (PARTITION BY e.lane ORDER BY e.latency_ms) AS rn,
+                COUNT(*)     OVER (PARTITION BY e.lane) AS n
+         FROM usage_events e
+         WHERE ${whereSql}
+       )
+       SELECT lane,
+              COUNT(*) AS calls,
+              SUM(status <> 'ok') AS errors,
+              SUM(status = 'timeout') AS timeouts,
+              COUNT(DISTINCT user_id) AS users,
+              MAX(ts) AS last_seen,
+              MAX(CASE WHEN rn = MAX(1, (n + 1) / 2) THEN latency_ms END) AS p50,
+              MAX(CASE WHEN rn = MAX(1, (n * 95 + 99) / 100) THEN latency_ms END) AS p95
+       FROM ranked
+       GROUP BY lane`
+    )
+      .bind(...binds)
+      .all<{
+        lane: string | null
+        calls: number
+        errors: number | null
+        timeouts: number | null
+        users: number
+        last_seen: number | null
+        p50: number | null
+        p95: number | null
+      }>(),
+    env.DB.prepare(
+      `SELECT e.lane, e.client_name, COUNT(*) AS calls,
+              COUNT(DISTINCT e.user_id) AS users, MAX(e.ts) AS last_seen
+       FROM usage_events e
+       WHERE ${whereSql}
+       GROUP BY e.lane, e.client_name
+       ORDER BY calls DESC
+       LIMIT ${LANE_CLIENTS_LIMIT}`
+    )
+      .bind(...binds)
+      .all<{
+        lane: string | null
+        client_name: string | null
+        calls: number
+        users: number
+        last_seen: number
+      }>(),
+    env.DB.prepare(
+      `SELECT e.lane, e.protocol_version, COUNT(*) AS calls
+       FROM usage_events e
+       WHERE ${whereSql} AND e.protocol_version IS NOT NULL
+       GROUP BY e.lane, e.protocol_version
+       ORDER BY calls DESC`
+    )
+      .bind(...binds)
+      .all<{ lane: string | null; protocol_version: string; calls: number }>()
+  ])
+
+  const isLane = (v: string | null): v is UsageLane =>
+    v != null && (USAGE_LANES as readonly string[]).includes(v)
+  return (totals.results ?? [])
+    .map((t) => ({
+      lane: isLane(t.lane) ? t.lane : null,
+      calls: t.calls,
+      errors: t.errors ?? 0,
+      timeouts: t.timeouts ?? 0,
+      users: t.users,
+      p50LatencyMs: t.p50,
+      p95LatencyMs: t.p95,
+      lastSeen: t.last_seen,
+      protocolVersions: (versions.results ?? [])
+        .filter((v) => v.lane === t.lane)
+        .map((v) => v.protocol_version),
+      clients: (clients.results ?? [])
+        .filter((c) => c.lane === t.lane)
+        .map((c) => ({
+          clientName: c.client_name,
+          calls: c.calls,
+          users: c.users,
+          lastSeen: c.last_seen
+        }))
+    }))
+    // Busiest lane first; on a tie, known lanes before the untracked bucket,
+    // then by name — so the panel's row order never flickers between loads.
+    .sort(
+      (a, b) =>
+        b.calls - a.calls ||
+        Number(a.lane == null) - Number(b.lane == null) ||
+        (a.lane ?? '').localeCompare(b.lane ?? '')
+    )
 }

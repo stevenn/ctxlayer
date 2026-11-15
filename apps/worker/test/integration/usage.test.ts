@@ -1,7 +1,7 @@
 import { env } from 'cloudflare:test'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { pruneUsageEvents, writeUsageEvent } from '../../src/db/queries/usage'
-import { recentErrors } from '../../src/db/queries/usage-read'
+import { laneStats, recentErrors } from '../../src/db/queries/usage-read'
 import type { UsageEventMsg } from '../../src/usage/event'
 import type { Env as WorkerEnv } from '../../src/env'
 
@@ -215,5 +215,119 @@ describe('pruneUsageEvents', () => {
       'SELECT COUNT(*) AS n FROM usage_rollups_daily'
     ).first<{ n: number }>()
     expect(rollupCount?.n).toBe(2)
+  })
+})
+
+describe('protocol lanes', () => {
+  // laneStats clamps to the 30-day raw-retention floor measured from the
+  // real clock, so these events are stamped relative to now.
+  const now = Math.floor(Date.now() / 1000)
+  const scope = { sinceDay: null }
+
+  it('writes lane, protocol revision and client name onto the raw row', async () => {
+    await writeUsageEvent(
+      testEnv,
+      event({ lane: 'stateless', protocolVersion: '2026-07-28', clientName: 'claude-ai' })
+    )
+    const row = await testEnv.DB.prepare(
+      'SELECT lane, protocol_version, client_name FROM usage_events'
+    ).first()
+    expect(row).toEqual({
+      lane: 'stateless',
+      protocol_version: '2026-07-28',
+      client_name: 'claude-ai'
+    })
+  })
+
+  it('a message from before lane tracking still writes, with a null lane', async () => {
+    await writeUsageEvent(testEnv, event())
+    const row = await testEnv.DB.prepare('SELECT lane FROM usage_events').first<{
+      lane: string | null
+    }>()
+    expect(row?.lane).toBeNull()
+  })
+
+  it('refuses a lane the schema does not know', async () => {
+    await expect(
+      writeUsageEvent(testEnv, event({ lane: 'bogus' as never }))
+    ).rejects.toThrow()
+  })
+
+  it('aggregates calls, errors, users, latency percentiles and clients per lane', async () => {
+    const session = (over: Partial<UsageEventMsg>) =>
+      event({ ts: now, lane: 'session', protocolVersion: '2025-11-25', ...over })
+    // Session lane: latencies 10..100 ms across two users and two clients.
+    for (let i = 1; i <= 10; i++) {
+      await writeUsageEvent(
+        testEnv,
+        session({
+          latencyMs: i * 10,
+          userId: i <= 7 ? 'u-alice' : 'u-bob',
+          clientName: i <= 7 ? 'claude-code' : 'cursor',
+          status: i === 10 ? 'timeout' : i === 9 ? 'error' : 'ok'
+        })
+      )
+    }
+    await writeUsageEvent(
+      testEnv,
+      event({
+        ts: now,
+        lane: 'stateless',
+        protocolVersion: '2026-07-28',
+        clientName: 'claude-ai',
+        latencyMs: 55
+      })
+    )
+    await writeUsageEvent(testEnv, event({ ts: now, latencyMs: 5 })) // pre-tracking row
+
+    const lanes = await laneStats(testEnv, scope)
+    expect(lanes.map((l) => l.lane)).toEqual(['session', 'stateless', null]) // most calls first
+
+    const s = lanes[0]
+    expect(s).toMatchObject({
+      calls: 10,
+      errors: 2,
+      timeouts: 1,
+      users: 2,
+      p50LatencyMs: 50,
+      p95LatencyMs: 100,
+      lastSeen: now,
+      protocolVersions: ['2025-11-25']
+    })
+    expect(s?.clients).toEqual([
+      { clientName: 'claude-code', calls: 7, users: 1, lastSeen: now },
+      { clientName: 'cursor', calls: 3, users: 1, lastSeen: now }
+    ])
+
+    expect(lanes[1]).toMatchObject({ lane: 'stateless', calls: 1, p50LatencyMs: 55, p95LatencyMs: 55 })
+    expect(lanes[1]?.clients[0]?.clientName).toBe('claude-ai')
+    expect(lanes[2]).toMatchObject({ lane: null, calls: 1, protocolVersions: [] })
+  })
+
+  it('honours the user scope and the 30-day retention floor', async () => {
+    await writeUsageEvent(testEnv, event({ ts: now, lane: 'session', userId: 'u-alice' }))
+    await writeUsageEvent(testEnv, event({ ts: now, lane: 'stateless', userId: 'u-bob' }))
+    await writeUsageEvent(
+      testEnv,
+      event({ ts: now - 31 * SECONDS_PER_DAY, lane: 'stateless', userId: 'u-alice' })
+    )
+    const lanes = await laneStats(testEnv, { sinceDay: null, userId: 'u-alice' })
+    expect(lanes).toHaveLength(1)
+    expect(lanes[0]).toMatchObject({ lane: 'session', calls: 1 })
+  })
+
+  it('carries the lane and client onto the errors drill-down', async () => {
+    await writeUsageEvent(
+      testEnv,
+      event({
+        ts: now,
+        status: 'error',
+        errorCode: 'local_error',
+        lane: 'stateless',
+        clientName: 'claude-ai'
+      })
+    )
+    const [err] = await recentErrors(testEnv, scope)
+    expect(err).toMatchObject({ lane: 'stateless', clientName: 'claude-ai' })
   })
 })

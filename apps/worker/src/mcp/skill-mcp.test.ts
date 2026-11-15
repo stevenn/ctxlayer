@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpSurface } from './surface'
 import type { Env } from '../env'
 import { registerSkillPrompts, skillPromptEntries } from './skill-mcp'
 
@@ -58,7 +58,7 @@ function fakeServer(opts?: { throwOn?: string }) {
       if (opts?.throwOn === name) throw new Error(`Prompt ${name} is already registered`)
       prompts.push({ name, cfg, cb })
     }
-  } as unknown as McpServer
+  } as unknown as McpSurface
   return { server, prompts }
 }
 

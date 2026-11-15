@@ -1,18 +1,19 @@
 import { byteLength, tokenCount } from './tokens'
-import type { UsageEventMsg } from './event'
+import { cleanClientName, type UsageEventMsg, type UsageOrigin } from './event'
 import { newId } from '../db/queries/util'
 
 /**
- * Producer-side usage helper. Called from every MCP tool-call site
- * (built-ins in `mcp/session-do.ts`, upstream proxy in
- * `mcp/tools-proxy.ts`).
+ * Producer-side usage helper. Called from every MCP tool-call site: the
+ * built-in tools (via each lane's recorder), the upstream proxy, and the
+ * async-jobs consumer.
  *
  * `buildUsageMsg` counts bytes + tokens of the request/response JSON and
- * assembles the `UsageEventMsg` the consumer writes to D1. The caller
- * stages the result in the DO's SQLite outbox (`usage/outbox.ts`), which
- * is drained to `USAGE_QUEUE` on an alarm — see `McpSessionDO`. The
- * counts are pre-computed here so the queue message stays small and the
- * consumer is pure SQL.
+ * assembles the `UsageEventMsg` the consumer writes to D1. Delivery to
+ * `USAGE_QUEUE` is the caller's: the session lane stages the message in its
+ * DO's SQLite outbox (`usage/outbox.ts`, drained on an alarm — see
+ * `McpSessionDO`); callers with no outbox send it directly. The counts are
+ * pre-computed here so the queue message stays small and the consumer is
+ * pure SQL.
  */
 export interface RecordUsageArgs {
   userId: string
@@ -31,6 +32,10 @@ export interface RecordUsageArgs {
   // `usage/error-detail.ts`.
   errorCode?: string
   errorMessage?: string
+  // Lane + client identity of the call (see `UsageOrigin`). Optional so a
+  // call site that cannot know it still records the call; such rows show up
+  // under the "unknown" lane.
+  origin?: UsageOrigin
 }
 
 export function buildUsageMsg(args: RecordUsageArgs): UsageEventMsg {
@@ -49,6 +54,9 @@ export function buildUsageMsg(args: RecordUsageArgs): UsageEventMsg {
     status: args.status,
     truncated: args.truncated ?? false,
     errorCode: args.errorCode ?? null,
-    errorMessage: args.errorMessage ?? null
+    errorMessage: args.errorMessage ?? null,
+    lane: args.origin?.lane ?? null,
+    protocolVersion: args.origin?.protocolVersion ?? null,
+    clientName: cleanClientName(args.origin?.clientName)
   }
 }

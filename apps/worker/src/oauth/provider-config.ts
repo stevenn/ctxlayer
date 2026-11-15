@@ -19,6 +19,7 @@ import type {
   TokenExchangeCallbackOptions
 } from '@cloudflare/workers-oauth-provider'
 import { McpSessionDO } from '../mcp/session-do'
+import { mcpLaneRouter, type LaneHandler } from '../mcp/stateless/handler'
 import type { Env } from '../env'
 import { mcpResourceUrl } from '../util/mcp-host'
 import { stampTokenExchange } from './login-activity'
@@ -85,8 +86,12 @@ export function oauthProviderOptions(
   // apiHandlers requires ExportedHandlerWithFetch (Required fetch);
   // our handler carries `fetch` at the value level but its declared
   // type doesn't line up exactly, so the map is cast once.
+  // `/mcp` is one endpoint served by two lanes: 2025-era (session) traffic
+  // goes to `McpSessionDO`, protocol revision 2026-07-28 to the stateless
+  // handler. See mcp/stateless/handler.ts for the routing.
+  const sessionLane = McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }) as LaneHandler
   const apiHandlers = {
-    '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' })
+    '/mcp': mcpLaneRouter(sessionLane)
   } as OAuthProviderOptions<Env>['apiHandlers']
   return {
     apiHandlers,

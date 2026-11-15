@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { Badge, Group, Select, Text } from '@mantine/core'
 import type { UsageErrorCode, UsageErrorRow, UsageRange } from '@ctxlayer/shared'
+import { laneColor, laneLabel } from './lanes-table'
 import { UserCell } from './user-cell'
 
 /**
@@ -78,16 +79,30 @@ const EXCEEDS_RETENTION = new Set<UsageRange>(['90d', 'all'])
 export function ErrorsTable({
   rows = [],
   range,
-  showUser = false
+  showUser = false,
+  showLane = false
 }: {
   rows?: UsageErrorRow[]
   range: UsageRange
   // Admin dashboards set this to attribute each failure to its caller; the
   // personal view leaves it off (every row is the viewer).
   showUser?: boolean
+  // Admin dashboards set this to show which MCP lane served the failed call
+  // (plus a lane filter), so an error spike can be pinned to one lane.
+  showLane?: boolean
 }) {
   const [code, setCode] = useState<string>('all')
   const [locus, setLocus] = useState<string>('all')
+  const [lane, setLane] = useState<string>('all')
+
+  // Lanes present in these rows; rows that predate lane tracking are 'unknown'.
+  const laneOptions = useMemo(() => {
+    const present = Array.from(new Set(rows.map((r) => r.lane ?? 'unknown'))).sort()
+    return [
+      { value: 'all', label: 'All lanes' },
+      ...present.map((l) => ({ value: l, label: laneLabel(l === 'unknown' ? null : l) }))
+    ]
+  }, [rows])
 
   const codeOptions = useMemo(() => {
     const present = Array.from(new Set(rows.map((r) => r.code))).sort()
@@ -101,9 +116,11 @@ export function ErrorsTable({
     () =>
       rows.filter(
         (r) =>
-          (code === 'all' || r.code === code) && (locus === 'all' || locusOf(r) === locus)
+          (code === 'all' || r.code === code) &&
+          (locus === 'all' || locusOf(r) === locus) &&
+          (lane === 'all' || (r.lane ?? 'unknown') === lane)
       ),
-    [rows, code, locus]
+    [rows, code, locus, lane]
   )
 
   const longRange = EXCEEDS_RETENTION.has(range)
@@ -133,6 +150,17 @@ export function ErrorsTable({
             { value: 'remote', label: 'Remote' }
           ]}
         />
+        {showLane && (
+          <Select
+            size="xs"
+            w={230}
+            data={laneOptions}
+            value={lane}
+            onChange={(v) => setLane(v ?? 'all')}
+            allowDeselect={false}
+            aria-label="Filter errors by protocol lane"
+          />
+        )}
       </Group>
 
       {rows.length === 0 ? (
@@ -151,6 +179,7 @@ export function ErrorsTable({
               {showUser && <th>User</th>}
               <th>Tool</th>
               <th>Origin</th>
+              {showLane && <th>Lane</th>}
               <th>Type</th>
               <th>Detail</th>
             </tr>
@@ -181,6 +210,18 @@ export function ErrorsTable({
                     {locusOf(r)}
                   </Badge>
                 </td>
+                {showLane && (
+                  <td style={{ whiteSpace: 'nowrap' }}>
+                    <Badge
+                      size="xs"
+                      variant="light"
+                      color={laneColor(r.lane)}
+                      title={r.clientName ?? undefined}
+                    >
+                      {r.lane ?? 'unknown'}
+                    </Badge>
+                  </td>
+                )}
                 <td>
                   <Badge size="xs" variant="light" color={(CODE_COLOR as Record<string, string>)[r.code] ?? 'gray'}>
                     {codeLabel(r.code)}

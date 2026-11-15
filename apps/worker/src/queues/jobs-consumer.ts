@@ -9,6 +9,7 @@ import { resolveUserUpstreamBearer } from '../upstream/bearer'
 import { createUpstreamClient } from '../upstream/create-client'
 import { runUpstreamCall, type UpstreamCallOutcome } from '../mcp/upstream-call-runner'
 import { completeJobDone, completeJobError, findJobById } from '../db/queries/async-jobs'
+import { USAGE_LANES } from '@ctxlayer/shared'
 import { buildUsageMsg } from '../usage/record'
 import { scrubErrorForStorage } from '../usage/error-detail'
 import { mangleToolName } from '../mcp/tool-name'
@@ -33,7 +34,16 @@ const JobMessage = z.object({
   upstreamId: z.string().min(1),
   tool: z.string().min(1),
   argsJson: z.string(),
-  sessionId: z.string().default('')
+  sessionId: z.string().default(''),
+  // Lane + client identity of the submitting call. Optional: jobs enqueued
+  // before lane tracking (and any submitter that cannot know it) omit it.
+  origin: z
+    .object({
+      lane: z.enum(USAGE_LANES),
+      protocolVersion: z.string().nullish(),
+      clientName: z.string().nullish()
+    })
+    .optional()
 })
 type JobMessage = z.infer<typeof JobMessage>
 
@@ -169,7 +179,8 @@ export async function runJob(
         truncated: outcome.truncated,
         errorCode: outcome.errorCode,
         errorMessage:
-          outcome.errorDetail != null ? scrubErrorForStorage(outcome.errorDetail) : undefined
+          outcome.errorDetail != null ? scrubErrorForStorage(outcome.errorDetail) : undefined,
+        origin: j.origin
       })
     )
   } catch (err) {

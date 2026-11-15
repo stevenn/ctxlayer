@@ -9,6 +9,7 @@ import { reindexConsumer } from './queues/reindex-consumer'
 import { gitSyncConsumer } from './queues/git-sync-consumer'
 import { jobsConsumer } from './queues/jobs-consumer'
 import { pruneUsageEvents } from './db/queries/usage'
+import { pruneHintLedger } from './db/queries/hint-ledger'
 import { clearAsyncJobResults, pruneAsyncJobs } from './db/queries/async-jobs'
 import { pruneOrphanOAuthClients } from './oauth/prune-clients'
 import { sweepIdleGrants } from './oauth/grant-sweep'
@@ -143,6 +144,25 @@ const worker: ExportedHandler<Env> = {
           const m = errMessage(err)
           console.error(`[cron] usage_events prune failed: ${m}`)
           await notify(env, { level: 'error', event: 'cron.usage_prune_failed', detail: m })
+        }
+      })()
+    )
+
+    // 1a. Stateless-lane first-result hint ledger: rows only matter for the
+    // 12 h re-arm window, so anything untouched for 30 days is dead weight
+    // (an abandoned client registration never comes back for its row).
+    ctx.waitUntil(
+      (async () => {
+        try {
+          await recordJobRun(env, 'hint-ledger-prune', async () => {
+            const removed = await pruneHintLedger(env, 30)
+            console.log(`[cron] pruned ${removed} mcp_hint_ledger rows older than 30d`)
+            return { summary: { removed } }
+          })
+        } catch (err) {
+          const m = errMessage(err)
+          console.error(`[cron] hint ledger prune failed: ${m}`)
+          await notify(env, { level: 'error', event: 'cron.hint_ledger_prune_failed', detail: m })
         }
       })()
     )

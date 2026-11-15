@@ -29,8 +29,10 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
       `INSERT INTO usage_events
          (id, ts, user_id, session_id, upstream_id, tool,
           req_bytes, resp_bytes, req_tokens, resp_tokens,
-          latency_ms, status, truncated, error_code, error_message)
-       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)`
+          latency_ms, status, truncated, error_code, error_message,
+          lane, protocol_version, client_name)
+       VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15,
+               ?16, ?17, ?18)`
     ).bind(
       e.id,
       e.ts,
@@ -46,7 +48,10 @@ export async function writeUsageEvent(env: Env, e: UsageEventMsg): Promise<void>
       e.status,
       isTruncated,
       e.errorCode ?? null,
-      e.errorMessage ?? null
+      e.errorMessage ?? null,
+      e.lane ?? null,
+      e.protocolVersion ?? null,
+      e.clientName ?? null
     ),
     env.DB.prepare(
       `INSERT INTO usage_rollups_daily

@@ -24,7 +24,7 @@
  *   - There is no teardown: sessions are short-lived and the workerd
  *     isolate frees Client state on its own when the DO dies.
  *
- * Catalogue freshness: a row older than `CATALOGUE_TTL_SECONDS` is
+ * Catalogue freshness (`catalogue-cache.ts`): a row older than the TTL is
  * refreshed inline on first session encounter — accepted as a one-time
  * connect cost so the agent sees a complete `tools/list` immediately.
  * Empty cache (brand-new upstream) is also refreshed inline.
@@ -40,7 +40,7 @@ import {
   type UpstreamConnection,
   type UpstreamServerRow
 } from '../db/queries/upstreams'
-import { listCachedTools, listCachedToolsForUpstreams, replaceCachedTools, type UpstreamToolRow } from '../db/queries/upstream-tools'
+import { listCachedToolsForUpstreams, type UpstreamToolRow } from '../db/queries/upstream-tools'
 import type { SkillForUpstreamRow } from '../db/queries/skill-attachments'
 import type { DocForUpstreamRow } from '../db/queries/doc-attachments'
 import {
@@ -59,17 +59,18 @@ import {
   type CredentialStatus
 } from '../db/queries/upstream-credentials'
 import { mangleToolName, unmangleToolName } from './tool-name'
-import { firstParty, sanitizeUntrustedText } from './provenance'
+import { cachedInputSchema, proxiedToolDescription, withFirstResultHint } from './proxied-tool'
+import { CATALOGUE_REFRESH_BUDGET_MS, ensureFreshCatalogue } from './catalogue-cache'
 import { jsonSchemaToZod } from './json-schema-to-zod'
 import { classifyUpstreamError, scrubErrorForStorage } from '../usage/error-detail'
 import type { RecordUsageArgs } from '../usage/record'
+import type { UsageOrigin } from '../usage/event'
 import { errMessage } from '../util/errors'
 import { errText, safeJson } from './tool-result'
 import {
   firstResultHint,
   loadUserContext,
   perToolPointers,
-  truncateDescription,
   type UpstreamUserContext
 } from './catalogue-views'
 import {
@@ -81,21 +82,6 @@ import { inMemoryHintLedger, type HintLedger } from './hint-ledger'
 import { isAsyncTool, submitAsyncJob } from './async-submit'
 import { checkCredentialFreshness } from './credential-freshness'
 import { spaUrl, UPSTREAMS_PAGE } from '../util/spa-url'
-
-// 24h cache TTL per docs/plan/C-upstream-proxy.md §C1.
-const CATALOGUE_TTL_SECONDS = 24 * 60 * 60
-
-/**
- * How long a stale-catalogue refresh may hold up registration before the
- * cached catalogue is served instead. Session `init()` runs inside the DO's
- * `blockConcurrencyWhile`, which the runtime cancels at ~30 s and answers by
- * RESETTING the object — so one hung upstream used to take the whole session
- * down with it (2026-10-06: 22 resets in a day while the ADO MCP was taking
- * minutes per call). The per-call listTools timeout (60 s) is far past that
- * window, hence a separate, much tighter budget here. The refresh is not
- * abandoned: it keeps running and heals the cache for the next session.
- */
-export const CATALOGUE_REFRESH_BUDGET_MS = 10_000
 
 /** Strategies whose bearer is a per-user credential row (can die / change). */
 function isUserScoped(conn: { authStrategy: string }): boolean {
@@ -164,7 +150,11 @@ export class UpstreamProxyRegistry {
     // ledger; the in-memory default backs tests). See hint-ledger.ts.
     private readonly hintLedger: HintLedger = inMemoryHintLedger(),
     // Injectable so tests need not wait out the real budget.
-    private readonly catalogueBudgetMs: number = CATALOGUE_REFRESH_BUDGET_MS
+    private readonly catalogueBudgetMs: number = CATALOGUE_REFRESH_BUDGET_MS,
+    // Lane + client identity of the owning session, stamped onto a submitted
+    // async job so the usage row its consumer writes lands under the right
+    // lane. Inline calls don't need it: `stageUsage` adds it for them.
+    private readonly usageOrigin?: () => Promise<UsageOrigin>
   ) {}
 
   /**
@@ -410,22 +400,10 @@ export class UpstreamProxyRegistry {
   }
 
   /**
-   * Append the armed hint to a success surface as ONE extra first-party
-   * text item, once per upstream per session. Runs AFTER the runner (so
-   * after its sanitise pass) — the deliberate, bounded exception to
-   * "success results are never augmented"; the append site is here, not
-   * the runner, precisely so the ⟦ctxlayer⟧ marker survives without a
-   * sanitiser carve-out. Hint bytes never enter respJson (usage stays
-   * honest). Design: docs/plan/O-result-skill-hint.md.
-   *
-   * The hinted result also OMITS `structuredContent`: clients render the
-   * structured value INSTEAD of the content array when both are present
-   * (field-verified 2026-08-27 — the hint survived every server layer
-   * including an SDK round-trip yet never reached the model on Driver/
-   * Sentry, whose results carry structuredContent), which would make the
-   * hint invisible on exactly the upstreams it was built for. The text
-   * item carries the identical JSON, so the model loses nothing; only
-   * this one result per upstream per session loses structured output.
+   * Append the armed hint to a success surface, once per upstream per
+   * session (see `withFirstResultHint` for the transform and why the hinted
+   * result drops `structuredContent`). The ledger is marked BEFORE the
+   * surface is returned so a hibernation wake cannot re-arm a delivered hint.
    */
   private deliverFirstResultHint<
     T extends { content: Array<{ type: string; text?: string }>; structuredContent?: unknown }
@@ -434,11 +412,7 @@ export class UpstreamProxyRegistry {
     if (!hint) return surface
     this.hintLedger.markHinted(upstreamId)
     this.firstResultHints.delete(upstreamId)
-    const { structuredContent: _omitted, ...rest } = surface
-    return {
-      ...rest,
-      content: [...surface.content, { type: 'text', text: hint }]
-    } as T
+    return withFirstResultHint(surface, hint)
   }
 
   private resolveBearer(row: UpstreamServerRow, conn: UpstreamConnection): Promise<string | null> {
@@ -537,51 +511,14 @@ export class UpstreamProxyRegistry {
     }
   }
 
-  private async ensureCatalogue(
+  private ensureCatalogue(
     conn: UpstreamConnection,
     client: UpstreamClient,
     cached: UpstreamToolRow[]
   ): Promise<UpstreamToolRow[]> {
-    // Staleness is derived from the prefetched rows (cached_at rides on
-    // every row), so the fresh path costs no extra round trip.
-    const cachedAt = cached.length === 0 ? null : Math.max(...cached.map((t) => t.cached_at))
-    const stale = cachedAt === null || Date.now() / 1000 - cachedAt > CATALOGUE_TTL_SECONDS
-    if (!stale) return cached
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const outOfBudget = new Promise<'timeout'>((resolve) => {
-      timer = setTimeout(() => resolve('timeout'), this.catalogueBudgetMs)
-    })
-    const outcome = await Promise.race([this.refreshCatalogue(conn, client), outOfBudget])
-    clearTimeout(timer)
-    if (outcome === 'timeout') {
-      console.warn(
-        `[catalogue] ${conn.slug}: tools/list still running after ${this.catalogueBudgetMs}ms — ` +
-          'serving the cached catalogue; the refresh continues in the background'
-      )
-    }
-    // Whatever the refresh did (or has not done yet), serve the cache —
-    // stale beats nothing, and beats a reset session.
-    return listCachedTools(this.env, conn.id)
-  }
-
-  /** Fetch and store a fresh catalogue. Never throws: failures are logged. */
-  private async refreshCatalogue(conn: UpstreamConnection, client: UpstreamClient): Promise<'done'> {
-    try {
-      // Reuse the persistent client this registry already opened — avoids
-      // a second handshake just to fetch the catalogue.
-      const tools = await client.listTools()
-      const res = await replaceCachedTools(this.env, conn.id, tools)
-      if (res.rejectedShrink) {
-        console.warn(
-          `[catalogue] ${conn.slug}: refresh returned ${res.rejectedShrink.incoming} tools vs ` +
-            `${res.rejectedShrink.prior} cached — suspect shrink rejected, serving prior catalogue`
-        )
-      }
-    } catch (err) {
-      const msg = errMessage(err)
-      console.error(`[catalogue] ${conn.slug}: tools/list failed: ${msg}`)
-    }
-    return 'done'
+    // Reuses the persistent client this registry already opened — avoids a
+    // second handshake just to fetch the catalogue.
+    return ensureFreshCatalogue(this.env, conn, client, cached, this.catalogueBudgetMs)
   }
 
   private registerTool(
@@ -591,41 +528,8 @@ export class UpstreamProxyRegistry {
     pointers: string[] = []
   ): void {
     const mangled = mangleToolName(conn.slug, row.tool_name)
-    // Upstream-supplied descriptions are untrusted model input. Strip
-    // control characters (which can hide injected instructions or
-    // disrupt agent rendering) before forwarding. We deliberately do
-    // NOT try to detect prompt-injection content — that's the model's
-    // job; ours is to keep the wire bytes well-formed.
-    let description = truncateDescription(
-      sanitizeUntrustedText(`[${conn.displayName}] ${row.description ?? ''}`)
-    )
-    // Append org-curated per-tool attachment pointers. These are
-    // first-party (slug strings we control), not upstream input, so they
-    // need no sanitisation. Truncate the base description first to
-    // reserve room — the pointer is the binding guidance and must
-    // survive the 1024-char cap even when the upstream blurb is long.
-    if (pointers.length > 0) {
-      // Descriptive disclosure, NOT an imperative: name the org playbooks that
-      // exist for this tool and leave the choice to the agent. The old
-      // "consult X before using this tool" framing was a command smuggled
-      // through the data plane — well-behaved agents (correctly) treat tool
-      // metadata as untrusted and resist it, so it was both brittle and
-      // eroding of the very boundary that protects callers from a malicious
-      // upstream's descriptions. The structured home for these is
-      // `describe_upstream` (per-tool `attached_skills`/`attached_docs`); this
-      // line is just passive discoverability on the one field every client
-      // renders. Wrapped in the ⟦ctxlayer⟧ provenance marker (first-party,
-      // unforgeable — the upstream description above it is defanged).
-      const suffix = `\n\n${firstParty(`Related org playbooks (optional context): ${pointers.join(', ')}.`)}`
-      description = truncateDescription(description, 1024 - suffix.length) + suffix
-    }
-    let inputSchemaJson: unknown = {}
-    try {
-      inputSchemaJson = JSON.parse(row.input_schema)
-    } catch {
-      // Bad cache row; treat as no schema. Tool still callable.
-    }
-    const converted = jsonSchemaToZod(inputSchemaJson)
+    const description = proxiedToolDescription(conn, row, pointers)
+    const converted = jsonSchemaToZod(cachedInputSchema(row))
     const inputSchema = converted.shape ?? converted.zod
     // Close over the real upstream tool name from the cache row. The
     // mangled name we expose to the agent can drop the redundant
@@ -680,7 +584,11 @@ export class UpstreamProxyRegistry {
           try {
             const sub = await submitAsyncJob(
               this.env,
-              { userId: this.userId, sessionId: this.sessionId },
+              {
+                userId: this.userId,
+                sessionId: this.sessionId,
+                origin: await this.usageOrigin?.()
+              },
               conn,
               upstreamToolName,
               args

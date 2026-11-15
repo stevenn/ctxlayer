@@ -18,6 +18,7 @@ import {
   topUsers,
   recentErrors,
   asyncJobStats,
+  laneStats,
   rangeCutoff
 } from '../db/queries/usage-read'
 import { ERRORS_PAGE_LIMIT, parseRange, parseOffset } from './usage'
@@ -33,12 +34,13 @@ adminUsageRoute.get('/', async (c) => {
   const upstreamId = url.searchParams.get('upstreamId')?.trim() || null
 
   const scope = { sinceDay: rangeCutoff(range, offsetSec), userId, upstreamId }
-  const [daily, tools, upstreams, users, asyncStats] = await Promise.all([
+  const [daily, tools, upstreams, users, asyncStats, lanes] = await Promise.all([
     dailyTotals(c.env, scope),
     topTools(c.env, scope, 10),
     topUpstreams(c.env, scope, 10),
     topUsers(c.env, scope, 10),
-    asyncJobStats(c.env, scope)
+    asyncJobStats(c.env, scope),
+    laneStats(c.env, scope)
   ])
 
   const body: AdminUsageResponse = {
@@ -48,7 +50,8 @@ adminUsageRoute.get('/', async (c) => {
     topUpstreams: upstreams,
     topUsers: users,
     asyncSummary: asyncStats.summary,
-    asyncJobs: asyncStats.jobs
+    asyncJobs: asyncStats.jobs,
+    lanes
   }
   return c.json(body)
 })

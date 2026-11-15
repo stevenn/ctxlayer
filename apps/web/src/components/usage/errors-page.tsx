@@ -30,12 +30,14 @@ export function ErrorsPage({
   subtitle,
   scope,
   showUser,
+  showLane,
   fetchErrors
 }: {
   title: string
   subtitle: string
   scope: 'personal' | 'admin'
   showUser?: boolean
+  showLane?: boolean
   fetchErrors: (
     opts: { range?: UsageRange },
     signal?: AbortSignal
@@ -95,7 +97,12 @@ export function ErrorsPage({
 
       {status.kind === 'ready' && (
         <Panel title="Failed tool calls" subtitle={subtitle}>
-          <ErrorsTable rows={status.data.errors} range={range} showUser={showUser} />
+          <ErrorsTable
+            rows={status.data.errors}
+            range={range}
+            showUser={showUser}
+            showLane={showLane}
+          />
         </Panel>
       )}
     </Stack>
