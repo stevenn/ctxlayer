@@ -663,7 +663,7 @@ export function firstResultHint(
   return firstParty(
     sanitizeUntrustedText(
       `Org playbooks exist for \`${slug}\`: ${list}${extra > 0 ? ` +${extra} more` : ''} — ` +
-        `fetch via get_skill/get_doc if relevant to the task. (shown once per session)`
+        `fetch via get_skill/get_doc if relevant to the task. (shown once, not on every call)`
     )
   )
 }
