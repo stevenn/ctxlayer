@@ -1,0 +1,168 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M7F9KXB6ZDSZ8JVMD751TTSA",
+  "session_id": "4e4de319-72bf-4be9-82f6-2bf86f23f5bf",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-15T09:46:35.466885Z",
+  "branch": "main",
+  "checkpoints_count": 12,
+  "save_step_count": 3,
+  "files_touched": [
+    "CLAUDE.md",
+    "apps/web/src/components/usage/errors-page.tsx",
+    "apps/web/src/components/usage/errors-table.tsx",
+    "apps/web/src/components/usage/lanes-table.test.tsx",
+    "apps/web/src/components/usage/lanes-table.tsx",
+    "apps/web/src/components/usage/user-column.test.tsx",
+    "apps/web/src/routes/admin/errors.tsx",
+    "apps/web/src/routes/admin/usage.tsx",
+    "apps/worker/package.json",
+    "apps/worker/src/api/admin-usage.ts",
+    "apps/worker/src/db/migrations/0041_usage_lane.sql",
+    "apps/worker/src/db/migrations/0042_mcp_hint_ledger.sql",
+    "apps/worker/src/db/queries/hint-ledger.ts",
+    "apps/worker/src/db/queries/usage-read.ts",
+    "apps/worker/src/db/queries/usage.ts",
+    "apps/worker/src/env.ts",
+    "apps/worker/src/index.ts",
+    "apps/worker/src/mcp/async-submit.ts",
+    "apps/worker/src/mcp/builtins/admin.ts",
+    "apps/worker/src/mcp/builtins/docs.ts",
+    "apps/worker/src/mcp/builtins/identity.ts",
+    "apps/worker/src/mcp/builtins/index.ts",
+    "apps/worker/src/mcp/builtins/recorder.ts",
+    "apps/worker/src/mcp/builtins/register-v1.ts",
+    "apps/worker/src/mcp/builtins/register-v2.ts",
+    "apps/worker/src/mcp/builtins/skill-drafting.ts",
+    "apps/worker/src/mcp/builtins/skills.ts",
+    "apps/worker/src/mcp/builtins/tasks.ts",
+    "apps/worker/src/mcp/builtins/types.ts",
+    "apps/worker/src/mcp/builtins/upstreams.ts",
+    "apps/worker/src/mcp/catalogue-cache.ts",
+    "apps/worker/src/mcp/doc-markdown.ts",
+    "apps/worker/src/mcp/doc-resource.ts",
+    "apps/worker/src/mcp/draft-skill-prompt.ts",
+    "apps/worker/src/mcp/proxied-tool.ts",
+    "apps/worker/src/mcp/proxy-registry.ts",
+    "apps/worker/src/mcp/session-do.ts",
+    "apps/worker/src/mcp/skill-mcp.test.ts",
+    "apps/worker/src/mcp/skill-mcp.ts",
+    "apps/worker/src/mcp/skill-sep2640.ts",
+    "apps/worker/src/mcp/stateless/build-server.ts",
+    "apps/worker/src/mcp/stateless/handler.ts",
+    "apps/worker/src/mcp/stateless/reload-upstreams.ts",
+    "apps/worker/src/mcp/stateless/request-scope.test.ts",
+    "apps/worker/src/mcp/stateless/request-scope.ts",
+    "apps/worker/src/mcp/stateless/upstream-tools.ts",
+    "apps/worker/src/mcp/stateless/usage.ts",
+    "apps/worker/src/mcp/surface.ts",
+    "apps/worker/src/oauth/provider-config.ts",
+    "apps/worker/src/queues/jobs-consumer.ts",
+    "apps/worker/src/usage/event.test.ts",
+    "apps/worker/src/usage/event.ts",
+    "apps/worker/src/usage/record.ts",
+    "apps/worker/test/integration/builtins.test.ts",
+    "apps/worker/test/integration/stateless-lane.test.ts",
+    "apps/worker/test/integration/usage.test.ts",
+    "bun.lock",
+    "packages/shared/src/usage.ts",
+    "wrangler.toml"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "f43c0098d976",
+  "checkpoint_transcript_start": 592,
+  "transcript_lines_at_start": 592,
+  "compact_transcript_start": 84,
+  "token_usage": {
+    "input_tokens": 214,
+    "cache_creation_tokens": 888662,
+    "cache_read_tokens": 45928641,
+    "output_tokens": 162827,
+    "api_call_count": 100,
+    "subagent_tokens": {
+      "input_tokens": 144,
+      "cache_creation_tokens": 429888,
+      "cache_read_tokens": 11080171,
+      "output_tokens": 42774,
+      "api_call_count": 71
+    }
+  },
+  "session_metrics": {
+    "turn_count": 17
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-15T09:46:35.233754Z",
+    "agent_lines": 3661,
+    "agent_removed": 880,
+    "human_added": 0,
+    "human_modified": 6,
+    "human_removed": 20,
+    "total_committed": 3665,
+    "total_lines_changed": 4567,
+    "agent_percentage": 99.43069848916137,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 795,
+      "agent_lines_removed": 28,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 3,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 1656,
+      "agent_lines_removed": 543,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    },
+    {
+      "checkpoint_number": 4,
+      "user_lines_added": 103,
+      "user_lines_removed": 28,
+      "agent_lines_added": 3688,
+      "agent_lines_removed": 893,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5,
+        "apps/worker/src/mcp/builtins/register-v1.ts": 1,
+        "apps/worker/test/integration/builtins.test.ts": 2
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15,
+        "apps/worker/src/mcp/builtins/register-v1.ts": 12,
+        "apps/worker/test/integration/builtins.test.ts": 1
+      }
+    }
+  ]
+}

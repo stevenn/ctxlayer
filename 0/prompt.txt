@@ -1,0 +1,585 @@
+<bash-input>bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh</bash-input><bash-stdout>n-Projects-satisa-ctxlayer/4e4de319-72bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh
+grant  client created (UTC)        last refresh (UTC)
+I6xbbT atrlly 2026-09-27 17:37:24 2026-09-29 07:24:11
+kpwn0E is3Utt 2026-09-29 12:39:01 2026-10-10 09:06:47
+MSKEqU gsCsD- 2026-10-10 13:30:56 2026-10-12 05:28:33
+Au5zEX arapz6 2026-10-12 06:06:47 2026-10-29 14:21:26
+MdDTh5 JizYCK 2026-10-12 18:26:33 2026-11-08 19:32:46
+fHZr0x dWBDTU 2026-10-29 14:22:16 2026-11-03 15:39:39
+h3uSz0 ce5O5b 2026-11-03 16:17:51 2026-11-05 06:18:07
+cM4HV4 TUEPsF 2026-11-05 07:48:58 2026-11-07 10:05:52
+K7KtkS FaKoKr 2026-11-07 11:35:52 2026-11-08 08:40:22
+tg32J3 E9tE2n 2026-11-08 09:12:12 2026-11-08 16:45:49
+I2f9nD RAfQb8 2026-11-08 17:54:32 2026-11-08 20:17:52
+jpJsIV MP36v3 2026-11-09 06:20:14 2026-11-09 06:20:14
+jYccao GtkpIR 2026-11-10 09:27:44 2026-11-10 09:27:44
+RVO9jA SZp6xj 2026-11-11 03:41:03 2026-11-11 03:41:03
+17saV7 SrkS1I 2026-11-11 03:44:19 2026-11-11 03:44:19
+pDrDpF YJ__u5 2026-11-11 18:45:35 2026-11-11 18:45:35
+IBsQk7 JtOvGF 2026-11-12 05:57:22 2026-11-12 05:57:22
+BYcHJ4 xpsxOd 2026-11-14 10:28:47 2026-11-14 10:28:47
+XsW5qt https: 2026-11-14 11:35:26 2026-11-14 11:35:26
+19 logins since Nov 7</bash-stdout><bash-stderr></bash-stderr>
+
+---
+
+<bash-input>bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh</bash-input><bash-stdout>n-Projects-satisa-ctxlayer/4e4de319-72bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh
+grant  client created (UTC)        last refresh (UTC)
+I6xbbT atrlly 2026-09-27 17:37:24 2026-09-29 07:24:11
+kpwn0E is3Utt 2026-09-29 12:39:01 2026-10-10 09:06:47
+MSKEqU gsCsD- 2026-10-10 13:30:56 2026-10-12 05:28:33
+Au5zEX arapz6 2026-10-12 06:06:47 2026-10-29 14:21:26
+MdDTh5 JizYCK 2026-10-12 18:26:33 2026-11-08 19:32:46
+fHZr0x dWBDTU 2026-10-29 14:22:16 2026-11-03 15:39:39
+h3uSz0 ce5O5b 2026-11-03 16:17:51 2026-11-05 06:18:07
+cM4HV4 TUEPsF 2026-11-05 07:48:58 2026-11-07 10:05:52
+K7KtkS FaKoKr 2026-11-07 11:35:52 2026-11-08 08:40:22
+tg32J3 E9tE2n 2026-11-08 09:12:12 2026-11-08 16:45:49
+I2f9nD RAfQb8 2026-11-08 17:54:32 2026-11-08 20:17:52
+jpJsIV MP36v3 2026-11-09 06:20:14 2026-11-09 06:20:14
+jYccao GtkpIR 2026-11-10 09:27:44 2026-11-10 09:27:44
+RVO9jA SZp6xj 2026-11-11 03:41:03 2026-11-11 03:41:03
+17saV7 SrkS1I 2026-11-11 03:44:19 2026-11-11 03:44:19
+pDrDpF YJ__u5 2026-11-11 18:45:35 2026-11-11 18:45:35
+IBsQk7 JtOvGF 2026-11-12 05:57:22 2026-11-12 05:57:22
+BYcHJ4 xpsxOd 2026-11-14 10:28:47 2026-11-14 10:28:47
+XsW5qt https: 2026-11-14 11:35:26 2026-11-14 11:35:26
+19 logins since Nov 7</bash-stdout><bash-stderr></bash-stderr>
+
+---
+
+situation this morning
+
+---
+
+<bash-input>bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh</bash-input><bash-stdout>n-Projects-satisa-ctxlayer/4e4de319-72bash /private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/scratchpad/grant-chain.sh
+grant  client created (UTC)        last refresh (UTC)
+I6xbbT atrlly 2026-09-27 17:37:24 2026-09-29 07:24:11
+kpwn0E is3Utt 2026-09-29 12:39:01 2026-10-10 09:06:47
+MSKEqU gsCsD- 2026-10-10 13:30:56 2026-10-12 05:28:33
+Au5zEX arapz6 2026-10-12 06:06:47 2026-10-29 14:21:26
+MdDTh5 JizYCK 2026-10-12 18:26:33 2026-11-08 19:32:46
+fHZr0x dWBDTU 2026-10-29 14:22:16 2026-11-03 15:39:39
+h3uSz0 ce5O5b 2026-11-03 16:17:51 2026-11-05 06:18:07
+cM4HV4 TUEPsF 2026-11-05 07:48:58 2026-11-07 10:05:52
+K7KtkS FaKoKr 2026-11-07 11:35:52 2026-11-08 08:40:22
+tg32J3 E9tE2n 2026-11-08 09:12:12 2026-11-08 16:45:49
+I2f9nD RAfQb8 2026-11-08 17:54:32 2026-11-08 20:17:52
+jpJsIV MP36v3 2026-11-09 06:20:14 2026-11-09 06:20:14
+jYccao GtkpIR 2026-11-10 09:27:44 2026-11-10 09:27:44
+RVO9jA SZp6xj 2026-11-11 03:41:03 2026-11-11 03:41:03
+17saV7 SrkS1I 2026-11-11 03:44:19 2026-11-11 03:44:19
+pDrDpF YJ__u5 2026-11-11 18:45:35 2026-11-11 18:45:35
+IBsQk7 JtOvGF 2026-11-12 05:57:22 2026-11-12 05:57:22
+BYcHJ4 xpsxOd 2026-11-14 10:28:47 2026-11-14 10:28:47
+XsW5qt https: 2026-11-14 11:35:26 2026-11-14 11:35:26
+yoLFpu https: 2026-11-15 08:32:41 2026-11-15 08:32:41
+20 logins since Nov 7</bash-stdout><bash-stderr></bash-stderr>
+
+---
+
+Post it
+
+---
+
+is there anything in https://github.com/n8n-io/n8n/issues/43048 or in the n8n changelog pointing at a solution for this issue?
+
+---
+
+plan the MCP 2026-07-28 migration
+
+---
+
+<task-notification>
+<task-id>a9efa1c10ebbbbd03</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/tasks/a9efa1c10ebbbbd03.output</output-file>
+<status>completed</status>
+<summary>Agent "Map McpSessionDO session state" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>I couldn't find an A7 session-epoch check anywhere on the MCP path. A7 only applies to the SPA cookie. Below is the full inventory; anything I could not pin down is marked "not determined".
+
+---
+
+## 1. `McpSessionDO`: `apps/worker/src/mcp/session-do.ts` (840 lines)
+
+**Class:** `export class McpSessionDO extends McpAgent&lt;Env, undefined, McpProps&gt;` (L81). The state type is `undefined`, so `this.state` / `this.setState` are never used.
+
+**Instance fields**
+- `server = new McpServer({name:'ctxlayer',version:'0.1.0'},{instructions: SERVER_INSTRUCTIONS})` (L82-85). It is built eagerly, then reassigned inside `init()` in two places (L99, L161).
+- `private upstreamProxy: UpstreamProxyRegistry | null = null` (L87).
+
+**Methods**
+- `async init()` (L89-773). This is the only override. The repo has no `onStart`, `fetch`, `alarm` or `onConnect` override. The `agents` 0.33 `McpAgent.onStart(props)` calls `init()` on every DO start or wake, and then `reinitializeServer()` replays the stored `initializeRequest`.
+- `private docMarkdown(docId)` (L792-797): reads from R2 only (snapshot, then `source.md`).
+- `private stageUsage(args)` (L799-808): calls `stageUsageRow(this.ctx.storage.sql, …)` and then `this.schedule(5, 'flushUsageOutbox', undefined, {idempotent:true})`.
+- `async flushUsageOutbox()` (L818-834): an alarm callback that the SDK dispatches by name. It calls `drainOutbox(sql, env.USAGE_QUEUE)`, reschedules after 5s while rows remain, and retries after 30s on failure.
+
+**Use of DO primitives**
+- `this.ctx.storage.sql`:
+  - L111 `ensureOutboxTable`
+  - L337 and L735 `sqliteHintLedger(...)`
+  - L801 `stageUsageRow`
+  - L819 drain
+- `this.schedule(...)`: L802, L824, L830. All three schedule `flushUsageOutbox`.
+- `this.props`: L90, L188, L235 (whoami dumps the whole props object), L244, 287, 306, 324, 412, 448 (`role !== 'admin'`), 482, 553, 571, 576, 602, 634, 656, 661 (`role`).
+- `this.getSessionId()`: L189, L335, L731. It parses the DO name `streamable-http:&lt;sessionId&gt;`.
+- `this.sql` and `this.setState`: not used.
+
+**What `agents` 0.33 `McpAgent` itself keeps in DO storage**
+
+Source: `node_modules/.bun/agents@0.33.0+50eaea991f04e17b/node_modules/agents/dist/mcp/index.js`.
+- `"props"` (L1619, L1629)
+- `"initializeRequest"` (L1480-1483)
+- per-stream request ids `STREAM_REQS_KEY_PREFIX` (L1501-1505)
+- `DurableObjectEventStore(this.ctx.storage)` for SSE resumability (`getEventStore`)
+- the schedule table that backs `this.schedule`
+
+**Wiring**
+- `apps/worker/src/oauth/provider-config.ts:89`:
+  ```ts
+  apiHandlers = { '/mcp': McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' }) }
+  ```
+  `/mcp` is the only API handler. `/sse` was dropped (comment at L76-79). The OAuth resource is `mcpResourceUrl(env)` (L94).
+- `apps/worker/src/index.ts`:
+  - L27 `export { McpSessionDO } from './mcp/session-do'`
+  - L45-48 `buildOAuthProvider(env)` runs per request
+  - L59 `isMcpPathOnWrongHost` check
+  - L66 `buildOAuthProvider(env).fetch(...)`
+- `apps/worker/src/env.ts:76` declares `MCP_SESSION_DO: DurableObjectNamespace`.
+- `serve()` in agents (index.js L107-182, L284-299, L356-368): it reads the `mcp-session-id` header and calls `getAgentByName(namespace, 'streamable-http:'+sessionId, { props: ctx.props })`. GET with `mcp-session-id` is the standalone SSE stream (L530). DELETE goes to the agent without props (L368).
+
+## 2. Tool registration and init cost
+
+**Built-ins.** Title and description come from `builtinToolMeta()` in `packages/shared/src/builtin-tools.ts`. Input shapes come from `apps/worker/src/mcp/builtin-schemas.ts`.
+
+| Tool | Location |
+|---|---|
+| whoami | session-do.ts L230 |
+| list_my_context | L239 |
+| list_upstreams | L276 |
+| describe_upstream | L297 |
+| reload_upstreams | L322 |
+| get_doc | L382 |
+| search_docs | L402 |
+| active_users | L436 |
+| poll_task | L469 |
+| list_tasks | L551 |
+| draft_skill | L629 |
+| save_draft_skill | L651 |
+| list_skills, get_skill | `skill-mcp.ts` L45 and L95, via `registerSkillMcp(...)` at session-do L571 |
+
+Every built-in is wrapped in the `rec(...)` usage recorder (L180-224). That wrapper captures `this.getSessionId()` and calls `this.stageUsage`. Built-in handlers do all their D1 work per call, and none of them reads DO state except through `rec`. The exception is `reload_upstreams`, which mutates `this.upstreamProxy` and the live `this.server`.
+
+**Proxied upstream tools.** These live in `UpstreamProxyRegistry`, `apps/worker/src/mcp/proxy-registry.ts`.
+- Constructor (L152-168): `(env, userId, stageUsage, sessionId, makeClient, hintLedger, catalogueBudgetMs)`.
+- Built at session-do L727-737, using `sqliteHintLedger(this.ctx.storage.sql)` and `init(this.server, upstreamCtx)`.
+- In-memory per-session state (L118-150):
+  - `clients` (upstream_id → `UpstreamClient`)
+  - `rows`
+  - `boundStamp` (the credential `updated_at` at bind time)
+  - `unbound`
+  - `binding` (in-flight binds)
+  - `allowedToolKeys` (ACL-allowed set, also checked at call time)
+  - `firstResultHints`
+- `registerTool` (L587-773): one `server.registerTool(mangled, {title, description, inputSchema}, handler)` per allowed cached tool. The input schema comes from `jsonSchemaToZod(JSON.parse(row.input_schema))`.
+
+**Init path, once per DO start or wake.** The comments at proxy-registry L91-96 and bearer.ts L140 say that hibernation wakes re-run it.
+1. `findById(env, userId)`: user status gate (session-do L97). 1 D1.
+2. `loadUserContext` (`catalogue-views.ts` L83-91): `listUpstreamsVisibleToUser`, then parallel `listSkillsForUpstreams` and `listDocsForUpstreams`. 3 D1 round trips.
+3. `getUserCredentialStatuses(...)` for the connection alert (session-do L146). 1 D1.
+4. `registerSkillPrompts` → `listPublishedSkills` (`skill-mcp.ts` L182). 1 D1.
+5. `registry.init` → `registerUpstreams` (proxy-registry L309-391):
+   - Parallel: `resolveUserPrincipals` (calls `resolveUserScope` and `listUserRoleIds`, `tool-access.ts` L33), `listToolAccessForUpstreams` (1 D1), and `listCachedToolsForUpstreams` (1 D1, batched across all upstreams).
+   - Then **per upstream, concurrently**, `prepareUpstream` (L461-488):
+     - `resolveUserUpstreamBearer` (`upstream/bearer.ts` L59-207):
+       - `shared_bearer` / `user_bearer`: 1 D1 read plus AES decrypt.
+       - `user_oauth`: `provider.tokens()` (1 D1 read via `getUserCredential`, `oauth-provider.ts` L225-227). If the token is fresh it is used directly. If it is within 5 min of expiry: a `getUserCredentialStatus` read, a D1 lease (`oauth-refresh.ts`), and an **outbound token-endpoint POST**. A permanent failure writes the reauth flag, audit and grant-observation rows.
+     - If there is no bearer but a credential exists: `getUserCredentialStatus` (1 D1), and the upstream is listed unbound.
+     - `makeClient(conn, bearer)` does no network I/O. `UpstreamHttpClient.ensureConnected` connects lazily (`http-client.ts` L99-160).
+     - `ensureCatalogue` (L540-565): **uses the D1 cache** (`upstream_tools`, 24h TTL, L86). Only when the cache is empty or stale does it call **live `tools/list`** (MCP connect plus list, 60s per-call timeout). That call is raced against `CATALOGUE_REFRESH_BUDGET_MS = 10_000` and is followed by `replaceCachedTools` and `listCachedTools`.
+   - Then `getUserCredentialStatuses` for the bound stamps. 1 D1.
+6. DO-SQLite DDL: `ensureOutboxTable` and `CREATE TABLE IF NOT EXISTS hinted_upstreams`.
+7. CPU cost: `jsonSchemaToZod` for every registered tool.
+
+KV reads on the init path: none in ctxlayer code. `OAUTH_KV` is read by the OAuth provider in the Worker before the DO is reached, and by `oauth-provider.ts` only for PKCE.
+
+Not determined: the exact number of queries inside `listUpstreamsVisibleToUser` and `resolveUserScope`.
+
+**Per proxied tool call** (handler, L636-751):
+1. ACL backstop against `allowedToolKeys`.
+2. **A6** `checkCredentialFreshness`: 1 D1 point read for user-scoped strategies.
+3. Async path: `submitAsyncJob`.
+4. Otherwise `ensureBound(conn, fresh.status)`. This rebinds if the stamp changed (`bind` resolves the bearer again and re-reads the status).
+5. `runUpstreamCall` + `callWithHeartbeat` → `client.callTool`. The first call on a new client does the upstream MCP `initialize` handshake.
+6. `deliverFirstResultHint` (hint ledger, DO SQLite).
+7. `finally` → `this.stageUsage(...)` (DO SQLite plus schedule).
+
+## 3. Per-session state
+
+- **Usage outbox**
+  - `apps/worker/src/usage/outbox.ts`: table `usage_outbox(seq INTEGER PRIMARY KEY, msg TEXT)`. `USAGE_DRAIN_BATCH = 100`, and delivery is at-least-once (the consumer dedupes on event id).
+  - Staged from session-do L799-808. Drained by `flushUsageOutbox` (L818-834) on a DO alarm with a 5s / 30s delay (L78-79).
+  - The rationale is in the comments at L107-110 and in `usage/record.ts` L13: `waitUntil(queue.send)` was being cancelled after streaming responses ended.
+  - `queues/jobs-consumer.ts` L153-175 already bypasses the outbox and calls `env.USAGE_QUEUE.send` directly.
+- **Hint ledger**
+  - `apps/worker/src/mcp/hint-ledger.ts`: table `hinted_upstreams(upstream_id PRIMARY KEY)`. It also has `inMemoryHintLedger()`, which tests use.
+  - It is armed in `armFirstResultHint` (proxy-registry L400-410). Delivered in `deliverFirstResultHint` (L430-442, which also drops `structuredContent`), from the sync path (L733) and the async ack (L691).
+  - The semantics are "once per upstream per session", and the key is implicitly the DO, i.e. the session id.
+- **In-memory registry maps** (listed in section 2): rebuilt on every wake.
+- **`reload_upstreams`** (session-do L322-380):
+  - Lazily creates the registry, then calls `upstreamProxy.refresh(this.server)` (proxy-registry L204-238).
+  - `refresh` reloads `loadUserContext`, registers upstreams not in `clients`, and runs `reconcileConnected` (L248-300) to add newly catalogued tools. It never unregisters anything.
+  - It then **always** calls `server.server.sendToolListChanged()` (L228).
+  - It is the only list_changed emitter in `src`. There are no resource or prompt list_changed calls.
+- **Keyed by session id**:
+  - `usage_events.session_id` (migration `0003_usage.sql:14`, NOT NULL), written via `buildUsageMsg`.
+  - `async_jobs.session_id` (`0032_async_jobs.sql:20`, default `''`), plus the `JOBS_QUEUE` message's `sessionId`.
+  - I found no reader of either column in `apps/worker/src/db/queries`, `api` or `apps/web/src`.
+- **Snapshot staleness**: the prompt list is snapshotted at init (comment at `skill-mcp.ts` L165-169). The tool list is too, until reload or wake.
+
+## 4. Server `instructions`
+
+- Static text and budgets live in `apps/worker/src/mcp/server-instructions.ts`:
+  - `SERVER_INSTRUCTIONS` (L56)
+  - `staticInstructions(alias)` (L59)
+  - `ALERT_BUDGET = 320`, `INSTRUCTIONS_CLIENT_CAP = 2048`
+  - `composeInstructions({alert, guidance, alias})` (L101-107), in alert → guidance → static order
+- They are composed in session-do L134-169, which reads:
+  - `loadUserContext` (visible upstreams plus whole-upstream skill and doc attachments)
+  - `getUserCredentialStatuses(userId, ids)`
+  - `env.GATEWAY_ALIAS`
+  - `spaUrl(env, UPSTREAMS_PAGE)`
+- The "auto-refresh has STOPPED" text comes from `connectionAlert` in `catalogue-views.ts` L345-399. It fires on `needsReauth`, or on `user_oauth` within expiry using `resolveGrantExpiry` (fields `authExpiresAt`, `grantedAt`, `row.observed_grant_days`, `authConfig.grantLifetimeDays`).
+- Guidance comes from `upstreamGuidance` (L122ff).
+- The instructions are applied by **replacing `this.server`** with a new `McpServer` before any tool registers (comment at L126-129). An inactive account gets a bare server whose instructions read "Your ctxlayer access is not active…" (L99-102).
+
+## 5. Prompts and resources
+
+**Prompts**
+- `draft-skill`: session-do L584-623.
+- One prompt per published skill: `registerSkillPrompts` in `skill-mcp.ts` L175-208. Reserved name `draft-skill` (L216). The list is snapshotted at init and the body is loaded at invocation.
+
+**Resources**
+- `mcp://ctxlayer/docs/{id}`: a template with a `list` callback over `listDocs`, at session-do L707-719. It is registered at L744-772.
+- `mcp://ctxlayer/skills/{slug}`: `skill-mcp.ts` L111-146.
+- SEP-2640 resources in `skill-sep2640.ts` L56-130:
+  - `skill://{slug}/SKILL.md`
+  - static `skill://index.json`
+  - `server.server.registerCapabilities({ extensions: {'io.modelcontextprotocol/skills': {}} })` (L61)
+
+## 6. Auth checks
+
+- **Props**: minted in `idp/complete-mcp.ts` L48-65 via `env.OAUTH_PROVIDER.completeAuthorization({ …, props })`. The type is `McpProps {userId, email, role}` (`env.ts` L90-94).
+  - The provider decrypts the props onto `ctx.props`, and `serve()` passes them to `getAgentByName(…, {props})`.
+  - `McpAgent.onStart(props)` persists them to DO storage `"props"` and otherwise restores them from storage (agents index.js L1618-1630).
+  - `stampTokenExchange` (`oauth/login-activity.ts`) returns nothing, so props are not rewritten on refresh.
+  - Not determined: whether `getAgentByName` refreshes `this.props` on each request to an already-running instance, or only on start. I did not trace `agent-routing.js`.
+- **User-status gate**: `findById` and `status !== 'active'` in `init()`, session-do L96-105. It runs per DO start or wake, not per request. Immediate cutoff relies on `oauth/revoke-grants.ts` (`revokeAllUserGrants`), as the comments at L1-16 and in `provider-config.ts` L41-43 and L66-67 explain.
+- **A6 credential freshness**: `apps/worker/src/mcp/credential-freshness.ts` L48-69, called per proxied call at proxy-registry L662. The async-job path re-resolves the bearer in the consumer (`jobs-consumer.ts` L116).
+- **A7 session epoch**: SPA cookies only. Locations:
+  - `auth/middleware.ts` L49-53
+  - `auth/session.ts`
+  - `idp/flow.ts` L63
+  - migration `0033_session_epoch.sql`
+  - `db/queries/users.ts` L136-142
+
+  It is **not** checked anywhere on `/mcp` or in the DO.
+- **`isMcpPathOnWrongHost`**: `apps/worker/src/util/mcp-host.ts` L51-59, called in `index.ts` L59 before the OAuth provider runs. It is a no-op unless `MCP_PUBLIC_URL` is set. It is independent of the DO.
+
+## 7. Async jobs
+
+- **Submit**: `mcp/async-submit.ts` `submitAsyncJob(env, {userId, sessionId}, conn, tool, args)` (L84-158). It reads and writes the D1 `async_jobs` table (dedup on a sha256 job key, 15-min retry-warm, 10-min stale running) and sends to `JOBS_QUEUE`. The session id is used only as a recorded value.
+- **`poll_task` / `list_tasks`** (session-do L469-565): pure D1 (`findJobById`, `listJobsForUser`) plus the owner check `job.user_id !== userId`. Neither needs DO state; they touch the DO only through `rec` and `stageUsage`.
+- **Consumer**: `queues/jobs-consumer.ts` resolves the bearer, creates its own client, writes `completeJobDone` / `completeJobError` to D1 and sends usage straight to `USAGE_QUEUE`. It has no DO interaction and nothing notifies the session.
+
+## 8. Server→client and long-lived stream use
+
+- **Progress notifications**: `callWithHeartbeat` (`upstream-call-runner.ts` L201-221) sends `notifications/progress` every 25s via `extra.sendNotification` when the client supplied a `progressToken`. This is used on the inline proxied path (proxy-registry L721) and needs the per-request response stream.
+- **`sendToolListChanged`**: proxy-registry L228 (from `reload_upstreams`). Delivering it requires the standalone GET SSE stream or the in-flight response.
+- **Elicitation, sampling (`createMessage`), logging notifications**: no uses in `apps/worker/src`. The only elicitation code is the agents SDK's own `transport.messageInterceptor = _handleElicitationResponse` (index.js, `initTransport`).
+- **Resumability**: `McpAgent.getEventStore()` defaults to `DurableObjectEventStore` (SDK default, not overridden). GET with `mcp-session-id` is routed to the DO by the SDK. ctxlayer code does not depend on either explicitly.
+- **Serialization**: the `upstream/admin-config.ts` L20 comment says that a 150-300s call "blocks the serial McpSessionDO". `proxy-registry.ts` L89-96 says init runs inside `blockConcurrencyWhile` (~30s reset).
+
+## 9. Tests
+
+No test constructs `McpSessionDO` or calls `/mcp` through the worker. `revoke-grants.ts` L28-31 notes that the agents SDK, via `cloudflare:email`, cannot load at module scope in vitest workerd.
+
+**Registry, against real D1 with a fake `McpServer` and an injected `makeClient` / `inMemoryHintLedger`** (all in `apps/worker/test/integration/`):
+- `proxy-registry-catalogue-budget.test.ts`: hung or slow `listTools` vs the budget.
+- `proxy-registry-dead-credential.test.ts`: unbound listing, `credential_revoked`, rebind after reauth. Usage is captured via the `stageUsage` spy.
+- `proxy-registry-first-hint.test.ts`: hint once, with an explicit `HintLedger`.
+- `proxy-registry-reload.test.ts`: `refresh()` reconcile and `sendToolListChanged` (fake `server.server.sendToolListChanged`).
+
+**Real SDK round trip without the DO**:
+- `sdk-roundtrip-hint.test.ts`: `McpServer` + `InMemoryTransport.createLinkedPair()` + `Client.callTool`.
+
+**Pieces the DO uses, tested standalone**:
+- `credential-freshness.test.ts` (A6, real D1)
+- `async-submit.test.ts`, `async-jobs.test.ts`, `jobs-consumer.test.ts`
+- `describe-upstream.test.ts`, `upstream-visibility.test.ts`, `private-upstreams.test.ts`, `save-draft-skill.test.ts`, `usage.test.ts`
+- `session-epoch.test.ts` (SPA A7 only)
+
+**Unit tests** (`apps/worker/src/`):
+- `src/usage/outbox.test.ts`: a fake `SqlStorage`.
+- `src/mcp/skill-mcp.test.ts`: `skillPromptEntries` only.
+- `src/mcp/server-instructions.test.ts`, `catalogue-views.test.ts`, `upstream-call-runner.test.ts`, `tool-acl.test.ts`.
+- `src/oauth/default-endpoints.test.ts`: the `/mcp` path is not aliased.
+
+**Smoke**: `scripts/smoke.mjs` L41-47 sends an anonymous POST `/mcp` `initialize` and expects 401.
+
+## 10. `wrangler.toml` (repo root)
+
+```toml
+[[durable_objects.bindings]]       # L108-110
+name = "MCP_SESSION_DO"
+class_name = "McpSessionDO"
+
+[[migrations]]                     # L121-124
+tag = "v1"
+new_classes = ["DocRoomDO"]
+new_sqlite_classes = ["McpSessionDO"]
+```
+
+There is only the one migration tag (`v1`); it has no `deleted_classes` or `renamed_classes` entry. The comment at L116-120 notes that the storage backend is sticky per class. Related queues: the `ctxlayer-usage` producer and consumer (batch size 100) and `ctxlayer-jobs` (batch size 1, max_retries 3), at L126-174.
+
+## Not determined
+- The exact D1 query count inside `listUpstreamsVisibleToUser`, `resolveUserScope` and `listUserRoleIds`.
+- Whether agents 0.33 updates `this.props` per request on a warm DO instance or only in `onStart`.
+- Whether any client in the field actually uses the GET SSE stream or `Last-Event-ID` resumability.</result>
+<usage><subagent_tokens>188395</subagent_tokens><tool_uses>32</tool_uses><duration_ms>179277</duration_ms></usage>
+</task-notification>
+
+---
+
+<task-notification>
+<task-id>a96409ed79c8f9885</task-id>
+<tool-use-id>REDACTED</tool-use-id>
+<output-file>/private/tmp/claude-501/-Users-stevenn-Projects-satisa-ctxlayer/4e4de319-72bf-4be9-82f6-2bf86f23f5bf/tasks/a96409ed79c8f9885.output</output-file>
+<status>completed</status>
+<summary>Agent "Inspect agents and MCP SDK v2" finished</summary>
+<note>A task-notification fires each time this agent stops with no live background children of its own. The user can send it another message and resume it, so the same task-id may notify more than once.</note>
+<result>The stateless path is already in your installed `agents` 0.33.0: `createMcpHandler` from `agents/mcp/server`. But it needs `@modelcontextprotocol/server@2.4.0`, and that package is not in your lockfile. Below, items marked **[I]** I read in the installed code; items marked **[W]** I read on the web.
+
+## 0. Install state you should know first [I]
+- `agents@0.33.0` declares these exact peers: `"@modelcontextprotocol/sdk": "1.32.2"`, `"@modelcontextprotocol/server": "2.4.0"`, `"@modelcontextprotocol/client": "2.4.0"`. `sdk` and `server` are optional; `client` is not.
+- Neither `bun.lock` nor `apps/worker/package.json` lists `@modelcontextprotocol/server`. The lockfile's only mention of it is inside the agents peer list. It also pins `@modelcontextprotocol/client@2.0.0` and `core@2.0.0`, which do not match the 2.4.0 peer.
+- `node_modules/.bun/node_modules/@modelcontextprotocol/server` is a symlink to a leftover `server@2.0.0`, probably from `agents@0.20.1`. That symlink is the only reason the import resolves today.
+- `agents/dist/mcp/index.js:6-7` imports `@modelcontextprotocol/client` and `@modelcontextprotocol/server` at load time. Since `McpSessionDO` imports `McpAgent` from `agents/mcp`, the current worker already loads that 2.0.0 copy.
+- Everything about SDK v2 below comes from that installed 2.0.0. I did not inspect 2.4.0 itself.
+
+## 1. What `agents` 0.33.0 exports [I]
+`agents/mcp/server` (`dist/mcp/server/index.d.ts`) exports:
+- `createMcpHandler`: the stateless SDK v2 handler (internally `createStatelessMcpHandler`)
+- `getMcpAuthContext`
+- types `CreateMcpHandlerOptions`, `McpAuthContext`, `StatelessMcpHandler`, `StatelessMcpServerInput`
+
+Signature, from `dist/handler-stateless-C90kD5_R.d.ts:16-53`:
+```ts
+interface CreateStatelessMcpHandlerOptions extends Omit&lt;CreateMcpHandlerOptions /* SDK v2 */, "bus"&gt; {
+  route?: string;                 // default "/mcp", exact match, else 404
+  corsOptions?: CORSOptions | false;
+  allowedHostnames?: string[];
+  allowedOriginHostnames?: string[] | "*";
+  authContext?: McpAuthContext;   // { props: Record&lt;string, unknown&gt; }
+}
+type StatelessMcpHandler = {
+  (request, env, ctx: ExecutionContext): Promise&lt;Response&gt;;
+  fetch(request, options?: McpHandlerRequestOptions): Promise&lt;Response&gt;;
+  notify: ServerNotifier;
+};
+declare function createStatelessMcpHandler(factory: McpServerFactory, options?): StatelessMcpHandler;
+```
+- The options inherited from SDK v2 are `legacy: 'stateless' | 'reject'`, `onerror`, `responseMode: 'auto'|'sse'|'json'`, `maxSubscriptions` and `keepAliveMs`.
+- It throws a `TypeError` if you pass `bus` or any v1-only option: `transport`, `storage`, `sessionIdGenerator`, `eventStore`, `enableJsonResponse`, `allowedHosts`, and similar (`handler-stateless-B5hU3dxK.js:281-296`).
+
+`agents/mcp` (`dist/mcp/index.d.ts`) exports:
+- `McpAgent`, marked `@deprecated` at line 385: "McpAgent is feature-frozen… run the stateless route beside the existing McpAgent route until clients transition and sessions drain."
+- `WorkerTransport` (v1, sessionful), `createLegacyMcpHandler` (v1, sessionful), and `DurableObjectEventStore`.
+- An overloaded `createMcpHandler` at lines 276-283: given a v1 `McpServer`, it routes to the legacy handler and is deprecated; given a factory function, it routes to the stateless handler.
+- `experimental_createMcpHandler`, deprecated.
+- `getMcpAuthContext`.
+- `isLegacyRequest` is not re-exported by `agents`. It comes from `@modelcontextprotocol/server`.
+
+Newer release [W]: npm `latest` is still 0.33.0. Relevant CHANGELOG entries:
+- **0.31.0**: "`createMcpHandler` passes the verified token from `@cloudflare/workers-oauth-provider` 1.x to tool callbacks". The sdk and server packages became optional peers.
+- **0.32.0**: client and server bumped to 2.4.0.
+- **0.28.1**: McpAgent now answers 404 for a session ended with DELETE.
+- No entry removes McpAgent. Installed docs say v1 overloads "will be removed in the next major version".
+
+`@modelcontextprotocol/server` on npm [W]: latest is 2.4.0 (2026-10-23). Earlier: 2.3.1, 2.3.0, 2.2.0, 2.1.0, and 2.0.0 (2026-07-27).
+
+## 2. How OAuth props reach tool handlers [I]
+1. `@cloudflare/workers-oauth-provider` 1.2.4 sets `ctx.props` (decrypted grant props) and `ctx.auth = { token, audience, expiresAt, scope, userId, clientId }` before calling the API handler (`dist/oauth-provider.js:4530-4590`).
+   - External tokens get `ctx.auth = { token, audience, scope: [] }` with no `clientId`.
+   - 1.2.4 does not set the `Symbol.for("cloudflare.workers-oauth-provider.verified-context.v1")` symbol that `agents` checks first, so agents falls back to reading `ctx.auth`.
+2. The agents handler (`handler-stateless-B5hU3dxK.js:33-52, 330-344`) builds SDK `AuthInfo` from `ctx.auth`: `{ token, clientId, scopes, expiresAt, resource: URL(audience), extra: { props } }`.
+   - It only does this when `clientId` is non-empty, `audience` is an http(s) URL and `props` is a plain object.
+   - The `AuthInfo` is passed to the SDK as `fetch(..., { authInfo })`.
+   - Separately it runs the request, and the streamed response body, inside an `AsyncLocalStorage` context `{ props: ctx.props }`. If `authInfo` could not be built it falls back to that same `ctx.props`.
+3. Inside a tool:
+   - `getMcpAuthContext()?.props` returns your `completeAuthorization` props.
+   - `ctx.http?.authInfo` returns `{ clientId, scopes, … }`.
+   - The factory also receives `{ era, authInfo, requestInfo: Request }`.
+   - It needs `nodejs_compat`, which `wrangler.toml:9` already has.
+
+An `apiHandlers` entry with a plain fetch handler, following `docs/mcp-servers.md:183-201` and `docs/securing-mcp-servers.md:153-160`:
+```ts
+const mcpHandler = createMcpHandler(createServer /*, { allowedHostnames, allowedOriginHostnames } */);
+apiHandlers: {
+  '/mcp': { fetch(request: Request, env: Env, ctx: ExecutionContext) { return mcpHandler(request, env, ctx) } }
+}
+```
+- The docs say: "OAuthProvider needs an object with a `fetch` method… Passing the handler function directly throws at startup."
+- Your current wiring is `apiHandlers['/mcp'] = McpSessionDO.serve('/mcp', { binding: 'MCP_SESSION_DO' })` in `apps/worker/src/oauth/provider-config.ts:88-90`.
+- Host and Origin checks: the handler only applies default allowlists to localhost and `*.workers.dev`. For a custom domain, set `allowedHostnames` and `allowedOriginHostnames` explicitly (`docs/mcp-servers.md:136-142`).
+
+## 3. SDK v2 (`@modelcontextprotocol/server` 2.0.0 as installed) [I]
+- **Exports** (`dist/index.d.mts:738`) include:
+  - `McpServer`, `Server`
+  - `createMcpHandler`, `isLegacyRequest`, `legacyStatelessFallback`, `classifyInboundRequest`
+  - `WebStandardStreamableHTTPServerTransport`, `PerRequestHTTPServerTransport`
+  - `inputRequired`, `inputResponse`, `acceptedContent`, `createRequestStateCodec`
+  - `hostHeaderValidationResponse`, `originValidationResponse`
+  - `DiscoverRequest`, `DiscoverResult`, `CacheHint`, `CacheScope`, `preloadSchemas`
+  - `SUPPORTED_PROTOCOL_VERSIONS`
+- **`SUPPORTED_MODERN_PROTOCOL_VERSIONS`** exists but is internal and not exported (`src-CX2iR2pK.mjs:551`): `["2026-07-28"]`, documented as "Internal — not part of the public API surface". The legacy list, `SUPPORTED_PROTOCOL_VERSIONS`, is `2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07`, and `LATEST_PROTOCOL_VERSION` is `"2025-11-25"` (`core/dist/auth-CUe6YdwF.mjs:4-12`).
+- **The `legacy` option** (`createMcpHandler-CLhGwQTn.d.mts:3829-3852`), `legacy?: 'stateless' | 'reject'`:
+  - `'stateless'` is the default.
+  - Each request is classified by whether it carries the per-request `_meta` envelope claim (`index.mjs:1048-1088, 1326-1351`).
+  - A modern request gets a fresh factory instance with `era: 'modern'`. The SDK sets the negotiated version, installs the `server/discover` handler, and seeds client info and capabilities from the envelope. It validates `MCP-Protocol-Version`, `Mcp-Method` and `Mcp-Name`, plus `Mcp-Param-*` against `x-mcp-header`, and checks required client capabilities. An unsupported revision gets a 400 with `UnsupportedProtocolVersionError` (`index.mjs:1226-1315`).
+  - A legacy request (no claim, including `initialize`, GET or DELETE, batches, posted responses, or a body that is not JSON) gets a fresh instance with `era: 'legacy'`, served over `WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined })`. Non-POST requests get 405 "Method not allowed." (`index.mjs:966-1033`).
+  - `'reject'` answers legacy requests with the unsupported-version error, and answers legacy notifications with 202.
+  - A function value throws: "route in user land with the exported isLegacyRequest(request) predicate in front of a strict (legacy: 'reject') handler."
+- **What this means for each client type:**
+
+  | Client | What happens |
+  |---|---|
+  | 2026-07-28 | `server/discover` returns `{ supportedVersions: ["2026-07-28"], capabilities, instructions? }` plus `ttlMs`/`cacheScope` (default 0 / private) and `_meta.serverInfo` (`mcp-DXXb3Vv3.mjs:1034-1040`; codec at `src-CX2iR2pK.mjs:3227`) |
+  | 2025-11-25 / 2025-06-18 | `initialize` is answered by a fresh legacy instance, with the version negotiated from the legacy list (`mcp-DXXb3Vv3.mjs:1012-1027`). Each later POST is again stateless |
+
+- **`Mcp-Session-Id`:**
+  - The modern path has no sessions.
+  - The legacy stateless lane uses `sessionIdGenerator: undefined`, so it mints no id.
+  - GET SSE: 405 on both lanes.
+- **`list_changed`:** the modern path serves it through `subscriptions/listen` streams (`index.mjs:1264-1268`). Publishing goes through `handler.notify.toolsChanged()` and its siblings, backed by an in-process bus. The agents docs note: "Notifications are isolate-local: they do not reach subscriptions in other Worker isolates" (`docs/mcp-servers.md:144-146`). Legacy clients get no list_changed in stateless mode, because there is no GET stream.
+- **Agents' own legacy lane** differs from the SDK's, which matters for elicitation:
+  - `agents` replaces the SDK's legacy fallback with its own adapter (`handler-stateless-B5hU3dxK.js:122-218`). That adapter fails server-to-client requests immediately with -32603: "Server-to-client requests are unavailable in the Legacy compatibility lane. Use inputRequired(...) for Stateless clients, or route Legacy traffic to a sessionful transport."
+  - The SDK's own `inputRequired.legacyShim` (enabled by default, `d.mts:2812-2832`) works by sending real server-to-client requests. In the agents lane those fail, so I would expect `inputRequired` returned to a 2025 client to fail there. This is inferred from the code, not tested.
+
+## 4. v1 → v2 differences for your API surface
+Verified in the installed code [I]:
+- **Imports:** `McpServer` from `@modelcontextprotocol/server` instead of `@modelcontextprotocol/sdk/server/mcp.js`. A v2 server cannot run inside `McpAgent` (`docs/mcp-servers.md:285`).
+- **`registerTool`:** the config is `{ title, description, inputSchema, outputSchema, annotations, icons, _meta }` (`d.mts:3300-3318`).
+  - The preferred form takes a Standard Schema such as `z.object({...})`.
+  - The raw-shape `{ field: z.string() }` form is `@deprecated` but still accepted.
+  - Callbacks are `(args, ctx: ServerContext)` and return `CallToolResult | InputRequiredResult`.
+- **`registerPrompt`:** takes `argsSchema` instead.
+- **`registerResource`:** takes `(name, uri | ResourceTemplate, metadata &amp; { cacheHint? }, cb)`.
+- **Instructions:** `new McpServer(info, { instructions, capabilities, cacheHints, inputRequired, requestState })` (`d.mts:2762-2873`).
+- **The `extra` → `ctx` change** (`d.mts:2073-2228`):
+
+  | v1 | v2 |
+  |---|---|
+  | `extra.requestId` | `ctx.mcpReq.id` |
+  | `extra.signal` | `ctx.mcpReq.signal` |
+  | `extra._meta` | `ctx.mcpReq._meta` |
+  | `extra.sendRequest` / `sendNotification` | `ctx.mcpReq.send` / `notify` |
+  | (new) per-request envelope with client info and capabilities | `ctx.mcpReq.envelope` |
+  | (new) MRTR state | `ctx.mcpReq.inputResponses`, `ctx.mcpReq.requestState&lt;T&gt;()` |
+  | `extra.authInfo` | `ctx.http?.authInfo` |
+  | request headers | `ctx.http?.req`, a web `Request` |
+  | `extra.sessionId` | `ctx.sessionId` |
+
+  - `ctx.mcpReq.elicitInput` and `requestSampling` throw on modern-era requests.
+- **zod:** v2 depends on `zod ^4.2.0`. Your worker declares `^4.0.0`.
+- **Tool-name validation:** `/^[A-Za-z0-9._-]{1,128}$/`. It only warns (`console.warn`), it does not reject (`src-CX2iR2pK.mjs:7122-7180`).
+- **Tasks:** the 2025-11-25 task types are "@deprecated 2025-11-25 wire vocabulary with no SDK runtime" in 2.0.0.
+- **Caching:** `ttlMs`/`cacheScope` are emitted on modern list, read and discover results via `cacheHints`; 2025-era responses never carry them (`d.mts:2637-2656, 2788-2805`).
+
+From the SDK v2 guides [W] (`https://ts.sdk.modelcontextprotocol.io/v2/migration/upgrade-to-v2.html` and `support-2026-07-28.html`):
+- There is a codemod: `npx @modelcontextprotocol/codemod@latest v1-to-v2 .`
+- `McpError` is renamed `ProtocolError`, and `ErrorCode` is renamed `ProtocolErrorCode`.
+- "Zod v3 is no longer supported." Zod ≥4.2.0 self-converts.
+- `registerResource` requires a metadata argument; pass `{}` if you have none.
+- Resource-not-found is now -32602.
+- Tasks: the experimental tasks feature was removed (SEP-2663). The later Tasks extension keeps `tasks/get` and `tasks/cancel`; this may only be in versions after 2.0.0.
+- MRTR: the client retries up to `maxRounds` (default 10). The legacy shim uses 8 rounds and a 600 s timeout.
+- `Mcp-Method` and `Mcp-Name` are required on modern POSTs. Missing or mismatched values get 400 with -32020.
+
+## 5. Spec 2026-07-28 [W]
+Changelog (https://modelcontextprotocol.io/specification/2026-07-28/changelog):
+- Removes `Mcp-Session-Id` and sessions (SEP-2567).
+- Removes `initialize` and `notifications/initialized`. "Every request now carries its protocol version and client capabilities in `_meta`" (SEP-2575).
+- `server/discover` is a MUST.
+- The GET endpoint and `resources/subscribe` are replaced by `subscriptions/listen`.
+- `ping` and `logging/setLevel` are removed.
+- Tasks move to the `io.modelcontextprotocol/tasks` extension.
+- MRTR uses `resultType: "input_required"`, and every result carries a `resultType` field.
+- No `Last-Event-ID`.
+- `ttlMs`/`cacheScope` are required on cacheable results.
+- Roots, Sampling and Logging are deprecated.
+- Dynamic Client Registration is deprecated in favour of Client ID Metadata Documents (CIMD).
+
+Transport (`/basic/transports/streamable-http`):
+- "Every POST request to the MCP endpoint **MUST** include an `MCP-Protocol-Version` header."
+- `Mcp-Method` is required on all requests. `Mcp-Name` is required on `tools/call`, `resources/read` and `prompts/get`. "These headers are **REQUIRED** for compliance."
+- Mismatches get 400 with -32020.
+- Unsupported version: "**MUST** respond with `400 Bad Request` and an UnsupportedProtocolVersionError" (code -32022).
+- Unknown method gets 404 with -32601.
+- For legacy traffic, a modern-only server SHOULD answer "HTTP GET or DELETE… `405`", and for "`Mcp-Session-Id`… ignore it, and do not mint or echo session IDs."
+- Fallback rule: on 400, if "the body is empty or is not a recognized modern JSON-RPC error, fall back to `initialize`". This is the fallback Claude's hosted clients use against your current 400.
+
+Versioning (`/basic/versioning`):
+- "There is no negotiation handshake."
+- "A server… **MAY** implement both behaviors."
+- "A dual-era server **MAY** serve both eras concurrently on the same endpoint."
+
+`server/discover` (`/server/discover`): the result is `{ resultType, supportedVersions, capabilities, _meta["io.modelcontextprotocol/serverInfo"], instructions?, ttlMs, cacheScope }`. Instructions and capabilities travel here and in no other message. Per-request client info arrives in `_meta` under `io.modelcontextprotocol/clientInfo` (a SHOULD) and `clientCapabilities`.
+
+Authorization (`/basic/authorization`):
+- "Authorization servers and MCP clients **SHOULD** support… Client ID Metadata Documents."
+- Dynamic Client Registration is a MAY and "is deprecated".
+- "MCP servers **MUST** implement… RFC9728."
+- Audience validation per RFC 8707 is a MUST.
+- `iss` in the authorization response is a SHOULD (RFC 9207).
+- Insufficient scope gets 403 with `error="insufficient_scope"`.
+
+## 6. Is a Durable Object still needed?
+No.
+- [I] The installed docs say it is stateless: "every request gets a fresh server from your factory, so there is no Durable Object, session, or WebSocket to manage" (`docs/mcp-servers.md:3`; also `docs/mcp-transports.md:7`).
+- [I] Elicitation uses MRTR: "The Worker does not wait while a person responds" (`mcp-servers.md:209`). State round-trips through `requestState`, which you should protect with `createRequestStateCodec`.
+- [I] Durable Objects are suggested only for application data ("call an Agent from the tool"), not for the protocol.
+- [W] The Cloudflare guide likewise lists "Durable Object, D1, KV, or R2" as places for app data only.
+
+## 7. Migration guide and running both side by side
+- [I] `docs/mcp-servers.md:277-293` ("Upgrading an existing McpAgent server") links to https://developers.cloudflare.com/agents/model-context-protocol/guides/migrate-to-mcp-sdk-v2/. The SDK pattern is documented in JSDoc at `createMcpHandler-CLhGwQTn.d.mts:3958-3972`.
+- [W] That Cloudflare guide shows the side-by-side pattern:
+  ```js
+  const stateless = createMcpHandler(createStatelessServer, { route: "/mcp", legacy: "reject" });
+  const legacy = MyMcpAgent.serve("/mcp");
+  if (await isLegacyRequest(request)) return legacy.fetch(request, env, ctx);
+  return stateless(request, env, ctx);
+  ```
+  - Keep `legacy: "reject"`, otherwise "the handler's compatibility lane takes legacy requests before the sessionful route sees them."
+  - Remove the legacy route and its DO binding "only after no clients depend on them."
+  - The guide has no OAuthProvider or `apiHandlers` example. That combination is my composition of the installed docs.
+- [I] Routing caveats from `isLegacyRequest`:
+  - Requests carrying the envelope claim, including bad ones, must go to the modern handler.
+  - A hand-wired composition must enforce 415 for non-JSON `Content-Type` itself.
+
+## Not verified
+- `@modelcontextprotocol/server` 2.4.0's actual code. Its API may differ from the installed 2.0.0, e.g. in tasks or exported constants.
+- The CHANGELOG past roughly the first 100k characters. I read entries 0.33.0 back to 0.28.0 only.
+- The full text of the SDK `upgrade-to-v2` page (truncated after 100k characters).
+- Runtime behaviour: I ran nothing, so the `inputRequired` failure on a 2025 client in the agents lane is inferred from the code.</result>
+<usage><subagent_tokens>259506</subagent_tokens><tool_uses>58</tool_uses><duration_ms>335416</duration_ms></usage>
+</task-notification>
+
+---
+
+Continue phase 2
+
+---
+
+Start phase 3
