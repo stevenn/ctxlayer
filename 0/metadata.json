@@ -1,0 +1,114 @@
+{
+  "cli_version": "0.10.6",
+  "checkpoint_id": "01M7FYWJ39RXBAGHFBQ5TFRW9B",
+  "session_id": "4e4de319-72bf-4be9-82f6-2bf86f23f5bf",
+  "strategy": "manual-commit",
+  "created_at": "2026-11-15T15:58:19.043915Z",
+  "branch": "main",
+  "checkpoints_count": 12,
+  "save_step_count": 1,
+  "files_touched": [
+    "apps/worker/src/mcp/catalogue-views.ts"
+  ],
+  "agent": "Claude Code",
+  "model": "claude-fable-5-2",
+  "turn_id": "bd14f4f41e53",
+  "checkpoint_transcript_start": 1646,
+  "transcript_lines_at_start": 1646,
+  "compact_transcript_start": 235,
+  "token_usage": {
+    "input_tokens": 106,
+    "cache_creation_tokens": 270517,
+    "cache_read_tokens": 21352732,
+    "output_tokens": 25453,
+    "api_call_count": 41,
+    "subagent_tokens": {
+      "input_tokens": 0,
+      "cache_creation_tokens": 0,
+      "cache_read_tokens": 0,
+      "output_tokens": 0,
+      "api_call_count": 0
+    }
+  },
+  "skill_events_version": 1,
+  "skill_events": [
+    {
+      "id": "claude-skill-toolu_01Rbbo8j4vMnVSGRe1cAZifL",
+      "event_type": "tool_invocation",
+      "skill": {
+        "name": "anthropic-skills:yuki-writing-style"
+      },
+      "source": {
+        "agent": "claude-code",
+        "signal": "skill_tool_use",
+        "confidence": "explicit"
+      },
+      "turn_id": "bd14f4f41e53",
+      "transcript_anchor": {
+        "unit": "line",
+        "start": 1834,
+        "end": 1835,
+        "entry_ids": [
+          "cc9366c9-9f9b-4449-a7b3-7a244c93c424"
+        ],
+        "tool_use_id": "toolu_01Rbbo8j4vMnVSGRe1cAZifL"
+      },
+      "native": {
+        "tool_name": "Skill",
+        "tool_use_id": "toolu_01Rbbo8j4vMnVSGRe1cAZifL"
+      },
+      "collapse": {
+        "target": "tool_pair",
+        "label": "Skill: anthropic-skills:yuki-writing-style",
+        "default_collapsed": true
+      }
+    }
+  ],
+  "session_metrics": {
+    "turn_count": 29
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-11-15T15:58:18.782189Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 1,
+    "total_committed": 0,
+    "total_lines_changed": 1,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 101,
+      "user_lines_removed": 16,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5,
+        "apps/worker/src/mcp/catalogue-views.ts": 1
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15,
+        "apps/worker/src/mcp/catalogue-views.ts": 1
+      }
+    },
+    {
+      "checkpoint_number": 2,
+      "user_lines_added": 100,
+      "user_lines_removed": 15,
+      "agent_lines_added": 1,
+      "agent_lines_removed": 1,
+      "user_added_per_file": {
+        ".claude/settings.json": 95,
+        ".claude/settings.local.json": 5
+      },
+      "user_removed_per_file": {
+        ".claude/settings.json": 15
+      }
+    }
+  ]
+}
